@@ -6,11 +6,11 @@ A simple toy to test the Humanity of your LLM
 
 script a simple scenario, and watch it play out. 
 I've only put two days into this so far.
- - simple reactive characters can Think / Say / Do
-            - Characters display internal 'reason' for acts, as well as thoughts, in private windows on left
-            - Characters display current priorites in private windows on left
- - actors (and you) see/hear other actors Say/Do, but not their thoughts- in primary text window 
- - every few cycles:
+- simple reactive characters can Think / Say / Do
+- - Characters display internal 'reason' for acts, as well as thoughts, in private windows on left
+- - Characters display current priorites in private windows on left
+- actors (and you) see/hear other actors Say/Do, but not their thoughts- in primary text window 
+- every few cycles:
             - update character physical state and global context 
             - update character internal priorites (instantiated from initial character priorities)
             - update images
