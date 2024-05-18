@@ -12,24 +12,14 @@ from io import BytesIO
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 
-
 def generate_image(description, size='1024x1024', filepath="../images/test.png"):
-    url = 'http://192.168.1.160:5008/generate_image'
+    url = 'http://127.0.0.1:5008/generate_image'
     response =  requests.get(url, params={"prompt":description, "size":size})
     if response.status_code == 200:
         image_content = response.content
     # Save the image to a file
     with open(filepath, "wb") as file:
         file.write(image_content)
-    return filepath
-
-def generate_dalle_image(prompt, size='1024x1024', filepath='../images/worldsimdalle.png'):
-    # Call the OpenAI API to generate the image
-    response = client.images.generate(prompt=prompt, n=1, size='1024x1024')
-    image_url = response.data[0].url
-    image_response = requests.get(image_url)
-    image = Image.open(BytesIO(image_response.content))
-    image.save(filepath)
     return filepath
 
 url = 'http://127.0.0.1:5000/v1/chat/completions'
