@@ -1,6 +1,6 @@
 # AllTheWorldAPlay
 
-![Play screenshot](images/screenshot.jpg)
+![Play screenshot](images/Play.jpg)
 
 We are but actors in it.
 
