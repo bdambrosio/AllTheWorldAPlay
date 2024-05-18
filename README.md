@@ -15,7 +15,7 @@ I've only put two days into this so far.
     - update character internal priorites (instantiated from initial character priorities)
     - update images
 
-# Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
+## Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
 
 ```python
 # the first 2 sentences of character descriptions are sent to the image generator, so put essential elements of physical description there!
@@ -35,3 +35,12 @@ context = agi.Context([maam, annie],
 
 worldsim.main(context)
 ```
+
+## Installation
+This will get better, but for now:
+- clone repo
+- in utils, run exl_server.py^1
+    - you will need to make minor path changes
+
+[^1] a simple wrapper around exllamav2. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
+
