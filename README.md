@@ -1,21 +1,21 @@
 # AllTheWorldAPlay (ATWAP)
 
-A simple toy to test the Humanity of your LLM
+#A simple toy to test the Humanity of your LLM
 
 ![Play screenshot](images/Play.jpg)
 
 script a simple scenario, and watch it play out. 
 I've only put two days into this so far.
 - simple reactive characters can Think / Say / Do
- - Characters display internal 'reason' for acts, as well as thoughts, in private windows on left
- - Characters display current priorites in private windows on left
+    - Characters display internal 'reason' for acts, as well as thoughts, in private windows on left
+    - Characters display current priorites in private windows on left
 - Characters (and you) see/hear other actors Say/Do, but not their thoughts- in primary text window 
 - every few cycles:
- - update character physical state and global context 
- - update character internal priorites (instantiated from initial character priorities)
- - update images
+    - update character physical state and global context 
+    - update character internal priorites (instantiated from initial character priorities)
+    - update images
 
-Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
+#Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
 
 ```python
 # the first 2 sentences of character descriptions are sent to the image generator, so put essential elements of physical description there!
