@@ -1,6 +1,6 @@
 # AllTheWorldAPlay (ATWAP)
 
-#A simple toy to test the Humanity of your LLM
+# A simple toy to test the Humanity of your LLM
 
 ![Play screenshot](images/Play.jpg)
 
@@ -15,7 +15,7 @@ I've only put two days into this so far.
     - update character internal priorites (instantiated from initial character priorities)
     - update images
 
-#Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
+# Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
 
 ```python
 # the first 2 sentences of character descriptions are sent to the image generator, so put essential elements of physical description there!
