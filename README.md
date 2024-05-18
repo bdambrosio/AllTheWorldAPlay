@@ -39,8 +39,12 @@ worldsim.main(context)
 ## Installation
 This will get better, but for now:
 - clone repo
-- in utils, run exl_server.py^1
+- in utils, run exl_server.py[^1]
     - you will need to make minor path changes
+- in utils, run tti_serve.py, a simple wrapper around stabilityai/sdxl-turbo, for image generation
+- finally, run your scenario from <localrepo>/src directory
 
-[^1] a simple wrapper around exllamav2. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
+Ideas / contributions (via PRs?) most welcome.
+
+[^1]: a simple wrapper around exllamav2. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
 
