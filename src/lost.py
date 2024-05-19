@@ -5,7 +5,7 @@ import agh
 
 # Create characters
 # I like looking at pretty women. pbly <==> I'm male hetero oriented. If that offends, please to suit your fancy. 
-S = agh.Character("Samanatha", "You are a pretty young woman named Samantha. You are intelligent, introspective, both philosophical and a bit of a romantic, and shy. You love the outdoors and hiking, and are comfortable on long treks. You are also very informal, chatty, and a bit playful/flirty when relaxed.")
+S = agh.Character("Samanatha", "You are a pretty young woman. You are intelligent, introspective, both philosophical and a bit of a romantic, and shy. You love the outdoors and hiking, and are comfortable on long treks. You are also very informal, chatty, and a bit playful/flirty when relaxed.")
 S.physical_state="groggy, confused"
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
@@ -15,8 +15,8 @@ J.add_to_history("You", "think",  "Whoa. Where am I?. How did I get here? Why ca
 J.add_to_history("You", "think",  "Whoever she is pretty!")
 J.physical_state="groggy, confused"
 
-
+# first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = agh.Context([S, J],
-            "It is morning. We are in a temperate, mixed forest-pairie landscape. There an no buildings, roads, or other signs of human beings. It is a early morning on what seems like it will be a warm, sunny day.")
+            "It is morning in a temperate, mixed forest-pairie landscape. There an no buildings, roads, or other signs of human beings. It is a early morning on what seems like it will be a warm, sunny day.")
 
 worldsim.main(W)

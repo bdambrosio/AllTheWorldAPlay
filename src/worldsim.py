@@ -117,7 +117,13 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} ui widget inititalized')
         
     def update_actor_image(self):
-        description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +". You are feeling "+self.entity.physical_state
+        context = self.entity.context.current_state.split('\n')
+        if len(context[0].strip()) > 0:
+            context = context[0].strip()
+        elif len(context) > 1:
+            context = context[1].strip()
+        description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
+            '. Location: '+context
         prompt = "photorealistic style. "+description
         print(f'{self.entity.name} image prompt\n{prompt}')
         llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
@@ -151,6 +157,8 @@ class CustomWidget(QWidget):
                 if entity != 'World':
                     entity.widget.priorities.clear()
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
+                    entity.widget.intentions.clear()
+                    entity.widget.intentions.insertPlainText(entity.physical_state)
             self.background_task = BackgroundImage(self.entity, self.ui_task_queue)
             agh_threads.append(self.background_task)
             self.background_task.taskCompleted.connect(self.handle_image_completed)
@@ -280,6 +288,16 @@ class MainWindow(QMainWindow):
         self.setGeometry(300, 300, 800, 600)
         self.setWindowTitle('PyQt5 Application')
         agh.ui = self
+        for widget in self.custom_widgets:
+            if widget.entity.name == 'World':
+                widget.value.clear()
+                widget.value.insertPlainText(str(widget.entity.current_state))
+            else:
+                widget.priorities.clear()
+                widget.priorities.insertPlainText('\n'.join(widget.entity.priorities+'\n'))
+                widget.intentions.clear()
+                widget.intentions.insertPlainText(widget.entity.physical_state+'\n')
+        
         self.show()
 
     def display(self, r):
