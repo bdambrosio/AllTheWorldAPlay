@@ -125,7 +125,7 @@ class Character():
         self.reflect_elapsed = 99
         self.reflect_interval = 3
         self.physical_state = ""
-        self.intention = False
+        self.intention = 'None'
         self.previous_action = ''
         self.sense_input = ''
         self.needs = """
@@ -330,7 +330,7 @@ END""")
                 show = act_name + ": "+act_arg
                 self.ui.display(f'\n{self.name}: {show}')
                 if act_name =='Do':
-                    self.intention = False
+                    self.intention = 'None'
 
                     result = self.context.do(self, act_arg)
                     show += '\nthen'+result
@@ -393,7 +393,7 @@ END
 """)]
                 response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
                 act = find('<Act>', response)
-                self.intention = find('<Intention>', response)
+                self.intention = find('<Intention>', response).strip()
                 print(f'{self.name} intends {self.intention}')
         else:
             print(f'\n\nstuff missing\n  act {act_name} act_arg {act_arg}\n\n')
@@ -408,7 +408,7 @@ END
                      "Discuss":"Start a new topic to discuss using the Say action, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions."}
 
         allowed_actions=[]
-        if self.intention is not None and self.intention != False and 'False' not in self.intention:
+        if self.intention is not None and len(self.intention)>4 and self.intention != 'None':
             allowed_actions.append(all_actions["Act"])
         if input.endswith('?'):
             allowed_actions.append(all_actions['Answer'])
