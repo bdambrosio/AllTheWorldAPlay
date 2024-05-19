@@ -63,7 +63,7 @@ End your reponse with:
 """)]
         history = self.history()
         response = llm.ask({"name":actor.name, "action":action,
-                                "state":self.current_state}, prompt, temp=0.7, eos='END', max_tokens=200)
+                                "state":self.current_state}, prompt, temp=0.7, stops=['END'], max_tokens=200)
         self.current_state += '\n'+response
         return response
 
@@ -107,7 +107,7 @@ Limit your response to about 200 words
 End your response with:
 END""")]
             
-        response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.3, eos='END', max_tokens=360)
+        response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.3, stops=['END'], max_tokens=360)
         self.current_state=response
         for actor in self.actors:
             actor.forward(3) # forward three hours and update history
@@ -197,7 +197,7 @@ END
                                 "situation":self.context.current_state,
                                 "physState":self.physical_state, "needs":self.needs
                                 },
-                               prompt, temp=0.7, eos='END', max_tokens=180)
+                               prompt, temp=0.7, stops=['END'], max_tokens=180)
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
         priorities = find('<Priorities>', response)
         self.priorities = priorities.split('\n')
@@ -245,7 +245,7 @@ END""")
                                 "situation":self.context.current_state,
                                 "physState":self.physical_state
                                 },
-                               prompt, temp=0.1, eos='END', max_tokens=180)
+                               prompt, temp=0.1, stops=['END'], max_tokens=180)
         response = response.replace('<PhysicalState>','')
         self.physical_state = response
 
@@ -285,7 +285,7 @@ END""")
         response = llm.ask({'me':self.name, 'memory':self.memory,
                                 'history':'\n\n'.join(self.history[:-2]),
                                 "situation":self.context.current_state},
-                               prompt, temp=0.4, eos='END', max_tokens=300)
+                               prompt, temp=0.4, stops=['END'], max_tokens=300)
         response = response.replace('<Memory>','')
         self.memory = response
         #conv = '\n\n'.join(self.history[:-2])
@@ -362,7 +362,7 @@ Respond only with the intention expressed in the text, if any, or 'False'.
 End your response with:
 END
 """)]
-                response = llm.ask({"text":act_arg}, prompt, temp=0.5, eos='END', max_tokens=100)
+                response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
                 false_idx = response.strip().find('False')
                 if false_idx >=5:
                     self.intention = response[:false_idx]
@@ -454,7 +454,7 @@ END
                                 "memory":self.memory, "situation": self.context.current_state,
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
-                                }, prompt, temp=0.9, eos='END', max_tokens=500)
+                                }, prompt, temp=0.9, stops=['END'], max_tokens=500)
         #print(f'action choice response \n{response}')
         self.sense_input = ' '
         if 'END' in response:
