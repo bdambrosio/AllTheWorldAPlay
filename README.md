@@ -2,11 +2,9 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### Newest: 5/19/24 - 
-- Think it now works with TabbyAPI and compatibles running on port 5000, as well as utils/exl_server, so you have a choice.
-- try rollover of character image. Will now display character memory. takes a few (4-5?) steps before memory forms, so be patient.
-- Async UI - Now you can scroll, pause, etc at any time. Hopefully nothing broke. Pause in mid-step will still run step to end.
-
+### Newest: 5/19/24 - now works with TabbyAPI and compatibles running on port 5000, as well as utils/exl_server, so you have a choice.
+- 5/19/24: try rollover of character image. Will now display character memory. takes a few (4-5?) steps before memory forms, so be patient.
+- 5/19/24: Async UI - Now you can scroll, pause, etc at any time. Hopefully nothing broke. Pause in mid-step will still run step to end.
 - 5/19/24: minor UI bug fixes. Fully async UI coming soon.
 - 5/19/2024: lightly tested fix for 'Do' bug. Characters can act in the world again!
 - 5/18/2024:Major bug preventing any 'Do' actions, only dialog for now!
