@@ -53,12 +53,20 @@ class LLM():
                     else:
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
-    
         response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
-                                        "top_p":options.top_p, "max_tokens":options.max_tokens, "stops":options.stops})
+                                        "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
+            text = response.content.decode('utf-8')
+            if text.startswith('{'):
+                try:
+                    jsonr = json.loads(response.content.decode('utf-8'))
+                except Exception as e:
+                    print(str(e))
+                    return response.content.decode('utf-8')
+                return jsonr['choices'][0]['message']['content']
             return response.content.decode('utf-8')
+            # assume tabby or other open-ai like return
         else:
             raise Error(response)
 

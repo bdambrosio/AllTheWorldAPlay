@@ -20,6 +20,6 @@ J.physical_state="groggy, confused"
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = agh.Context([S, J],
-            "It is morning in a temperate, mixed forest-pairie landscape. There an no buildings, roads, or other signs of human beings. It is a early morning on what seems like it will be a warm, sunny day.")
+            "It is morning in a temperate, mixed forest-pairie landscape. There are no buildings, roads, or other signs of human beings. It is a early morning on what seems like it will be a warm, sunny day.")
 
 worldsim.main(W)
