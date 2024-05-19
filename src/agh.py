@@ -348,8 +348,6 @@ END""")
                     if actor != self: # everyone else sees/hears your act!
                         #print(f'{self.name} showing thinking with {actor.name}')
                         actor.add_to_history('You', 'see', f'{self.name} thinking')
-                if self.widget is not None:
-                    self.widget.display(f'\nThinking: {act_arg}\n  reasoning: {reasoning}')
 
             if act_name == 'Say' or act_name == 'Think':
                 prompt=[SystemMessage(content="""Your task is to analyze the following text.
@@ -362,7 +360,7 @@ Does it include an intention for 'I' to act?
 Respond using the following XML form:
 
 <Analysis>
-<Act>False, True</Act>
+<Act>False if there is no intention to act, True if there is an intention to act</Act>
 <Intention>stated intention - action or goal</Intention>
 </Analysis>
 
@@ -395,8 +393,7 @@ END
 """)]
                 response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
                 act = find('<Act>', response)
-                self.intention = find('Intention', response)
-                self.widget.intentions.insertPlainText(str(self.intention))
+                self.intention = find('<Intention>', response)
                 print(f'{self.name} intends {self.intention}')
         else:
             print(f'\n\nstuff missing\n  act {act_name} act_arg {act_arg}\n\n')
@@ -498,8 +495,9 @@ END
         act_arg = find('<Arg>', response)
         reasoning = find('<Reasoning>', response)
         #self.ui.display(f'\n{self.name}: {act_name}, {act_arg}, \n')
-        if self.widget is not None and act_name != 'Think':
-            self.widget.display(f'\nReasoning: {reasoning}\n')
+        self.reasoning = reasoning
+        if act_name == 'Think':
+            self.reasoning = act_arg+'\n  '+self.reasoning
         self.acts(self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0],
                   act_name, act_arg, reasoning)
 

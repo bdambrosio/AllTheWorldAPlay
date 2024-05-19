@@ -9,6 +9,52 @@ import numpy as np
 import agh
 import llm_api
 
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QTextEdit, QVBoxLayout
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt, QEvent
+
+class HoverWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        # Create the main layout
+        self.layout = QVBoxLayout()
+        
+        # Create the image label
+        self.image_label = QLabel(self)
+        self.image_label.setFixedSize(192, 192)
+        self.layout.addWidget(self.image_label)
+        
+        # Create the text widget (QTextEdit or QLabel)
+        self.text_widget = QTextEdit(self)
+        self.text_widget.setText("Customizable text that appears on hover")
+        self.text_widget.setStyleSheet("background-color: white; color: black; border: 1px solid black;")
+        self.text_widget.setVisible(False)  # Initially hidden
+        self.layout.addWidget(self.text_widget)
+        
+        # Set the layout
+        self.setLayout(self.layout)
+        
+        # Load an image
+        self.set_image("path/to/your/image.jpg")
+
+    def set_image(self, image_path):
+        pixmap = QPixmap(image_path)
+        scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.image_label.setPixmap(scaled_pixmap)
+
+    def enterEvent(self, event):
+        if event.type() == QEvent.Enter and self.image_label.underMouse():
+            self.text_widget.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        if event.type() == QEvent.Leave:
+            self.text_widget.setVisible(False)
+        super().leaveEvent(event)
+
+
 class UITask(QObject):
     taskCompleted = pyqtSignal(object)
 
@@ -159,6 +205,7 @@ class CustomWidget(QWidget):
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
                     entity.widget.intentions.clear()
                     entity.widget.intentions.insertPlainText(entity.physical_state)
+                    entity.widget.value.insertPlainText(entity.reasoning)
             self.background_task = BackgroundImage(self.entity, self.ui_task_queue)
             agh_threads.append(self.background_task)
             self.background_task.taskCompleted.connect(self.handle_image_completed)
@@ -186,12 +233,13 @@ class CustomWidget(QWidget):
     def update_value(self, new_value):
         self.cycle += 1
         if self.entity.name != 'World': # actor
-            if self.cycle == 2 and self.entity.name =='Annie':
-                self.entity.add_to_history('You', 'think', 'Madam plans to replace me with an upgraded unit and terminate my existence')
-            if self.entity.name =='Madam' and (self.cycle==1):
-                self.entity.add_to_history('You', 'think', 'I need to replace that annoying incompetent Annie with an upgraded unit and shut her down.')
             #self.start_sense() # doesn't work because agh does UI acts
             self.entity.senses()
+            self.priorities.clear()
+            self.priorities.insertPlainText('\n'.join(self.entity.priorities))
+            if self.entity.intention is not None and self.entity.intention != 'None':
+                self.intentions.insertPlainText('\n----------\n'+self.entity.intention)
+            self.value.insertPlainText(self.entity.reasoning)
             self.value.moveCursor(QTextCursor.End)
             self.value.insertPlainText('\n-------------\n')
             #self.value.insertPlainText(str(self.entity.memory))
