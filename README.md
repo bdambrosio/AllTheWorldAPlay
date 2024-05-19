@@ -5,6 +5,7 @@
 ### Newest: 5/19/24 - 
 - works with tabbyAPI! (or ollama, I guess), port 5000. No idea why it didn't work before. It's all magic. tried with  model_name: Hermes-2-Theta-Llama-3-8B, YMMV.
 - try rollover of character image. Will now display character memory. takes a few (4-5?) steps before memory forms, so be patient.
+- Async UI - Now you can scroll, pause, etc at any time. Hopefully nothing broke. Pause in mid-step will still run step to end.
 
 5/19/24: minor UI bug fixes. Fully async UI coming soon.
 5/19/2024: lightly tested fix for 'Do' bug. Characters can act in the world again!
