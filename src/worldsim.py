@@ -189,8 +189,12 @@ class CustomWidget(QWidget):
         #print(f'{self.entity.name} started sense')
         
     def handle_sense_completed(self):
+        global agh_threads
         #print(f'{self.entity.name} task completed sense')
-        agh_threads.remove(self.background_task)
+        try:
+            agh_threads.remove(self.background_task)
+        except Exception as e:
+            print(str(e))
         if self.entity.name != 'World':
             self.value.moveCursor(QTextCursor.End)
             self.value.insertPlainText('\n-------------\n')
