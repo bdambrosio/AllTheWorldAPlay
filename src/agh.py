@@ -98,7 +98,7 @@ In the interim, the characters in the world had the following interactions:
 Include day/night cycles and weather patterns. Update location and other physical environment characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical environment.
         """ + event + """
-Your state description should be dispassionate, and should begin with a brief description of the physical space in the apartment suitable for a text-to-image generator. 
+Your state description should be dispassionate, and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
 
 Respond with an updated environment description reflecting a time passage of 3 hours and the events that have occurred.
 Include ONLY the concise updated state description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
@@ -227,12 +227,23 @@ Recent interactions not included in memory:
 {{$history}}
 </RecentConversationHistory)>
 
-Respond with an updated physical state.
+Respond with an updated physical state, using this XML format:
+
+<PhysicalState>
+<Fear>Low, Medium, High</Fear>
+<Thirst>Low, Medium, High</Thirst>
+<Hunger>Low, Medium, High</Hunger>
+<Fatigue>Low, Medium, High</Fatigue>
+<Health>Low, Medium, High</Health>
+</PhysicalState>
+
 The updated physical state should focus on:
 
-1. State of Hunger and thirst.
-2. State of injury or illness, if any.
-3. Degree of fatigue or tiredness.
+- Level of Fear - increases with perception of threat, decreases with removal of threat.
+- Level of Thirst - increases as time passes since last drink, increases with heat and exertion.
+- Level of Hunger - increases as time passes since last food, increases with exertion.
+- Level of Fatigue - increases as time passes since last rest, increases with heat and exertion.
+- Level of Health  - decreases with injury or illness, increases with rest and healing.
 
 Respond ONLY with the updated state.
 Do not include any introductory or peripheral text.
@@ -246,8 +257,13 @@ END""")
                                 "physState":self.physical_state
                                 },
                                prompt, temp=0.1, stops=['END'], max_tokens=180)
-        response = response.replace('<PhysicalState>','')
-        self.physical_state = response
+        fear = find('<Fear>', response)
+        thirst = find('<Thirst>', response)
+        hunger = find('<Hunger>', response)
+        fatigue = find('<Fatigue>', response)
+        health = find('<Health>', response)
+        self.physical_state = '\n'.join([name+': '+value for name, value in zip(['fear', 'thirst', 'hunger', 'fatigue', 'health'], [fear, thirst, hunger, fatigue, health])])
+        print(f'Physical State update:\n{self.name}: {self.physical_state}')
 
         ## update long-term dialog memory
         prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
@@ -315,8 +331,6 @@ END""")
                 self.ui.display(f'\n{self.name}: {show}')
                 if act_name =='Do':
                     self.intention = False
-                    self.widget.intentions.clear()
-                    self.widget.intentions.insertPlainText(str(self.intention))
 
                     result = self.context.do(self, act_arg)
                     show += '\nthen'+result
@@ -368,7 +382,6 @@ END
                     self.intention = response[:false_idx]
                 else:
                     self.intention = False
-                self.widget.intentions.clear()
                 self.widget.intentions.insertPlainText(str(self.intention))
                 print(f'{self.name} intends {self.intention}')
         else:
@@ -448,8 +461,8 @@ Include only your immediate response. Do not include any follow-on conversation.
 
 End your response with:
 END
-""")
-                 ]
+"""
+)                 ]
         response = llm.ask({'input':input+self.sense_input, 'history':'\n\n'.join(self.history),
                                 "memory":self.memory, "situation": self.context.current_state,
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
@@ -466,11 +479,12 @@ END
         #self.add_to_history(speaker, '', input)
 
         act_name = find('<Name>', response)
-        act_name = act_name.strip()
-        act_arg = find('<Arg>', response).strip()
-        reasoning = find('<Reasoning>', response).strip()
+        if act_name is not None:
+            act_name = act_name.strip()
+        act_arg = find('<Arg>', response)
+        reasoning = find('<Reasoning>', response)
         #self.ui.display(f'\n{self.name}: {act_name}, {act_arg}, \n')
-        if self.widget is not None:
+        if self.widget is not None and act_name != 'Think':
             self.widget.display(f'\nReasoning: {reasoning}\n')
         self.acts(self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0],
                   act_name, act_arg, reasoning)
