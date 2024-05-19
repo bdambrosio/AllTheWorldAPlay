@@ -5,7 +5,6 @@ import time
 import numpy as np
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
-from utils import utilityV2 as ut
 from PIL import Image
 from io import BytesIO
 
@@ -57,28 +56,31 @@ class LLM():
     
         response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
-                                        "top_p":options.top_p, "max_tokens":options.max_tokens})
+                                        "top_p":options.top_p, "max_tokens":options.max_tokens, "stops":options.stops})
         if response.status_code == 200:
             return response.content.decode('utf-8')
         else:
             raise Error(response)
 
-    def ask(self, input, prompt_msgs, client=None, template=None, temp=None, max_tokens=None, top_p=None, eos=None, stop_on_json=False):
+    def ask(self, input, prompt_msgs, client=None, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False):
 
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
         if top_p is None: top_p = 1.0
           
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
-                                    stop=eos, stop_on_json=stop_on_json)
+                                    stops=stops, stop_on_json=stop_on_json)
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             response = self.run_request(input, prompt_msgs, options)
-            if eos is not None: # claude returns eos
-                eos_index=response.rfind(eos)
-                if eos_index > -1:
-                    response=response[:eos_index]
+            if stops is not None: # claude returns eos
+                if type(stops) is str:
+                    stops = [stops]
+                    for stop in stops:
+                        eos_index=response.rfind(stop)
+                        if eos_index > -1:
+                            response=response[:eos_index]
             return response
         except Exception as e:
             traceback.print_exc()

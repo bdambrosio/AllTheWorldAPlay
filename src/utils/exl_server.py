@@ -30,6 +30,7 @@ models_dir = "/home/bruce/Downloads/models/"
 subdirs = [d for d in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, d))]
 models = [d for d in subdirs if 'gguf' not in d]
 #print(models)
+contexts = {}
 
 model_number = -1
 
@@ -47,7 +48,8 @@ while model_number < 0 or model_number > len(models) -1:
                 else:
                     raise ValueError('no findable context size in config.json')
         except Exception as e:
-            context_size = 16384
+            context_size = 8192
+        contexts[model_name] = context_size
         print(f'{i}. {models[i]}, context: {context_size}')
     
     number = input('input model # to load: ')
@@ -57,7 +59,7 @@ while model_number < 0 or model_number > len(models) -1:
         print(f'Enter a number between 0 and {len(models)-1}')
 
 model_name=models[model_number]
-
+context_size = contexts[model_name]
 json_config = None
 
 
@@ -105,12 +107,12 @@ async def stream_data(query: Dict[Any, Any], max_new_tokens, stop_on_json=False)
     complete_json_seen = False
     text = ''
     stop_strs = []
-    if 'eos' in query:
-        stop_strs = query['eos']
+    if 'stops' in query:
+        stop_strs = query['stops']
         if type(stop_strs) is not list:
             stop_strs = [stop_strs]
         stop_strs = [item for item in stop_strs if type(item) is str]
-    print(stop_strs)
+    print(f'stops: {stop_strs}')
     while True:
         chunk, eos, _ = generator.stream()
         chunk = chunk.replace('\\n', '\n') # weirdness in llama-3
@@ -127,34 +129,24 @@ async def stream_data(query: Dict[Any, Any], max_new_tokens, stop_on_json=False)
         text += chunk
         yield chunk
                     
-        # note test for '[INST]' is a hack because we don't send template-specific stop strings yes
         if eos or generated_tokens == max_new_tokens or (stop_on_json and complete_json_seen):
             print('\n')
             break
-        #best to check for stop strings after token decode and chunk re-assembly
+        #check for stop strings after token decode and chunk re-assembly
         for stop_str in stop_strs:
             test_len = len(stop_str)+len(chunk)
             if stop_str in text[-test_len:]:
                 print(f'Stop_str {chunk}')
                 break
 
-stop_gen=False    
-    
-host = socket.gethostname()
-host = ''
-port = 5004  # use port above 1024
-
 app = FastAPI()
 print(f"starting server")
 @app.post("/template")
 async def template(request: Request):
-    
-    global context_size
     return {"context_size":context_size}
     
 @app.post("/v1/chat/completions")
 async def get_stream(request: Request):
-    global stop_gen
     global generator, settings, hf_tokenizer, exl_tokenizer
     query = await request.json()
     print(f'request: {query}')
@@ -175,14 +167,11 @@ async def get_stream(request: Request):
         max_tokens = message_j['max_tokens']
 
     stop_conditions = ['###','<|endoftext|>', "Reference(s):"]
-    if 'eos' in message_j.keys():
-        print(f'\n received eos {message_j["eos"]}')
-        stop_conditions = message_j['eos']
+    if 'stops' in message_j.keys():
+        print(f'\n received stops {message_j["stops"]}')
+        stop_conditions = message_j['stops']
 
     stop_on_json = False
-    if 'json' in stop_conditions:
-        stop_on_json=True
-        stop_conditions = stop_conditions.remove('json') # s/b no exceptions, since we know 'json' is in the list
     if 'stop_on_json' in message_j.keys() and message_j['stop_on_json']==True:
         stop_on_json=True
 

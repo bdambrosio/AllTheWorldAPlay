@@ -64,7 +64,7 @@ class BackgroundImage(QThread):
     def run(self):
         try:
             #print(f'calling {self.entity.name} image')
-            result = self.entity.image()
+            result = self.entity.image('../images/worldsim.png')
         except Exception as e:
             print(str(e))
         self.taskCompleted.emit()
