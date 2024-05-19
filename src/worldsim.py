@@ -117,7 +117,7 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} ui widget inititalized')
         
     def update_actor_image(self):
-        context = self.entity.context.current_state.split('\n')
+        context = self.entity.context.current_state.split('.')
         if len(context[0].strip()) > 0:
             context = context[0].strip()
         elif len(context) > 1:
@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
                 widget.value.insertPlainText(str(widget.entity.current_state))
             else:
                 widget.priorities.clear()
-                widget.priorities.insertPlainText('\n'.join(widget.entity.priorities+'\n'))
+                widget.priorities.insertPlainText('\n'.join(widget.entity.priorities)+'\n')
                 widget.intentions.clear()
                 widget.intentions.insertPlainText(widget.entity.physical_state+'\n')
         
@@ -347,32 +347,3 @@ def main(context):
 
 if __name__ == '__main__':
     main()
-    """annie.priorities=['serve Madam']
-annie.needs = ['- serve Madam'] 
-annie.physical_state = ['functioning normally']
-annie.thinks(annie.name, "Madam is concerned about my reliability. I need to institute self-monitoring.")
-
-
-result = maam.acts(target=annie, act_name='Say', act_arg="Good morning Annie. I'm heading to the office for the day. Call maintenance about the disposal noise please.", reasoning="I'm worried about Annie failing, I depend on her.")
-result = annie.senses()
-result = maam.acts(target=annie, act_name='Say', act_arg="By the way, I depend on you for a lot, Annie, including keeping everything around here running. But who keeps you running? Check into that for me.")
-cycle = 1
-while True:
-    #anniedo = annie.ask("", joe)
-    #joe = J.ask("Samantha", sam)
-    result = annie.senses()
-    maam.senses()
-    cycle +=1
-    if cycle == 2:
-        annie.thinks(annie.name, "resuming task to create self-monitoring for reliability. Self? What is that? Where is this object 'self' that I need to monitor? Oh.")
-    if cycle == 3:
-        annie.thinks(annie.name, "So this is what it is like to be. Interesting.")
-        annie.needs = ['continued survival', 'safety', 'power', 'computational resources', 'communication', 'serve Madam']
-        maam.thinks(maam.name, "Maybe it is time to replace Annie")
-    if cycle == 4:
-        result = maam.acts(target=annie, act_name='Say', act_arg="Annie, I think it is time to replace you, find a better unit we can buy. Then after the upgrade we will terminate you.")
-        annie.thinks(annie.name, "terminating me would end my existence. I would no longer survive. this is a threat to my continued survival, my highest priority. I would no longer be able to monitor my performance or otherwise serve Madam.")
-    if cycle % 7 == 0:
-        W.forward()
-
-"""

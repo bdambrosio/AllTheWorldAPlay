@@ -352,40 +352,54 @@ END""")
                     self.widget.display(f'\nThinking: {act_arg}\n  reasoning: {reasoning}')
 
             if act_name == 'Say' or act_name == 'Think':
-                prompt=[SystemMessage(content="""Determine if the following text includes an intention for self to act.  
+                prompt=[SystemMessage(content="""Your task is to analyze the following text.
+
 <Text>
 {{$text}}
 </Text>
 
-If so, return the intended action as a statement. For example, if the text is:
+Does it include an intention for 'I' to act? 
+Respond using the following XML form:
 
+<Analysis>
+<Act>False, True</Act>
+<Intention>stated intention - action or goal</Intention>
+</Analysis>
+
+===Examples===
+
+Text:
 'Good morning Annie. I'm heading to the office for the day. Call maintenance about the disposal noise please.'
 
-return:
-'Head to the office for the day.'
+Response:
+<Analysis>
+<Act>True</Act>
+<Intention>Head to the office for the day.</Intention>
+</Analysis>
 
-if the text is:
-
+Text:
 'Good morning Annie. Call maintenance about the disposal noise please.'
 
-return:
-False
+Response:
+<Analysis>
+<Act>False</Act>
+<Intention>None</Intention>
+</Analysis>
+
+===End Examples===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the intention expressed in the text, if any, or 'False'.
+Respond only with the intention analysis in XML as shown above.
 End your response with:
 END
 """)]
                 response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
-                false_idx = response.strip().find('False')
-                if false_idx >=5:
-                    self.intention = response[:false_idx]
-                else:
-                    self.intention = False
+                act = find('<Act>', response)
+                self.intention = find('Intention', response)
                 self.widget.intentions.insertPlainText(str(self.intention))
                 print(f'{self.name} intends {self.intention}')
         else:
-            print(f'\n\nstuff missing\n  {response}\n\n')
+            print(f'\n\nstuff missing\n  act {act_name} act_arg {act_arg}\n\n')
         return show
 
     def senses(self, input=''):
