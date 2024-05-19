@@ -2,6 +2,8 @@
 
 # A simple toy to test the Humanity of your LLM
 
+## Beta 1.0 - Actually got this to run on a clean install on a different machine. Enjoy!
+
 ![Play screenshot](images/Play.jpg)
 
 script a simple scenario, and watch it play out. 
