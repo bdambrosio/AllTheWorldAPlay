@@ -43,7 +43,7 @@ This will get better, but for now:
 - clone repo
 - pbly venv/conda is a good idea.
 - in utils, run exl_server.py[^1]
-    - you will need to make minor path changes
+    - you will need to make minor path changes to the directory you have models in, then it will ask which model to load.
     - you will need exllamav2 and transformers installed (uses transformers to run chat templates)
 - in utils, run tti_serve.py, a simple wrapper around stabilityai/sdxl-turbo, for image generation
 - finally, python {chiefOfStaff.py, lost.py, myscenario.py, ...} from <localrepo>/src directory[^2]. 
