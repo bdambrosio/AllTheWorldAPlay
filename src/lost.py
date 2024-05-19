@@ -7,12 +7,12 @@ import agh
 # I like looking at pretty women. pbly because I'm male hetero oriented.
 # If that offends, please to suit your fancy.
 # also, I find it disorienting for characters to change racial characteristics every time they are rendered.
-# I'm Scicilian (no, not Italian - family joke).
-S = agh.Character("Samanatha", "You are a pretty young Scicilian woman. You are intelligent, introspective, both philosophical and a bit of a romantic, and shy. You love the outdoors and hiking, and are comfortable on long treks. You are also very informal, chatty, and a bit playful/flirty when relaxed.")
+# I'm of Sicilian descent (no, not Italian - family joke).
+S = agh.Character("Samanatha", "You are a pretty young Sicilian woman. You are intelligent, introspective, both philosophical and a bit of a romantic, and shy. You love the outdoors and hiking, and are comfortable on long treks. You are also very informal, chatty, and a bit playful/flirty when relaxed.")
 S.physical_state="groggy, confused"
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
-J = agh.Character("Joe", "You are a young Scicilian male, intelligent, and self-sufficient. You are informal and goodhearted, also somewhat impulsive. You are strong, and think you love the outdoors, but are basically a nerd. Your name is Joe.")
+J = agh.Character("Joe", "You are a young Sicilian male, intelligent, and self-sufficient. You are informal and goodhearted, also somewhat impulsive. You are strong, and think you love the outdoors, but are basically a nerd. Your name is Joe.")
 J.add_to_history("You", "think",  "Whoa. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
 # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
 J.add_to_history("You", "think",  "Whoever she is pretty!")
