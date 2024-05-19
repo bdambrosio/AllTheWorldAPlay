@@ -1,4 +1,4 @@
-# AllTheWorldAPlay (ATWAP)
+# AllTheWorldAPlay[^1] (ATWAP)
 
 ## A simple toy to test the Humanity of your LLM
 
@@ -45,15 +45,15 @@ worldsim.main(context)
 This will get better, but for now:
 - clone repo
 - pbly venv/conda is a good idea.
-- in utils, run exl_server.py[^1]
+- in utils, run exl_server.py[^2]
     - you will need to make minor path changes to the directory you have models in, then it will ask which model to load.
     - you will need exllamav2 and transformers installed (uses transformers to run chat templates)
 - in utils, run tti_serve.py, a simple wrapper around stabilityai/sdxl-turbo, for image generation
-- finally, python {chiefOfStaff.py, lost.py, myscenario.py, ...} from <localrepo>/src directory[^2]. 
+- finally, python {chiefOfStaff.py, lost.py, myscenario.py, ...} from <localrepo>/src directory[^3]. 
 
 Ideas / contributions (via PRs?) most welcome.
 
-[^1]: a simple wrapper around exllamav2. Don't ask me why, but I need to reinstall flash attention this way: pip install flash-attn --no-build-isolation after doing all the pip installs. I hate python packaging. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
-
-[^2]: Yeah, I know, no requirements.txt or other installer? Hey, this is <really> early, sorry. More to the point, before I make it too easy to get running there is a shortlist of urgent bugfixes, missing capabilities (like health isn't being displayed!) and improvements (esp. in planning, action determination, ....) I need to make.
+[^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
+[^2]: a simple wrapper around exllamav2. Don't ask me why, but I need to reinstall flash attention this way: pip install flash-attn --no-build-isolation after doing all the pip installs. I hate python packaging. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
+[^3]: Yeah, I know, no requirements.txt or other installer? Hey, this is <really> early, sorry. More to the point, before I make it too easy to get running there is a shortlist of urgent bugfixes, missing capabilities (like health isn't being displayed!) and improvements (esp. in planning, action determination, ....) I need to make.
 
