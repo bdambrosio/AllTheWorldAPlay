@@ -15,8 +15,9 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QEvent
 
 class HoverWidget(QWidget):
-    def __init__(self):
+    def __init__(self, entity):
         super().__init__()
+        self.entity = entity
         
         # Create the main layout
         self.layout = QVBoxLayout()
@@ -29,7 +30,7 @@ class HoverWidget(QWidget):
         # Create the text widget (QTextEdit or QLabel)
         self.text_widget = QTextEdit(self)
         self.text_widget.setText("Customizable text that appears on hover")
-        self.text_widget.setStyleSheet("background-color: white; color: black; border: 1px solid black;")
+        self.text_widget.setStyleSheet("background-color: #333333; color: #FFFFFF;")
         self.text_widget.setVisible(False)  # Initially hidden
         self.layout.addWidget(self.text_widget)
         
@@ -45,7 +46,11 @@ class HoverWidget(QWidget):
         self.image_label.setPixmap(scaled_pixmap)
 
     def enterEvent(self, event):
-        if event.type() == QEvent.Enter and self.image_label.underMouse():
+        print(f'event {event}')
+        if event.type() == QEvent.Enter:
+            print(f' enter under mouse! {event}')
+            self.text_widget.clear()
+            self.text_widget.insertPlainText(self.entity.memory)
             self.text_widget.setVisible(True)
         super().enterEvent(event)
 
@@ -54,63 +59,19 @@ class HoverWidget(QWidget):
             self.text_widget.setVisible(False)
         super().leaveEvent(event)
 
-
-class UITask(QObject):
-    taskCompleted = pyqtSignal(object)
-
-    def __init__(self, task_func):
-        super().__init__()
-        self.task_func = task_func
-
-    def run(self):
-        result = self.task_func()
-        self.taskCompleted.emit(result)
-
-class UITaskQueue(QObject):
-    def __init__(self):
-        super().__init__()
-        self.queue = Queue()
-
-    @pyqtSlot()
-    def process_tasks(self):
-        while not self.queue.empty():
-            task = self.queue.get()
-            task.run()
-
-    def add_task(self, task_func):
-        task = UITask(task_func)
-        self.queue.put(task)
-        QMetaObject.invokeMethod(self, "process_tasks", Qt.QueuedConnection)
-
+active_qthreads = 0 # whenever this is zero we will step if RUN is True
+RUN = False
 
 class BackgroundSense(QThread):
     taskCompleted = pyqtSignal()
-    def __init__(self, entity, ui_task_queue):
+    def __init__(self, entity):
         super().__init__()
         self.entity = entity
-        self.ui_task_queue = ui_task_queue
 
     def run(self):
         try:
             #print(f'calling {self.entity} senses')
-            result = self.entity.senses(self.ui_task_queue)
-        except Exception as e:
-            print(str(e))
-        self.taskCompleted.emit()
-
-    def uidisplay(self, result):
-        self.ui.display(result)
-
-class BackgroundImage(QThread):
-    taskCompleted = pyqtSignal()
-    def __init__(self, entity, ui_task_queue):
-        super().__init__()
-        self.entity = entity
-
-    def run(self):
-        try:
-            #print(f'calling {self.entity.name} image')
-            result = self.entity.image('../images/worldsim.png')
+            result = self.entity.senses(input = '')
         except Exception as e:
             print(str(e))
         self.taskCompleted.emit()
@@ -128,9 +89,11 @@ class CustomWidget(QWidget):
         layout.addWidget(self.label)
         if self.entity.name !='World':
             h_layout = QHBoxLayout()
-            self.image_label = QLabel()
-            self.image_label.setFixedSize(192, 192)
-            self.image_label.setAlignment(Qt.AlignCenter)
+            self.image_label = HoverWidget(self.entity)
+            self.image_label.set_image('../images/'+self.entity.name+'.png')
+            #self.image_label = QLabel()
+            #self.image_label.setFixedSize(192, 192)
+            #self.image_label.setAlignment(Qt.AlignCenter)
             h_layout.addWidget(self.image_label)
             self.intentions = QTextEdit()
             self.intentions.setLineWrapMode(QTextEdit.WidgetWidth)
@@ -159,7 +122,6 @@ class CustomWidget(QWidget):
         if self.entity.name != 'World':
             self.update_actor_image()
             
-        self.ui_task_queue = UITaskQueue()
         print(f'{self.entity.name} ui widget inititalized')
         
     def update_actor_image(self):
@@ -171,7 +133,6 @@ class CustomWidget(QWidget):
         description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
             '. Location: '+context
         prompt = "photorealistic style. "+description
-        print(f'{self.entity.name} image prompt\n{prompt}')
         llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
         self.set_image("../images/"+self.entity.name+'.png')
 
@@ -181,23 +142,30 @@ class CustomWidget(QWidget):
 
     def start_sense(self):
         global agh_threads
-        self.background_task = BackgroundSense(self.entity, self.ui_task_queue)
+        self.background_task = BackgroundSense(self.entity)
         agh_threads.append(self.background_task)
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
-        #print(f'{self.entity.name} starting sense')
         self.background_task.start()
-        #print(f'{self.entity.name} started sense')
+        print(f'{self.entity.name} started sense')
         
     def handle_sense_completed(self):
         global agh_threads
-        #print(f'{self.entity.name} task completed sense')
         try:
             agh_threads.remove(self.background_task)
         except Exception as e:
             print(str(e))
         if self.entity.name != 'World':
+            self.ui.display(self.entity.show)
             self.value.moveCursor(QTextCursor.End)
             self.value.insertPlainText('\n-------------\n')
+            self.priorities.clear()
+            self.priorities.insertPlainText('\n'.join(self.entity.priorities))
+            if self.entity.intention is not None and self.entity.intention != 'None':
+                self.intentions.insertPlainText('\n----------\n'+self.entity.intention)
+            self.value.insertPlainText(self.entity.reasoning)
+            self.value.moveCursor(QTextCursor.End)
+            self.value.insertPlainText('\n-------------\n')
+            #self.value.insertPlainText(str(self.entity.memory))
             self.update_actor_image()
                 
         else:
@@ -210,24 +178,21 @@ class CustomWidget(QWidget):
                     entity.widget.intentions.clear()
                     entity.widget.intentions.insertPlainText(entity.physical_state)
                     entity.widget.value.insertPlainText(entity.reasoning)
-            self.background_task = BackgroundImage(self.entity, self.ui_task_queue)
-            agh_threads.append(self.background_task)
-            self.background_task.taskCompleted.connect(self.handle_image_completed)
-            #print(f'{self.entity.name} starting image')
-            self.background_task.start()
-            self.ui.display('\n*** world updated ***')
-            
-    def handle_image_completed(self):
-        #print(f'{self.entity.name} task completed image')
-        agh_threads.remove(self.background_task)
-        if self.entity.name == 'World':
-            self.ui.set_image("../images/worldsim.png")
+            path = self.entity.image('../images/worldsim.png')
+            self.ui.set_image('../images/worldsim.png')
+            self.ui.display('\n----- context updated -----\n')
+
+        # initiate another cycle?
+        print(f'{self.entity.name} sense completed {len(agh_threads)}')
+        if len(agh_threads) == 0:
+            self.ui.step_completed()
         
+            
     def set_image(self, image_path):
         pixmap = QPixmap(image_path)
-        #scaled_pixmap = pixmap.scaled(192, 192, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.image_label.setPixmap(scaled_pixmap)
+        #self.image_label.setPixmap(scaled_pixmap)
+        self.image_label.set_image(scaled_pixmap)
         
 
     def display(self, text):
@@ -237,19 +202,8 @@ class CustomWidget(QWidget):
     def update_value(self, new_value):
         self.cycle += 1
         if self.entity.name != 'World': # actor
-            #self.start_sense() # doesn't work because agh does UI acts
-            self.entity.senses()
-            self.priorities.clear()
-            self.priorities.insertPlainText('\n'.join(self.entity.priorities))
-            if self.entity.intention is not None and self.entity.intention != 'None':
-                self.intentions.insertPlainText('\n----------\n'+self.entity.intention)
-            self.value.insertPlainText(self.entity.reasoning)
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
-            #self.value.insertPlainText(str(self.entity.memory))
-            if self.cycle %3 == 2:
-                self.update_actor_image()
-        else:
+            self.start_sense()
+        else: # update world less often, too expensive
             if self.cycle %3 == 2:
                 self.start_sense()
 
@@ -259,8 +213,6 @@ class MainWindow(QMainWindow):
         self.context = context
         self.actors = context.actors
         self.init_ui()
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.step)
         self.internal_time = 0
         self.agh = agh
 
@@ -369,24 +321,40 @@ class MainWindow(QMainWindow):
         self.image_label.setPixmap(pixmap)
 
     def run(self):
-        self.timer.start(1000)  # Runs step() every 1000ms
+        global RUN # declare because doing assign
+        self.run_button.setEnabled(False)
+        self.step_button.setEnabled(False)
+        RUN = True
+        self.step()
 
     def step(self):
-        self.internal_time += 1
+        print('Step')
+        self.run_button.setEnabled(False)
+        self.step_button.setEnabled(False)
         self.update_parameters()
         #self.append_text(f"\nStep {self.internal_time}\n")
 
+    def step_completed(self):
+        self.run_button.setEnabled(True)
+        self.step_button.setEnabled(True)
+        if RUN:
+            self.step()
+            
     def pause(self):
-        self.timer.stop()
-
+        global RUN
+        RUN = False
+        
     def reset(self):
+        global RUN
         self.internal_time = 0
         self.update_parameters()
         self.append_text("Reset")
+        RUN = False
 
     def update_parameters(self):
         # Example: update custom widgets with internal_time
         for widget in self.custom_widgets:
+            print(f'{widget.entity.name} sensing')
             widget.update_value(self.internal_time)
 
     def append_text(self, text):

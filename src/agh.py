@@ -67,7 +67,7 @@ End your reponse with:
         self.current_state += '\n'+response
         return response
 
-    def senses (self, ui_task_queue):
+    def senses (self, input='', ui_task_queue=None):
         #first step is to compute current conversation history.
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
         # not really true, since each is ignorant of the others thoughts
@@ -119,9 +119,11 @@ class Character():
         self.speaker = None
         self.character = character_description
         self.history = []
-        self.memory = ''
+        self.memory = 'None'
         self.context=None
-        self.priorities = ['']
+        self.priorities = [''] # will be displayed by main thread at top in character intentions text widget
+        self.reasoning='None' # to be displayed by main thread in character main text widget
+        self.show='' # to be displayed by main thread in UI public (main) text widget
         self.reflect_elapsed = 99
         self.reflect_interval = 3
         self.physical_state = ""
@@ -199,8 +201,8 @@ END
                                 },
                                prompt, temp=0.7, stops=['END'], max_tokens=180)
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
-        priorities = find('<Priorities>', response)
-        self.priorities = priorities.split('\n')
+        self.priorities = find('<Priorities>', response)
+        self.priorities = self.priorities.split('\n')
                                     
     def forward(self, num_hours):
         # roll conversation history forward.
@@ -263,7 +265,6 @@ END""")
         fatigue = find('<Fatigue>', response)
         health = find('<Health>', response)
         self.physical_state = '\n'.join([name+': '+value for name, value in zip(['fear', 'thirst', 'hunger', 'fatigue', 'health'], [fear, thirst, hunger, fatigue, health])])
-        print(f'Physical State update:\n{self.name}: {self.physical_state}')
 
         ## update long-term dialog memory
         prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
@@ -304,11 +305,7 @@ END""")
                                prompt, temp=0.4, stops=['END'], max_tokens=300)
         response = response.replace('<Memory>','')
         self.memory = response
-        #conv = '\n\n'.join(self.history[:-2])
-        #print(f'history to memory formation\n{conv}\n')
         self.history = self.history[-2:]
-        #conv = '\n\n'.join(self.history)
-        #print(f'history after memory formation \n{conv}\n')
 
     def acts(self, target, act_name, act_arg='', reasoning=''):
         #
@@ -322,31 +319,29 @@ END""")
                 self.add_to_history('You', 'think',f'   reasoning: {reasoning}')
                 for actor in self.context.actors:
                     if actor != self: # everyone else sees/hears your act!
-                        #print(f'{self.name} sharing {act_name} with {actor.name}')
                         actor.add_to_history(self.name, act_name , act_arg)
                 if target is not None:
                     target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
                 self.previous_action = act_name
-                show = act_name + ": "+act_arg
-                self.ui.display(f'\n{self.name}: {show}')
+                self.show = '\n'+self.name+' '+act_name + ": "+act_arg
                 if act_name =='Do':
                     self.intention = 'None'
 
                     result = self.context.do(self, act_arg)
-                    show += '\nthen'+result
+                    show += '\n  then'+result
                     self.add_to_history('You', 'observe', result)
                     if target is not None: # this is wrong, world should update who sees do
                         target.sense_input += '\n'+result
-                    self.ui.display(f'  {result}')
+                    self.show += '\n  '+result
             else:
                 show = 'Seems to be thinking ...'
                 self.previous_action='Think'
                 self.add_to_history('You', 'think', act_arg)
                 self.add_to_history('You', 'think',f'   reasoning: {reasoning}')
-                self.ui.display(f'\n{self.name}: {show}\n')
+                self.show = '\n'+self.name+': '+show+'\n'
+
                 for actor in self.context.actors:
                     if actor != self: # everyone else sees/hears your act!
-                        #print(f'{self.name} showing thinking with {actor.name}')
                         actor.add_to_history('You', 'see', f'{self.name} thinking')
 
             if act_name == 'Say' or act_name == 'Think':
@@ -394,12 +389,11 @@ END
                 response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
                 act = find('<Act>', response)
                 self.intention = find('<Intention>', response).strip()
-                print(f'{self.name} intends {self.intention}')
         else:
             print(f'\n\nstuff missing\n  act {act_name} act_arg {act_arg}\n\n')
         return show
 
-    def senses(self, input=''):
+    def senses(self, input='', ui_queue=None):
         #print(f'\n********************ask*********************\nSpeaker: {speaker}, Input:{input}')
         all_actions={"Act":f"Act in the world using the Do action, with '{self.intention}' as the action to perform (value for <Arg>).",
                      "Answer":"If Input is a question, respond with your answer using the Say action.", 
@@ -479,7 +473,6 @@ END
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
                                 }, prompt, temp=0.9, stops=['END'], max_tokens=500)
-        #print(f'action choice response \n{response}')
         self.sense_input = ' '
         if 'END' in response:
             idx = response.find('END')
@@ -491,14 +484,12 @@ END
 
         act_name = find('<Name>', response)
         if act_name is not None:
-            act_name = act_name.strip()
+            self.act_name = act_name.strip()
         act_arg = find('<Arg>', response)
-        reasoning = find('<Reasoning>', response)
-        #self.ui.display(f'\n{self.name}: {act_name}, {act_arg}, \n')
-        self.reasoning = reasoning
+        self.reasoning = find('<Reasoning>', response)
         if act_name == 'Think':
             self.reasoning = act_arg+'\n  '+self.reasoning
         self.acts(self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0],
-                  act_name, act_arg, reasoning)
+                  act_name, act_arg, self.reasoning)
 
 llm = llm_api.LLM()
