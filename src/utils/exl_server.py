@@ -107,12 +107,12 @@ async def stream_data(query: Dict[Any, Any], max_new_tokens, stop_on_json=False)
     complete_json_seen = False
     text = ''
     stop_strs = []
-    if 'stops' in query:
-        stop_strs = query['stops']
+    if 'stop' in query:
+        stop_strs = query['stop']
         if type(stop_strs) is not list:
             stop_strs = [stop_strs]
         stop_strs = [item for item in stop_strs if type(item) is str]
-    print(f'stops: {stop_strs}')
+    print(f'stop: {stop_strs}')
     while True:
         chunk, eos, _ = generator.stream()
         chunk = chunk.replace('\\n', '\n') # weirdness in llama-3
@@ -167,9 +167,9 @@ async def get_stream(request: Request):
         max_tokens = message_j['max_tokens']
 
     stop_conditions = ['###','<|endoftext|>', "Reference(s):"]
-    if 'stops' in message_j.keys():
-        print(f'\n received stops {message_j["stops"]}')
-        stop_conditions = message_j['stops']
+    if 'stop' in message_j.keys():
+        print(f'\n received stop {message_j["stop"]}')
+        stop_conditions = message_j['stop']
 
     stop_on_json = False
     if 'stop_on_json' in message_j.keys() and message_j['stop_on_json']==True:
