@@ -1,8 +1,8 @@
 # AllTheWorldAPlay (ATWAP)
 
-# A simple toy to test the Humanity of your LLM
+## A simple toy to test the Humanity of your LLM
 
-## Newest: 5/18/2024:Major bug preventing any 'Do' actions, only dialog for now. Hi priority bug, will be fixed by 5/19 noon!
+### Newest: 5/18/2024:Major bug preventing any 'Do' actions, only dialog for now!
 
 5/18/2024: Beta 1.0 - Actually got this to run on a clean install on a different machine. Enjoy!
 
