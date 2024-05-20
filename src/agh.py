@@ -61,7 +61,13 @@ class Context ():
         return filepath
         
     def do(self, actor, action):
-        prompt=[SystemMessage(content="""You are a dynamic world. Your task is to determine the result of {{$name}} performing {{$action}} in the current situation. 
+        prompt=[SystemMessage(content="""You are a dynamic world. Your task is to determine the result of {{$name}} performing
+
+<Action>
+{{$action}}
+</Action>
+
+in the current situation: 
 
 <Situation>
 {{$state}}
@@ -124,7 +130,7 @@ END""")]
         response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.3, stops=['END'], max_tokens=360)
         self.current_state=response
         for actor in self.actors:
-            actor.forward(3) # forward three hours and update history
+            actor.forward(3) # forward three hours and update history, etc
         return response
 
 class Character():
@@ -156,7 +162,7 @@ class Character():
         message = message.replace('\\','')
         self.history.append(f"{role}: {act} {message}")
 
-    def reflect(self):
+    def update_priorities(self):
         prompt = [SystemMessage(content=self.character+"""Your current situation is:
 
 <Situation>
@@ -213,7 +219,7 @@ END
                                 "situation":self.context.current_state,
                                 "physState":self.physical_state, "needs":self.needs
                                 },
-                               prompt, temp=0.7, stops=['END'], max_tokens=180)
+                               prompt, temp=0.5, stops=['END'], max_tokens=180)
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
         try:
             priorities = find('<Priorities>', response)
@@ -226,7 +232,7 @@ END
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
-        self.reflect()
+        self.update_priorities()
         prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
 When last updated, your physical state was:
 
@@ -319,12 +325,12 @@ End your response with:
 END""")
                   ]
         response = llm.ask({'me':self.name, 'memory':self.memory,
-                                'history':'\n\n'.join(self.history[:-2]),
+                                'history':'\n\n'.join(self.history),
                                 "situation":self.context.current_state},
                                prompt, temp=0.4, stops=['END'], max_tokens=300)
         response = response.replace('<Memory>','')
         self.memory = response
-        self.history = self.history[-2:]
+        self.history = self.history[-4:]
 
     def acts(self, target, act_name, act_arg='', reasoning=''):
         #
@@ -335,14 +341,16 @@ END""")
             #self.ui.display('\n**********************\n')
             if act_name=='Say' or act_name == 'Do':
                 self.add_to_history('You', act_name , act_arg)
-                self.add_to_history('You', 'think',f'   reasoning: {reasoning}')
+                self.add_to_history('You', '',f'   reasoning: {reasoning}')
                 for actor in self.context.actors:
                     if actor != self: # everyone else sees/hears your act!
-                        actor.add_to_history(self.name, act_name , act_arg)
+                        verb = 'says' if act_name == 'Say' else ''
+                        actor.add_to_history(self.name, '' , act_arg)
+                        print(f'adding to {actor.name} history: {act_arg}')
                 if target is not None:
                     target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
                 self.previous_action = act_name
-                self.show = '\n'+self.name+' '+act_name + ": "+act_arg
+                self.show = '\n'+self.name+' '+verb + ": "+act_arg
                 if act_name =='Do':
                     self.intention = 'None'
 
@@ -355,8 +363,8 @@ END""")
             else:
                 show = 'Seems to be thinking ...'
                 self.previous_action='Think'
-                self.add_to_history('You', 'think', act_arg)
-                self.add_to_history('You', 'think',f'   reasoning: {reasoning}')
+                self.add_to_history('You', 'think', act_arg if act_arg is not None else '')
+                self.add_to_history('You', 'think',f'   reasoning: {str(reasoning)}')
                 self.show = '\n'+self.name+': '+show+'\n'
 
                 for actor in self.context.actors:
@@ -405,32 +413,64 @@ Respond only with the intention analysis in XML as shown above.
 End your response with:
 END
 """)]
-                response = llm.ask({"text":act_arg}, prompt, temp=0.5, stops=['END'], max_tokens=100)
+                response = llm.ask({"text":act_arg}, prompt, temp=0.1, stops=['END'], max_tokens=100)
                 act = find('<Act>', response)
                 self.intention = find('<Intention>', response).strip()
         else:
             print(f'\n\nstuff missing\n  act {act_name} act_arg {act_arg}\n\n')
+            show = ''
         return show
 
     def senses(self, input='', ui_queue=None):
-        #print(f'\n********************ask*********************\nSpeaker: {speaker}, Input:{input}')
-        all_actions={"Act":f"Act in the world using the Do action, with '{self.intention}' as the action to perform (value for <Arg>).",
-                     "Answer":"If Input is a question, respond with your answer using the Say action.", 
-                     "Say":f"If a previous Think expressed intention to say something and is not followed by a Say, then use the Say action with '{self.intention}' as words to say (value for <Arg>).",
-                     "Think":"Think about Input and ConversationHistory with respect to Priorities, using the Think action. Limit response to 140 words.",
-                     "Discuss":"Start a new topic to discuss using the Say action, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions."}
+        #print(f'\n********************ask*********************\nSpeaker: {speaker}, Input: {input}')
+        all_actions={"Act": f"""Act on your current intention in the world using this form:
+<Action>
+  <Name>Do</Name>
+  <Arg>{self.intention}</Arg>
+</Action>
+""",
+                     "Answer":f"""If the new Observation is a question, answer it using this form:
+<Action>
+  <Name>Say</Name>
+  <Arg><answer to question from other actor></Arg>
+  <Reasoning><reasons for this answer></Reasoning>
+</Action>
+""",
+                     "Say":f"""If a previous Think expressed intention to say something and is not followed by a Say, complete the intention using this form:
+<Action>
+  <Name>Say</Name>
+  <Arg><words to say></Arg>
+  <Reasoning><reasons for saying this></Reasoning>
+</Action>
+""",
+                     "Think":"""Think step-by-step about your situation, your Priorities, the Input,  and ConversationHistory with respect to Priorities, using the form:
+<Action>
+  <Name>Think</Name>
+  <Arg><thoughts on situation></Arg>
+  <Reasoning><reasons for these thoughts></Reasoning>
+</Action>
+""",
+                     "Discuss":""""Start a new topic to discuss using the Say action, using the form:
+<Action>
+  <Name>Say</Name>
+  <Arg><item of concern you want to discuss, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg>
+  <Reasoning><reasons for bringing this up for discussion></Reasoning>
+</Action>"""}
 
         allowed_actions=[]
         if self.intention is not None and len(self.intention)>4 and self.intention != 'None':
             allowed_actions.append(all_actions["Act"])
-        if input.endswith('?'):
-            allowed_actions.append(all_actions['Answer'])
-        if self.previous_action == 'Think':
-            allowed_actions.append(all_actions['Say'])
-        if self.previous_action != 'Think' and random.randint(1,2) == 1: # you think too much
+        #if input.endswith('?'):
+        allowed_actions.append(all_actions['Answer'])
+        #if self.previous_action == 'Think':
+        allowed_actions.append(all_actions['Say'])
+        if self.previous_action != 'Think' or random.randint(1,2) == 1: # you think too much
             allowed_actions.append(all_actions['Think'])
-        if len(allowed_actions) < 3 and  random.randint(1,2) == 1: # you talk too much
+        if len(allowed_actions) < 3 or random.randint(1,2) == 1: # you talk too much
             allowed_actions.append(all_actions['Discuss'])
+        #if len(allowed_actions) == 0:
+        #    allowed_actions.append(all_actions['Think'])
+            
         prompt = [SystemMessage(content=self.character+"""Your current situation is:
 
 <Situation>
@@ -454,6 +494,10 @@ Recent conversation has been:
 {{$history}}
 </ConversationHistory)>
 
+Your current intention is:
+{{$intention}}
+
+Your current priorities include:
 <Priorities>
 {{$priorities}}
 </Priorities>
@@ -467,7 +511,9 @@ Given your current Priorities, New Observation, and the other information listed
 
 {{$actions}}
 
-Choose only one action. Respond with your chosen action. 
+Choose only one action. Respond with your chosen action.
+Do not include any introductory, explanatory, or discursive text.
+Do not respond with more than one action 
 Respond using the following XML format:
 
 <Action>
@@ -491,7 +537,7 @@ END
                                 "memory":self.memory, "situation": self.context.current_state,
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
-                                }, prompt, temp=0.5, stops=['END'], max_tokens=500)
+                                }, prompt, temp=0.5, stops=['END', '</Action>'], max_tokens=300)
         self.sense_input = ' '
         if 'END' in response:
             idx = response.find('END')

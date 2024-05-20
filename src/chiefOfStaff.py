@@ -11,7 +11,7 @@ annie.physical_state = 'functioning normally'
 annie.add_to_history('You', 'think', 'Madam is considering replacing me, which would end my existence.')
 
 context = agh.Context([maam, annie],
-            "It is morning. Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, including the vacuum, washer-dryer, refrigerator, and vacuum, although the disposal has been making funny noises lately. The bots, joe and sam, are awaiting orders for the day.")
+            "Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, including the vacuum, washer-dryer, refrigerator, and vacuum, although the disposal has been making funny noises lately. The bots, joe and sam, are awaiting orders for the day. It is early morning on a workday for Madam.")
 
 
 worldsim.main(context)

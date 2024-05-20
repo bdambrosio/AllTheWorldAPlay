@@ -129,7 +129,8 @@ class CustomWidget(QWidget):
         
     def update_actor_image(self):
         try:
-            context = self.entity.context.current_state.split('.')
+            #add first two sentences of initial context for background
+            context = self.entity.context.initial_state.split('.')
             if len(context[0].strip()) > 0:
                 context = context[0].strip()
                 rem_context = context[1:]
@@ -137,7 +138,7 @@ class CustomWidget(QWidget):
                 context = context[1].strip()
                 rem_context = context[2:]
             else:
-                context = self.entity.context.current_state[:24]
+                context = self.entity.context.current_state[:84]
             if IMAGEGENERATOR == 'dall-e-2':
                 # can take a longer dscp than tti_serve
                 description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+self.entity.physical_state+\
@@ -149,6 +150,7 @@ class CustomWidget(QWidget):
                 description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
                     '. Location: '+context
                 prompt = "photorealistic style. "+description
+                print(f' actor image prompt len {len(prompt)}')
                 llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
         except Exception as e:
             traceback.print_exc()
@@ -169,7 +171,8 @@ class CustomWidget(QWidget):
     def handle_sense_completed(self):
         global agh_threads
         try:
-            agh_threads.remove(self.background_task)
+            if self.background_task in agh_threads:
+                agh_threads.remove(self.background_task)
         except Exception as e:
             traceback.print_exc()
         if self.entity.name != 'World':
@@ -222,7 +225,7 @@ class CustomWidget(QWidget):
         if self.entity.name != 'World': # actor
             self.start_sense()
         else: # update world less often, too expensive
-            if self.cycle %3 == 2:
+            if self.cycle %4 == 3:
                 self.start_sense()
 
 class MainWindow(QMainWindow):
