@@ -135,7 +135,7 @@ Limit your response to about 200 words
 End your response with:
 END""")]
             
-        response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.3, stops=['END'], max_tokens=360)
+        response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=360)
         new_situation = find('<State>', response)
         if new_situation is not None:
             self.current_state=new_situation
@@ -230,7 +230,7 @@ END
                                 "situation":self.context.current_state,
                                 "physState":self.physical_state, "needs":self.needs
                                 },
-                               prompt, temp=0.5, stops=['END'], max_tokens=180)
+                               prompt, temp=0.6, stops=['END'], max_tokens=180)
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
         try:
             priorities = find('<Priorities>', response)
@@ -294,7 +294,7 @@ END""")
                                 "situation":self.context.current_state,
                                 "physState":self.physical_state
                                 },
-                               prompt, temp=0.1, stops=['END'], max_tokens=180)
+                               prompt, temp=0.2, stops=['END'], max_tokens=180)
         fear = find('<Fear>', response)
         thirst = find('<Thirst>', response)
         hunger = find('<Hunger>', response)
@@ -522,7 +522,7 @@ END
                                 "memory":self.memory, "situation": self.context.current_state,
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
-                                }, prompt, temp=0.5, stops=['END', '</Action>'], max_tokens=300)
+                                }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
         #print(f'sense\n{response}\n')
         self.sense_input = ' '
         if 'END' in response:
