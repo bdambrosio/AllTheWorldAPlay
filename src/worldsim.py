@@ -1,5 +1,6 @@
 import sys
 import traceback
+import threading
 from queue import Queue
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy
@@ -16,6 +17,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QEvent
 
 IMAGEGENERATOR = 'tti_serve'
+UPDATE_LOCK = threading.Lock()
 
 class HoverWidget(QWidget):
     def __init__(self, entity):
@@ -72,11 +74,13 @@ class BackgroundSense(QThread):
         self.entity = entity
 
     def run(self):
-        try:
-            #print(f'calling {self.entity} senses')
-            result = self.entity.senses(input = '')
-        except Exception as e:
-            traceback.print_exc()
+        global UPDATE_LOCK
+        with UPDATE_LOCK:
+            try:
+                #print(f'calling {self.entity} senses')
+                result = self.entity.senses(input = '')
+            except Exception as e:
+                traceback.print_exc()
         self.taskCompleted.emit()
 
 agh_threads = []
@@ -161,7 +165,6 @@ class CustomWidget(QWidget):
         self.ui.set_image(image_path)
 
     def start_sense(self):
-        global agh_threads
         self.background_task = BackgroundSense(self.entity)
         agh_threads.append(self.background_task)
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
@@ -169,7 +172,7 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} started sense')
         
     def handle_sense_completed(self):
-        global agh_threads
+        global agh_threads, UPDATE_LOCK
         try:
             if self.background_task in agh_threads:
                 agh_threads.remove(self.background_task)
