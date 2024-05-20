@@ -84,7 +84,7 @@ End your reponse with:
         history = self.history()
         response = llm.ask({"name":actor.name, "action":action,
                                 "state":self.current_state}, prompt, temp=0.7, stops=['END'], max_tokens=200)
-        self.current_state += '\n'+response
+        #self.current_state += '\n'+response
         return response
 
     def senses (self, input='', ui_task_queue=None):
@@ -103,6 +103,12 @@ Examples:
             event = ""
 
         prompt = [SystemMessage(content="""You are a dynamic world. Your task is to update your state description. 
+Include day/night cycles and weather patterns. 
+Update location and other physical environment characteristics as indicated in the History.
+Your response should be concise, and only include only an update of the physical environment.
+        """ + event + """
+Your state description should be dispassionate, 
+and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
 That is, advance the environment by approximately 3 hours. The state as of 3 hours ago was:
 
 <PreviousState>
@@ -115,10 +121,12 @@ In the interim, the characters in the world had the following interactions:
 {{$history}}
 </History>
 
-Include day/night cycles and weather patterns. Update location and other physical environment characteristics as indicated in the History.
-Your response should be concise, and only include only an update of the physical environment.
-        """ + event + """
-Your state description should be dispassionate, and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
+Respond using the following XML format:
+
+<State>
+Sentence describing physical space, suitable for image generator,
+Updated State description of about 200 words
+</State>
 
 Respond with an updated environment description reflecting a time passage of 3 hours and the events that have occurred.
 Include ONLY the concise updated state description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
@@ -128,7 +136,9 @@ End your response with:
 END""")]
             
         response = llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.3, stops=['END'], max_tokens=360)
-        self.current_state=response
+        new_situation = find('<State>', response)
+        if new_situation is not None:
+            self.current_state=new_situation
         for actor in self.actors:
             actor.forward(3) # forward three hours and update history, etc
         return response
@@ -346,7 +356,7 @@ END""")
                     if actor != self: # everyone else sees/hears your act!
                         verb = 'says' if act_name == 'Say' else ''
                         actor.add_to_history(self.name, '' , act_arg)
-                        print(f'adding to {actor.name} history: {act_arg}')
+                        #print(f'adding to {actor.name} history: {act_arg}')
                 if target is not None:
                     target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
                 self.previous_action = act_name
@@ -424,52 +434,32 @@ END
     def senses(self, input='', ui_queue=None):
         #print(f'\n********************ask*********************\nSpeaker: {speaker}, Input: {input}')
         all_actions={"Act": f"""Act on your current intention in the world using this form:
-<Action>
-  <Name>Do</Name>
-  <Arg>{self.intention}</Arg>
-</Action>
+<Action> <Name>Do</Name> <Arg>{self.intention}</Arg> <Reasoning>reason for act</Reasoning> </Action>
 """,
                      "Answer":f"""If the new Observation is a question, answer it using this form:
-<Action>
-  <Name>Say</Name>
-  <Arg><answer to question from other actor></Arg>
-  <Reasoning><reasons for this answer></Reasoning>
-</Action>
+<Action> <Name>Say</Name> <Arg><answer to question from other actor></Arg> <Reasoning><reasons for this answer></Reasoning> </Action>
 """,
-                     "Say":f"""If a previous Think expressed intention to say something and is not followed by a Say, complete the intention using this form:
-<Action>
-  <Name>Say</Name>
-  <Arg><words to say></Arg>
-  <Reasoning><reasons for saying this></Reasoning>
-</Action>
+                     "Say":f"""Act on your current intention by speaking. Respond using this form:
+<Action> <Name>Say</Name> <Arg>words to say, based on {self.intention}></Arg> <Reasoning><reasons for saying this></Reasoning> </Action>
 """,
                      "Think":"""Think step-by-step about your situation, your Priorities, the Input,  and ConversationHistory with respect to Priorities, using the form:
-<Action>
-  <Name>Think</Name>
-  <Arg><thoughts on situation></Arg>
-  <Reasoning><reasons for these thoughts></Reasoning>
-</Action>
+<Action> <Name>Think</Name> <Arg><thoughts on situation></Arg> <Reasoning><reasons for these thoughts></Reasoning> </Action>
 """,
-                     "Discuss":""""Start a new topic to discuss using the Say action, using the form:
-<Action>
-  <Name>Say</Name>
-  <Arg><item of concern you want to discuss, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg>
-  <Reasoning><reasons for bringing this up for discussion></Reasoning>
-</Action>"""}
+                     "Discuss":"""Say something based on current situation, your PhysicalState and priorities, and ConversationHistory. Respond using this form:
+<Action> <Name>Say</Name> <Arg><item of concern you want to discuss, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reasoning><reasons for bringing this up for discussion></Reasoning> </Action>"""}
 
         allowed_actions=[]
         if self.intention is not None and len(self.intention)>4 and self.intention != 'None':
             allowed_actions.append(all_actions["Act"])
-        #if input.endswith('?'):
-        allowed_actions.append(all_actions['Answer'])
-        #if self.previous_action == 'Think':
-        allowed_actions.append(all_actions['Say'])
-        if self.previous_action != 'Think' or random.randint(1,2) == 1: # you think too much
+            allowed_actions.append(all_actions['Say'])
+        if input.endswith('?'):
+            allowed_actions.append(all_actions['Answer'])
+        if self.previous_action != 'Think' or random.randint(1,3) == 1: # you think too much
             allowed_actions.append(all_actions['Think'])
         if len(allowed_actions) < 3 or random.randint(1,2) == 1: # you talk too much
             allowed_actions.append(all_actions['Discuss'])
-        #if len(allowed_actions) == 0:
-        #    allowed_actions.append(all_actions['Think'])
+        if len(allowed_actions) == 0:
+            allowed_actions.append(all_actions['Think'])
             
         prompt = [SystemMessage(content=self.character+"""Your current situation is:
 
@@ -514,13 +504,7 @@ Given your current Priorities, New Observation, and the other information listed
 Choose only one action. Respond with your chosen action.
 Do not include any introductory, explanatory, or discursive text.
 Do not respond with more than one action 
-Respond using the following XML format:
-
-<Action>
-  <Name>name of action to perform: 'Say' or 'Do' or 'Think'</Name>
-  <Arg> words to say / action to perform / thought </Arg>
-  <Reasoning>reason for action chosen, including Priority it addresses</Reasoning>
-</Action>
+Respond using the XML format shown for the chosen action
 
 Consider the conversation history in choosing your action. 
 Do not use the same action repeatedly, perhaps it is time to try another act.
@@ -538,6 +522,7 @@ END
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
                                 }, prompt, temp=0.5, stops=['END', '</Action>'], max_tokens=300)
+        #print(f'sense\n{response}\n')
         self.sense_input = ' '
         if 'END' in response:
             idx = response.find('END')

@@ -8,7 +8,10 @@ import agh
 # If that offends, please to suit your fancy.
 # also, I find it disorienting for characters to change racial characteristics every time they are rendered.
 # I'm of Sicilian descent (no, not Italian - family joke).
-S = agh.Character("Samantha", "You are a pretty young Sicilian woman. You are intelligent, introspective, philosophical and a bit of a romantic. You love the outdoors and hiking, and are comfortable on long treks. You are also very informal, chatty, and a bit playful/flirty when relaxed.")
+S = agh.Character("Samantha", """You are a pretty young Sicilian woman. 
+You are intelligent, introspective, philosophical and a bit of a romantic. 
+You love the outdoors and hiking, and are comfortable on long treks. 
+You are also very informal, chatty, think and speak in teen slang, and are a bit playful/flirty when relaxed.""")
 S.physical_state="groggy, confused"
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
