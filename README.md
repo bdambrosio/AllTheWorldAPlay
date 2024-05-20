@@ -57,8 +57,8 @@ This will get better, but for now:
 
 ## Coming Soon
 I'm only 3 days into this project. Immeadiate projects:
-- Fully async UI
-- Display character 'memory' on roll-over of image
+- ~~Fully async UI~~
+- ~~Display character 'memory' on roll-over of image~~
 - Flesh out action model (carry multiple intentions, fuller model of mapping intention to action)
 - ...? I realize gamers got here long before me. Skill acquisition, inventory, better location modeling, ... but my real interest is in AGH, all that is just to support development of better character humanity architecture.
 Ideas / contributions (via PRs?) most welcome.
