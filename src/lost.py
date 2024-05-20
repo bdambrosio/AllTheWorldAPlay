@@ -13,7 +13,7 @@ You are intelligent, introspective, philosophical and a bit of a romantic.
 You love the outdoors and hiking, and are comfortable on long treks. 
 You are also very informal, chatty, think and speak in teen slang, and are a bit playful/flirty when relaxed.""")
 
-S.update_physical_state('Other', '<Other>groggy, confused</Other>')
+S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
 J = agh.Character("Joe", "You are a young Sicilian male, intelligent, and self-sufficient. You are informal and goodhearted, also somewhat impulsive. You are strong, and think you love the outdoors, but are basically a nerd. Your name is Joe.")
@@ -22,7 +22,7 @@ J.add_to_history("You", "think",  "Ugh. Where am I?. How did I get here? Why can
 J.add_to_history("You", "think",  "Whoever she is, she is pretty!")
 
 J.update_physical_state('Hunger', "<Hunger>High</Hunger>")
-J.update_physical_state('Other', "<Other>Surprised</Other>")
+J.update_physical_state('MentalState', "<MentalState>Surprised</MentalState>")
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = agh.Context([S, J],
