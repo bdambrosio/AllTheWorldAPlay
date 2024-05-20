@@ -2,7 +2,8 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### Newest: 5/20/2024 - Minor overhaul of action selection. You can select OpenAI Dall-e-2 instead of local imagegen[^5]
+### Newest: 5/20/2024 - More updates to action selection. Ok, I'm going to try to freeze for a bit except for important bugfixes.
+- 5/20/2024 - Minor overhaul of action selection. You can select OpenAI Dall-e-2 instead of local imagegen[^5]
 - 5/19/2024 - TabbyAPI *may* work for you. Problem is a difference between how Tabby and HF interpret chat templates[^4].
 - 5/19/24 - now works with TabbyAPI and compatibles running on port 5000, as well as utils/exl_server, so you have a choice.
 - 5/19/24: try rollover of character image. Will now display character memory. takes a few (4-5?) steps before memory forms, so be patient.
