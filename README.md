@@ -28,11 +28,27 @@ I've only put two days into this so far.
 ## Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
 
 ```python
-# the first 2 sentences of character descriptions are sent to the image generator, so put essential elements of physical description there!
-maam = agi.Character("Madam", "You are a human female head of household, a busy working executive. You depend on Annie, your AI, to keep your house in order. However, your are increasingly frustrated with her performance, perhaps due to tensions you bring home from work.")
-# priorities are loosely adapted from Maslow heirarchy, depending on scenario
+# the first 2 sentences of character descriptions are sent to the image generator,
+# so put essential elements of physical description there!
+# Note - formatting for easy readme, you don't need to line-break!
+S = agh.Character("Samantha", """You are a pretty young Sicilian woman.
+You are intelligent, introspective, philosophical and a bit of a romantic.
+You love the outdoors and hiking, and are comfortable on long treks.
+You are also very informal, chatty, and a bit playful/flirty when relaxed.""")
+
+# still sorting through states vs drives vs needs, this will change.
+# But again, no need to initialize unless you want to.
+# Just a string of comma separated terms.
+S.physical_state="groggy, confused"
+S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
+
+# priorities are loosely adapted from Maslow heirarchy.
+# depending on scenario, you don't need to initialize them
+# a list of 
 maam.priorities=['survival', 'safety, acceptance, community']
-maam.physical_state = ['healthy, rested']
+
+
+maam.physical_state = 'healthy, rested'
 
 #number of characters in scenario is arbitrary, although only scenarios with 2 characters tested so far
 annie = agi.Character("Annie", "You are an AI agent in charge of Madam's household. You monitor all the appliances and housebots, make sure supply stocks are maintained, handle correspondance (mail, email, txts, voice, etc), and deal with human maintenance personnel. Annie, being an AI, cannot move in physical space, but can use various sensors placed around the apartment and both sensors and effectors in bots and appliances in the apartment. Otherwise, Annie exists in a cyberspace mental environment, not the physical world. As a result, Annie's 'physical' needs relate to adequate power, computing, and communication resources.")
