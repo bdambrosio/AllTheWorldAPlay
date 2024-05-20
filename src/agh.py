@@ -171,6 +171,7 @@ class Character():
     def add_to_history(self, role, act, message):
         message = message.replace('\\','')
         self.history.append(f"{role}: {act} {message}")
+        self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def update_priorities(self):
         prompt = [SystemMessage(content=self.character+"""Your current situation is:
