@@ -36,10 +36,14 @@ You are intelligent, introspective, philosophical and a bit of a romantic.
 You love the outdoors and hiking, and are comfortable on long treks.
 You are also very informal, chatty, and a bit playful/flirty when relaxed.""")
 
-# still sorting through states vs drives vs needs, this will change.
+# Optional - you can initialize character physical state.
+# still sorting through states vs drives vs needs, this WILL change!
 # But again, no need to initialize unless you want to.
 # Just a string of comma separated terms.
 S.physical_state="groggy, confused"
+
+# Optional - initialize character thought process!
+# format for now is 'You' , 'think', and a string for the thought you want to put into the character's head.
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
 # priorities are loosely adapted from Maslow heirarchy.
