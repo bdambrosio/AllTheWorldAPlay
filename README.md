@@ -39,10 +39,9 @@ You love the outdoors and hiking, and are comfortable on long treks.
 You are also very informal, chatty, and a bit playful/flirty when relaxed.""")
 
 # Optional - you can initialize character physical state.
-# still sorting through states vs drives vs needs, this WILL change!
-# But again, no need to initialize unless you want to.
-# Just a string of comma separated terms.
-S.physical_state="groggy, confused"
+# new format! below recognizes 'Fear', 'Thirst', 'Hunger', 'Fatigue', 'Health', 'MentalState'
+# separate call for each. Keep values short and without punctuation
+S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
 
 # Optional - initialize character thought process!
 # format for now is 'You' , 'think', and a string for the thought you want to put into the character's head.
