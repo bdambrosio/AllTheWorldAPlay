@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import traceback
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import llm_api
 
@@ -32,20 +33,33 @@ class Context ():
         self.name='World'
         
     def history(self):
-        history = '\n\n'.join(self.actors[0].history)
-        hs = history.split('\n')
-        hs_renamed = [self.actors[0].name + s[3:] if s.startswith('You') else s for s in hs]
-        history = '\n'.join(hs_renamed)
+        try:
+            if self.actors is None or self.actors[0] is None:
+                return ''
+            if self.actors[0].history is None:
+                return ''
+            history = '\n\n'.join(self.actors[0].history)
+            hs = history.split('\n')
+            hs_renamed = [self.actors[0].name + s[3:] if s.startswith('You') else s for s in hs]
+            history = '\n'.join(hs_renamed)
+        except Exception as e:
+            traceback.print_exc()
         return history
 
-    def image(self, filepath):
-        state = '. '.join(self.current_state.split('.')[:2])
-        characters = '\n'+'.\n'.join([entity.name + ' is '+entity.character.split('.')[0][8:] for entity in self.actors])
-        prompt=state+characters
-        #print(f'calling generate_dalle_image\n{prompt}')
-        llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='640x480', filepath=filepath)
+    def image(self, filepath, image_generator = 'tti_serve'):
+        try:
+            state = '. '.join(self.current_state.split('.')[:2])
+            characters = '\n'+'.\n'.join([entity.name + ' is '+entity.character.split('.')[0][8:] for entity in self.actors])
+            prompt=state+characters
+            #print(f'calling generate_dalle_image\n{prompt}')
+            if image_generator == 'tti_serve':
+                llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
+            else:
+                llm_api.generate_dalle_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
+        except Exception as e:
+            traceback.print_exc()
         return filepath
-    
+        
     def do(self, actor, action):
         prompt=[SystemMessage(content="""You are a dynamic world. Your task is to determine the result of {{$name}} performing {{$action}} in the current situation. 
 
@@ -201,8 +215,13 @@ END
                                 },
                                prompt, temp=0.7, stops=['END'], max_tokens=180)
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
-        self.priorities = find('<Priorities>', response)
-        self.priorities = self.priorities.split('\n')
+        try:
+            priorities = find('<Priorities>', response)
+            if priorities is not None and len(priorities) > 4:
+                # only update priorities if response passes minimal sanity checks
+                self.priorities = priorities.split('\n')
+        except Exception as e:
+            traceback.print_exc()
                                     
     def forward(self, num_hours):
         # roll conversation history forward.
@@ -472,7 +491,7 @@ END
                                 "memory":self.memory, "situation": self.context.current_state,
                                 "physState":self.physical_state, "priorities":'\n'.join(self.priorities),
                                 "actions":'- '+'\n- '.join(allowed_actions), "intention":self.intention
-                                }, prompt, temp=0.9, stops=['END'], max_tokens=500)
+                                }, prompt, temp=0.5, stops=['END'], max_tokens=500)
         self.sense_input = ' '
         if 'END' in response:
             idx = response.find('END')

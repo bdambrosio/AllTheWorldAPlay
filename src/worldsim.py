@@ -1,4 +1,5 @@
 import sys
+import traceback
 from queue import Queue
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy
@@ -13,6 +14,8 @@ import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QTextEdit, QVBoxLayout
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QEvent
+
+IMAGEGENERATOR = 'tti_serve'
 
 class HoverWidget(QWidget):
     def __init__(self, entity):
@@ -73,7 +76,7 @@ class BackgroundSense(QThread):
             #print(f'calling {self.entity} senses')
             result = self.entity.senses(input = '')
         except Exception as e:
-            print(str(e))
+            traceback.print_exc()
         self.taskCompleted.emit()
 
 agh_threads = []
@@ -125,19 +128,34 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} ui widget inititalized')
         
     def update_actor_image(self):
-        context = self.entity.context.current_state.split('.')
-        if len(context[0].strip()) > 0:
-            context = context[0].strip()
-        elif len(context) > 1:
-            context = context[1].strip()
-        description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
-            '. Location: '+context
-        prompt = "photorealistic style. "+description
-        llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
+        try:
+            context = self.entity.context.current_state.split('.')
+            if len(context[0].strip()) > 0:
+                context = context[0].strip()
+                rem_context = context[1:]
+            elif len(context) > 1:
+                context = context[1].strip()
+                rem_context = context[2:]
+            else:
+                context = self.entity.context.current_state[:24]
+            if IMAGEGENERATOR == 'dall-e-2':
+                # can take a longer dscp than tti_serve
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+self.entity.physical_state+\
+                    '. Location: '+context
+                prompt = "photorealistic style. "+description+rem_context
+                llm_api.generate_dalle_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
+                self.set_image("../images/"+self.entity.name+'.png')
+            elif IMAGEGENERATOR == 'tti_serve':
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
+                    '. Location: '+context
+                prompt = "photorealistic style. "+description
+                llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
+        except Exception as e:
+            traceback.print_exc()
         self.set_image("../images/"+self.entity.name+'.png')
 
     def update_world_image(self):
-        image_path =  self.ui.context.image(filepath='../images/worldsim.png')
+        image_path =  self.ui.context.image(filepath='../images/worldsim.png', image_generator=IMAGEGENERATOR)
         self.ui.set_image(image_path)
 
     def start_sense(self):
@@ -153,7 +171,7 @@ class CustomWidget(QWidget):
         try:
             agh_threads.remove(self.background_task)
         except Exception as e:
-            print(str(e))
+            traceback.print_exc()
         if self.entity.name != 'World':
             self.ui.display(self.entity.show)
             self.value.moveCursor(QTextCursor.End)

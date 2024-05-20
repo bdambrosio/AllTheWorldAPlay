@@ -3,6 +3,8 @@ import random
 import socket
 import time
 import numpy as np
+import openai
+from openai import OpenAI
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
@@ -10,8 +12,17 @@ from io import BytesIO
 
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
+url = 'http://127.0.0.1:5000/v1/chat/completions'
+tabby_api_key = os.getenv("TABBY_API_KEY")
+headers = {'x-api-key':tabby_api_key}
+openai_api_key = os.getenv("OPENAI_API_KEY")
+try:
+    client = OpenAI()
+except openai.OpenAIError as e:
+    print(e)
 
-def generate_image(description, size='1024x1024', filepath="../images/test.png"):
+
+def generate_image(description, size='512x512', filepath="../images/test.png"):
     url = 'http://127.0.0.1:5008/generate_image'
     response =  requests.get(url, params={"prompt":description, "size":size})
     if response.status_code == 200:
@@ -21,9 +32,18 @@ def generate_image(description, size='1024x1024', filepath="../images/test.png")
         file.write(image_content)
     return filepath
 
-url = 'http://127.0.0.1:5000/v1/chat/completions'
-tabby_api_key = os.getenv("TABBY_API_KEY")
-headers = {'x-api-key':tabby_api_key}
+def generate_dalle_image(prompt, size='256x256', filepath='../images/worldsim.png'):
+    # Call the OpenAI API to generate the image
+    if size != '256x256' and size != '512x512':
+        size = '256x256'
+    if random.randint(1,4) != 1:
+        return filepath
+    response = client.images.generate(prompt=prompt, model='dall-e-2',n=1, size=size)
+    image_url = response.data[0].url
+    image_response = requests.get(image_url)
+    image = Image.open(BytesIO(image_response.content))
+    image.save(filepath)
+    return filepath
 
 pattern = r'\{\$[^}]*\}'
 
@@ -62,7 +82,7 @@ class LLM():
                 try:
                     jsonr = json.loads(response.content.decode('utf-8'))
                 except Exception as e:
-                    print(str(e))
+                    traceback.print_exc()
                     return response.content.decode('utf-8')
                 return jsonr['choices'][0]['message']['content']
             return response.content.decode('utf-8')
@@ -92,7 +112,6 @@ class LLM():
             return response
         except Exception as e:
             traceback.print_exc()
-            print(str(e))
             return None
        
 if __name__ == '__main__':
