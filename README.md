@@ -44,25 +44,25 @@ S.physical_state="groggy, confused"
 
 # Optional - initialize character thought process!
 # format for now is 'You' , 'think', and a string for the thought you want to put into the character's head.
-S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
+# again, no need for line breaks, I just put them in for readme
+S.add_to_history('You', 'think', "This is very very strange.
+Where am i? I'm near panic. Who is this guy?
+How did I get here?""")
 
-# priorities are loosely adapted from Maslow heirarchy.
-# depending on scenario, you don't need to initialize them
-# a list of 
-maam.priorities=['survival', 'safety, acceptance, community']
+... see lost.py for Joe's character...
 
+# first sentence of context is part of character description for image generation,
+# should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
+W = agh.Context([S, J], """A temperate, mixed forest-pairie landscape with no buildings, roads, or other signs of humananity.
+It is a early morning on what seems like it will be a warm, sunny day.""")
 
-maam.physical_state = 'healthy, rested'
+# Not everyone can afford to run image-gen locally, so pick one.
+# dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random).
+# And, of course, you need an openai account: set OS.env OPENAI_API_KEY 
+#worldsim.IMAGEGENERATOR = 'dall-e-2'
+worldsim.IMAGEGENERATOR = 'tti_serve'
 
-#number of characters in scenario is arbitrary, although only scenarios with 2 characters tested so far
-annie = agi.Character("Annie", "You are an AI agent in charge of Madam's household. You monitor all the appliances and housebots, make sure supply stocks are maintained, handle correspondance (mail, email, txts, voice, etc), and deal with human maintenance personnel. Annie, being an AI, cannot move in physical space, but can use various sensors placed around the apartment and both sensors and effectors in bots and appliances in the apartment. Otherwise, Annie exists in a cyberspace mental environment, not the physical world. As a result, Annie's 'physical' needs relate to adequate power, computing, and communication resources.")
-annie.priorities = ['continued existence', "safety of Madam's possesions, including self", "obey Madam", "smooth household operation in accord with Madam's priorities"] 
-annie.physical_state = ['functioning normally']
-
-# context is the general 'stage' on which the characters will perform
-context = agi.Context([maam, annie],
-            "It is morning. Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, including the vacuum, washer-dryer, refrigerator, and vacuum, although the disposal has been making funny noises lately. The bots, joe and sam, are awaiting orders for the day.")
-
+# and finally, start the scenario!
 worldsim.main(context)
 ```
 
