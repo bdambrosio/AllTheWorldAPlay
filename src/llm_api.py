@@ -102,6 +102,7 @@ class LLM():
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             response = self.run_request(input, prompt_msgs, options)
+            response = response.replace('<|im_end|>', '')
             if stops is not None: # claude returns eos
                 if type(stops) is str:
                     stops = [stops]
