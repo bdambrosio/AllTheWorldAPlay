@@ -156,7 +156,7 @@ class Character():
         self.show='' # to be displayed by main thread in UI public (main) text widget
         self.reflect_elapsed = 99
         self.reflect_interval = 3
-        self.physical_state = ""
+        self.physical_state = "Fear: Low, Thirst:Low, Hunger: Low, Fatigue: Low, Health: High, MentalState: alert"
         self.intention = 'None'
         self.previous_action = ''
         self.sense_input = ''
@@ -217,9 +217,9 @@ limit your response to 120 words.
 
 Use the XML format:
 <Priorities>
-priority one
-priority ...
-priority...
+priority one.
+priority two.
+priority three.
 </Priorities>
 
 End your response with:
@@ -234,12 +234,32 @@ END
         #self.widget.display(f'-----Memory update-----\n{response}\n\n')
         try:
             priorities = find('<Priorities>', response)
-            if priorities is not None and len(priorities) > 4:
+            if priorities is not None and len(priorities) > 8:
                 # only update priorities if response passes minimal sanity checks
                 self.priorities = priorities.split('\n')
+                
         except Exception as e:
             traceback.print_exc()
                                     
+    def update_physical_state(self, key, response):
+        new_state = find('<'+key+'>', response)
+        if new_state != None and len(new_state)> 0:
+            #state values can't have commas
+            new_state = new_state.replace(',',' ')
+            # Split the string by commas to get individual key-value pairs
+            parts = self.physical_state.split(', ')
+    
+            # Iterate through the parts and update the value for the given key
+            updated_parts = []
+            for part in parts:
+                if part.startswith(key + ':'):
+                    updated_parts.append(f"{key}: {new_state}")
+                else:
+                    updated_parts.append(part)
+    
+            # Join the parts back together with commas
+            self.physical_state = ', '.join(updated_parts)
+
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
@@ -273,6 +293,7 @@ Respond with an updated physical state, using this XML format:
 <Hunger>Low, Medium, High</Hunger>
 <Fatigue>Low, Medium, High</Fatigue>
 <Health>Low, Medium, High</Health>
+<MentalState>2-6 world describing mental state</MentalState>
 </PhysicalState>
 
 The updated physical state should focus on:
@@ -282,6 +303,7 @@ The updated physical state should focus on:
 - Level of Hunger - increases as time passes since last food, increases with exertion.
 - Level of Fatigue - increases as time passes since last rest, increases with heat and exertion.
 - Level of Health  - decreases with injury or illness, increases with rest and healing.
+- Mental State - one or two words on mental state, e.g. 'groggy', 'alert', 'confused and lost', etc.
 
 Respond ONLY with the updated state.
 Do not include any introductory or peripheral text.
@@ -295,12 +317,12 @@ END""")
                                 "physState":self.physical_state
                                 },
                                prompt, temp=0.2, stops=['END'], max_tokens=180)
-        fear = find('<Fear>', response)
-        thirst = find('<Thirst>', response)
-        hunger = find('<Hunger>', response)
-        fatigue = find('<Fatigue>', response)
-        health = find('<Health>', response)
-        self.physical_state = '\n'.join([name+': '+value for name, value in zip(['fear', 'thirst', 'hunger', 'fatigue', 'health'], [fear, thirst, hunger, fatigue, health])])
+        self.update_physical_state('Fear', response)
+        self.update_physical_state('Thirst', response)
+        self.update_physical_state('Hunger', response)
+        self.update_physical_state('Fatigue', response)
+        self.update_physical_state('Health', response)
+        self.update_physical_state('MentalState', response)
 
         ## update long-term dialog memory
         prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
