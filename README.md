@@ -2,6 +2,9 @@
 
 ## A simple toy to test the Humanity of your LLM
 
+
+![Play screenshot](images/Play.jpg)
+
 ### Newest: 5/20/2024 - Improved robustness for smaller LLMs. Works great w 8B models now.
 - 5/20/2024 - Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
 - 5/20/2024 - More updates to action selection. Ok, I'm going to try to freeze for a bit except for important bugfixes.
@@ -15,8 +18,6 @@
 - 5/18/2024:Major bug preventing any 'Do' actions, only dialog for now!
 - 5/18/2024: Beta 1.0 - Actually got this to run on a clean install on a different machine. Enjoy!
 
-![Play screenshot](images/Play.jpg)
-
 script a simple scenario, and watch it play out. 
 I've only put two days into this so far.
 - simple reactive characters can Think / Say / Do
@@ -28,7 +29,7 @@ I've only put two days into this so far.
     - update character internal priorites (instantiated from initial character priorities)
     - update images
 
-## Example script (tension between a 'chief of staff bot' and the harried executive planning to replace it):
+## Example script (simple Lost in the wild scenario):
 
 ```python
 # the first 2 sentences of character descriptions are sent to the image generator,
