@@ -192,7 +192,7 @@ class Character():
         self.history.append(f"{role}: {act} {message}")
         self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
 
-    def suggest_priorities(self):
+    def update_priorities(self):
         prompt = [SystemMessage(content=self.character+"""You are {{$character}}.
 Your basic drives include:
 <Drives>
@@ -258,9 +258,11 @@ END
             if priorities is None:
                 return
             items = findall('<Priority>', priorities)
-            print(f'\nSuggested priorities:')
+            # now actualize these, assuming they are ordered, top priority first
             self.priorities = []
             for n, priority in enumerate(items):
+                if random.randint(1,n+1) != 1: # decrease likelihood of creating actionable with importance
+                    continue
                 print(f'\n Actualizing priority (n) {priority}')
                 task = find('<Text>', priority)
                 reason = find('<Reason>', priority)
@@ -577,7 +579,7 @@ END
                 if act_name =='Do':
                     self.intentions = [] # maybe we should clear regardless of act?
                     result = self.context.do(self, act_arg)
-                    self.show += '\n  observes: '+result # main window
+                    self.show += '\n  '+result # main window
                     self.add_to_history('You', 'observe', result)
                     if target is not None: # this is wrong, world should update who sees do
                         target.sense_input += '\n'+result
@@ -593,7 +595,8 @@ END
             self.previous_action = act_name
 
             self.priorities = []
-            self.suggest_priorities() # or should we do this at sense input? 
+            if random.randint(1,3) == 1: # not too often, makes action to jumpy
+                self.update_priorities() # or should we do this at sense input? 
             if act_name == 'Say' or act_name == 'Think':
                 self.update_intentions_wrt_say_think(act_arg, reasoning)
             
@@ -622,7 +625,7 @@ END
             act = find('<Act>', intention)
             reason = find('<Reason>', intention)
             if act is None: continue
-            if mode == 'Do':
+            if mode == 'Do' and random.randint(1,3)==1: # too many action choices, just pick a couple for deliberation
                 allowed_actions.append(all_actions["Act"].replace('{action}', act).replace('{reasoning}',str(reason)))
             elif mode == 'Say':
                 allowed_actions.append(all_actions["Say"].replace('{text}', act).replace('{reasoning}',str(reason)))
