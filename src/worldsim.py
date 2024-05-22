@@ -19,6 +19,16 @@ from PyQt5.QtCore import Qt, QEvent
 IMAGEGENERATOR = 'tti_serve'
 UPDATE_LOCK = threading.Lock()
 
+def add_text_ns(widget, text):
+    """add text to a TextEdit without losing scroll location"""
+    scroll_position = widget.verticalScrollBar().value()  # Save the current scroll position
+    
+    widget.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
+    widget.insertPlainText("New text added.\n")  # Insert the text at the cursor position
+    
+    widget.verticalScrollBar().setValue(scroll_position)  # Restore the scroll position
+
+
 class HoverWidget(QWidget):
     def __init__(self, entity):
         super().__init__()
@@ -55,7 +65,8 @@ class HoverWidget(QWidget):
         if event.type() == QEvent.Enter:
             print(f' enter under mouse! {event}')
             self.text_widget.clear()
-            self.text_widget.insertPlainText(self.entity.memory)
+            add_text_ns(self.text_widget, self.entity.memory)
+            #self.text_widget.insertPlainText(self.entity.memory)
             self.text_widget.setVisible(True)
         super().enterEvent(event)
 
@@ -98,9 +109,6 @@ class CustomWidget(QWidget):
             h_layout = QHBoxLayout()
             self.image_label = HoverWidget(self.entity)
             self.image_label.set_image('../images/'+self.entity.name+'.png')
-            #self.image_label = QLabel()
-            #self.image_label.setFixedSize(192, 192)
-            #self.image_label.setAlignment(Qt.AlignCenter)
             h_layout.addWidget(self.image_label)
             self.intentions = QTextEdit()
             self.intentions.setLineWrapMode(QTextEdit.WidgetWidth)
@@ -187,6 +195,7 @@ class CustomWidget(QWidget):
         except Exception as e:
             traceback.print_exc()
         if self.entity.name != 'World':
+            self.ui.display('\n')
             self.ui.display(self.entity.show)
             self.priorities.clear()
             self.priorities.insertPlainText('\n'.join(self.entity.priorities))
@@ -207,13 +216,13 @@ class CustomWidget(QWidget):
             self.value.clear()
             self.value.insertPlainText(str(self.entity.current_state))
             for entity in self.entity.ui.actors:
-                if entity != 'World':
+                if entity.name != 'World':
                     entity.widget.priorities.clear()
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
                     entity.widget.priorities.insertPlainText('\n-----------------\n')
                     entity.widget.priorities.insertPlainText(entity.physical_state)
                     entity.widget.intentions.clear()
-                    self.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
+                    entity.widget.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
                     entity.widget.value.insertPlainText(entity.reasoning)
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
@@ -234,7 +243,8 @@ class CustomWidget(QWidget):
 
     def display(self, text):
         self.value.moveCursor(QTextCursor.End)
-        self.value.insertPlainText('\n'+text)
+        add_text_ns(self.value, '\n'+text)
+        #self.value.insertPlainText('\n'+text)
 
     def update_value(self, new_value):
         self.cycle += 1
@@ -342,8 +352,8 @@ class MainWindow(QMainWindow):
             else:
                 widget.priorities.clear()
                 widget.priorities.insertPlainText('\n'.join(widget.entity.priorities)+'\n')
+                widget.priorities.insertPlainText(widget.entity.physical_state+'\n')
                 widget.intentions.clear()
-                widget.intentions.insertPlainText(widget.entity.physical_state+'\n')
         
         self.show()
 
