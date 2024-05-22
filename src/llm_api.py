@@ -47,8 +47,12 @@ def generate_dalle_image(prompt, size='256x256', filepath='../images/worldsim.pn
 
 pattern = r'\{\$[^}]*\}'
 
+# options include 'local', 'Claude',
 class LLM():
-
+    def __init__(self, llm = 'local'):
+        self.llm = llm
+        print(f'will use {self.llm} as llm')
+    
     def run_request(self, bindings, prompt, options):
         #
         ### first substitute for {{$var-name}} in prompt
@@ -73,7 +77,13 @@ class LLM():
                     else:
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
-        response =  requests.post(url, headers= headers,
+
+        if 'Claude' in self.llm:
+            import utils.ClaudeClient as client
+            response= client.executeRequest(prompt=substituted_prompt, options= options)
+            return response
+        else:
+            response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:

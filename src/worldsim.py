@@ -145,14 +145,14 @@ class CustomWidget(QWidget):
                 context = self.entity.context.current_state[:84]
             if IMAGEGENERATOR == 'dall-e-2':
                 # can take a longer dscp than tti_serve
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+self.entity.physical_state+\
-                    '. Location: '+context
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
+                    self.entity.show + '. Location: '+context
                 prompt = "photorealistic style. "+description+rem_context
                 llm_api.generate_dalle_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
                 self.set_image("../images/"+self.entity.name+'.png')
             elif IMAGEGENERATOR == 'tti_serve':
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
-                    '. Location: '+context
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
+                    self.entity.show.replace(self.entity.name, '')[-72:] + '. Location: '+context
                 prompt = "photorealistic style. "+description
                 print(f' actor image prompt len {len(prompt)}')
                 llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
@@ -170,7 +170,15 @@ class CustomWidget(QWidget):
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
         self.background_task.start()
         print(f'{self.entity.name} started sense')
-        
+
+    def format_intentions(self):
+        print(self.entity.intentions)
+        return '\n'.join([str(agh.find('<Mode>', intention))
+                          +': '+str(agh.find('<Act>', intention))
+                          +'\n  Why: '+str(agh.find('<Reasoning>', intention))
+                          +'\n'
+                          for intention in self.entity.intentions])
+            
     def handle_sense_completed(self):
         global agh_threads, UPDATE_LOCK
         try:
@@ -180,16 +188,19 @@ class CustomWidget(QWidget):
             traceback.print_exc()
         if self.entity.name != 'World':
             self.ui.display(self.entity.show)
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
             self.priorities.clear()
             self.priorities.insertPlainText('\n'.join(self.entity.priorities))
-            if self.entity.intention is not None and self.entity.intention != 'None':
-                self.intentions.insertPlainText('\n----------\n'+self.entity.intention)
-            self.value.insertPlainText(self.entity.reasoning)
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
-            #self.value.insertPlainText(str(self.entity.memory))
+            self.priorities.insertPlainText('\n-----------------\n')
+            self.priorities.insertPlainText(self.entity.physical_state)
+            self.intentions.clear()
+            self.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
+            if self.entity.reasoning is not None and len(self.entity.reasoning) > 4:
+                self.value.moveCursor(QTextCursor.End)
+                self.value.insertPlainText('\n-------------\n')
+                self.value.insertPlainText(self.entity.reasoning)
+                self.value.moveCursor(QTextCursor.End)
+                #self.value.insertPlainText('\n-------------\n')
+                #self.value.insertPlainText(str(self.entity.memory))
             self.update_actor_image()
                 
         else:
@@ -199,8 +210,10 @@ class CustomWidget(QWidget):
                 if entity != 'World':
                     entity.widget.priorities.clear()
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
+                    entity.widget.priorities.insertPlainText('\n-----------------\n')
+                    entity.widget.priorities.insertPlainText(entity.physical_state)
                     entity.widget.intentions.clear()
-                    entity.widget.intentions.insertPlainText(entity.physical_state)
+                    self.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
                     entity.widget.value.insertPlainText(entity.reasoning)
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
@@ -232,14 +245,20 @@ class CustomWidget(QWidget):
                 self.start_sense()
 
 class MainWindow(QMainWindow):
-    def __init__(self, context):
+    def __init__(self, context, server):
         super().__init__()
+        self.llm = llm_api.LLM(server)
         self.context = context
+        #set refs to llm
+        self.context.llm = self.llm
         self.actors = context.actors
+        for actor in self.actors:
+           actor.llm = self.llm
         self.init_ui()
         self.internal_time = 0
         self.agh = agh
-
+        self.server=server
+        
     def init_ui(self):
         # Main central widget
         central_widget = QWidget()
@@ -384,9 +403,9 @@ class MainWindow(QMainWindow):
     def append_text(self, text):
         self.text_area.append(text)
 
-def main(context):
+def main(context, server='local'):
     app = QApplication(sys.argv)
-    main_window = MainWindow(context)
+    main_window = MainWindow(context, server=server)
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
