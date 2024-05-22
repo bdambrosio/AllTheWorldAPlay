@@ -21,11 +21,9 @@ UPDATE_LOCK = threading.Lock()
 
 def add_text_ns(widget, text):
     """add text to a TextEdit without losing scroll location"""
-    scroll_position = widget.verticalScrollBar().value()  # Save the current scroll position
-    
+    scroll_position = widget.verticalScrollBar().value()  # Save the current scroll position   
     widget.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-    widget.insertPlainText("New text added.\n")  # Insert the text at the cursor position
-    
+    widget.insertPlainText(text)  # Insert the text at the cursor position   
     widget.verticalScrollBar().setValue(scroll_position)  # Restore the scroll position
 
 
@@ -216,13 +214,13 @@ class CustomWidget(QWidget):
             self.value.clear()
             self.value.insertPlainText(str(self.entity.current_state))
             for entity in self.entity.ui.actors:
-                if entity.name != 'World':
+                if entity.name != 'World' and type(entity) != agh.Context:
                     entity.widget.priorities.clear()
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
                     entity.widget.priorities.insertPlainText('\n-----------------\n')
                     entity.widget.priorities.insertPlainText(entity.physical_state)
                     entity.widget.intentions.clear()
-                    entity.widget.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
+                    entity.widget.intentions.insertPlainText('\n--Intentions--\n'+entity.widget.format_intentions())
                     entity.widget.value.insertPlainText(entity.reasoning)
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
@@ -243,8 +241,8 @@ class CustomWidget(QWidget):
 
     def display(self, text):
         self.value.moveCursor(QTextCursor.End)
-        add_text_ns(self.value, '\n'+text)
-        #self.value.insertPlainText('\n'+text)
+        self.value.insertPlainText('\n'+text)
+        #add_text_ns(self.value, '\n'+text)
 
     def update_value(self, new_value):
         self.cycle += 1
@@ -308,10 +306,12 @@ class MainWindow(QMainWindow):
         self.text_area.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
         self.text_area.setFont(font)
         self.setStyleSheet("background-color: #333333; color: #FFFFFF;")
-        text_area_scroll = QScrollArea()
-        text_area_scroll.setWidget(self.text_area)
-        text_area_scroll.setWidgetResizable(True)
-        center_panel.addWidget(text_area_scroll)
+        #self.text_area.setWidgetResizable(True)
+        center_panel.addWidget(self.text_area)
+        #text_area_scroll = QScrollArea()
+        #text_area_scroll.setWidget(self.text_area)
+        #text_area_scroll.setWidgetResizable(True)
+        #center_panel.addWidget(text_area_scroll)
 
         center_panel_widget = QWidget()
         center_panel_widget.setLayout(center_panel)
@@ -358,15 +358,15 @@ class MainWindow(QMainWindow):
         self.show()
 
     def display(self, r):
-        self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-        r = str(r)
-        self.text_area.insertPlainText(r)  # Insert the text at the cursor position
+        add_text_ns(self.text_area, r)
+        #self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
+        #self.text_area.insertPlainText(r)  # Insert the text at the cursor position
+        self.text_area.repaint()
         #if self.tts:
         #    try:
         #        self.speech_service(decoded)
         #    except:
         #        traceback.print_exc()
-        self.text_area.repaint()
       
     def set_image(self, image_path):
         pixmap = QPixmap(image_path)
