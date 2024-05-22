@@ -179,9 +179,9 @@ class Character():
         self.intentions = []
         self.previous_action = ''
         self.sense_input = ''
-        self.needs = """
+        self.drives = """
  - immediate physiological needs including survival, water, food, clothing, shelter, sleep  
- - safety from threats including ill-health or physical threats from adversarial actors or adverse events. 
+ - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
  - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
  - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friedship, intimacy, trust, acceptance.
 """
@@ -192,77 +192,14 @@ class Character():
         self.history.append(f"{role}: {act} {message}")
         self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
 
-    def update_priorities(self):
-        prompt = [SystemMessage(content=self.character+"""Your current situation is:
-
-<Situation>
-{{$situation}}
-</Situation>
-
-Your physical state is:
-
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
-
-Your memories include:
-
-<Memory>
-{{$memory}}
-</Memory>
-
-Recent conversation has been:
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Your current priorities are:
-
-<CurrentPriorities>
-{{$goals}}
-</CurrentPriorities>
-
-Your task is to update your list of priorities given the Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed above.
-
-List your three most important priorites as instantiations from: 
-
-{{$needs}}
-            
-List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
-Your priorities should be as specific as possible. 
-For example, if you need sleep, say 'Sleep', not 'Physiological need'.
-Similarly, if your safety is threatened by a wolf, respond "Safety from wolf", not merely "Safety"
-limit your response to 120 words. 
-
-Use the XML format:
-<Priorities>
-priority one.
-priority two.
-priority three.
-</Priorities>
-
-End your response with:
-END
-""")]
-        response = self.llm.ask({'goals':'\n'.join(self.priorities), 'memory':self.memory,
-                                'history':'\n\n'.join(self.history),
-                                "situation":self.context.current_state,
-                                "physState":self.physical_state, "needs":self.needs
-                                },
-                                prompt, temp=0.6, stops=['END'], max_tokens=240)
-        #self.widget.display(f'-----Memory update-----\n{response}\n\n')
-        try:
-            xml_priorities = findall('<Priority>', response)
-            self.priorities = []
-            for item in xml_priorities:
-                self.priorities.append(item)
-            print(f'\nSelf.priorities after update_priorities\n{self.priorities}\n')
-                
-        except Exception as e:
-            traceback.print_exc()
-                                    
     def suggest_priorities(self):
-        prompt = [SystemMessage(content=self.character+"""You are {{$character}}. 
+        prompt = [SystemMessage(content=self.character+"""You are {{$character}}.
+Your basic drives include:
+<Drives>
+{{$drives}}
+</Drives>
+ 
+Your task is to create a set of three short term goals given who you are,  your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
 
 <Situation>
@@ -286,12 +223,11 @@ Recent conversation has been:
 {{$history}}
 </RecentHistory)>
 
-
-Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed above.
+Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed above.
 
 List your three most important short term goals as instantiations from: 
 
-{{$needs}}
+{{$drives}}
             
 List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
 Your priorities should be as specific as possible. 
@@ -310,14 +246,17 @@ Respond ONLY with the above XML. Do not include any introductory, explanatory, o
 End your response with:
 END
 """)]
-        response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities), 'memory':self.memory,
+        response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
+                                 'drives':self.drives, 'memory':self.memory,
                                 'history':'\n\n'.join(self.history),
                                 "situation":self.context.current_state,
-                                "physState":self.physical_state, "needs":self.needs
-                                },
+                                "physState":self.physical_state,
+                                 },
                                prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=180)
         try:
             priorities = find('<Priorities>', response)
+            if priorities is None:
+                return
             items = findall('<Priority>', priorities)
             print(f'\nSuggested priorities:')
             self.priorities = []
@@ -327,6 +266,12 @@ END
                 reason = find('<Reason>', priority)
                 self.priorities.append(task)
                 prompt = [SystemMessage(content="""You are {{$character}}.
+Your task is to act in response to the following perceived priority:
+
+<Priority>
+{{$task}} given {{$reason}}
+</Priority>
+
 Your current situation is:
 
 <Situation>
@@ -350,7 +295,7 @@ Recent conversation has been:
 {{$history}}
 </RecentHistory)>
 
-Your task is to create a specific action that will accomplish the task specified below.
+Respond with a specific act that will respond to the priority listed earlier. 
 A specific action is one which:
 
 - Can be described in terms of specific physical movements or steps
@@ -358,7 +303,33 @@ A specific action is one which:
 - Can be performed or acted out by a person
 - Can be easily visualized or imagined as a film clip
 
-Example: "Carry a personal safety alarm and stay in well-lit areas."
+Respond in XML:
+<Actionable>
+  <Mode>'Say' or 'Do', corresponding to whether the act is a speech act or a physical act</Mode>
+  <SpecificAct>words to speak or specific action description</SpecificAct>
+</Actionable>
+
+===Examples===
+
+Priority:
+'Establish connection with Joe given RecentHistory element: "Who is this guy?"'
+
+Response:
+<Actionable>
+  <Mode>Say</Mode>
+  <SpecificAct>Say hello to Joe.</SpecificAct>
+</Actionable>
+
+Priority:
+'Find out where I am given Situation element: "This is very very strange. Where am I?"'
+
+Response:
+<Actionable>
+  <Mode>Do</Mode>
+  <SpecificAct>You start to look around for any landmarks or signs of civilization, hoping to find something familiar that might give you a clue as to your whereabouts.</SpecificAct>
+</Actionable>
+
+===End Examples===
 
 Use the XML format:
 
@@ -381,10 +352,11 @@ End your response with:
                                          "physState":self.physical_state, "task":task, "reason":reason
                                          },
                                         prompt, temp=0.6, stops=['</Actionable>','<END>'], max_tokens=180)
-                actionable = find('<SpecificAct>', response)
-                if actionable is not None:
-                    print(f' actionable found: {actionable}')
-                    self.intentions.append(f'<Intent> <Mode>Do</Mode> <Act>{actionable}</Act> <Reasoning>{reason}</Reasoning> <Intent>')
+                act = find('<SpecificAct>', response)
+                mode = find('<Mode>', response)
+                if mode is not None:
+                    print(f' actionable found: {act}')
+                    self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reasoning>{reason}</Reasoning> <Intent>')
                     
         except Exception as e:
             traceback.print_exc()
@@ -412,7 +384,6 @@ End your response with:
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
-        #self.update_priorities()
         prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
 When last updated, your physical state was:
 
@@ -629,19 +600,19 @@ END
 
     def senses(self, input='', ui_queue=None):
         #print(f'\n********************ask*********************\nSpeaker: {speaker}, Input: {input}')
-        all_actions={"Act": """Act in the world on one of your current intentions using this form:
+        all_actions={"Act": """Do in the world by responding with:
 <Action> <Name>Do</Name> <Arg>{action}</Arg> <Reasoning>{reason}</Reasoning> </Action>
 """,
                      "Answer":f"""If the new Observation contains a question, answer it using this form:
 <Action> <Name>Say</Name> <Arg><answer to question from other actor></Arg> <Reasoning><reasons for this answer></Reasoning> </Action>
 """,
-                     "Say":"""Act on your current intention by speaking. Respond using this form:
+                     "Say":"""Speak by responding with:
 <Action> <Name>Say</Name> <Arg>{text}</Arg> <Reasoning>{reasson{</Reasoning> </Action>
 """,
-                     "Think":"""Think step-by-step about your situation, your Priorities, the Input,  and RecentHistory with respect to Priorities, using the form to report your thoughts:
+                     "Think":"""Think about your situation, your Priorities, the Input, and RecentHistory with respect to Priorities. Use this template to report your thoughts:
 <Action> <Name>Think</Name> <Arg><thoughts on situation></Arg> <Reasoning><reasons for these thoughts></Reasoning> </Action>
 """,
-                     "Discuss":"""Reason step-by-step about something to say based on current situation, your PhysicalState and priorities, and RecentHistory. Respond using this form substituted with the result of your reasoning:
+                     "Discuss":"""Reason step-by-step about something to say based on current situation, your PhysicalState and priorities, and RecentHistory. Respond using this template:
 <Action> <Name>Say</Name> <Arg><item of concern you want to discuss, based on the current Situation, your PhysicalState, your emotional needs as reflected in your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reasoning><reasons for bringing this up for discussion></Reasoning> </Action>"""}
 
         allowed_actions=[]
