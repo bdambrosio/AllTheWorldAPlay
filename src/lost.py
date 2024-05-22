@@ -1,6 +1,6 @@
 import worldsim
 import agh
-
+import llm_api
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario. 
 
 # Create characters
@@ -34,3 +34,4 @@ W = agh.Context([S, J],
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
 worldsim.main(W)
+#worldsim.main(W, server='Claude')
