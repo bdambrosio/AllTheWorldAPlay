@@ -358,7 +358,7 @@ End your response with:
                 mode = find('<Mode>', response)
                 if mode is not None:
                     print(f' actionable found: {act}')
-                    self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reasoning>{reason}</Reasoning> <Intent>')
+                    self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reasoning>{reason}</Reasoning> <Intent><Source>{task}</Source>')
                     
         except Exception as e:
             traceback.print_exc()
@@ -713,6 +713,12 @@ END
         if act_name is not None:
             self.act_name = act_name.strip()
         act_arg = find('<Arg>', response)
+        if act_arg is not None and len(act_arg)>0:
+            for intention in self.intentions:
+                intention_arg = find('<Arg>', response)
+                if intention_arg is not None and intention_arg.strip() == act_arg.strip():
+                    print(f'removing intention {intention}')
+                    self.intentions.remove(intention)
         self.reasoning = find('<Reasoning>', response)
         if act_name == 'Think':
             self.reasoning = act_arg+'\n  '+self.reasoning
