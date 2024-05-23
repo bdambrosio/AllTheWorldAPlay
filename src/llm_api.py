@@ -9,17 +9,19 @@ from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
 from io import BytesIO
+#import utils.ClaudeClient as anthropic_client
+import utils.llcppClient as llcpp_client
 
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
 tabby_api_key = os.getenv("TABBY_API_KEY")
 headers = {'x-api-key':tabby_api_key}
-openai_api_key = os.getenv("OPENAI_API_KEY")
-try:
-    client = OpenAI()
-except openai.OpenAIError as e:
-    print(e)
+#openai_api_key = os.getenv("OPENAI_API_KEY")
+#try:
+#    client = OpenAI()
+#except openai.OpenAIError as e:
+#    print(e)
 
 
 def generate_image(description, size='512x512', filepath="../images/test.png"):
@@ -47,8 +49,12 @@ def generate_dalle_image(prompt, size='256x256', filepath='../images/worldsim.pn
 
 pattern = r'\{\$[^}]*\}'
 
+# options include 'local', 'Claude',
 class LLM():
-
+    def __init__(self, llm = 'local'):
+        self.llm = llm
+        print(f'will use {self.llm} as llm')
+    
     def run_request(self, bindings, prompt, options):
         #
         ### first substitute for {{$var-name}} in prompt
@@ -73,7 +79,15 @@ class LLM():
                     else:
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
-        response =  requests.post(url, headers= headers,
+
+        if 'llama.cpp' in self.llm:
+            response= llcpp_client.executeRequest(prompt=substituted_prompt, options= options)
+            return response
+        #if 'Claude' in self.llm:
+        #    response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
+        #    return response
+        else:
+            response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
