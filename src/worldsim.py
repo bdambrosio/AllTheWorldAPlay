@@ -19,6 +19,14 @@ from PyQt5.QtCore import Qt, QEvent
 IMAGEGENERATOR = 'tti_serve'
 UPDATE_LOCK = threading.Lock()
 
+def add_text_ns(widget, text):
+    """add text to a TextEdit without losing scroll location"""
+    scroll_position = widget.verticalScrollBar().value()  # Save the current scroll position   
+    widget.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
+    widget.insertPlainText(text)  # Insert the text at the cursor position   
+    widget.verticalScrollBar().setValue(scroll_position)  # Restore the scroll position
+
+
 class HoverWidget(QWidget):
     def __init__(self, entity):
         super().__init__()
@@ -55,7 +63,8 @@ class HoverWidget(QWidget):
         if event.type() == QEvent.Enter:
             print(f' enter under mouse! {event}')
             self.text_widget.clear()
-            self.text_widget.insertPlainText(self.entity.memory)
+            add_text_ns(self.text_widget, self.entity.memory)
+            #self.text_widget.insertPlainText(self.entity.memory)
             self.text_widget.setVisible(True)
         super().enterEvent(event)
 
@@ -98,9 +107,6 @@ class CustomWidget(QWidget):
             h_layout = QHBoxLayout()
             self.image_label = HoverWidget(self.entity)
             self.image_label.set_image('../images/'+self.entity.name+'.png')
-            #self.image_label = QLabel()
-            #self.image_label.setFixedSize(192, 192)
-            #self.image_label.setAlignment(Qt.AlignCenter)
             h_layout.addWidget(self.image_label)
             self.intentions = QTextEdit()
             self.intentions.setLineWrapMode(QTextEdit.WidgetWidth)
@@ -145,14 +151,14 @@ class CustomWidget(QWidget):
                 context = self.entity.context.current_state[:84]
             if IMAGEGENERATOR == 'dall-e-2':
                 # can take a longer dscp than tti_serve
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+self.entity.physical_state+\
-                    '. Location: '+context
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
+                    self.entity.show + '. Location: '+context
                 prompt = "photorealistic style. "+description+rem_context
                 llm_api.generate_dalle_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
                 self.set_image("../images/"+self.entity.name+'.png')
             elif IMAGEGENERATOR == 'tti_serve':
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+self.entity.physical_state+\
-                    '. Location: '+context
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
+                    self.entity.show.replace(self.entity.name, '')[-72:] + '. Location: '+context
                 prompt = "photorealistic style. "+description
                 print(f' actor image prompt len {len(prompt)}')
                 llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
@@ -170,7 +176,15 @@ class CustomWidget(QWidget):
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
         self.background_task.start()
         print(f'{self.entity.name} started sense')
-        
+
+    def format_intentions(self):
+        print(self.entity.intentions)
+        return '\n'.join([str(agh.find('<Mode>', intention))
+                          +': '+str(agh.find('<Act>', intention))
+                          +'\n  Why: '+str(agh.find('<Reasoning>', intention))
+                          +'\n'
+                          for intention in self.entity.intentions])
+            
     def handle_sense_completed(self):
         global agh_threads, UPDATE_LOCK
         try:
@@ -179,28 +193,34 @@ class CustomWidget(QWidget):
         except Exception as e:
             traceback.print_exc()
         if self.entity.name != 'World':
+            self.ui.display('\n')
             self.ui.display(self.entity.show)
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
             self.priorities.clear()
             self.priorities.insertPlainText('\n'.join(self.entity.priorities))
-            if self.entity.intention is not None and self.entity.intention != 'None':
-                self.intentions.insertPlainText('\n----------\n'+self.entity.intention)
-            self.value.insertPlainText(self.entity.reasoning)
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
-            #self.value.insertPlainText(str(self.entity.memory))
+            self.priorities.insertPlainText('\n-----------------\n')
+            self.priorities.insertPlainText(self.entity.physical_state)
+            self.intentions.clear()
+            self.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
+            if self.entity.reasoning is not None and len(self.entity.reasoning) > 4:
+                self.value.moveCursor(QTextCursor.End)
+                self.value.insertPlainText('\n-------------\n')
+                self.value.insertPlainText(self.entity.reasoning)
+                self.value.moveCursor(QTextCursor.End)
+                #self.value.insertPlainText('\n-------------\n')
+                #self.value.insertPlainText(str(self.entity.memory))
             self.update_actor_image()
                 
         else:
             self.value.clear()
             self.value.insertPlainText(str(self.entity.current_state))
             for entity in self.entity.ui.actors:
-                if entity != 'World':
+                if entity.name != 'World' and type(entity) != agh.Context:
                     entity.widget.priorities.clear()
                     entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
+                    entity.widget.priorities.insertPlainText('\n-----------------\n')
+                    entity.widget.priorities.insertPlainText(entity.physical_state)
                     entity.widget.intentions.clear()
-                    entity.widget.intentions.insertPlainText(entity.physical_state)
+                    entity.widget.intentions.insertPlainText('\n--Intentions--\n'+entity.widget.format_intentions())
                     entity.widget.value.insertPlainText(entity.reasoning)
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
@@ -222,6 +242,7 @@ class CustomWidget(QWidget):
     def display(self, text):
         self.value.moveCursor(QTextCursor.End)
         self.value.insertPlainText('\n'+text)
+        #add_text_ns(self.value, '\n'+text)
 
     def update_value(self, new_value):
         self.cycle += 1
@@ -232,14 +253,20 @@ class CustomWidget(QWidget):
                 self.start_sense()
 
 class MainWindow(QMainWindow):
-    def __init__(self, context):
+    def __init__(self, context, server):
         super().__init__()
+        self.llm = llm_api.LLM(server)
         self.context = context
+        #set refs to llm
+        self.context.llm = self.llm
         self.actors = context.actors
+        for actor in self.actors:
+           actor.llm = self.llm
         self.init_ui()
         self.internal_time = 0
         self.agh = agh
-
+        self.server=server
+        
     def init_ui(self):
         # Main central widget
         central_widget = QWidget()
@@ -279,10 +306,12 @@ class MainWindow(QMainWindow):
         self.text_area.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
         self.text_area.setFont(font)
         self.setStyleSheet("background-color: #333333; color: #FFFFFF;")
-        text_area_scroll = QScrollArea()
-        text_area_scroll.setWidget(self.text_area)
-        text_area_scroll.setWidgetResizable(True)
-        center_panel.addWidget(text_area_scroll)
+        #self.text_area.setWidgetResizable(True)
+        center_panel.addWidget(self.text_area)
+        #text_area_scroll = QScrollArea()
+        #text_area_scroll.setWidget(self.text_area)
+        #text_area_scroll.setWidgetResizable(True)
+        #center_panel.addWidget(text_area_scroll)
 
         center_panel_widget = QWidget()
         center_panel_widget.setLayout(center_panel)
@@ -323,21 +352,21 @@ class MainWindow(QMainWindow):
             else:
                 widget.priorities.clear()
                 widget.priorities.insertPlainText('\n'.join(widget.entity.priorities)+'\n')
+                widget.priorities.insertPlainText(widget.entity.physical_state+'\n')
                 widget.intentions.clear()
-                widget.intentions.insertPlainText(widget.entity.physical_state+'\n')
         
         self.show()
 
     def display(self, r):
-        self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-        r = str(r)
-        self.text_area.insertPlainText(r)  # Insert the text at the cursor position
+        add_text_ns(self.text_area, r)
+        #self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
+        #self.text_area.insertPlainText(r)  # Insert the text at the cursor position
+        self.text_area.repaint()
         #if self.tts:
         #    try:
         #        self.speech_service(decoded)
         #    except:
         #        traceback.print_exc()
-        self.text_area.repaint()
       
     def set_image(self, image_path):
         pixmap = QPixmap(image_path)
@@ -384,9 +413,9 @@ class MainWindow(QMainWindow):
     def append_text(self, text):
         self.text_area.append(text)
 
-def main(context):
+def main(context, server='local'):
     app = QApplication(sys.argv)
-    main_window = MainWindow(context)
+    main_window = MainWindow(context, server=server)
     sys.exit(app.exec_())
 
 if __name__ == '__main__':

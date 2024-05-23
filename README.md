@@ -2,10 +2,12 @@
 
 ## A simple toy to test the Humanity of your LLM
 
+### Newest: 5/21/2024 - overhaul of priorities/intentions/actions. Not all there yet. 
 
 ![Play screenshot](images/Play.jpg)
 
-### Newest: 5/20/2024 - Improved robustness for smaller LLMs. Works great w 8B models now.
+- 5/20/2024 - Well, sorry. One last. Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
+- 5/20/2024 - Improved robustness for smaller LLMs. Works great w 8B models now.
 - 5/20/2024 - Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
 - 5/20/2024 - More updates to action selection. Ok, I'm going to try to freeze for a bit except for important bugfixes.
 - 5/20/2024 - Minor overhaul of action selection. You can select OpenAI Dall-e-2 instead of local imagegen[^5]
