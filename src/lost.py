@@ -11,7 +11,7 @@ S = agh.Character("Samantha", """You are a pretty young Sicilian woman.
 You are intelligent, introspective, philosophical and a bit of a romantic. 
 You love the outdoors and hiking, and are comfortable on long treks, and are unafraid of hard work. 
 You are suspicious by nature, and wary of strangers. 
-However, you are also very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed.""")
+However, you are also very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed. Your name is Samanatha""")
 
 S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
 S.update_physical_state('Fear', '<Fear>High</Fear>')
@@ -26,6 +26,7 @@ J.add_to_history("You", "think",  "Whoever she is, she is pretty!")
 J.update_physical_state('Hunger', "<Hunger>High</Hunger>")
 J.update_physical_state('Fear', '<Fear>Medium</Fear>')
 J.update_physical_state('MentalState', "<MentalState>Surprised</MentalState>")
+
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = agh.Context([S, J],

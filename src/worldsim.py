@@ -75,6 +75,7 @@ class HoverWidget(QWidget):
 
 active_qthreads = 0 # whenever this is zero we will step if RUN is True
 RUN = False
+STEP_CTR=0
 
 class BackgroundSense(QThread):
     taskCompleted = pyqtSignal()
@@ -87,6 +88,7 @@ class BackgroundSense(QThread):
         with UPDATE_LOCK:
             try:
                 #print(f'calling {self.entity} senses')
+                #other source of effective input is assignment to self.entity.sense_input, e.g. from other say
                 result = self.entity.senses(input = '')
             except Exception as e:
                 traceback.print_exc()
@@ -178,12 +180,17 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} started sense')
 
     def format_intentions(self):
-        print(self.entity.intentions)
-        return '\n'.join([str(agh.find('<Mode>', intention))
-                          +': '+str(agh.find('<Act>', intention))
-                          +'\n  Why: '+str(agh.find('<Reasoning>', intention))
-                          +'\n'
+        return '<br>'.join(["<b>"+str(agh.find('<Mode>', intention))
+                          +':</b>('+str(agh.find('<Source>', intention))+') '+str(agh.find('<Act>', intention))[:32]
+                          +'<br> Why: '+str(agh.find('<Reason>', intention))[:32]
+                          +'<br>'
                           for intention in self.entity.intentions])
+            
+    def format_tasks(self):
+        return '<br>'.join(["<b>"+str(agh.find('<Text>', task))
+                          +':</b> '+str(agh.find('<Reason>', task))
+                          +'<br>'
+                          for task in self.entity.priorities])
             
     def handle_sense_completed(self):
         global agh_threads, UPDATE_LOCK
@@ -195,19 +202,7 @@ class CustomWidget(QWidget):
         if self.entity.name != 'World':
             self.ui.display('\n')
             self.ui.display(self.entity.show)
-            self.priorities.clear()
-            self.priorities.insertPlainText('\n'.join(self.entity.priorities))
-            self.priorities.insertPlainText('\n-----------------\n')
-            self.priorities.insertPlainText(self.entity.physical_state)
-            self.intentions.clear()
-            self.intentions.insertPlainText('\n--Intentions--\n'+self.format_intentions())
-            if self.entity.reasoning is not None and len(self.entity.reasoning) > 4:
-                self.value.moveCursor(QTextCursor.End)
-                self.value.insertPlainText('\n-------------\n')
-                self.value.insertPlainText(self.entity.reasoning)
-                self.value.moveCursor(QTextCursor.End)
-                #self.value.insertPlainText('\n-------------\n')
-                #self.value.insertPlainText(str(self.entity.memory))
+            self.update_entity_state_display()
             self.update_actor_image()
                 
         else:
@@ -215,13 +210,7 @@ class CustomWidget(QWidget):
             self.value.insertPlainText(str(self.entity.current_state))
             for entity in self.entity.ui.actors:
                 if entity.name != 'World' and type(entity) != agh.Context:
-                    entity.widget.priorities.clear()
-                    entity.widget.priorities.insertPlainText('\n'.join(entity.priorities))
-                    entity.widget.priorities.insertPlainText('\n-----------------\n')
-                    entity.widget.priorities.insertPlainText(entity.physical_state)
-                    entity.widget.intentions.clear()
-                    entity.widget.intentions.insertPlainText('\n--Intentions--\n'+entity.widget.format_intentions())
-                    entity.widget.value.insertPlainText(entity.reasoning)
+                    entity.widget.update_entity_state_display()
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
             self.ui.display('\n----- context updated -----\n')
@@ -235,7 +224,6 @@ class CustomWidget(QWidget):
     def set_image(self, image_path):
         pixmap = QPixmap(image_path)
         scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        #self.image_label.setPixmap(scaled_pixmap)
         self.image_label.set_image(scaled_pixmap)
         
 
@@ -245,12 +233,21 @@ class CustomWidget(QWidget):
         #add_text_ns(self.value, '\n'+text)
 
     def update_value(self, new_value):
-        self.cycle += 1
-        if self.entity.name != 'World': # actor
-            self.start_sense()
-        else: # update world less often, too expensive
-            if self.cycle %4 == 3:
-                self.start_sense()
+        self.start_sense()
+
+    def update_entity_state_display(self):
+        self.priorities.clear()
+        self.priorities.insertHtml(self.format_tasks())
+        self.priorities.insertPlainText('\n-----------------\n')
+        self.priorities.insertPlainText(self.entity.physical_state)
+        self.intentions.clear()
+        self.intentions.insertHtml(self.format_intentions())
+        if self.entity.reason is not None and len(self.entity.reason) > 4:
+            self.value.moveCursor(QTextCursor.End)
+            self.value.insertPlainText('\n-------------\n')
+            self.value.insertPlainText(self.entity.reason)
+            self.value.moveCursor(QTextCursor.End)
+        print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
 
 class MainWindow(QMainWindow):
     def __init__(self, context, server):
@@ -260,13 +257,22 @@ class MainWindow(QMainWindow):
         #set refs to llm
         self.context.llm = self.llm
         self.actors = context.actors
-        for actor in self.actors:
-           actor.llm = self.llm
         self.init_ui()
         self.internal_time = 0
         self.agh = agh
         self.server=server
+        for actor in self.actors:
+           actor.llm = self.llm
+           actor.initialize()
+           actor.widget.update_entity_state_display()
+
+        print(f'initial tells')
+        self.actors[0].tell(self.actors[1], 'Where are we, Who are you?')
+        self.actors[1].tell(self.actors[0], "What's going on?")
+        self.actors[0].widget.update_entity_state_display()
+        self.actors[1].widget.update_entity_state_display()
         
+
     def init_ui(self):
         # Main central widget
         central_widget = QWidget()
@@ -332,6 +338,10 @@ class MainWindow(QMainWindow):
         self.pause_button.clicked.connect(self.pause)
         right_panel.addWidget(self.pause_button)
 
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh)
+        right_panel.addWidget(self.refresh_button)
+
         self.reset_button = QPushButton("Reset")
         self.reset_button.clicked.connect(self.reset)
         right_panel.addWidget(self.reset_button)
@@ -350,10 +360,7 @@ class MainWindow(QMainWindow):
                 widget.value.clear()
                 widget.value.insertPlainText(str(widget.entity.current_state))
             else:
-                widget.priorities.clear()
-                widget.priorities.insertPlainText('\n'.join(widget.entity.priorities)+'\n')
-                widget.priorities.insertPlainText(widget.entity.physical_state+'\n')
-                widget.intentions.clear()
+                widget.update_entity_state_display()
         
         self.show()
 
@@ -385,9 +392,10 @@ class MainWindow(QMainWindow):
         self.run_button.setEnabled(False)
         self.step_button.setEnabled(False)
         self.update_parameters()
-        #self.append_text(f"\nStep {self.internal_time}\n")
+        self.append_text(f"\nStep {self.internal_time}\n")
 
     def step_completed(self):
+        self.internal_time += 1
         self.run_button.setEnabled(True)
         self.step_button.setEnabled(True)
         if RUN:
@@ -397,9 +405,13 @@ class MainWindow(QMainWindow):
         global RUN
         RUN = False
         
+    def refresh(self):
+        for widget in self.custom_widgets:
+            if type(widget.entity) != agh.Context:
+                widget.update_entity_state_display()
+
     def reset(self):
         global RUN
-        self.internal_time = 0
         self.update_parameters()
         self.append_text("Reset")
         RUN = False
@@ -407,8 +419,12 @@ class MainWindow(QMainWindow):
     def update_parameters(self):
         # Example: update custom widgets with internal_time
         for widget in self.custom_widgets:
-            print(f'{widget.entity.name} sensing')
-            widget.update_value(self.internal_time)
+            #print(f'{widget.entity.name} sensing')
+            if type(widget.entity) != agh.Context:
+                widget.update_value(self.internal_time)
+            else:
+                if self.internal_time % 5 == 4:
+                    widget.update_value(self.internal_time)
 
     def append_text(self, text):
         self.text_area.append(text)
