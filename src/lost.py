@@ -7,7 +7,7 @@ import llm_api
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
 # I find it disorienting for characters to change racial characteristics every time they are rendered, so they are nailed down here.
 # I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
-S = agh.Character("Samantha", """You are a pretty young Sicilian woman. 
+S = agh.Agh("Samantha", """You are a pretty young Sicilian woman. 
 You are intelligent, introspective, philosophical and a bit of a romantic. 
 You love the outdoors and hiking, and are comfortable on long treks, and are unafraid of hard work. 
 You are suspicious by nature, and wary of strangers. 
@@ -17,7 +17,7 @@ S.update_physical_state('MentalState', '<MentalState>groggy and confused</Mental
 S.update_physical_state('Fear', '<Fear>High</Fear>')
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
-J = agh.Character("Joe", """You are a young Sicilian male, intelligent, and self-sufficient. You are informal and somewhat impulsive. 
+J = agh.Agh("Joe", """You are a young Sicilian male, intelligent, and self-sufficient. You are informal and somewhat impulsive. 
 You are strong, and think you love the outdoors, but are basically a nerd - that means you are socially awkward, especially around strangers. Your name is Joe.""")
 
 J.add_to_history("You", "think",  "Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")

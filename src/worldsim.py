@@ -4,7 +4,7 @@ import threading
 from queue import Queue
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy
-from PyQt5.QtCore import QTimer, pyqtSlot
+from PyQt5.QtCore import QTimer, pyqtSlot, QSize
 import PyQt5.QtGui as QtGui
 from PyQt5.QtGui import QPixmap, QImage, QFont, QTextCursor
 import numpy as np
@@ -89,12 +89,20 @@ class BackgroundSense(QThread):
             try:
                 #print(f'calling {self.entity} senses')
                 #other source of effective input is assignment to self.entity.sense_input, e.g. from other say
-                result = self.entity.senses(input = '')
+                result = self.entity.senses(sense_data = '')
             except Exception as e:
                 traceback.print_exc()
         self.taskCompleted.emit()
 
 agh_threads = []
+
+class WrappingLabel(QLabel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setWordWrap(True)
+
+    def minimumSizeHint(self):
+        return QSize(0, super().minimumSizeHint().height())
 
 class CustomWidget(QWidget):
     def __init__(self, entity, parent=None):
@@ -103,8 +111,25 @@ class CustomWidget(QWidget):
         self.entity = entity
         self.entity.widget = self
         layout = QVBoxLayout()
-        self.label = QLabel(self.entity.name, self)
-        layout.addWidget(self.label)
+        self.top_bar = QHBoxLayout()
+        name = QLabel(self.entity.name, self)
+        name.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        name.adjustSize()
+        self.top_bar.addWidget(name)
+        if type(self.entity) != agh.Context:
+            self.active_task = WrappingLabel(self.entity.active_task, self)
+            self.active_task.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.active_task.setWordWrap(True)
+            self.active_task.adjustSize()
+            self.top_bar.addWidget(self.active_task)
+            self.physical_state = WrappingLabel(self.entity.physical_state, self)
+            self.physical_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.physical_state.setWordWrap(True)
+            self.physical_state.adjustSize()
+            self.top_bar.addWidget(self.physical_state)
+            self.top_bar.setSpacing(5)  # Add this line
+            self.top_bar.addStretch()  # Add this line
+            layout.addLayout(self.top_bar)
         if self.entity.name !='World':
             h_layout = QHBoxLayout()
             self.image_label = HoverWidget(self.entity)
@@ -119,16 +144,16 @@ class CustomWidget(QWidget):
             self.priorities.setStyleSheet("background-color: #333333; color: #FFFFFF;")
             h_layout.addWidget(self.priorities)
             layout.addLayout(h_layout)
-        self.value = QTextEdit()
-        self.value.setReadOnly(True)
-        self.value.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
+        self.thoughts = QTextEdit()
+        self.thoughts.setReadOnly(True)
+        self.thoughts.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
         self.setStyleSheet("background-color: #333333; color: #FFFFFF;")
         self.text_area_scroll = QScrollArea()
-        self.text_area_scroll.setWidget(self.value)
+        self.text_area_scroll.setWidget(self.thoughts)
         self.text_area_scroll.setWidgetResizable(True)
         font = QFont()
         font.setPointSize(13)
-        self.value.setFont(font)
+        self.thoughts.setFont(font)
 
         layout.addWidget(self.text_area_scroll)
         self.setLayout(layout)
@@ -204,10 +229,9 @@ class CustomWidget(QWidget):
             self.ui.display(self.entity.show)
             self.update_entity_state_display()
             self.update_actor_image()
-                
         else:
-            self.value.clear()
-            self.value.insertPlainText(str(self.entity.current_state))
+            self.thoughts.clear()
+            self.thoughts.insertPlainText(str(self.entity.current_state))
             for entity in self.entity.ui.actors:
                 if entity.name != 'World' and type(entity) != agh.Context:
                     entity.widget.update_entity_state_display()
@@ -228,27 +252,31 @@ class CustomWidget(QWidget):
         
 
     def display(self, text):
-        self.value.moveCursor(QTextCursor.End)
-        self.value.insertPlainText('\n'+text)
+        self.thoughts.moveCursor(QTextCursor.End)
+        self.thoughts.insertPlainText('\n'+text)
         #add_text_ns(self.value, '\n'+text)
 
     def update_value(self, new_value):
         self.start_sense()
 
     def update_entity_state_display(self):
+        self.active_task.setText(self.entity.active_task)
+        self.active_task.adjustSize()
+        self.physical_state.setText(self.entity.physical_state)
+        self.physical_state.adjustSize()
         self.priorities.clear()
         self.priorities.insertHtml(self.format_tasks())
-        self.priorities.insertPlainText('\n-----------------\n')
-        self.priorities.insertPlainText(self.entity.physical_state)
         self.intentions.clear()
         self.intentions.insertHtml(self.format_intentions())
-        if self.entity.reason is not None and len(self.entity.reason) > 4:
-            self.value.moveCursor(QTextCursor.End)
-            self.value.insertPlainText('\n-------------\n')
-            self.value.insertPlainText(self.entity.reason)
-            self.value.moveCursor(QTextCursor.End)
-        print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
-
+        # display show, not reason, because show includes thought if act was think
+        if self.entity.show is not None and len(self.entity.show) > 4:
+            self.thoughts.moveCursor(QTextCursor.End)
+            self.thoughts.insertPlainText('\n-------------\n')
+            self.thoughts.insertPlainText(self.entity.thought)
+            self.thoughts.moveCursor(QTextCursor.End)
+        if type(self.entity) == agh.Agh:
+            print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
+        
 class MainWindow(QMainWindow):
     def __init__(self, context, server):
         super().__init__()
@@ -262,16 +290,16 @@ class MainWindow(QMainWindow):
         self.agh = agh
         self.server=server
         for actor in self.actors:
+           print(f'calling {actor.name} initialize')
            actor.llm = self.llm
            actor.initialize()
            actor.widget.update_entity_state_display()
 
-        print(f'initial tells')
-        self.actors[0].tell(self.actors[1], 'Where are we, Who are you?')
-        self.actors[1].tell(self.actors[0], "What's going on?")
-        self.actors[0].widget.update_entity_state_display()
-        self.actors[1].widget.update_entity_state_display()
-        
+        #print(f'initial tells')
+        #self.actors[0].tell(self.actors[1], 'Where are we, Who are you?')
+        #self.actors[1].tell(self.actors[0], "What's going on?")
+        #self.actors[0].widget.update_entity_state_display()
+        #self.actors[1].widget.update_entity_state_display()
 
     def init_ui(self):
         # Main central widget
@@ -307,13 +335,13 @@ class MainWindow(QMainWindow):
         
         font = QFont()
         font.setPointSize(14)  # Set font size to 14 points
-        self.text_area = QTextEdit()
-        self.text_area.setReadOnly(True)
-        self.text_area.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
-        self.text_area.setFont(font)
+        self.activity= QTextEdit()
+        self.activity.setReadOnly(True)
+        self.activity.setLineWrapMode(QTextEdit.WidgetWidth)  # Enable text wrapping
+        self.activity.setFont(font)
         self.setStyleSheet("background-color: #333333; color: #FFFFFF;")
         #self.text_area.setWidgetResizable(True)
-        center_panel.addWidget(self.text_area)
+        center_panel.addWidget(self.activity)
         #text_area_scroll = QScrollArea()
         #text_area_scroll.setWidget(self.text_area)
         #text_area_scroll.setWidgetResizable(True)
@@ -357,18 +385,18 @@ class MainWindow(QMainWindow):
         agh.ui = self
         for widget in self.custom_widgets:
             if widget.entity.name == 'World':
-                widget.value.clear()
-                widget.value.insertPlainText(str(widget.entity.current_state))
+                widget.thoughts.clear()
+                widget.thoughts.insertPlainText(str(widget.entity.current_state))
             else:
                 widget.update_entity_state_display()
         
         self.show()
 
     def display(self, r):
-        add_text_ns(self.text_area, r)
+        add_text_ns(self.activity, r)
         #self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
         #self.text_area.insertPlainText(r)  # Insert the text at the cursor position
-        self.text_area.repaint()
+        self.activity.repaint()
         #if self.tts:
         #    try:
         #        self.speech_service(decoded)
@@ -427,7 +455,7 @@ class MainWindow(QMainWindow):
                     widget.update_value(self.internal_time)
 
     def append_text(self, text):
-        self.text_area.append(text)
+        self.activity.append(text)
 
 def main(context, server='local'):
     app = QApplication(sys.argv)
