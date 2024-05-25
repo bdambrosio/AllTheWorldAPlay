@@ -107,7 +107,7 @@ End your reponse with:
                                 "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=200)
         return response
 
-    def senses (self, input='', ui_task_queue=None):
+    def senses (self, sense_data='', ui_task_queue=None):
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
         # not really true, since each is ignorant of the others thoughts
         history = self.history()
@@ -163,20 +163,91 @@ END""")]
         return response
 
 class Character():
-    def __init__ (self, name, character_description):
+    def __init__(self, name, character_description):
         self.name = name
-        self.speaker = None
         self.character = character_description
         self.history = []
         self.memory = 'None'
         self.context=None
         self.priorities = [''] # will be displayed by main thread at top in character intentions text widget
-        self.reason='None' # to be displayed by main thread in character main text widget
         self.show='' # to be displayed by main thread in UI public (main) text widget
-        self.reflect_elapsed = 99
-        self.reflect_interval = 3
         self.physical_state = "Fear: Low, Thirst: Low, Hunger: Low, Fatigue: Low, Illness: Low, MentalState: alert"
         self.intentions = []
+        self.previous_action = ''
+        self.reason='' # reason for action
+        self.thought='' # thoughts
+        self.sense_input = ''
+        self.widget = None
+        self.active_task = None # task character is actively pursuing.
+        self.last_acts = {} # a set of priorities for which actions have been started, and their states.
+        self.dialog_status = 'Waiting' # Waiting, Pending
+
+    def add_to_history(self, role, act, message):
+        message = message.replace('\\','')
+        self.history.append(f"{role}: {act} {message}")
+        self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
+
+    def acts(self, target, act_name, act_arg='', reason='', source=''):
+        #
+        ### speak to someone
+        #
+        show = '' # widget window
+        self.show = ''
+        self.reason = reason
+        if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
+            verb = 'says' if act_name == 'Say' else ''
+            #self.ui.display('\n**********************\n')
+            if act_name=='Say' or act_name == 'Do':
+                self.add_to_history('You', act_name , act_arg+f'\n  why: {reason}')
+                for actor in self.context.actors:
+                    if actor != self: # everyone else sees/hears your act!
+                        #print(f'adding to {actor.name} history: {act_arg}')
+                        actor.add_to_history(self.name, '' , act_arg)
+                # target has special opportunity to respond - tbd
+                if target is not None:
+                    #print(f'adding to {target.name} sense_input: {act_arg}')
+                    target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
+                else:
+                    for actor in self.context.actors:
+                        if actor != self:
+                            #print(f'adding to {actor.name} sense_input: {act_arg}')
+                            actor.sense_input = self.name+' says '+act_arg+'\n'
+                            if act_name == 'Say':
+                                actor.tell(self, act_arg, source)
+                                
+                #self.show goes in actor 'value' pane
+                self.show = '\n'+self.name+' '+verb + ": "+act_arg
+                if act_name =='Do':
+                    #can we link back to task?
+                    result = self.context.do(self, act_arg)
+                    self.show += '\n  '+result # main window
+                    self.add_to_history('You', 'observe', result)
+                    print(f'{self.name} setting act_result to {result}')
+                    self.act_result = result
+                    if target is not None: # this is wrong, world should update who sees do
+                        target.sense_input += '\n'+result
+            else:
+                self.show = 'Seems to be thinking ...'
+                text = str(act_arg)
+                self.add_to_history('You', 'think', text+'\n  '+reason)
+                self.show = '\n'+self.name+': Thinking'
+                for actor in self.context.actors:
+                    if actor != self: # everyone else sees/hears your act!
+                        actor.add_to_history('You', 'see', f'{self.name} thinking')
+            self.previous_action = act_name
+
+            #if random.randint(1,3) == 1: # not too often, makes action to jumpy
+            #    self.priorities = []
+            #    self.update_priorities() # or should we do this at sense input? 
+            if act_name == 'Say' or act_name == 'Think':
+                self.update_intentions_wrt_say_think(source, act_arg, reason)
+                #ins = '\n'.join(self.intentions)
+                #print(f'Intentions\n{ins}')
+            
+
+class Agh(Character):
+    def __init__ (self, name, character_description):
+        super().__init__(name, character_description)
         self.previous_action = ''
         self.sense_input = ''
         self.drives = """
@@ -185,8 +256,6 @@ class Character():
  - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
  - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 """
-        self.widget = None
-        self.active_task = None # task character is actively pursuing.
         self.act_result = ''
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
@@ -195,11 +264,7 @@ class Character():
     def initialize(self):
         """called from worldsim once everything is set up"""
         self.update_priorities()
-
-    def add_to_history(self, role, act, message):
-        message = message.replace('\\','')
-        self.history.append(f"{role}: {act} {message}")
-        self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
+        
 
     def synonym_check(self, term, candidate):
         """ except for new tasks, we'll always have correct task_name, and new tasks are presumably new"""
@@ -254,19 +319,19 @@ End your response with:
         # pbly don't need this, at set we have canonical task
         task = self.get_task(term)
         if task == None:
-            print(f'\nset_task_last_act {self.name} no match found for term: {term}, {act}\n')
+            print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
             self.last_acts[term] = act
         else:
-            print(f'\nset_task_last_act {self.name} match found: term {term}, task {task}\n  {act}')
+            print(f'SET_TASK_LAST_ACT {self.name} match found: term {term}, task {task}\n  {act}')
             self.last_acts[task] = act
 
     def get_task_last_act(self, term):
         task = self.get_task(term)
         if task == None:
-            print(f'task_last_act {self.name} no match found: term {term}')
+            print(f'GET_TASK_LAST_ACT {self.name} no match found: term {term}')
             return 'None'
         else:
-            print(f'task_last_act match found {self.name} term {term} task {task}\n   act:{self.last_acts[task]}')
+            print(f'GET_TASK_LAST_ACT match found {self.name} term {term} task {task}\n  last_act:{self.last_acts[task]}\n')
             return self.last_acts[task]
 
     def make_task_name(self, reason):
@@ -299,7 +364,7 @@ End your response with:
         for candidate in self.priorities:
             #print(f'find_or_make testing\n {candidate}\nfor name {task_name}')
             if task_name == find('<Text>', candidate):
-                print(f'found existing task\n   {candidate}')
+                print(f'found existing task\n  {task_name}')
                 return candidate
         new_task = f'<Priority><Text>{task_name}</Text><Reason>{reason}</Reason></Priority>'
         self.priorities.append(new_task)
@@ -402,7 +467,8 @@ END
         print(f'\n Actualizing task {n} {task_name}')
         last_act = self.get_task_last_act(task_name)
         reason = find('<Reason>', task_xml)
-        if reason is not None and ': Low' in reason:
+        # crude, needs improvement
+        if reason is not None and 'Low' in reason:
             if self.active_task == task_name:
                 #active task is now satisfied!
                 self.active_task = None
@@ -518,6 +584,11 @@ End your response with:
             
         if act is not None:
             print(f'actionable found: task_name {task_name}\n  {act}')  
+            print(f'adding intention {mode}, {task_name}')  
+            for candidate in self.intentions:
+                candidate_source = find('<Source>', candidate)
+                if candidate_source == task_name:
+                    self.intentions.remove(candidate)
             self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reason>{reason}</Reason> <Source>{task_name}</Source> </Intent>')
             #ins = '\n'.join(self.intentions)
             #print(f'Intentions\n{ins}')
@@ -706,21 +777,30 @@ END
 """)]
         response = self.llm.ask({"text":text}, prompt, temp=0.1, stops=['END', '</Analysis>'], max_tokens=100)
         act = find('<Act>', response)
-        if act is None: return
+        if act is None or act.strip() != 'True':
+            print(f'no intention in say or think')
+            return
         intention = find('<Intention>', response)
-        if intention is None: return
+        if intention is None or intention=='None':
+            print(f'no intention in say or think')
+            return
         mode = str(find('<Mode>', response))
         print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
+        for candidate in self.intentions:
+            candidate_source = find('<Source>', candidate)
+            if candidate_source == source:
+                self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
         ins = '\n'.join(self.intentions)
         print(f'Intentions\n{ins}')
 
-    def tell(self, actor, message):
+    def tell(self, actor, message, source='dialog'):
+        print(f'{self.name} tell from {actor.name}, {message}')
         actor.sense_input += self.name + ' says '+message
         if '?' in message:
             #question, formulate response
             prompt=[SystemMessage(content="""You are {{$character}}.
-Generate a response to the question below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
+Generate a response to the input below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
 
 <Situation>
@@ -746,14 +826,19 @@ Recent conversation has been:
 
 Use the following XML template in your response:
 <Answer>
-<Response>answer to question</Response>
+<Response>response to this statement</Response>
 <Reason>reason for this answer</Reason>
 </Answer>
 
+Your last response was:
+<PreviousResponse>
+{{$last_act}}
+</PreviousResponse>
+
 The question is:
-<Question>
-{{$question}}
-</Question>>
+<Input>
+{{$statement}}
+</Input>>
 
 Reminder: Your task is to generate an answer to the question using the above XML format.
 Respond only with the above XML
@@ -761,75 +846,28 @@ Do not include any additional introductory, explanatory, or discursive text.
 End your response with:
 END
 """)]
-            answer_xml = self.llm.ask({'character':self.character, 'question':message, "situation": self.context.current_state,
+            last_act = ''
+            if source in self.last_acts:
+                last_act=self.last_acts[source]
+            answer_xml = self.llm.ask({'character':self.character, 'statement':message, "situation": self.context.current_state,
                                        "physState":self.physical_state, "memory":self.memory, 
-                                       'history':'\n'.join(self.history) 
+                                       'history':'\n'.join(self.history), 'last_act':str(last_act) 
                                        }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
             print(f'tell {answer_xml}')
             response = find('<response>', answer_xml)
             if response is None:
                 return
             reason = find('<reason>', answer_xml)
+            # remove any pending intentions for this task
+            for candidate in self.intentions:
+                candidate_source = find('<Source>', candidate)
+                if candidate_source == source:
+                    self.intentions.remove(candidate)
             print(f'Question received {message}\n  response queued {response}')
             self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
 
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
-        #
-        ### speak to someone
-        #
-        show = '' # widget window
-        self.show = ''
-        self.reason = reason
-        if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
-            verb = 'says' if act_name == 'Say' else ''
-            #self.ui.display('\n**********************\n')
-            if act_name=='Say' or act_name == 'Do':
-                self.add_to_history('You', act_name , act_arg+f'\n  why: {reason}')
-                for actor in self.context.actors:
-                    if actor != self: # everyone else sees/hears your act!
-                        actor.add_to_history(self.name, '' , act_arg)
-                        #print(f'adding to {actor.name} history: {act_arg}')
-                # target has special opportunity to respond - tbd
-                if target is not None:
-                    target.sense_input += '\n'+self.name+' '+act_name+': '+act_arg
-                else:
-                    for actor in self.context.actors:
-                        if actor != self:
-                            actor.sense_input = '\n'+self.name+' says '+act_arg
-                            if act_name == 'Say':
-                                actor.tell(self.name, act_arg)
-                                
-                #self.show goes in actor 'value' pane
-                self.show = '\n'+self.name+' '+verb + ": "+act_arg
-                if act_name =='Do':
-                    #can we link back to task?
-                    result = self.context.do(self, act_arg)
-                    self.show += '\n  '+result # main window
-                    self.add_to_history('You', 'observe', result)
-                    print(f'{self.name} setting act_result to {result}')
-                    self.act_result = result
-                    if target is not None: # this is wrong, world should update who sees do
-                        target.sense_input += '\n'+result
-            else:
-                self.show = 'Seems to be thinking ...'
-                text = str(act_arg)
-                self.add_to_history('You', 'think', text+'\n  '+reason)
-                self.show = '\n'+self.name+': Thinking'
-                for actor in self.context.actors:
-                    if actor != self: # everyone else sees/hears your act!
-                        actor.add_to_history('You', 'see', f'{self.name} thinking')
-            self.previous_action = act_name
 
-            #if random.randint(1,3) == 1: # not too often, makes action to jumpy
-            #    self.priorities = []
-            #    self.update_priorities() # or should we do this at sense input? 
-            if act_name == 'Say' or act_name == 'Think':
-                self.update_intentions_wrt_say_think(act_arg, reason, )
-                ins = '\n'.join(self.intentions)
-                print(f'Intentions\n{ins}')
-            
-
-    def senses(self, input='', ui_queue=None):
+    def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task}')
         all_actions={"Act": """Act as follows: '{action}' for the following reason: '{reason}'""",
                      "Answer":""" Answer the following question: '{question}'""",
@@ -946,7 +984,7 @@ END
 
         action_choices = [f'{n} - {action}' for n,action in enumerate(llm_choices)] 
         if len(action_choices) > 1:
-            response = self.llm.ask({'input':input+self.sense_input, 'history':'\n\n'.join(self.history),
+            response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
                                      "memory":self.memory, "situation": self.context.current_state,
                                      "physState":self.physical_state,
                                      "priorities":'\n'.join([find('<Text>', task) for task in self.priorities]),
@@ -970,26 +1008,42 @@ END
                 except Exception as e:
                     traceback.print_exc()
             if index > -1:
-                print(f'{self.name} choose valid action')
                 intention = intention_choices[index]
+                source = find('<Source>', intention)
+                print(f'{self.name} choose valid action {index}, {str(source)}')
             else:
-                print(f'llm returned invalid choice, using 0')
                 intention = intention_choices[0]
+                source = find('<Source>', intention)
+                print(f'llm returned invalid choice, using 0, {str(source)}')
         else:
             intention = intention_choices[0]
+            source = find('<Source>', intention)
+            print(f'Only one choice, using it, {str(source)}')
 
         act_name = find('<Mode>', intention)
         if act_name is not None:
             self.act_name = act_name.strip()
         act_arg = find('<Act>', intention)
         self.reason = find('<Reason>', intention)
+        if act_name =='Think':
+            self.thought = act_arg+'\n ... '+self.reason
+        else:
+            self.thought = act_arg[:42]+' ...\n ... '+self.reason
+            
         print(f'{self.name} choose {intention}')
         refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
-        #print(f'Found and removing intention for act {intention}')
+        task_name = find('<Source>', intention)
+        print(f'Found and removing intention for task {task_name}')
         self.intentions.remove(intention)
-        
-        ins = '\n'.join(self.intentions)
-        #print(f'Remaining Intentions\n{ins}\n')
+        if task_name is not None:
+            for removal_candidate in self.intentions:
+                # remove all other intentions for this task.
+                if task_name == find('<Source>', removal_candidate):
+                    self.intentions.remove(removal_candidate)
+                elif find('<Mode>', removal_candidate)  == 'Think':
+                    # only one shot at thoughts
+                    self.intentions.remove(removal_candidate)
+                
         if act_name=='Say' or act_name=='Do':
             task_name = find('<Source>', intention)
             print(f'preparing to refresh task intention.\n  intention source field: {task_name}')
@@ -1005,7 +1059,8 @@ END
         if act_name == 'Think':
             task = find('<Reason>', intention)
             task_name = self.make_task_name(self.reason)
-            self.reason = act_arg+'\n  '+self.reason
+            self.reason = self.reason
+            self.thought = act_arg+'\n  '+self.reason
         target = None
         if len(self.context.actors)> 1:
             target = self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0]
