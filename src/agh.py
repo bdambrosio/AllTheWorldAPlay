@@ -187,6 +187,16 @@ class Character():
         self.history.append(f"{role}: {act} {message}")
         self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
 
+    def greet(self):
+        for actor in self.context.actors:
+            if actor != self:
+                if actor.name not in self.character:
+                    # I don't know this actor
+                    actor.tell(self, f"Hi, I'm {self.name}")
+            else:
+                #actors after us in initialization order will act weird, don't ask why
+                break
+
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         #
         ### speak to someone
@@ -204,16 +214,17 @@ class Character():
                         #print(f'adding to {actor.name} history: {act_arg}')
                         actor.add_to_history(self.name, '' , act_arg)
                 # target has special opportunity to respond - tbd
-                if target is not None:
-                    #print(f'adding to {target.name} sense_input: {act_arg}')
-                    target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
-                else:
-                    for actor in self.context.actors:
-                        if actor != self:
-                            #print(f'adding to {actor.name} sense_input: {act_arg}')
-                            actor.sense_input = self.name+' says '+act_arg+'\n'
-                            if act_name == 'Say':
-                                actor.tell(self, act_arg, source)
+                #if target is not None:
+                #    #print(f'adding to {target.name} sense_input: {act_arg}')
+                #    target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
+                #else:
+                for actor in self.context.actors:
+                    if actor != self:
+                        #print(f'adding to {actor.name} sense_input: {act_arg}')
+                        actor.sense_input = self.name+' says '+act_arg+'\n'
+                        if act_name == 'Say':
+                            print(f'telling {actor.name} {act_arg}')
+                            actor.tell(self, act_arg, source)
                                 
                 #self.show goes in actor 'value' pane
                 self.show = '\n'+self.name+' '+verb + ": "+act_arg
@@ -260,11 +271,11 @@ class Agh(Character):
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
         self.dialog_status = 'Waiting' # Waiting, Pending
-
+        self.dialog_length = 0 # stop dialogs in tell after a few turns
+        
     def initialize(self):
         """called from worldsim once everything is set up"""
         self.update_priorities()
-        
 
     def synonym_check(self, term, candidate):
         """ except for new tasks, we'll always have correct task_name, and new tasks are presumably new"""
@@ -373,6 +384,7 @@ End your response with:
 
     def update_priorities(self):
         self.active_task = None
+        print(f'\n{self.name} Updating priorities\n')
         prompt = [SystemMessage(content=self.character+"""You are {{$character}}.
 Your basic drives include:
 <Drives>
@@ -449,12 +461,14 @@ END
             self.priorities = []
             # don't understand why, but all models *seem* to return priorities lowest first
             items.reverse()
-            if len(items) > 0:
-                # old intentions need to go away, except for pending answers!
-                for intention in self.intentions:
-                    source = find('<Source>', intention)
-                    if source != 'dialog':
-                        self.intentions.remove(intention)
+            # found a better way to kick off dialog - when we assign active_task!
+            #if len(items) > 0:
+            #    # old intentions need to go away, except for pending answers!
+            #    for intention in self.intentions:
+            #        source = find('<Source>', intention)
+            #        if source != 'dialog':
+            #            self.intentions.remove(intention)
+            self.intentions=[]
             for n, task in enumerate(items):
                 self.priorities.append(task)
                 self.actualize_task(n, task)
@@ -795,11 +809,25 @@ END
         print(f'Intentions\n{ins}')
 
     def tell(self, actor, message, source='dialog'):
+        self.dialog_length += 1
+        if self.dialog_length > 3:
+            self.dialog_length = 0;
+            # clear all actor pending dialog tasks and intentions:
+            for actor in self.context.actors:
+                for priority in actor.priorities:
+                    if find('<Text>', priority) == 'dialog':
+                        print(f'{actor.name} removing dialog priority')
+                        actor.priorities.remove(priority)
+                for intention in actor.intentions:
+                    if find('<Source>', intention) == 'dialog':
+                        print(f'{actor.name} removing dialog intention')
+                        actor.intentions.remove(intention)
+            return
+
         print(f'{self.name} tell from {actor.name}, {message}')
         actor.sense_input += self.name + ' says '+message
-        if '?' in message:
-            #question, formulate response
-            prompt=[SystemMessage(content="""You are {{$character}}.
+        #question, formulate response
+        prompt=[SystemMessage(content="""You are {{$character}}.
 Generate a response to the input below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
 
@@ -826,6 +854,7 @@ Recent conversation has been:
 
 Use the following XML template in your response:
 <Answer>
+<Unique>'True' if you have something new to say, 'False' if merely echo of previous responses</Unique>
 <Response>response to this statement</Response>
 <Reason>reason for this answer</Reason>
 </Answer>
@@ -840,31 +869,33 @@ The question is:
 {{$statement}}
 </Input>>
 
-Reminder: Your task is to generate an answer to the question using the above XML format.
+Reminder: Your task is to generate an response to the statement using the above XML format.
 Respond only with the above XML
 Do not include any additional introductory, explanatory, or discursive text. 
 End your response with:
 END
 """)]
-            last_act = ''
-            if source in self.last_acts:
-                last_act=self.last_acts[source]
-            answer_xml = self.llm.ask({'character':self.character, 'statement':message, "situation": self.context.current_state,
-                                       "physState":self.physical_state, "memory":self.memory, 
-                                       'history':'\n'.join(self.history), 'last_act':str(last_act) 
-                                       }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
-            print(f'tell {answer_xml}')
-            response = find('<response>', answer_xml)
-            if response is None:
-                return
-            reason = find('<reason>', answer_xml)
-            # remove any pending intentions for this task
-            for candidate in self.intentions:
-                candidate_source = find('<Source>', candidate)
-                if candidate_source == source:
-                    self.intentions.remove(candidate)
-            print(f'Question received {message}\n  response queued {response}')
-            self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
+        last_act = ''
+        if source in self.last_acts:
+            last_act=self.last_acts[source]
+        answer_xml = self.llm.ask({'character':self.character, 'statement':message, "situation": self.context.current_state,
+                                   "physState":self.physical_state, "memory":self.memory, 
+                                   'history':'\n'.join(self.history), 'last_act':str(last_act) 
+                                   }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
+        response = find('<response>', answer_xml)
+        if response is None:
+            return
+        unique = find('<Unique>', answer_xml)
+        if unique is None or 'False' in unique:
+            return 
+        reason = find('<Reason>', answer_xml)
+        # remove any pending intentions for this task
+        for candidate in self.intentions:
+            candidate_source = find('<Source>', candidate)
+            if candidate_source == source:
+                self.intentions.remove(candidate)
+        print(f'Question received {message}\n  response queued {response}')
+        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
 
 
     def senses(self, sense_data='', ui_queue=None):
@@ -1054,8 +1085,11 @@ END
             task_xml = self.find_or_make_task_xml(task_name, self.reason)
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
             self.last_acts[task_name]= act_arg
-            if task_name != 'dialog':
+            if task_name != 'dialog' and act_name == 'Do':
                 self.active_task = task_name
+                for actor in self.context.actors:
+                    if actor != self:
+                        actor.tell(self, f"I'm going to {task_name}, {act_arg}.")
         if act_name == 'Think':
             task = find('<Reason>', intention)
             task_name = self.make_task_name(self.reason)
@@ -1066,6 +1100,6 @@ END
             target = self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0]
         #this will effect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
-        if refresh_task is not None:
+        if refresh_task is not None and task_name != 'dialog':
             print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention

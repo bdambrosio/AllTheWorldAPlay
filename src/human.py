@@ -25,7 +25,7 @@ class Human (agh.Character):
     def forward(self, num_hours):
         pass
     
-    def tell(self, actor, message):
+    def tell(self, actor, message, source='dialog'):
         print(f"{actor.name} says: {message}")
         self.senses()
         
