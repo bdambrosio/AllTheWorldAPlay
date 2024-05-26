@@ -274,8 +274,8 @@ class CustomWidget(QWidget):
             self.thoughts.insertPlainText('\n-------------\n')
             self.thoughts.insertPlainText(self.entity.thought)
             self.thoughts.moveCursor(QTextCursor.End)
-        if type(self.entity) == agh.Agh:
-            print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
+        #if type(self.entity) == agh.Agh:
+        #    print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
         
 class MainWindow(QMainWindow):
     def __init__(self, context, server):
@@ -290,9 +290,15 @@ class MainWindow(QMainWindow):
         self.agh = agh
         self.server=server
         for actor in self.actors:
-           print(f'calling {actor.name} initialize')
            actor.llm = self.llm
+        for actor in self.actors:
+           print(f'calling {actor.name} initialize')
            actor.initialize()
+        for actor in self.actors:
+           print(f'calling {actor.name} greet')
+           actor.greet()
+
+        for actor in self.actors:
            actor.widget.update_entity_state_display()
 
         #print(f'initial tells')
