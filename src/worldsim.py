@@ -225,10 +225,11 @@ class CustomWidget(QWidget):
         except Exception as e:
             traceback.print_exc()
         if self.entity.name != 'World':
-            self.ui.display('\n')
-            self.ui.display(self.entity.show)
             self.update_entity_state_display()
             self.update_actor_image()
+            self.ui.display('\n')
+            self.ui.display(self.entity.show)
+            self.entity.show='' # need to not erase till image update!
         else:
             self.thoughts.clear()
             self.thoughts.insertPlainText(str(self.entity.current_state))
@@ -300,12 +301,6 @@ class MainWindow(QMainWindow):
 
         for actor in self.actors:
            actor.widget.update_entity_state_display()
-
-        #print(f'initial tells')
-        #self.actors[0].tell(self.actors[1], 'Where are we, Who are you?')
-        #self.actors[1].tell(self.actors[0], "What's going on?")
-        #self.actors[0].widget.update_entity_state_display()
-        #self.actors[1].widget.update_entity_state_display()
 
     def init_ui(self):
         # Main central widget

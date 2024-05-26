@@ -7,21 +7,53 @@ import llm_api
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
 # I find it disorienting for characters to change racial characteristics every time they are rendered, so they are nailed down here.
 # I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
-S = agh.Agh("Samantha", """You are a pretty young Sicilian woman. 
+S = agh.Agh("Samantha", """You are a pretty young woman of Sicilian descent. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 
+You are very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed. 
 You are comfortable on long treks, and are unafraid of hard work. 
 You are suspicious by nature, and wary of strangers. 
-However, you are also very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed. 
 Your name is Samanatha""")
+
+# Drives are what cause a character to create tasks.
+# Below is the default an agh inherits if you don't override, as we do below.
+# basic Maslow (more or less).
+# As usual, caveat, check agh.py for latest default!
+# - immediate physiological needs: survival, water, food, clothing, shelter, rest.  
+# - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
+# - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
+# - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
+
+# changing so they don't spend so much time on water/food.
+S.drives = """
+- safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events. 
+- love and belonging, including home, acceptance, friendship, trust, intimacy.
+- immediate physiological needs: survival, water, food, clothing, shelter, rest.  
+- assurance of future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
+"""
+# Rows are in priority order, most important first. Have fun.
+# note this is NOT NECESSARY to specify if you don't want to change anything.
 
 S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
 S.update_physical_state('Fear', '<Fear>High</Fear>')
 S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
-J = agh.Agh("Joe", """You are a young Sicilian male, intelligent, and self-sufficient. You are informal and somewhat impulsive. 
+
+#
+## Now Joe, the other character in this 'survivor' scenario
+#
+
+J = agh.Agh("Joe", """You are a young male of Sicilian descent, intelligent and self-sufficient. 
+You are informal and somewhat impulsive. 
 You are strong, and think you love the outdoors, but are basically a nerd.
 You are socially awkward, especially around strangers. Your name is Joe.""")
+
+J.drives = """
+- safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events. 
+- love and belonging, including home, acceptance, friendship, trust, intimacy.
+- immediate physiological needs: survival, water, food, clothing, shelter, rest.  
+- assurance of future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
+"""
 
 J.add_to_history("You", "think",  "Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
 # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
