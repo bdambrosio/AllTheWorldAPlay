@@ -82,7 +82,8 @@ class Context ():
         return filepath
         
     def do(self, actor, action):
-        prompt=[SystemMessage(content="""You are a dynamic world. Your task is to determine the result of {{$name}} performing
+        prompt=[SystemMessage(content="""You are simulating a dynamic world. 
+Your task is to determine the result of {{$name}} performing the following action:
 
 <Action>
 {{$action}}
@@ -94,16 +95,28 @@ in the current situation:
 {{$state}}
 </Situation>
 
-Respond with the observable result for {{$name}}.
-Respond ONLY with the observable result as a simple declarative statement.
-Include in the statement any available sensory input (e.g. {{$name}} sees/hears/feels,...) as well as any change is {{$name})'s or other actor's state (e.g., {{$name}) now has...).
-Respond ONLY with the immediate effect of the specified action. Do NOT extend the scenario with any follow on actions or effects.
+given {{$name}} basic drives are:
+
+<Drives>
+{{$drives}}
+</Drives> 
+
+Respond with the observable result.
+Respond ONLY with the observable immediate effects of the above Action. 
+Most important are those effects that relate to {{$name}}'s drives above.
+Format your response as one or more simple declaractive sentences.
+Include in your response:
+- sensory inputs (e.g. {{$name}} sees / hears / feels / ... /)
+- changes in {{$name})'s or other actor's state (e.g., {{$name}} becomes fearful / relaxes / is tired / is injured / ... /).
+- changes in {{$name}}'s possessions (e.g. {{$name}} gains berries / loses phone / ... / )
+- changes in {{$name}}'s relations with other actors (e.g., {{$name}} becomes more trusting of ... ) 
+Do NOT extend the scenario with any follow on actions or effects.
 Do not include any Introductory, explanatory, or discursive text.
 End your reponse with:
 <END>
 """)]
         history = self.history()
-        response = self.llm.ask({"name":actor.name, "action":action,
+        response = self.llm.ask({"name":actor.name, "action":action, "drives":actor.drives,
                                 "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=200)
         return response
 
@@ -175,7 +188,7 @@ class Character():
         self.intentions = []
         self.previous_action = ''
         self.reason='' # reason for action
-        self.thought='' # thoughts
+        self.thought='' # thoughts - displayed in character thoughts window
         self.sense_input = ''
         self.widget = None
         self.active_task = None # task character is actively pursuing.
@@ -188,63 +201,66 @@ class Character():
         self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def greet(self):
+        talk = False
         for actor in self.context.actors:
-            if actor != self:
-                if actor.name not in self.character:
-                    # I don't know this actor
-                    actor.tell(self, f"Hi, I'm {self.name}")
-            else:
-                #actors after us in initialization order will act weird, don't ask why
+            if actor != self and talk == False:
+                continue
+            elif actor == self:
+                talk = True
+                continue
+            else: # talk to first actor who will take a turn after us.
+                print(f' {self.name} greeting {actor.name}')
+                actor.tell(self, f"Hi, I'm {self.name}")
                 break
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         #
         ### speak to someone
         #
-        show = '' # widget window
-        self.show = ''
         self.reason = reason
         if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
             verb = 'says' if act_name == 'Say' else ''
-            #self.ui.display('\n**********************\n')
-            if act_name=='Say' or act_name == 'Do':
-                self.add_to_history('You', act_name , act_arg+f'\n  why: {reason}')
-                for actor in self.context.actors:
-                    if actor != self: # everyone else sees/hears your act!
-                        #print(f'adding to {actor.name} history: {act_arg}')
-                        actor.add_to_history(self.name, '' , act_arg)
-                # target has special opportunity to respond - tbd
-                #if target is not None:
-                #    #print(f'adding to {target.name} sense_input: {act_arg}')
-                #    target.sense_input = '\n'+self.name+' '+act_name+': '+act_arg
-                #else:
+            self_verb = 'hear' if act_name == 'Say' else 'see'
+            
+            self.add_to_history('You', act_name, act_arg+f'\n  why: {reason}')
+
+            if source != 'dialog': 
+                self.active_task = source # dialog is peripheral to action
+
+            #others see or hear your act
+            visible_arg = '' if act_name == 'Think' else act_arg
+            for actor in self.context.actors:
+                if actor != self:
+                    actor.add_to_history('You', self_verb, f'{self.name} {act_name} {visible_arg}')
+
+            #self.show goes in main UI window
+            if source != 'dialog':
+                self.show += '\n'+self.name+' '+verb + ": "+ visible_arg
+
+            if act_name == 'Say':
                 for actor in self.context.actors:
                     if actor != self:
-                        #print(f'adding to {actor.name} sense_input: {act_arg}')
-                        actor.sense_input = self.name+' says '+act_arg+'\n'
-                        if act_name == 'Say':
-                            print(f'telling {actor.name} {act_arg}')
-                            actor.tell(self, act_arg, source)
-                                
-                #self.show goes in actor 'value' pane
-                self.show = '\n'+self.name+' '+verb + ": "+act_arg
-                if act_name =='Do':
-                    #can we link back to task?
-                    result = self.context.do(self, act_arg)
-                    self.show += '\n  '+result # main window
-                    self.add_to_history('You', 'observe', result)
-                    print(f'{self.name} setting act_result to {result}')
-                    self.act_result = result
-                    if target is not None: # this is wrong, world should update who sees do
-                        target.sense_input += '\n'+result
+                        # create other actor response to say
+                        print(f'telling {actor.name} {act_arg}')
+                        actor.tell(self, act_arg, source)
+
+            # if you acted in the world, ask environment for consequences of act
+            # should others know about it?
+            if act_name =='Do':
+                result = self.context.do(self, act_arg)
+                self.show += '\n  '+result # main window
+                self.add_to_history('You', 'observe', result)
+                print(f'{self.name} setting act_result to {result}')
+                self.act_result = result
+                if target is not None: # targets of Do are tbd
+                    target.sense_input += '\n'+result
+
+            # update thought
+            if act_name == 'Think':
+                self.thought = act_arg+'\n ... '+self.reason
             else:
-                self.show = 'Seems to be thinking ...'
-                text = str(act_arg)
-                self.add_to_history('You', 'think', text+'\n  '+reason)
-                self.show = '\n'+self.name+': Thinking'
-                for actor in self.context.actors:
-                    if actor != self: # everyone else sees/hears your act!
-                        actor.add_to_history('You', 'see', f'{self.name} thinking')
+                self.thought = act_arg[:42]+' ...\n ... '+self.reason
+            
             self.previous_action = act_name
 
             #if random.randint(1,3) == 1: # not too often, makes action to jumpy
@@ -339,10 +355,10 @@ End your response with:
     def get_task_last_act(self, term):
         task = self.get_task(term)
         if task == None:
-            print(f'GET_TASK_LAST_ACT {self.name} no match found: term {term}')
+            #print(f'GET_TASK_LAST_ACT {self.name} no match found: term {term}')
             return 'None'
         else:
-            print(f'GET_TASK_LAST_ACT match found {self.name} term {term} task {task}\n  last_act:{self.last_acts[task]}\n')
+            #print(f'GET_TASK_LAST_ACT match found {self.name} term {term} task {task}\n  last_act:{self.last_acts[task]}\n')
             return self.last_acts[task]
 
     def make_task_name(self, reason):
@@ -808,7 +824,7 @@ END
         ins = '\n'.join(self.intentions)
         print(f'Intentions\n{ins}')
 
-    def tell(self, actor, message, source='dialog'):
+    def tell(self, from_actor, message, source='dialog'):
         self.dialog_length += 1
         if self.dialog_length > 3:
             self.dialog_length = 0;
@@ -824,9 +840,9 @@ END
                         actor.intentions.remove(intention)
             return
 
-        print(f'{self.name} tell from {actor.name}, {message}')
-        actor.sense_input += self.name + ' says '+message
-        #question, formulate response
+        print(f'{self.name} tell from {from_actor.name}, {message}')
+        from_actor.show += f'\n{from_actor.name} says {message}'
+        #generate response intention
         prompt=[SystemMessage(content="""You are {{$character}}.
 Generate a response to the input below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
@@ -878,7 +894,8 @@ END
         last_act = ''
         if source in self.last_acts:
             last_act=self.last_acts[source]
-        answer_xml = self.llm.ask({'character':self.character, 'statement':message, "situation": self.context.current_state,
+        answer_xml = self.llm.ask({'character':self.character, 'statement':f'{from_actor.name} says {message}',
+                                   "situation": self.context.current_state,
                                    "physState":self.physical_state, "memory":self.memory, 
                                    'history':'\n'.join(self.history), 'last_act':str(last_act) 
                                    }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
@@ -1056,11 +1073,6 @@ END
             self.act_name = act_name.strip()
         act_arg = find('<Act>', intention)
         self.reason = find('<Reason>', intention)
-        if act_name =='Think':
-            self.thought = act_arg+'\n ... '+self.reason
-        else:
-            self.thought = act_arg[:42]+' ...\n ... '+self.reason
-            
         print(f'{self.name} choose {intention}')
         refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
         task_name = find('<Source>', intention)
@@ -1085,11 +1097,6 @@ END
             task_xml = self.find_or_make_task_xml(task_name, self.reason)
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
             self.last_acts[task_name]= act_arg
-            if task_name != 'dialog' and act_name == 'Do':
-                self.active_task = task_name
-                for actor in self.context.actors:
-                    if actor != self:
-                        actor.tell(self, f"I'm going to {task_name}, {act_arg}.")
         if act_name == 'Think':
             task = find('<Reason>', intention)
             task_name = self.make_task_name(self.reason)

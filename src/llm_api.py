@@ -102,7 +102,7 @@ class LLM():
             return response.content.decode('utf-8')
             # assume tabby or other open-ai like return
         else:
-            raise Error(response)
+            raise Exception(response)
 
     def ask(self, input, prompt_msgs, client=None, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False):
 
