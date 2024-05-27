@@ -5,7 +5,7 @@
 ### Newest: 
 5/27/2024 
 - World updates now show in main dialog so they aren't such a surprise.
-- #Talk to the characters!# When in step mode click 'Inject' and enter 'Character-name, question',
+- **Talk to the characters!** When in step mode click 'Inject' and enter 'Character-name, question',
     e.g. Samantha, do you think it is a coincidence that you and Joe are here together? For now, all characters hear your response, but they know you aren't talking to them. 
 
 ![Play screenshot](images/lost.jpg)
