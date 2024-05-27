@@ -2,7 +2,8 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### Newest: 5/27/2024 - BTW, if a character is suddenly interacting with an unexpected person or object, check 'World' in the upper right - the world evolves too, and unexpected things can happen!
+### Newest: 
+5/27/2024 - BTW, if a character is suddenly interacting with an unexpected person or object, check 'World' in the upper right - the world evolves too, and unexpected things can happen!
 
 ![Play screenshot](images/lost.jpg)
 
