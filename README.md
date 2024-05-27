@@ -130,17 +130,23 @@ worldsim.main(W)
 This will get better, but for now:
 - clone repo
 - pbly venv/conda is a good idea.
+- you will need lots of stuff. pyqt5, Transformers, pytorch, exllamav2 (to use the exllamav2 server), stabilityai/sdxl-turbo, etc etc etc.
+    but you probably know the drill
+    unless you've never run an OSS llm locally outside wrappers like ollama or gui's like tabby or ...,
+    in which case you pbly shouldn't try this till I package it.
 - in utils, run exl_server.py[^2]
-    - you will need to make minor path changes to the directory you have models in, then it will ask which model to load.
-    - you will need exllamav2 and transformers installed (uses transformers to run chat templates)
+    - you will need to make minor changes in the exl_server code to set your local model dir path.
+    - it will ask which model to load.
+    - you will need exllamav2 and transformers installed (code uses transformers tokenizer to run chat templates)
 - in utils, run tti_serve.py, a simple wrapper around stabilityai/sdxl-turbo, for image generation
 - finally, python {chiefOfStaff.py, lost.py, myscenario.py, ...} from <localrepo>/src directory[^3]. 
 
 ## Coming Soon
-I'm only 3 days into this project. Immeadiate projects:
-- ~~Fully async UI~~
-- ~~Display character 'memory' on roll-over of image~~
-- Flesh out action model (carry multiple intentions, fuller model of mapping intention to action)
+I'm less than 2 weeks into this project. Immeadiate projects:
+- better management of task 'stickiness'
+- better awareness of / adaptation to other characters words and acts
+- longer term awareness of important environment events
+- character development?
 - ...? I realize gamers got here long before me. Skill acquisition, inventory, better location modeling, ... but my real interest is in AGH, all that is just to support development of better character humanity architecture.
 - config file.
 Ideas / contributions (via PRs?) most welcome.
