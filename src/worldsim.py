@@ -3,12 +3,12 @@ import traceback
 import threading
 from queue import Queue
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog
 from PyQt5.QtCore import QTimer, pyqtSlot, QSize
 import PyQt5.QtGui as QtGui
 from PyQt5.QtGui import QPixmap, QImage, QFont, QTextCursor
 import numpy as np
-import agh
+import agh, human
 import llm_api
 
 import sys
@@ -18,6 +18,9 @@ from PyQt5.QtCore import Qt, QEvent
 
 IMAGEGENERATOR = 'tti_serve'
 UPDATE_LOCK = threading.Lock()
+APP = None # pyQt5 app
+main_window = None
+WATCHER = None # the person watching, in-world representative created on the fly from Inject
 
 def add_text_ns(widget, text):
     """add text to a TextEdit without losing scroll location"""
@@ -80,6 +83,34 @@ active_qthreads = 0 # whenever this is zero we will step if RUN is True
 RUN = False
 STEP_CTR=0
 
+class InputWidget(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.user_input = None
+        self.setWindowTitle("User Input")
+        self.setGeometry(100, 100, 300, 150)
+
+        layout = QVBoxLayout()
+
+        self.label = QLabel("Character name, message:")
+        layout.addWidget(self.label)
+
+        self.input_field = QLineEdit()
+        layout.addWidget(self.input_field)
+
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.clicked.connect(self.submit_input)
+        layout.addWidget(self.submit_button)
+
+        self.setLayout(layout)
+
+    def submit_input(self):
+        self.user_input = self.input_field.text()
+        self.accept()
+
+    def get_user_input(self):
+        return self.user_input
+    
 class BackgroundSense(QThread):
     taskCompleted = pyqtSignal()
     def __init__(self, entity):
@@ -234,8 +265,11 @@ class CustomWidget(QWidget):
             self.ui.display(self.entity.show)
             self.entity.show='' # need to not erase till image update!
         else:
-            self.thoughts.clear()
+            self.thoughts.insertPlainText('\n------time passes-----\n')
             self.thoughts.insertPlainText(str(self.entity.current_state))
+            if self.entity.show is not None and len(self.entity.show) > 0:
+                self.ui.display(self.entity.show)
+                self.entity.show=''
             for entity in self.entity.ui.actors:
                 if entity.name != 'World' and type(entity) != agh.Context:
                     entity.widget.update_entity_state_display()
@@ -373,6 +407,10 @@ class MainWindow(QMainWindow):
         self.pause_button.clicked.connect(self.pause)
         right_panel.addWidget(self.pause_button)
 
+        self.inject_button = QPushButton("Inject")
+        self.inject_button.clicked.connect(self.inject)
+        right_panel.addWidget(self.inject_button)
+
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh)
         right_panel.addWidget(self.refresh_button)
@@ -437,6 +475,16 @@ class MainWindow(QMainWindow):
         global RUN
         RUN = False
         
+
+    def inject(self):
+        global APP, WATCHER, main_window
+        if WATCHER is None:
+            WATCHER = human.Human('Watcher', main_window)
+        input_widget = InputWidget()
+        if input_widget.exec_() == QDialog.Accepted:
+            user_input = input_widget.get_user_input()
+            WATCHER.inject(user_input)
+
     def refresh(self):
         for widget in self.custom_widgets:
             if type(widget.entity) != agh.Context:
@@ -462,9 +510,10 @@ class MainWindow(QMainWindow):
                     widget.thoughts.insertPlainText(str(widget.entity.current_state))
 
 def main(context, server='local'):
-    app = QApplication(sys.argv)
+    global APP, main_window
+    APP = QApplication(sys.argv)
     main_window = MainWindow(context, server=server)
-    sys.exit(app.exec_())
+    sys.exit(APP.exec_())
 
 if __name__ == '__main__':
     main()
