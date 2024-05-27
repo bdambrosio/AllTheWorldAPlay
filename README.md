@@ -41,42 +41,89 @@ I've only put two days into this so far.
 
 ## Example script (simple Lost in the wild scenario):
 
+Not as bad as it looks, lots of comments. :)
 ```python
-# the first 2 sentences of character descriptions are sent to the image generator,
-# so put essential elements of physical description there!
-# Note - formatting for easy readme, you don't need to line-break!
-S = agh.Character("Samantha", """You are a pretty young Sicilian woman.
-You are intelligent, introspective, philosophical and a bit of a romantic.
-You love the outdoors and hiking, and are comfortable on long treks.
-You are also very informal, chatty, and a bit playful/flirty when relaxed.""")
+import worldsim
+import agh
+import llm_api
+# the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario. 
 
-# Optional - you can initialize character physical state.
-# new format! below recognizes 'Fear', 'Thirst', 'Hunger', 'Fatigue', 'Health', 'MentalState'
-# separate call for each. Keep values short and without punctuation
-S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
+# Create characters
+# I like looking at pretty women. pbly because I'm male hetero oriented.
+# If that offends, please change to suit your fancy.
+# I find it disorienting for characters to change enthicity every time they are rendered, so I nail that down here.
+# I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
 
-# Optional - initialize character thought process!
-# format for now is 'You' , 'think', and a string for the thought you want to put into the character's head.
-# again, no need for line breaks, I just put them in for readme
-S.add_to_history('You', 'think', "This is very very strange.
-Where am i? I'm near panic. Who is this guy?
-How did I get here?""")
+S = agh.Agh("Samantha", """You are a pretty young woman of Sicilian descent. 
+You love the outdoors and hiking.
+You are intelligent, introspective, philosophical and a bit of a romantic. 
+You are very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed. 
+You are comfortable on long treks, and are unafraid of hard work. 
+You are suspicious by nature, and wary of strangers. 
+Your name is Samanatha""")
 
-... see lost.py for Joe's character...
+# Drives are what cause a character to create tasks.
+# Below is the default an agh inherits if you don't override, as we do below.
+# basic Maslow (more or less).
+# As usual, caveat, check agh.py for latest default!
+# - immediate physiological needs: survival, water, food, clothing, shelter, rest.  
+# - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
+# - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
+# - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 
-# first sentence of context is part of character description for image generation,
-# should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
-W = agh.Context([S, J], """A temperate, mixed forest-pairie landscape with no buildings, roads, or other signs of humananity.
-It is a early morning on what seems like it will be a warm, sunny day.""")
+# Overriding for this scenario, otherwise all they do is hunt for water, berries, and grubs
+# Rows are in priority order, most important first. Have fun.
+# note this is NOT NECESSARY to specify if you don't want to change anything.
 
-# Not everyone can afford to run image-gen locally, so pick one.
-# dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random).
-# And, of course, you need an openai account: set OS.env OPENAI_API_KEY 
-#worldsim.IMAGEGENERATOR = 'dall-e-2'
+S.drives = [
+    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.", 
+    "finding a way out of the forest.",
+    "solving the mystery of how she ended up in the forest with no memory.",
+    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    "immediate physiological needs: survival, shelter, water, food, rest."
+]
+
+# Don't need this in general, but you can use it to set character's initial tone.
+# Be careful untill you get a sense of how characters use thoughts.
+# I recommend you don't try anything that doesn't start with 'You think ' unless you want to dig into code.
+
+S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
+
+#
+## Now Joe, the other character in this 'survivor' scenario
+#
+
+J = agh.Agh("Joe", """You are a young male of Sicilian descent, intelligent and self-sufficient. 
+You are informal and somewhat impulsive. 
+You are strong, and think you love the outdoors, but are basically a nerd.
+You are socially awkward, especially around strangers. Your name is Joe.""")
+
+J.drives = S.drives
+
+J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
+# add a romantic thread. Doesn't accomplish much. One of my test drivers of agh, actually.
+J.add_to_history("You think Whoever she is, she is pretty!")
+
+
+# Now world initialization
+# first sentence of context is part of character description for image generation.
+# It should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
+
+W = agh.Context([S, J],
+                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
+""")
+
+# Image server defaults to local homebrew. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random).
+# Of course, you need an openai account for dall-e-2. PRs for better options encouraged.
+#  set OS.env OPENAI_API_KEY 
+#  worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
-# and finally, start the scenario!
-worldsim.main(context)
+worldsim.main(W)
+
+#worldsim.main(W, server='Claude') # yup, Claude is supported. But RUN LOCAL OSS if you can!
+# alternatives include utils/exl_server (exllamav2), hf_server (HF transformers wrapper), llama.cpp (almost working)
+#worldsim.main(W, server='llama.cpp')
 ```
 
 ## Installation
