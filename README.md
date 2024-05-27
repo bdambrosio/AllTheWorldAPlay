@@ -2,11 +2,12 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### Newest: 5/26/2004 - dialog / action synchrony much improved. Definitely worth a pull! Also, hf_server and Anthropic client available if you don't like exl_server. 
+### Newest: 5/27/2024 - Hopefully end of this round. ATWAP is slower, my apologies, but reworked drives/tasks/intentions structure to better integrate with tell/dialog structure. I *think* flow is better now. Note drives are super important now, you pbly need to customize them for any scenario. Also note change in format from string to array of strings. Be patient on startup, lots of character initialization to do. Oh, should work with more models where ninha used to complain about user/assistant alternation (e.g., Mixtral)
 
 ![Play screenshot](images/Play.jpg)
 
--  5/21/2024 - overhaul of priorities/intentions/actions. Not all there yet.
+- 5/26/2004 - dialog / action synchrony much improved. Definitely worth a pull! Also, hf_server and Anthropic client available if you don't like exl_server.
+- 5/21/2024 - overhaul of priorities/intentions/actions. Not all there yet.
 - 5/20/2024 - Well, sorry. One last. Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
 - 5/20/2024 - Improved robustness for smaller LLMs. Works great w 8B models now.
 - 5/20/2024 - Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
