@@ -3,10 +3,13 @@
 ## A simple toy to test the Humanity of your LLM
 
 ### Newest: 
-5/27/2024 - BTW, if a character is suddenly interacting with an unexpected person or object, check 'World' in the upper right - the world evolves too, and unexpected things can happen!
+5/27/2024 
+- World updates now show in main dialog so they aren't such a surprise.
+- #Talk to the characters!# When in step mode click 'Inject' and enter 'Character-name, question',
+    e.g. Samantha, do you think it is a coincidence that you and Joe are here together? For now, all characters hear your response, but they know you aren't talking to them. 
 
 ![Play screenshot](images/lost.jpg)
-
+- 5/27/2024 - BTW, if a character is suddenly interacting with an unexpected person or object, check 'World' in the upper right - the world evolves too, and unexpected things can happen!
 - 5/27/2024 - Release 1.2. And miles to go before I sleep. Nonetheless, a good checkpoint.
 - 5/27/2024 - Hopefully end of this round. ATWAP is slower, my apologies, but reworked drives/tasks/intentions structure to better integrate with tell/dialog structure. I *think* flow is better now. Note drives are super important now, you pbly need to customize them for any scenario. Also note change in format from string to array of strings. Be patient on startup, lots of character initialization to do. Oh, should work with more models where ninha used to complain about user/assistant alternation (e.g., Mixtral)
 - 5/26/2004 - dialog / action synchrony much improved. Definitely worth a pull! Also, hf_server and Anthropic client available if you don't like exl_server.
