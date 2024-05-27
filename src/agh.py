@@ -82,7 +82,7 @@ class Context ():
         return filepath
         
     def do(self, actor, action):
-        prompt=[SystemMessage(content="""You are simulating a dynamic world. 
+        prompt=[UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
 
 <Action>
@@ -119,7 +119,7 @@ End your reponse with:
                                 "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=300)
 
         print(f' Context Do consequences:\n {consequences}')
-        prompt=[SystemMessage(content="""Update the following state description with the following action results.
+        prompt=[UserMessage(content="""Update the following state description with the following action results.
 Limit your changes to the consequences for elements in the existing state or new elements added to the state.
 Most important are those consequences that might activate or inactive tasks or intentions by actors.
 
@@ -189,7 +189,7 @@ Joe finds a sharp object that can be used as a tool.
         else:
             event = ""
 
-        prompt = [SystemMessage(content="""You are a dynamic world. Your task is to update your state description. 
+        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update your state description. 
 Include day/night cycles and weather patterns. 
 Update location and other physical environment characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical environment.
@@ -239,7 +239,7 @@ class Character():
         self.context=None
         self.priorities = [''] # will be displayed by main thread at top in character intentions text widget
         self.show='' # to be displayed by main thread in UI public (main) text widget
-        self.physical_state = "Fear: Low, Thirst: Low, Hunger: Low, Fatigue: Low, Illness: Low, MentalState: alert"
+        self.state = {}
         self.intentions = []
         self.previous_action = ''
         self.reason='' # reason for action
@@ -325,27 +325,102 @@ class Agh(Character):
         super().__init__(name, character_description)
         self.previous_action = ''
         self.sense_input = ''
-        self.drives = """
- - immediate physiological needs: survival, water, food, clothing, shelter, rest.  
- - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
- - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
- - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
-"""
+        self.drives = [
+            "immediate physiological needs: survival, water, food, clothing, shelter, rest.",
+            "safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events.",
+            "assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance).",
+            "love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance."
+            ]
+
         self.act_result = ''
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.dialog_length = 0 # stop dialogs in tell after a few turns
+
+
+    def generate_state(self):
+        """ generate a state to track, derived from basic drives """
+        self.drive_terms = []
+        prompt=[UserMessage(content="""A basic Drive is provided below. 
+Your task is to:
+- create a one to three word term that concisely designates this drive, and a state assessment given the initial situation, your character, and recent history.
+- create a concise, one to four word, assessment for this drive given the initial situation, your character, and recent history. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
+
+<Drive>
+{{$drive}}
+</Drive>
+
+<Situation>
+{{$situation}}
+</Situation>
+
+<Character>
+{{$character}}
+</Character>
+
+<History>
+{{$history}}
+</History>
+
+Respond using this XML format:
+
+<Drive> <Term>term designating the above drive</Term> <Assessment>intial value based on character and initial situation</Assessment> </Drive>
+
+The term must contain at most three words.
+Respond ONLY with the above XML
+Do on include any introductory, explanatory, or discursive text.
+End your response with:
+<END>
+"""
+                            )]
+        self.state = {}
+        for drive in self.drives:
+            print(f'{self.name} generating state for drive: {drive}')
+            response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
+                                     "character":self.character, "history":self.history},
+                                    prompt, temp=0.3, stops=['<END>'], max_tokens=60)
+            term = find('<Term>', response)
+            assessment = find('<Assessment>', response)
+            # these will be used for remainder of scenario
+            self.state[term] ={"drive":drive, "state": assessment}
+        print(f'{self.name}initial state {self.state}')
         
+    def map_state(self):
+        """ map state for llm input """
+        mapped = []
+        for key, item in self.state.items():
+            dscp = item['drive']
+            value = item['state']
+            mapped.append(f"- Need: '{dscp}':\n State: '{value}'")
+        return '\n'.join(mapped)
+
+    def update_state(self, state_xml):
+        """ update state from xml """
+        for key, item in self.state.items():
+            update = find(f'<{key}>', state_xml)
+            if update != None:
+                item["state"] = update
+
+    def make_state_template(self):
+        """ map state for llm input """
+        mapped = []
+        for key, item in self.state.items():
+            dscp = item['drive']
+            value = 'updated state assessment'
+            mapped.append(f'<{key}>{value}</{key}>')
+        return '\n'.join(mapped)
+
     def initialize(self):
         """called from worldsim once everything is set up"""
+        self.generate_state()
         self.update_priorities()
 
     def synonym_check(self, term, candidate):
         """ except for new tasks, we'll always have correct task_name, and new tasks are presumably new"""
         if term == candidate: return True
         else: return False
-        instruction=[SystemMessage(content="""Your task is to decide if Text1 and Text2 designate the same task.
+        instruction=[UserMessage(content="""Your task is to decide if Text1 and Text2 designate the same task.
 Reason step-by-step:
  - Does phrase Text2 have the same meaning as Text1? That is, does it designate essentially the same task, or is one a refinement of the other?
 
@@ -410,7 +485,7 @@ End your response with:
             return self.last_acts[task]
 
     def make_task_name(self, reason):
-        instruction=[SystemMessage(content="""Generate a concise, 2-5 word task name from the motivation to act provided below.
+        instruction=[UserMessage(content="""Generate a concise, 2-5 word task name from the motivation to act provided below.
 Respond using this XML format:
 
 <Name>task-name</Name>
@@ -449,24 +524,24 @@ End your response with:
     def update_priorities(self):
         self.active_task = None
         print(f'\n{self.name} Updating priorities\n')
-        prompt = [SystemMessage(content=self.character+"""You are {{$character}}.
+        prompt = [UserMessage(content=self.character+"""You are {{$character}}.
 Your basic drives include:
 <Drives>
 {{$drives}}
 </Drives>
  
-Your task is to create a set of three short term goals given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
+Your task is to create a set of three short term goals given who you are, your Situation, your State, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
 
 <Situation>
 {{$situation}}
 </Situation>
 
-Your physical state is:
+Your state is:
 
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
+<State>
+{{$state}}
+</State>
 
 Your memories include:
 
@@ -479,17 +554,12 @@ Recent conversation has been:
 {{$history}}
 </RecentHistory)>
 
-The mapping between the above and short-term goals is complex, but follows natural behavior. For example:
-- if situation mentions cold, dark, or stormy, then the physiological need for 'shelter' would likely generate shelter-seeking goals.
-- if physicalState Fear is High, then the drive for 'safety from threats' might generate weapon, shelter, or companionship goals.
-- if RecentHistory includes thoughts of being alone or loneliness or fear, then drive for love or belonging might generate communication, friendship, intimacy, or acceptance related goals.
-- if physicalState Thirst is High, then the physiological need for water is active and would likely generate a water drink goal, if water is available in the Situation, or a water search goal otherwise.
 
-Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed above.
+Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your State, your Memory, and your recent RecentHistory as listed above.
 
 List your three most important short term goals as instantiations from: 
 
-{{$drives}}
+{{$state}}
             
 A short term goal is important when the drive it corresponds to is unmet. 
 List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
@@ -497,24 +567,27 @@ Your Text must be consistent with the Reason.
 Priorities should be as specific as possible. 
 For example, if you need sleep, say 'Sleep', not 'Physiological need'.
 Similarly, if your safety is threatened by a wolf, respond "Safety from wolf", not merely "Safety"
-limit your response to 120 words. 
+Reason statements must be concise and limited to a few keywords or at most a single terse sentence.
+limit your total response to 120 words. 
 
 Use the XML format:
 <Priorities>
-<Priority> <Text>statement of top priority</Text> <Reason>Situation element, physical state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
-<Priority> <Text>statement of second priority</Text> <Reason>Situation element, physical state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
-<Priority> <Text>statement of third priority</Text> <Reason>Situation element, physical state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
+<Priority> <Text>statement of top priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
+<Priority> <Text>statement of second priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
+<Priority> <Text>statement of third priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
 </Priorities>
 
 Respond ONLY with the above XML. Do not include any introductory, explanatory, or discursive text.
 End your response with:
 END
 """)]
+        state_map = self.map_state()
         response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
-                                 'drives':self.drives, 'memory':self.memory,
-                                'history':'\n\n'.join(self.history),
-                                "situation":self.context.current_state,
-                                "physState":self.physical_state,
+                                 'drives':'\n'.join(self.drives),
+                                 'memory':self.memory,
+                                 'history':'\n\n'.join(self.history),
+                                 "situation":self.context.current_state,
+                                 "state":state_map
                                  },
                                prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=180)
         try:
@@ -554,7 +627,7 @@ END
                 self.active_task = None
             return
 
-        prompt = [SystemMessage(content="""You are {{$character}}.
+        prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to act in response to the following perceived task:
 
 <Task>
@@ -567,11 +640,11 @@ Your current situation is:
 {{$situation}}
 </Situation>
 
-Your physical state is:
+Your state is:
 
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
+<State>
+{{$state}}
+</State>
 
 Your memories include:
 
@@ -648,11 +721,12 @@ End your response with:
                                         )]
         print(f'{self.name} act_result: {self.act_result}')
         act= None; tries=0
+        mapped_state=self.map_state()
         while act is None and tries < 2:
             response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities), 'memory':self.memory,
                                      'history':'\n\n'.join(self.history),
                                      "situation":self.context.current_state,
-                                     "physState":self.physical_state, "task":task_name, "reason":reason,
+                                     "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
                                      },
                                     prompt, temp=0.6, stops=['</Actionable>','<END>'], max_tokens=180)
@@ -673,34 +747,15 @@ End your response with:
             #ins = '\n'.join(self.intentions)
             #print(f'Intentions\n{ins}')
                                     
-    def update_physical_state(self, key, response):
-        new_state = find('<'+key+'>', response)
-        if new_state != None and len(new_state)> 0:
-            #state values can't have commas
-            new_state = new_state.replace(',',' ')
-            # Split the string by commas to get individual key-value pairs
-            parts = self.physical_state.split(', ')
-    
-            # Iterate through the parts and update the value for the given key
-            updated_parts = []
-            for part in parts:
-                if part.startswith(key + ':'):
-                    updated_parts.append(f"{key}: {new_state}")
-                else:
-                    updated_parts.append(part)
-    
-            # Join the parts back together with commas
-            self.physical_state = ', '.join(updated_parts)
-
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
-        prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
-When last updated, your physical state was:
+        prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
+When last updated, your state was:
 
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
+<State>
+{{$state}}
+</State>
 
 Your task is to update your physical state.
 3 Hours have past since you last updated your physical state.
@@ -716,25 +771,14 @@ Recent interactions not included in memory:
 {{$history}}
 </RecentHistory)>
 
-Respond with an updated physical state, using this XML format, adapted to the actual PhysicalState elements listed above:
+Respond with an updated state, using this XML format, 
 
-<PhysicalState>
-<Fear>Low, Moderate, Medium, High, Urget</Fear>
-<Thirst>Low, Moderate, Medium, High, Urgent</Thirst>
-<Hunger>Low, Moderate Medium, High, Urgent</Hunger>
-<Fatigue>Low, Moderate, Medium, High, Urgent</Fatigue>
-<Illness>Low, Moderate, Medium, High, Urgent</Illness>
-<MentalState>2-4 world describing mental state</MentalState>
-</PhysicalState>
 
 The updated physical state should reflect updates from the previous state based on passage of time, recent events in Memory, and recent history
 
-- Fear - increases with perception of threat, decreases with removal of threat.
-- Thirst - increases as time passes since last drink, increases with heat and exertion.
-- Hunger - increases as time passes since last food, increases with exertion.
-- Fatigue - increases as time passes since last rest, increases with heat and exertion.
-- Illness  - increases with injury or illness, decreases with rest and healing.
-- Mental State - one to four words on mental state, e.g. 'groggy', 'alert', 'confused and lost', etc.
+<UpdatedState>
+{{$stateTemplate}}
+</UpdatedState>
 
 Respond ONLY with the updated state.
 Do not include any introductory or peripheral text.
@@ -742,21 +786,18 @@ limit your response to 120 words at most.
 End your response with:
 END""")
                   ]
+        mapped_state = self.map_state()
+        template = self.make_state_template()
         response = self.llm.ask({'me':self.name, 'memory':self.memory,
-                                'history':'\n\n'.join(self.history),
-                                "situation":self.context.current_state,
-                                "physState":self.physical_state
+                                 'history':'\n\n'.join(self.history),
+                                 "situation":self.context.current_state,
+                                 "state":mapped_state, "template":template
                                 },
                                prompt, temp=0.2, stops=['END'], max_tokens=180)
-        self.update_physical_state('Fear', response)
-        self.update_physical_state('Thirst', response)
-        self.update_physical_state('Hunger', response)
-        self.update_physical_state('Fatigue', response)
-        self.update_physical_state('Illness', response)
-        self.update_physical_state('MentalState', response)
+        self.update_state(response)
 
         ## update long-term dialog memory
-        prompt = [SystemMessage(content=self.character+"""Your name is {{$me}}.
+        prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
 Your task is to update your long-term memory of interactions with other actors.
 Your current situation is:
 
@@ -801,7 +842,7 @@ END""")
         # determine if text implies an intention to act, and create a formatted intention if so
         print(f'Update intentions from say or think\n {text}\n{reason}')
 
-        prompt=[SystemMessage(content="""Your task is to analyze the following text.
+        prompt=[UserMessage(content="""Your task is to analyze the following text.
 
 <Text>
 {{$text}}
@@ -888,24 +929,29 @@ END
                     if find('<Source>', intention) == 'dialog':
                         print(f'{actor.name} removing dialog intention')
                         actor.intentions.remove(intention)
-            return
+                return
+
+        for intention in self.intentions:
+            if find('<Source>', intention) == 'dialog':
+                print(f'{self.name} removing dialog intention')
+                actor.intentions.remove(intention)
 
         print(f'{self.name} tell received from {from_actor.name}, {message}')
-        print(f'{self.name} adding show reporting tell receipt')
+
         #generate response intention
-        prompt=[SystemMessage(content="""You are {{$character}}.
-Generate a response to the input below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
+        prompt=[UserMessage(content="""You are {{$character}}.
+Generate a response to the input below, given who you are, your Situation, your state, your Memory, and your recent RecentHistory as listed below.
 Your current situation is:
 
 <Situation>
 {{$situation}}
 </Situation>
 
-Your physical state is:
+Your state is:
 
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
+<State>
+{{$state}}
+</State>
 
 Your memories include:
 
@@ -921,7 +967,7 @@ Recent conversation has been:
 Use the following XML template in your response:
 <Answer>
 <Response>response to this statement</Response>
-<Reason>reason for this answer</Reason>
+<Reason>concise reason for this answer</Reason>
 <Unique>'True' if you have something new to say, 'False' if your response is a repeat or rephrase of previous responses</Unique>
 </Answer>
 
@@ -930,23 +976,28 @@ Your last response was:
 {{$last_act}}
 </PreviousResponse>
 
-The question is:
+The statement you are responding to is:
 <Input>
 {{$statement}}
 </Input>>
 
-Reminder: Your task is to generate an response to the statement using the above XML format.
+Reminders: 
+- Your task is to generate an response to the statement using the above XML format.
+- The response should be in keeping with your character's State.
+- The response should be continuation of history and especially your PreviousResponse, if any.
+
 Respond only with the above XML
 Do not include any additional introductory, explanatory, or discursive text. 
 End your response with:
 END
 """)]
+        mapped_state=self.map_state()
         last_act = ''
         if source in self.last_acts:
             last_act=self.last_acts[source]
         answer_xml = self.llm.ask({'character':self.character, 'statement':f'{from_actor.name} says {message}',
                                    "situation": self.context.current_state,
-                                   "physState":self.physical_state, "memory":self.memory, 
+                                   "state":mapped_state, "memory":self.memory, 
                                    'history':'\n'.join(self.history), 'last_act':str(last_act) 
                                    }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
         response = find('<response>', answer_xml)
@@ -961,7 +1012,7 @@ END
             candidate_source = find('<Source>', candidate)
             if candidate_source == source:
                 self.intentions.remove(candidate)
-        print(f'Question received {message}\n  queueing dialog response {response}')
+        print(f'XS  queueing dialog response {response}')
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
 
 
@@ -972,10 +1023,10 @@ END
                      "Say":"""Speak by responding with: '{text}', because: '{reason}'""",
 
                      "Think":"""Think about your situation, your Priorities, the Input, and RecentHistory with respect to Priorities. Use this template to report your thoughts and reason:
-<Action> <Name>Think</Name> <Arg> ..thoughts.. </Arg> <Reason> ..reason.. </Reason> </Action>
+<Action> <Name>Think</Name> <Arg> ..thoughts.. </Arg> <Reason> ..keywords or short sentence on reason.. </Reason> </Action>
 """,
-                     "Discuss":"""Reason step-by-step about discussion based on current situation, your PhysicalState, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
-<Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><reasons for bringing this up for discussion></Reason> </Action>
+                     "Discuss":"""Reason step-by-step about discussion based on current situation, your state, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
+<Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><terse reason for bringing this up for discussion></Reason> </Action>
 """}
         
 
@@ -1014,16 +1065,6 @@ END
                 llm_choices.append(all_actions["Say"].replace('{text}', act).replace('{reason}',str(reason)))
                 intention_choices.append(intention)
 
-        #if self.previous_action != 'Think' or random.randint(1,3) == 1: # you think too much
-            #    llm_choices.append(all_actions['Think'])
-            #intention_choices.append(intention)
-            #if len(llm_choices) < 3 or random.randint(1,2) == 1: # you talk too much
-            #llm_choices.append(all_actions['Discuss'])
-            #intention_choices.append(intention)
-        #if len(llm_choices) == 0:
-        #    print(f' inserting action option Think, nothing else available')
-        #    llm_choices.append(all_actions['Think'])
-        #intention_choices.append(intention)
         print()
 
         #if random.randint(1,4) == 1: # task timeout
@@ -1031,17 +1072,17 @@ END
         if len(llm_choices) == 0:
             print(f'{self.name} Oops, no available acts')
             return
-        prompt = [SystemMessage(content=self.character+"""Your current situation is:
+        prompt = [UserMessage(content=self.character+"""Your current situation is:
 
 <Situation>
 {{$situation}}
 </Situation>
 
-Your physical state is:
+Your state is:
 
-<PhysicalState>
-{{$physState}}
-</PhysicalState>
+<State>
+{{$state}}
+</State>
 
 Your memories include:
 
@@ -1082,12 +1123,12 @@ End your response with:
 END
 """
 )                 ]
-
+        mapped_state = self.map_state()
         action_choices = [f'{n} - {action}' for n,action in enumerate(llm_choices)] 
         if len(action_choices) > 1:
             response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
                                      "memory":self.memory, "situation": self.context.current_state,
-                                     "physState":self.physical_state,
+                                     "state": mapped_state,
                                      "priorities":'\n'.join([find('<Text>', task) for task in self.priorities]),
                                      "actions":'\n'.join(action_choices)
                                      }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
