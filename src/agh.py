@@ -5,7 +5,6 @@ import traceback
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import llm_api
 
-
 def findall(key,  form):
     """ find multiple occurences of an xml field in a string """
     idx = 0
@@ -226,6 +225,7 @@ END""")]
         new_situation = find('<Situation>', response)
         if new_situation is not None:
             self.current_state=new_situation
+            self.show='\n---------time passes----------\n'+new_situation
         for actor in self.actors:
             actor.forward(3) # forward three hours and update history, etc
         return response
@@ -286,7 +286,7 @@ class Character():
             # update main display
             self.show += '\n'+self.name+' '+verb + ": "+ visible_arg
 
-            if source != 'dialog': 
+            if source != 'dialog' and source != 'watcher': 
                 self.active_task = source # dialog is peripheral to action, action task selection is sticky
 
             #others see your act in the world
@@ -297,10 +297,10 @@ class Character():
             elif act_name == 'Say':
                 for actor in self.context.actors:
                     if actor != self:
+                        if source != 'watcher': # when talking to watcher, others don't hear it.
+                            actor.tell(self, act_arg, source)
                         # create other actor response to say
-                        print(f'telling {actor.name} {act_arg}')
-                        actor.add_to_history(self.show)
-                        actor.tell(self, act_arg, source)
+                        actor.add_to_history(f'You hear {self.name} say to watcher: {self.show}')
 
             # if you acted in the world, ask Context for consequences of act
             # should others know about it?
@@ -646,13 +646,11 @@ END
             # don't understand why, but all models *seem* to return priorities lowest first
             items.reverse()
             # found a better way to kick off dialog - when we assign active_task!
-            #if len(items) > 0:
-            #    # old intentions need to go away, except for pending answers!
-            #    for intention in self.intentions:
-            #        source = find('<Source>', intention)
-            #        if source != 'dialog':
-            #            self.intentions.remove(intention)
-            self.intentions=[]
+            for intention in self.intentions:
+                intention_source = find('<Source>', intention)
+                if intention_source != 'watcher':
+                    #watcher responses never die
+                    self.intentions.remove(intention)
             for n, task in enumerate(items):
                 self.priorities.append(task)
                 # next will be done in sense so we have current context!
@@ -939,7 +937,7 @@ END
         for intention in self.intentions:
             if find('<Source>', intention) == 'dialog':
                 print(f'{self.name} removing dialog intention')
-                actor.intentions.remove(intention)
+                self.intentions.remove(intention)
 
         print(f'{self.name} tell received from {from_actor.name}, {message}')
 
@@ -1039,7 +1037,7 @@ END
         dialog_option = False
         for intention in self.intentions:
             source = find('<Source>', intention)
-            if source == 'dialog':
+            if source == 'dialog' or source =='watcher':
                 mode = find('<Mode>', intention)
                 if mode == 'Say':
                     print('Found dialog say, use it!')
@@ -1060,7 +1058,7 @@ END
             source = find('<Source>', intention)
             # while there is an active task skip intentions from other tasks
             # probably should flag urgent tasks somehow.
-            if dialog_option and source != 'dialog':
+            if dialog_option and source != 'dialog' and source != 'watcher':
                 print(f'  skipping action option {source}')
                 continue
             if self.active_task is not None and source != 'dialog' and source is not None and source != self.active_task:
@@ -1211,6 +1209,6 @@ END
             target = self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0]
         #this will effect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
-        if refresh_task is not None and task_name != 'dialog':
+        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
             print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention

@@ -1,4 +1,4 @@
-import os
+import os, re
 import time
 import random
 import traceback
@@ -8,9 +8,11 @@ import llm_api
 import agh
 
 class Human (agh.Character):
-    def __init__ (self, name, character_description):
+    def __init__ (self, name, ui, character_description=''):
         super().__init__(name, character_description)
-
+        self.ui = ui
+        self.context = ui.context
+        
     def initialize(self):
         """called from worldsim once everything is set up"""
 
@@ -27,8 +29,24 @@ class Human (agh.Character):
     
     def tell(self, actor, message, source='dialog'):
         print(f"{actor.name} says: {message}")
-        self.senses()
-        
+
+    def inject(self, message):
+        split_chars = ',;:\n'
+        pattern = f"[{re.escape(split_chars)}]"
+        print(f'Human inject called w msg {message}')
+        result = re.split(pattern, message)
+        parts = [x for x in result if x]
+        if parts is None or len(parts) < 2:
+            return
+        if len(parts[0].strip()) >0:
+            who = parts[0].strip()
+        else:
+            who = parts[1].strip()
+        print(f'Inject target {who}')
+        for actor in self.context.actors:
+            if actor.name == who.strip():
+                actor.tell(self, message[len(who):], source='watcher')
+    
     def update_intentions_wrt_say_think(self, source, text, reason):
         # determine if text implies an intention to act, and create a formatted intention if so
         print(f'Update intentions from say or think\n {text}\n{reason}')
@@ -36,22 +54,21 @@ class Human (agh.Character):
 
     def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}')
-        target = None
         try:
-            parts = []
-            while len(parts) != 2:
-                text = input('Enter act_name; act_description:\n')
-                parts = text.split(';')
-                
-            act_name = parts[0].strip().capitalize()
-            act_dscp = parts[1].strip()
-            self.reason = ''
-            task_name='dialog'
+            if self.intentions is None or len(self.intentions) ==0:
+                return
+            intention = self.intentions[0]
+            act_name = find('<Mode>', intention)
+            act_dscp = find('<Act>', intention)
+            act_reason = find('<Reason>', intention)
+            task_name = find('<Source>', intention)
             if act_name=='Say' or act_name=='Do':
                 self.last_acts[task_name]= act_dscp
-                self.active_task = task_name
+                if task_name != 'dialog' and task_name != 'inject':
+                    self.active_task = task_name
+                self.reason = act_reason
                 #this will effect selected act and determine consequences
-            self.acts(target, act_name, act_dscp, self.reason, task_name)
+            self.acts(target, act_name, act_dscp, reason, task_name)
 
         except Exception as e:
             traceback.print_exc()
