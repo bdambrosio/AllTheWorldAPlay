@@ -267,8 +267,10 @@ class CustomWidget(QWidget):
         self.active_task.setText(self.entity.active_task)
         self.active_task.adjustSize()
         
+        print(f'updating entity state display')
         self.state.setText(map_state(self.entity.state))
         self.state.adjustSize()
+
         self.priorities.clear()
         self.priorities.insertHtml(self.format_tasks())
         self.intentions.clear()

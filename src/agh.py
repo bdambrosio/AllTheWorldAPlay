@@ -102,7 +102,7 @@ given {{$name}} basic drives are:
 </Drives> 
 
 Respond with the observable result.
-Respond ONLY with the observable immediate effects on the actors and environment of the above Action. 
+Respond ONLY with the observable immediate effects on the actors and situation of the above Action. 
 Format your response as one or more simple declaractive sentences.
 Include in your response:
 - sensory inputs (e.g. {{$name}} sees / hears / feels / ... /)
@@ -131,7 +131,7 @@ Most important are those consequences that might activate or inactive tasks or i
 {{$consequences}}
 </ActionResults>
 
-Your response should be concise, and only include only an update of the physical environment.
+Your response should be concise, and only include only an update of the physical situation.
 Your state description should be dispassionate, 
 and should begin with a brief one-sentence description of the current physical space suitable for a text-to-image generator. 
 
@@ -189,18 +189,18 @@ Joe finds a sharp object that can be used as a tool.
         else:
             event = ""
 
-        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update your state description. 
+        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environmemt description. 
 Include day/night cycles and weather patterns. 
-Update location and other physical environment characteristics as indicated in the History.
-Your response should be concise, and only include only an update of the physical environment.
+Update location and other physical situation characteristics as indicated in the History.
+Your response should be concise, and only include only an update of the physical situation.
         """ + event + """
-Your state description should be dispassionate, 
+Your situation description should be dispassionate, 
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-That is, advance the environment by approximately 3 hours. The state as of 3 hours ago was:
+That is, advance the situation by approximately 3 hours. The situation as of 3 hours ago was:
 
-<PreviousState>
-{{$state}}
-</PreviousState> 
+<PreviousSituation>
+{{$situation}}
+</PreviousSituation> 
 
 In the interim, the characters in the world had the following interactions:
 
@@ -210,20 +210,20 @@ In the interim, the characters in the world had the following interactions:
 
 Respond using the following XML format:
 
-<State>
+<Situation>
 Sentence describing physical space, suitable for image generator,
 Updated State description of about 400 words
-</State>
+</Situation>
 
-Respond with an updated environment description reflecting a time passage of 3 hours and the events that have occurred.
-Include ONLY the concise updated state description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-Do NOT carry the storyline beyond three hours from PreviousState.
+Respond with an updated situation description reflecting a time passage of 3 hours and the events that have occurred.
+Include ONLY the concise updated situation description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+Do NOT carry the storyline beyond three hours from PreviousSituation.
 Limit your response to about 400 words
 End your response with:
 END""")]
             
-        response = self.llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=600)
-        new_situation = find('<State>', response)
+        response = self.llm.ask({"situation":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=600)
+        new_situation = find('<Situation>', response)
         if new_situation is not None:
             self.current_state=new_situation
         for actor in self.actors:
@@ -302,7 +302,7 @@ class Character():
                         actor.add_to_history(self.show)
                         actor.tell(self, act_arg, source)
 
-            # if you acted in the world, ask environment for consequences of act
+            # if you acted in the world, ask Context for consequences of act
             # should others know about it?
             if act_name =='Do':
                 result = self.context.do(self, act_arg)
@@ -344,8 +344,8 @@ class Agh(Character):
         self.drive_terms = []
         prompt=[UserMessage(content="""A basic Drive is provided below. 
 Your task is to:
-- create a one to three word term that concisely designates this drive, and a state assessment given the initial situation, your character, and recent history.
-- create a concise, one to four word, assessment for this drive given the initial situation, your character, and recent history. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
+- create a one to three word term that concisely designates this drive, and a state assessment given the current situation, your character, and recent history.
+- create a concise, one to four word, assessment for this drive given the current situation, your character, and recent history. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
 
 <Drive>
 {{$drive}}
@@ -365,9 +365,10 @@ Your task is to:
 
 Respond using this XML format:
 
-<Drive> <Term>term designating the above drive</Term> <Assessment>intial value based on character and initial situation</Assessment> </Drive>
+<Drive> <Term>term designating the above drive</Term> <Assessment>value based on character and initial situation</Assessment> </Drive>
 
 The term must contain at most three words.
+Assessment should be a concise statement, a keyword or at most a single concise sentence.
 Respond ONLY with the above XML
 Do on include any introductory, explanatory, or discursive text.
 End your response with:
@@ -395,11 +396,56 @@ End your response with:
             mapped.append(f"- Need: '{dscp}':\n State: '{value}'")
         return '\n'.join(mapped)
 
-    def update_state(self, state_xml):
-        """ update state from xml """
+    def update_state(self):
+        """ update state """
+        prompt = [UserMessage(content=self.character+"""{{$character}}
+When last updated, your state was:
+
+<State>
+{{$state}}
+</State>
+
+Your task is to update your physical state.
+Your current situation is:
+
+<Situation>
+{{$situation}}
+</Situation>
+
+Recent interactions not included in memory:
+
+<RecentHistory>
+{{$history}}
+</RecentHistory)>
+
+Respond with an updated state, using this XML format, 
+
+The updated physical state should reflect updates from the previous state based on passage of time, recent events in Memory, and recent history
+
+<UpdatedState>
+{{$stateTemplate}}
+</UpdatedState>
+
+Respond ONLY with the updated state.
+Do not include any introductory or peripheral text.
+limit your response to 120 words at most.
+End your response with:
+END""")
+                  ]
+        mapped_state = self.map_state()
+        template = self.make_state_template()
+        response = self.llm.ask({'character':self.character, 'memory':self.memory,
+                                 'history':'\n\n'.join(self.history),
+                                 "situation":self.context.current_state,
+                                 "state":mapped_state, "template":template
+                                },
+                               prompt, temp=0.2, stops=['END'], max_tokens=180)
+        state_xml = find('<UpdatedState>', response)
+        print(f'\n{self.name} updating state')
         for key, item in self.state.items():
             update = find(f'<{key}>', state_xml)
             if update != None:
+                print(f'  setting {key} to {update}')
                 item["state"] = update
 
     def make_state_template(self):
@@ -621,11 +667,11 @@ END
         last_act = self.get_task_last_act(task_name)
         reason = find('<Reason>', task_xml)
         # crude, needs improvement
-        if reason is not None and 'Low' in reason:
-            if self.active_task == task_name:
-                #active task is now satisfied!
-                self.active_task = None
-            return
+        #if reason is not None and 'Low' in reason:
+        #    if self.active_task == task_name:
+        #        #active task is now satisfied!
+        #        self.active_task = None
+        #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to act in response to the following perceived task:
@@ -672,7 +718,8 @@ A specific action is one which:
 - Has a clear beginning and end point
 - Can be performed or acted out by a person
 - Can be easily visualized or imagined as a film clip
-- Is either a natural follow-on action to the previous specific act (if any), given the observed result (if any), or an alternate line of action. Especially consider this second alternative when the observed result does not indicate progress on the Task. 
+- Is either a natural follow-on action to the previous specific act (if any), given the observed result (if any), or an alternate line of action. Especially consider this second alternative when the observed result does not indicate progress on the Task.
+- Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
 
 
 Respond in XML:
@@ -723,13 +770,15 @@ End your response with:
         act= None; tries=0
         mapped_state=self.map_state()
         while act is None and tries < 2:
-            response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities), 'memory':self.memory,
+            response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
+                                     'memory':self.memory,
                                      'history':'\n\n'.join(self.history),
                                      "situation":self.context.current_state,
                                      "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
                                      },
-                                    prompt, temp=0.6, stops=['</Actionable>','<END>'], max_tokens=180)
+                                    prompt, temp=0.9, top_p=1.0,
+                                    stops=['</Actionable>','<END>'], max_tokens=180)
             act = find('<SpecificAct>', response)
             mode = find('<Mode>', response)
             if mode is None:
@@ -750,51 +799,7 @@ End your response with:
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
-        prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
-When last updated, your state was:
-
-<State>
-{{$state}}
-</State>
-
-Your task is to update your physical state.
-3 Hours have past since you last updated your physical state.
-Your current situation is:
-
-<Situation>
-{{$situation}}
-</Situation>
-
-Recent interactions not included in memory:
-
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Respond with an updated state, using this XML format, 
-
-
-The updated physical state should reflect updates from the previous state based on passage of time, recent events in Memory, and recent history
-
-<UpdatedState>
-{{$stateTemplate}}
-</UpdatedState>
-
-Respond ONLY with the updated state.
-Do not include any introductory or peripheral text.
-limit your response to 120 words at most.
-End your response with:
-END""")
-                  ]
-        mapped_state = self.map_state()
-        template = self.make_state_template()
-        response = self.llm.ask({'me':self.name, 'memory':self.memory,
-                                 'history':'\n\n'.join(self.history),
-                                 "situation":self.context.current_state,
-                                 "state":mapped_state, "template":template
-                                },
-                               prompt, temp=0.2, stops=['END'], max_tokens=180)
-        self.update_state(response)
+        self.generate_state()
 
         ## update long-term dialog memory
         prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
@@ -1031,17 +1036,22 @@ END
         
 
         # do after we have all relevant updates from context and other actors
-        for n, task in enumerate(self.priorities):
-            self.actualize_task(n, task)
-        intention_choices=[]
-        llm_choices=[]
-        print(f'{self.name} selecting action options. active task is {self.active_task}')
         dialog_option = False
-        # if there is a dialog option, use it
         for intention in self.intentions:
             source = find('<Source>', intention)
             if source == 'dialog':
-                dialog_option = True
+                mode = find('<Mode>', intention)
+                if mode == 'Say':
+                    print('Found dialog say, use it!')
+                    dialog_option = True
+
+        if dialog_option != True: #don't bother generating options we won't use
+            for n, task in enumerate(self.priorities):
+                self.actualize_task(n, task)
+        intention_choices=[]
+        llm_choices=[]
+        print(f'{self.name} selecting action options. active task is {self.active_task}')
+        # if there is a dialog option, use it
         for intention in self.intentions:
             mode = find('<Mode>', intention)
             act = find('<Act>', intention)
@@ -1067,8 +1077,8 @@ END
 
         print()
 
-        #if random.randint(1,4) == 1: # task timeout
-        #    self.active_task = None
+        if random.randint(1,4) == 1: # task timeout at random to increase variety of action
+            self.active_task = None
         if len(llm_choices) == 0:
             print(f'{self.name} Oops, no available acts')
             return
