@@ -395,9 +395,6 @@ class MainWindow(QMainWindow):
 
     def display(self, r):
         add_text_ns(self.activity, r)
-        #self.text_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-        #self.text_area.insertPlainText(r)  # Insert the text at the cursor position
-        self.activity.repaint()
         #if self.tts:
         #    try:
         #        self.speech_service(decoded)
@@ -421,7 +418,7 @@ class MainWindow(QMainWindow):
         self.run_button.setEnabled(False)
         self.step_button.setEnabled(False)
         self.update_parameters()
-        self.append_text(f"\nStep {self.internal_time}\n")
+        self.display(f"\nStep {self.internal_time}\n")
 
     def step_completed(self):
         self.internal_time += 1
@@ -454,9 +451,9 @@ class MainWindow(QMainWindow):
             else:
                 if self.internal_time % 5 == 4:
                     widget.update_value(self.internal_time)
-
-    def append_text(self, text):
-        self.activity.append(text)
+                else:
+                    widget.thoughts.clear()
+                    widget.thoughts.insertPlainText(str(widget.entity.current_state))
 
 def main(context, server='local'):
     app = QApplication(sys.argv)

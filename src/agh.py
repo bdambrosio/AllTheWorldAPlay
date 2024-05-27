@@ -102,23 +102,56 @@ given {{$name}} basic drives are:
 </Drives> 
 
 Respond with the observable result.
-Respond ONLY with the observable immediate effects of the above Action. 
-Most important are those effects that relate to {{$name}}'s drives above.
+Respond ONLY with the observable immediate effects on the actors and environment of the above Action. 
 Format your response as one or more simple declaractive sentences.
 Include in your response:
 - sensory inputs (e.g. {{$name}} sees / hears / feels / ... /)
-- changes in {{$name})'s or other actor's state (e.g., {{$name}} becomes fearful / relaxes / is tired / is injured / ... /).
 - changes in {{$name}}'s possessions (e.g. {{$name}} gains berries / loses phone / ... / )
-- changes in {{$name}}'s relations with other actors (e.g., {{$name}} becomes more trusting of ... ) 
+- changes in {{$name})'s or other actor's state (e.g., {{$name}} becomes fearful / relaxes / is tired / is injured / ... /).
 Do NOT extend the scenario with any follow on actions or effects.
+Be concise!
 Do not include any Introductory, explanatory, or discursive text.
 End your reponse with:
 <END>
 """)]
         history = self.history()
-        response = self.llm.ask({"name":actor.name, "action":action, "drives":actor.drives,
-                                "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=200)
-        return response
+        consequences = self.llm.ask({"name":actor.name, "action":action, "drives":actor.drives,
+                                "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=300)
+
+        print(f' Context Do consequences:\n {consequences}')
+        prompt=[SystemMessage(content="""Update the following state description with the following action results.
+Limit your changes to the consequences for elements in the existing state or new elements added to the state.
+Most important are those consequences that might activate or inactive tasks or intentions by actors.
+
+<State>
+{{$state}}
+</State>
+
+<ActionResults>
+{{$consequences}}
+</ActionResults>
+
+Your response should be concise, and only include only an update of the physical environment.
+Your state description should be dispassionate, 
+and should begin with a brief one-sentence description of the current physical space suitable for a text-to-image generator. 
+
+<NewState>
+Sentence describing physical space, suitable for image generator,
+Updated State description of up to 300 words
+</NewState>
+
+Include ONLY the concise updated state description in your response. 
+Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+End your response with:
+<END>""")]
+
+        response = self.llm.ask({"consequences":consequences, "state":self.current_state},
+                                    prompt, temp=0.5, stops=['<END>'], max_tokens=500)
+        print(f'World action state update:\n{response}')
+        new_state = find('<NewState>', response)
+        if new_state is not None:
+            self.current_state = new_state
+        return consequences
 
     def senses (self, sense_data='', ui_task_queue=None):
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
@@ -126,11 +159,33 @@ End your reponse with:
         history = self.history()
         if random.randint(1,7) == 1:
             event = """
-Include a random event such as the malfunction of a device or bot or arrival of an email to process. 
-Examples:
-- the bot operating the vacuum cleaner unexpectedly stops moving. 
-- annie receives an email directed to her personally from an unknown agent.
-            """
+Include a event occurence consistent with the PreviousState below, such as appearance of a new object, natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
+
+===Examples===
+PreviousState:
+Apartment
+
+History:
+worry about replacement
+
+Event:
+Annie receives an email directed to her personally from an unknown agent.
+
+-----
+
+PreviousState:
+Open forest 
+
+History:
+Safety, hunger
+
+Event:
+Joe finds a sharp object that can be used as a tool.
+-----
+
+===End Examples===
+
+"""
         else:
             event = ""
 
@@ -157,17 +212,17 @@ Respond using the following XML format:
 
 <State>
 Sentence describing physical space, suitable for image generator,
-Updated State description of about 200 words
+Updated State description of about 400 words
 </State>
 
 Respond with an updated environment description reflecting a time passage of 3 hours and the events that have occurred.
 Include ONLY the concise updated state description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 Do NOT carry the storyline beyond three hours from PreviousState.
-Limit your response to about 200 words
+Limit your response to about 400 words
 End your response with:
 END""")]
             
-        response = self.llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=360)
+        response = self.llm.ask({"state":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=600)
         new_situation = find('<State>', response)
         if new_situation is not None:
             self.current_state=new_situation
@@ -195,23 +250,21 @@ class Character():
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
 
-    def add_to_history(self, role, act, message):
+    def add_to_history(self, message):
         message = message.replace('\\','')
-        self.history.append(f"{role}: {act} {message}")
-        self.history = self.history[-3:] # memory is fleeting, otherwise we get very repetitive behavior
+        self.history.append(message)
+        self.history = self.history[-5:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def greet(self):
-        talk = False
-        for actor in self.context.actors:
-            if actor != self and talk == False:
-                continue
-            elif actor == self:
-                talk = True
-                continue
-            else: # talk to first actor who will take a turn after us.
+            for actor in self.context.actors:
+                # only insert hellos for actors who will run before me.
+                if actor == self: 
+                    return
                 print(f' {self.name} greeting {actor.name}')
-                actor.tell(self, f"Hi, I'm {self.name}")
-                break
+                message = f"Hi, I'm {self.name}"
+                actor.tell(self, message)
+                actor.show += f'\n{self.name} says: {message}'
+                return
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         #
@@ -221,27 +274,32 @@ class Character():
         if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
             verb = 'says' if act_name == 'Say' else ''
             self_verb = 'hear' if act_name == 'Say' else 'see'
+            visible_arg = '' if act_name == 'Think' else act_arg
             
-            self.add_to_history('You', act_name, act_arg+f'\n  why: {reason}')
+            self.add_to_history(f"You {act_name} {act_arg} \n  why: {reason}")
+            # update thought
+            if act_name == 'Think':
+                self.thought = act_arg+'\n ... '+self.reason
+            else:
+                self.thought = act_arg[:42]+' ...\n ... '+self.reason
+
+            # update main display
+            self.show += '\n'+self.name+' '+verb + ": "+ visible_arg
 
             if source != 'dialog': 
-                self.active_task = source # dialog is peripheral to action
+                self.active_task = source # dialog is peripheral to action, action task selection is sticky
 
-            #others see or hear your act
-            visible_arg = '' if act_name == 'Think' else act_arg
-            for actor in self.context.actors:
-                if actor != self:
-                    actor.add_to_history('You', self_verb, f'{self.name} {act_name} {visible_arg}')
-
-            #self.show goes in main UI window
-            if source != 'dialog':
-                self.show += '\n'+self.name+' '+verb + ": "+ visible_arg
-
-            if act_name == 'Say':
+            #others see your act in the world
+            if act_name != 'Say': # Say impact on recipient handled by tell
+                for actor in self.context.actors:
+                    if actor != self:
+                        actor.add_to_history(self.show)
+            elif act_name == 'Say':
                 for actor in self.context.actors:
                     if actor != self:
                         # create other actor response to say
                         print(f'telling {actor.name} {act_arg}')
+                        actor.add_to_history(self.show)
                         actor.tell(self, act_arg, source)
 
             # if you acted in the world, ask environment for consequences of act
@@ -249,28 +307,18 @@ class Character():
             if act_name =='Do':
                 result = self.context.do(self, act_arg)
                 self.show += '\n  '+result # main window
-                self.add_to_history('You', 'observe', result)
+                self.add_to_history(f"You observe {result}")
                 print(f'{self.name} setting act_result to {result}')
                 self.act_result = result
                 if target is not None: # targets of Do are tbd
                     target.sense_input += '\n'+result
 
-            # update thought
-            if act_name == 'Think':
-                self.thought = act_arg+'\n ... '+self.reason
-            else:
-                self.thought = act_arg[:42]+' ...\n ... '+self.reason
-            
             self.previous_action = act_name
 
-            #if random.randint(1,3) == 1: # not too often, makes action to jumpy
-            #    self.priorities = []
-            #    self.update_priorities() # or should we do this at sense input? 
             if act_name == 'Say' or act_name == 'Think':
+                #make sure future intentions are consistent with what we just did
+                # why don't we need this for 'Do?'
                 self.update_intentions_wrt_say_think(source, act_arg, reason)
-                #ins = '\n'.join(self.intentions)
-                #print(f'Intentions\n{ins}')
-            
 
 class Agh(Character):
     def __init__ (self, name, character_description):
@@ -329,7 +377,7 @@ Simply respond 'True' or 'False'.
 End your response with:
 </END>
 """)]
-        response = self.llm.ask({"text1":term, "text2":candidate}, instruction, temp=0.3, stops=['</END>'], max_tokens=200)
+        response = self.llm.ask({"text1":term, "text2":candidate}, instruction, temp=0.3, stops=['</END>'], max_tokens=100)
         if 'true' in response.lower():
             return True
         else:
@@ -445,7 +493,8 @@ List your three most important short term goals as instantiations from:
             
 A short term goal is important when the drive it corresponds to is unmet. 
 List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
-Your priorities should be as specific as possible. 
+Your Text must be consistent with the Reason.
+Priorities should be as specific as possible. 
 For example, if you need sleep, say 'Sleep', not 'Physiological need'.
 Similarly, if your safety is threatened by a wolf, respond "Safety from wolf", not merely "Safety"
 limit your response to 120 words. 
@@ -487,7 +536,8 @@ END
             self.intentions=[]
             for n, task in enumerate(items):
                 self.priorities.append(task)
-                self.actualize_task(n, task)
+                # next will be done in sense so we have current context!
+                #self.actualize_task(n, task) 
         except Exception as e:
             traceback.print_exc()
         #print(f'\n-----Done-----\n\n\n')
@@ -666,7 +716,7 @@ Recent interactions not included in memory:
 {{$history}}
 </RecentHistory)>
 
-Respond with an updated physical state, using this XML format:
+Respond with an updated physical state, using this XML format, adapted to the actual PhysicalState elements listed above:
 
 <PhysicalState>
 <Fear>Low, Moderate, Medium, High, Urget</Fear>
@@ -821,8 +871,8 @@ END
             if candidate_source == source:
                 self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
-        ins = '\n'.join(self.intentions)
-        print(f'Intentions\n{ins}')
+        #ins = '\n'.join(self.intentions)
+        #print(f'Intentions\n{ins}')
 
     def tell(self, from_actor, message, source='dialog'):
         self.dialog_length += 1
@@ -840,8 +890,8 @@ END
                         actor.intentions.remove(intention)
             return
 
-        print(f'{self.name} tell from {from_actor.name}, {message}')
-        from_actor.show += f'\n{from_actor.name} says {message}'
+        print(f'{self.name} tell received from {from_actor.name}, {message}')
+        print(f'{self.name} adding show reporting tell receipt')
         #generate response intention
         prompt=[SystemMessage(content="""You are {{$character}}.
 Generate a response to the input below, given who you are, your Situation, your PhysicalState, your Memory, and your recent RecentHistory as listed below.
@@ -870,9 +920,9 @@ Recent conversation has been:
 
 Use the following XML template in your response:
 <Answer>
-<Unique>'True' if you have something new to say, 'False' if merely echo of previous responses</Unique>
 <Response>response to this statement</Response>
 <Reason>reason for this answer</Reason>
+<Unique>'True' if you have something new to say, 'False' if your response is a repeat or rephrase of previous responses</Unique>
 </Answer>
 
 Your last response was:
@@ -911,7 +961,7 @@ END
             candidate_source = find('<Source>', candidate)
             if candidate_source == source:
                 self.intentions.remove(candidate)
-        print(f'Question received {message}\n  response queued {response}')
+        print(f'Question received {message}\n  queueing dialog response {response}')
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
 
 
@@ -929,6 +979,9 @@ END
 """}
         
 
+        # do after we have all relevant updates from context and other actors
+        for n, task in enumerate(self.priorities):
+            self.actualize_task(n, task)
         intention_choices=[]
         llm_choices=[]
         print(f'{self.name} selecting action options. active task is {self.active_task}')
