@@ -36,7 +36,7 @@ S.drives = """
 
 S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
 S.update_physical_state('Fear', '<Fear>High</Fear>')
-S.add_to_history('You', 'think', "This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
+S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
 
 #
@@ -55,9 +55,9 @@ J.drives = """
 - assurance of future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
 """
 
-J.add_to_history("You", "think",  "Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
+J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
 # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
-J.add_to_history("You", "think",  "Whoever she is, she is pretty!")
+J.add_to_history("You think Whoever she is, she is pretty!")
 J.update_physical_state('Hunger', "<Hunger>High</Hunger>")
 J.update_physical_state('Fear', '<Fear>Medium</Fear>')
 J.update_physical_state('MentalState', "<MentalState>Surprised</MentalState>")
