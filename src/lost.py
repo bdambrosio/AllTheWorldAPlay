@@ -24,20 +24,17 @@ Your name is Samanatha""")
 # - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
 # - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 
-# changing so they don't spend so much time on water/food.
-S.drives = """
-- safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events. 
-- love and belonging, including home, acceptance, friendship, trust, intimacy.
-- immediate physiological needs: survival, water, food, clothing, shelter, rest.  
-- assurance of future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
-"""
+#Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
+S.drives = [
+    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.", 
+    "finding a way out of the forest.",
+    "solving the mystery of how she ended up in the forest with no memory.",
+    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    "immediate physiological needs: survival, shelter, water, food, rest."
+]
 # Rows are in priority order, most important first. Have fun.
 # note this is NOT NECESSARY to specify if you don't want to change anything.
-
-S.update_physical_state('MentalState', '<MentalState>groggy and confused</MentalState>')
-S.update_physical_state('Fear', '<Fear>High</Fear>')
 S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
-
 
 #
 ## Now Joe, the other character in this 'survivor' scenario
@@ -48,19 +45,11 @@ You are informal and somewhat impulsive.
 You are strong, and think you love the outdoors, but are basically a nerd.
 You are socially awkward, especially around strangers. Your name is Joe.""")
 
-J.drives = """
-- safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events. 
-- love and belonging, including home, acceptance, friendship, trust, intimacy.
-- immediate physiological needs: survival, water, food, clothing, shelter, rest.  
-- assurance of future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
-"""
+J.drives = S.drives
 
 J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
 # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
 J.add_to_history("You think Whoever she is, she is pretty!")
-J.update_physical_state('Hunger', "<Hunger>High</Hunger>")
-J.update_physical_state('Fear', '<Fear>Medium</Fear>')
-J.update_physical_state('MentalState', "<MentalState>Surprised</MentalState>")
 
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.

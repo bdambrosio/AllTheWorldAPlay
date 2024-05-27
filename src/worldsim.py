@@ -26,6 +26,9 @@ def add_text_ns(widget, text):
     widget.insertPlainText(text)  # Insert the text at the cursor position   
     widget.verticalScrollBar().setValue(scroll_position)  # Restore the scroll position
 
+def map_state(state):
+    mapped_state = [f"{key}:  {item['state']}" for key, item in state.items()]
+    return ', '.join(mapped_state)
 
 class HoverWidget(QWidget):
     def __init__(self, entity):
@@ -122,11 +125,11 @@ class CustomWidget(QWidget):
             self.active_task.setWordWrap(True)
             self.active_task.adjustSize()
             self.top_bar.addWidget(self.active_task)
-            self.physical_state = WrappingLabel(self.entity.physical_state, self)
-            self.physical_state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            self.physical_state.setWordWrap(True)
-            self.physical_state.adjustSize()
-            self.top_bar.addWidget(self.physical_state)
+            self.state = WrappingLabel(map_state(self.entity.state), self)
+            self.state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.state.setWordWrap(True)
+            self.state.adjustSize()
+            self.top_bar.addWidget(self.state)
             self.top_bar.setSpacing(5)  # Add this line
             self.top_bar.addStretch()  # Add this line
             layout.addLayout(self.top_bar)
@@ -263,8 +266,9 @@ class CustomWidget(QWidget):
     def update_entity_state_display(self):
         self.active_task.setText(self.entity.active_task)
         self.active_task.adjustSize()
-        self.physical_state.setText(self.entity.physical_state)
-        self.physical_state.adjustSize()
+        
+        self.state.setText(map_state(self.entity.state))
+        self.state.adjustSize()
         self.priorities.clear()
         self.priorities.insertHtml(self.format_tasks())
         self.intentions.clear()
