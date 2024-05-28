@@ -1061,10 +1061,11 @@ END
             # while there is an active task skip intentions from other tasks
             # probably should flag urgent tasks somehow.
             if dialog_option and source != 'dialog' and source != 'watcher':
-                print(f'  skipping action option {source}')
+                print(f'  dialog option true, skipping action option {source}')
                 continue
-            if self.active_task is not None and source != 'dialog' and source is not None and source != self.active_task:
-                print(f'  skipping action option {source}')
+            if self.active_task is not None and source != 'dialog' and source != 'watcher'\
+               and source is not None and source != self.active_task:
+                print(f'  dialog mode, skipping action option {source}')
                 continue
             print(f' inserting action option {source}, {act[:48]}')
             if mode == 'Do':# and random.randint(1,3)==1: # too many action choices, just pick a couple for deliberation
