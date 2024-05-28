@@ -919,23 +919,25 @@ END
         #print(f'Intentions\n{ins}')
 
     def tell(self, from_actor, message, source='dialog'):
-        self.dialog_length += 1
-        if self.dialog_length > 3:
-            self.dialog_length = 0;
-            # clear all actor pending dialog tasks and intentions:
-            for actor in self.context.actors:
-                for priority in actor.priorities:
-                    if find('<Text>', priority) == 'dialog':
-                        print(f'{actor.name} removing dialog priority')
-                        actor.priorities.remove(priority)
-                for intention in actor.intentions:
-                    if find('<Source>', intention) == 'dialog':
-                        print(f'{actor.name} removing dialog intention')
-                        actor.intentions.remove(intention)
+        if source == 'dialog':
+            self.dialog_length += 1
+            if self.dialog_length > 3:
+                self.dialog_length = 0;
+                # clear all actor pending dialog tasks and intentions:
+                for actor in self.context.actors:
+                    for priority in actor.priorities:
+                        if find('<Text>', priority) == 'dialog':
+                            print(f'{actor.name} removing dialog priority')
+                            actor.priorities.remove(priority)
+                    for intention in actor.intentions:
+                        if find('<Source>', intention) == 'dialog':
+                            print(f'{actor.name} removing dialog intention')
+                            actor.intentions.remove(intention)
                 return
 
         for intention in self.intentions:
-            if find('<Source>', intention) == 'dialog':
+            i_source = find('<Source>', intention)
+            if i_source == 'dialog' or i_source == 'watcher':
                 print(f'{self.name} removing dialog intention')
                 self.intentions.remove(intention)
 
