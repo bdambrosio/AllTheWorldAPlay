@@ -1018,7 +1018,7 @@ END
             if candidate_source == source:
                 self.intentions.remove(candidate)
         print(f'XS  queueing dialog response {response}')
-        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>dialog</Source></Intent>')
+        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{source}</Source></Intent>')
 
 
     def senses(self, sense_data='', ui_queue=None):

@@ -1,6 +1,6 @@
-import sys
+import sys, time
 import traceback
-import threading
+import threading 
 from queue import Queue
 from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog
@@ -236,6 +236,7 @@ class CustomWidget(QWidget):
         agh_threads.append(self.background_task)
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
         self.background_task.start()
+        time.sleep(0.1) # ensure entities run in listed order
         print(f'{self.entity.name} started sense')
 
     def format_intentions(self):
