@@ -1039,7 +1039,7 @@ END
     def tell(self, from_actor, message, source='dialog'):
         if source == 'dialog':
             self.dialog_length += 1
-            if self.dialog_length > 3:
+            if self.dialog_length > 2 and random.randint(1,3) == 1: # end a dialog after a couple of turns
                 self.dialog_length = 0;
                 # clear all actor pending dialog tasks and intentions:
                 for actor in self.context.actors:
@@ -1152,7 +1152,11 @@ END
             return 
         reason = find('<Reason>', answer_xml)
         print(f' Queueing dialog response {response}')
-        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{source}</Source></Intent>')
+        if source != 'watcher': #Is this right? Does a say from another user always initiate a dialog?
+            response_source='dialog'
+        else:
+            response_source = 'watcher'
+        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
 
 
     def senses(self, sense_data='', ui_queue=None):
