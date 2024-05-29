@@ -69,6 +69,15 @@ json_config = None
 #    
 #    print('model load done..')
 
+
+GENERATION_PROMPT=None
+while GENERATION_PROMPT == None:
+    prime = input("Does model need add_generation_prompt=True? {t/f}:")
+    if prime.lower().startswith('t'):
+        GENERATION_PROMPT=True
+    elif prime.lower().startswith('f'):
+        GENERATION_PROMPT=False
+        
 tokenizer = AutoTokenizer.from_pretrained(models_dir+model_name)
 model = AutoModelForCausalLM.from_pretrained(models_dir+model_name,
                                              device_map="auto",
@@ -116,7 +125,8 @@ async def get_stream(request: Request):
 
     messages = message_j['messages']
 
-    formatted = tokenizer.apply_chat_template(messages, tokenize=False)
+    formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
+)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inputs = tokenizer(formatted, return_tensors="pt").to(device)
 

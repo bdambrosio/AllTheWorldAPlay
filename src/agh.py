@@ -225,7 +225,7 @@ END""")]
         new_situation = find('<Situation>', response)
         if new_situation is not None:
             self.current_state=new_situation
-            self.show='\n---------time passes----------\n'+new_situation
+            self.show='\n-----scene-----\n'+new_situation
         for actor in self.actors:
             actor.forward(3) # forward three hours and update history, etc
         return response
@@ -263,7 +263,7 @@ class Character():
                 print(f' {self.name} greeting {actor.name}')
                 message = f"Hi, I'm {self.name}"
                 actor.tell(self, message)
-                actor.show += f'\n{self.name} says: {message}'
+                actor.show += f'\n{self.name}: {message}'
                 return
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
@@ -272,19 +272,22 @@ class Character():
         #
         self.reason = reason
         if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
-            verb = 'says' if act_name == 'Say' else ''
             self_verb = 'hear' if act_name == 'Say' else 'see'
             visible_arg = '' if act_name == 'Think' else act_arg
             
-            self.add_to_history(f"You {act_name} {act_arg} \n  why: {reason}")
+            # update main display
+            intro = f'{self.name}:' if act_name == 'Say' else ''
+            visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
+            intro = f'{self.name}:' if act_name == 'Say' else ''
+            self.show += f"\n{intro} {visible_arg}"
+            self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
+
             # update thought
             if act_name == 'Think':
                 self.thought = act_arg+'\n ... '+self.reason
             else:
                 self.thought = act_arg[:42]+' ...\n ... '+self.reason
 
-            # update main display
-            self.show += '\n'+self.name+' '+verb + ": "+ visible_arg
 
             if source != 'dialog' and source != 'watcher': 
                 self.active_task = source # dialog is peripheral to action, action task selection is sticky
@@ -298,9 +301,11 @@ class Character():
                 for actor in self.context.actors:
                     if actor != self:
                         if source != 'watcher': # when talking to watcher, others don't hear it.
+                            # create other actor response to say
+                            # note this assumes only two actors for now, otherwise need to add target
+                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
                             actor.tell(self, act_arg, source)
-                        # create other actor response to say
-                        actor.add_to_history(f'You hear {self.name} say to watcher: {self.show}')
+
 
             # if you acted in the world, ask Context for consequences of act
             # should others know about it?
@@ -345,7 +350,7 @@ class Agh(Character):
         prompt=[UserMessage(content="""A basic Drive is provided below. 
 Your task is to:
 - create a one to three word term that concisely designates this drive, and a state assessment given the current situation, your character, and recent history.
-- create a concise, one to four word, assessment for this drive given the current situation, your character, and recent history. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
+- create a concise, one to four word, assessment for this drive given the current situation, your character, and recent history. The assessment is an evaluation of the degree to which the drive is unmet, and a short phrase stating the cause. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
 
 <Drive>
 {{$drive}}
@@ -393,7 +398,7 @@ End your response with:
         for key, item in self.state.items():
             dscp = item['drive']
             value = item['state']
-            mapped.append(f"- Need: '{dscp}':\n State: '{value}'")
+            mapped.append(f"- Need: '{dscp}', State: '{value}'")
         return '\n'.join(mapped)
 
     def update_state(self):
@@ -567,6 +572,50 @@ End your response with:
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
         return new_task
 
+    def repetitive(self, text, last_act, history):
+        """ test if content duplicates last_act or entry in history """
+        prompt=[UserMessage(content="""You are {{$name}}.
+Analyze the following text for duplicative content. 
+Does the following NewText duplicate, literally or substantively, text appearing in the LastAct or that is by you in History?
+To be repetitive, speech or an act must meet the following condition:
+- Literally or substantively duplicate previous speech or act by you {{$name}} in LastAct or in history.
+- Address the same subject, task, or theme as the previous speech or act it appears to repeat.
+
+Speech or an act that is a response or successor to previous speech or acts, while addressing the same subject, is NOT repetitive.
+
+<NewText>
+{{$text}}
+</NewText>
+
+<LastAct>
+{{$last_act}}
+<LastAct>
+          
+<History>
+{{$history}}
+</History>
+
+Reason step by step to a result, 'True' if NewText is repetitive, 'False' if it is not. 
+If the answer is that it does not duplicate, respond 'False'
+If the answer is that it is largely duplicative, respond 'True'.
+
+Respond ONLY with 'False' or 'True'.
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</END>
+"""
+                            )
+                ]
+        response = self.llm.ask({"text":text, "last_act":last_act, "history":history, 'name':self.name},
+                                prompt, temp=0.5, stops=['</END>'], max_tokens=12)
+        if 'true' in response.lower():
+            return True
+        elif 'false' in response.lower():
+            return False
+        else:
+            return False # don't redo if you don't have to
+                
+
     def update_priorities(self):
         self.active_task = None
         print(f'\n{self.name} Updating priorities\n')
@@ -576,18 +625,12 @@ Your basic drives include:
 {{$drives}}
 </Drives>
  
-Your task is to create a set of three short term goals given who you are, your Situation, your State, your Memory, and your recent RecentHistory as listed below.
+Your task is to create a set of three short term goals given who you are, your Situation, your State, your Memory, and your recent RecentHistory as listed below. 
 Your current situation is:
 
 <Situation>
 {{$situation}}
 </Situation>
-
-Your state is:
-
-<State>
-{{$state}}
-</State>
 
 Your memories include:
 
@@ -603,12 +646,14 @@ Recent conversation has been:
 
 Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your State, your Memory, and your recent RecentHistory as listed above.
 
-List your three most important short term goals as instantiations from: 
+List your three most important-short term goals as instantiations from your current needs: 
 
+<Needs>
 {{$state}}
+</Needs>
             
-A short term goal is important when the drive it corresponds to is unmet. 
-List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
+Needs are listed in a-priori priority order, highest first. However, a short-term goal gets its importance not only from the order in the listing above.  A short term goal also derives its importance by the degree to which the Needs it corresponds to has a State value of 'high'.
+The List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
 Your Text must be consistent with the Reason.
 Priorities should be as specific as possible. 
 For example, if you need sleep, say 'Sleep', not 'Physiological need'.
@@ -616,6 +661,7 @@ Similarly, if your safety is threatened by a wolf, respond "Safety from wolf", n
 Reason statements must be concise and limited to a few keywords or at most a single terse sentence.
 limit your total response to 120 words. 
 
+Reason step by step to determine the overall importance of each possible short-term goal. Then respond with the three with the highest overall importance. 
 Use the XML format:
 <Priorities>
 <Priority> <Text>statement of top priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
@@ -672,7 +718,7 @@ END
         #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to act in response to the following perceived task:
+Your task is to generate an Actionable (act, a 'Think', 'Say', or 'Do') to advance the following perceived task:
 
 <Task>
 {{$task}} given {{$reason}}
@@ -702,22 +748,52 @@ Recent conversation has been:
 </RecentHistory)>
 
 The Previous specific act for this Task, if any, was:
+
+<PreviousSpecificAct>
 {{$lastAct}}
+</PreviousSpecificAct>
 
 And the observed result of that was:
 <ObservedResult>
 {{$lastActResult}}.
 </ObservedResult>
 
-Respond with a specific act that can advance the task listed earlier. 
-A specific action is one which:
+Respond with an Actionable, including its Mode and SpecificAct. 
 
+In choosing an Actionable (see format below), you can choose from three Mode values:
+- 'Think' - reason about the current situation wrt your state and the task.
+- 'Say' - speak, to motivate others to act, to align or coordinate with them, to reason jointly to establish or maintain a bond. For example, if you want to build a shelter with Samantha, it might be effective to Say '
+- 'Do' - perform an act with physical consequences in the world.
+
+A SpecificAct is one which:
 - Can be described in terms of specific physical movements or steps
 - Has a clear beginning and end point
 - Can be performed or acted out by a person
 - Can be easily visualized or imagined as a film clip
-- Is either a natural follow-on action to the previous specific act (if any), given the observed result (if any), or an alternate line of action. Especially consider this second alternative when the observed result does not indicate progress on the Task.
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
+- Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
+- Is stated in the appropriate person (voice):
+        If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
+        If an act in the world (mode is 'Do'), is stated in the third person.
+ 
+Dialog guidance:
+If speaking (mode is 'Say'), then:
+- If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
+- Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
+
+===Example===
+RecentHistory:
+Samantha:Hi Joe, thanks for introducing yourself. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
+You Say Hi Samantha, I'm glad we can help each other out. Let's work together to find a way out of this forest and figure out how we got here. We might also be able to find some shelter and water along the way. 
+
+Response:
+That's great to hear. I'm glad we can work together to find our way out of this forest. And don't worry, we'll definitely keep an eye out for shelter and water. I understand how you're feeling, but let's try to stay positive and help each other out.
+
+===Example===
+Samantha:Hi, it's nice to meet you too. I'm glad we can be here for each other in this confusing situation. Do you have any ideas on how we can find our way out of this forest and maybe solve the mystery of how we got here?
+
+Joe:Well, I'm glad we can be here for each other too. As for finding our way out of this forest, I'm afraid I don't have any ideas yet. But let's keep our eyes open for any clues or landmarks that might help us figure out where we are and how to get back.
+===End Example===
 
 
 Respond in XML:
@@ -729,12 +805,23 @@ Respond in XML:
 ===Examples===
 
 Task:
+'Situation: increased security measures; State: fear of losing Annie'
+
+Response:
+Response:
+<Actionable>
+  <Mode>Do</Mode>
+  <SpecificAct>Call a meeting with the building management to discuss increased security measures for Annie and the household.</SpecificAct>
+</Actionable>
+
+
+Task:
 'Establish connection with Joe given RecentHistory element: "Who is this guy?"'
 
 Response:
 <Actionable>
   <Mode>Say</Mode>
-  <SpecificAct>Say hello to Joe.</SpecificAct>
+  <SpecificAct>Hi, who are you?</SpecificAct>
 </Actionable>
 
 Task:
@@ -743,44 +830,75 @@ Task:
 Response:
 <Actionable>
   <Mode>Do</Mode>
-  <SpecificAct>You start to look around for any landmarks or signs of civilization, hoping to find something familiar that might give you a clue as to your whereabouts.</SpecificAct>
+  <SpecificAct>Samantha starts to look around for any landmarks or signs of civilization, hoping to find something familiar that might give her a clue as to her whereabouts.</SpecificAct>
 </Actionable>
 
 ===End Examples===
 
 Use the XML format:
 
-<Actionable> <SpecificAct>statement of specific action</SpecificAct> </Actionable>
+<Actionable> <Mode>Think, Say, or Do<Mode><SpecificAct>statement of specific action</SpecificAct> </Actionable>
 
 Respond ONLY with the above XML.
+Your name is {{$name}}, phrase the statement of specific action in your voice.
+Ensure you do not duplicate content of a previous specific act.
+{{$duplicative}}
+
 The task you are to transform into a specific action is:
 
 <Task>
-{{$task}} given {{$reason}}
+{{$task}} given: {{$reason}}
 </Task>
 
-Ensure you do not duplicate previous specific act.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 <END>"""
                                         )]
         print(f'{self.name} act_result: {self.act_result}')
-        act= None; tries=0
+        act= None; tries = 0
         mapped_state=self.map_state()
+        duplicative_insert = ''
+        temp = 0.6
         while act is None and tries < 2:
             response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
-                                     'memory':self.memory,
-                                     'history':'\n\n'.join(self.history),
+                                     'memory':self.memory, 'duplicative':duplicative_insert,
+                                     'history':'\n\n'.join(self.history), 'name':self.name,
                                      "situation":self.context.current_state,
                                      "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
                                      },
-                                    prompt, temp=0.9, top_p=1.0,
+                                    prompt, temp=temp, top_p=1.0,
                                     stops=['</Actionable>','<END>'], max_tokens=180)
+
             act = find('<SpecificAct>', response)
             mode = find('<Mode>', response)
+
             if mode is None:
                 mode = 'Do'
+
+            # test for dup act
+            if mode=='Say':
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
+                if dup:
+                    print(f'\n*****Duplicate test failed*****\n  {act}\n')
+                    duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say?"
+                    if tries == 0:
+                        act = None # force redo
+                        temp +=.3
+                else:
+                    #print(f'\n*****Is repetitive: {dup}, try: {tries}*****\n   {act}\n')
+                    pass
+
+            elif mode=='Do':
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
+                if dup:
+                    print(f'\n*****Repetitive act test failed*****\n  {act}\n')
+                    duplicative_insert =f"The following act is repetitive of a previous act:\n'{act}'. What else could you do?"
+                    if tries == 0:
+                        act = None # force redo
+                        temp +=.3
+                else:
+                    pass
             tries += 1
             
         if act is not None:
@@ -933,11 +1051,13 @@ END
                         if find('<Source>', intention) == 'dialog':
                             print(f'{actor.name} removing dialog intention')
                             actor.intentions.remove(intention)
+                #ignore this tell, dialog over
                 return
 
+        #remove any other pending dialog intentions (keep watcher!) 
         for intention in self.intentions:
             i_source = find('<Source>', intention)
-            if i_source == 'dialog' or i_source == 'watcher':
+            if i_source == 'dialog':
                 print(f'{self.name} removing dialog intention')
                 self.intentions.remove(intention)
 
@@ -989,7 +1109,26 @@ The statement you are responding to is:
 Reminders: 
 - Your task is to generate an response to the statement using the above XML format.
 - The response should be in keeping with your character's State.
-- The response should be continuation of history and especially your PreviousResponse, if any.
+- The response should be significant advance of the dialog in history and especially your PreviousResponse, if any.
+- Do NOT merely echo the Input. Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
+- The response should be stated in the first person.
+ 
+If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
+
+===Example===
+RecentHistory:
+Samantha: Hi Joe. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
+
+Response:
+That's great to hear. I'm glad we can work together to find our way out of this forest. And yeah, good idea on shelter and water. I can imagine how you're feeling, this is weird.
+
+===Example===
+Input:
+Samantha says Great! Let's stick together and see if we can find any clues or landmarks that might help us figure out where we are and how to get back. I'm still feeling a bit anxious and disoriented, but having someone else here with me makes me feel a bit better.
+
+Joe: Sounds like a plan. Let's stay within sight. Keep an eye out for any paths or trails or trail markers.
+===End Example===
+
 
 Respond only with the above XML
 Do not include any additional introductory, explanatory, or discursive text. 
@@ -1012,12 +1151,7 @@ END
         if unique is None or 'False' in unique:
             return 
         reason = find('<Reason>', answer_xml)
-        # remove any pending intentions for this task
-        for candidate in self.intentions:
-            candidate_source = find('<Source>', candidate)
-            if candidate_source == source:
-                self.intentions.remove(candidate)
-        print(f'XS  queueing dialog response {response}')
+        print(f' Queueing dialog response {response}')
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{source}</Source></Intent>')
 
 

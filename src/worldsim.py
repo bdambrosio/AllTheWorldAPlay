@@ -276,7 +276,8 @@ class CustomWidget(QWidget):
                     entity.widget.update_entity_state_display()
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
-            self.ui.display('\n----- context updated -----\n')
+            #self.ui.display('\n----- context updated -----\n')
+            self.ui.display('\n')
 
         # initiate another cycle?
         print(f'{self.entity.name} sense completed {len(agh_threads)}')
@@ -459,11 +460,11 @@ class MainWindow(QMainWindow):
         self.step()
 
     def step(self):
-        print('Step')
+        #print('Step')
         self.run_button.setEnabled(False)
         self.step_button.setEnabled(False)
         self.update_parameters()
-        self.display(f"\nStep {self.internal_time}\n")
+        #self.display(f"\nStep {self.internal_time}\n")
 
     def step_completed(self):
         self.internal_time += 1

@@ -81,6 +81,14 @@ else:
     
     print('model load done..')
 
+GENERATION_PROMPT=None
+while GENERATION_PROMPT == None:
+    prime = input("Does model need add_generation_prompt=True? {t/f}:")
+    if prime.lower().startswith('t'):
+        GENERATION_PROMPT=True
+    elif prime.lower().startswith('f'):
+        GENERATION_PROMPT=False
+        
 hf_tokenizer = AutoTokenizer.from_pretrained(models_dir+model_name)
 exl_tokenizer = ExLlamaV2Tokenizer(config)
 cache = ExLlamaV2Cache(model)
@@ -179,7 +187,7 @@ async def get_stream(request: Request):
 
     settings.temperature = temp
     settings.top_p = top_p
-    formatted = hf_tokenizer.apply_chat_template(messages, tokenize=False)
+    formatted = hf_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
     input_ids = exl_tokenizer.encode(formatted)
     print(f'input_ids {input_ids.shape}')
     generator.set_stop_conditions(stop_conditions)
