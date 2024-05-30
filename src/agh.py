@@ -78,7 +78,41 @@ class Context ():
         except Exception as e:
             traceback.print_exc()
         return filepath
-        
+
+    def world_updates_from_act_consequences(self, consequences):
+        prompt=[UserMessage(content="""Given the following immediate effects of an action on the environment, generate up to two concise sentences to add to the following state description
+Limit your changes to the consequences for elements in the existing state or new elements added to the state.
+Most important are those consequences that might activate or inactive tasks or intentions by actors.
+
+<ActionEffects>
+{{$consequences}}
+</ActionEffects>
+
+<Environment>
+{{$state}}
+</Environment>
+
+Your response should be concise, and only include only statements about changes to the existing Environment.
+Do NOT repeat elements of the existing Environment, respond only with significant changes.
+Your updates should be dispassionate. 
+
+<Updates>
+concise statement of significant changes to Environment, if any.
+</Updates>
+
+Include ONLY the concise updated state description in your response. 
+Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+End your response with:
+<END>""")
+                ]
+
+        response = self.llm.ask({"consequences":consequences, "state":self.current_state},
+                                prompt, temp=0.5, stops=['<END>'], max_tokens=60)
+        print(f'\nWorld action state update:\n{response}\n')
+        updates = find('<Updates>', response)
+        if updates is not None:
+            self.current_state += '\n'+updates
+            
     def do(self, actor, action):
         prompt=[UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
@@ -100,13 +134,16 @@ given {{$name}} basic drives are:
 </Drives> 
 
 Respond with the observable result.
-Respond ONLY with the observable immediate effects on the actors and situation of the above Action. 
+Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
+It is usually not necessary or desirable to repeat the above action statement in your response.
 Format your response as one or more simple declaractive sentences.
 Include in your response:
-- sensory inputs (e.g. {{$name}} sees / hears / feels / ... /)
-- changes in {{$name}}'s possessions (e.g. {{$name}} gains berries / loses phone / ... / )
-- changes in {{$name})'s or other actor's state (e.g., {{$name}} becomes fearful / relaxes / is tired / is injured / ... /).
+- changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
+- sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
+- changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
+- changes in {{$name})'s or other actor's state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 Do NOT extend the scenario with any follow on actions or effects.
+Be extremely terse when reporting character emotional state, only report the most significant emotional state changes.
 Be concise!
 Do not include any Introductory, explanatory, or discursive text.
 End your reponse with:
@@ -114,41 +151,12 @@ End your reponse with:
 """)]
         history = self.history()
         consequences = self.llm.ask({"name":actor.name, "action":action, "drives":actor.drives,
-                                "state":self.current_state}, prompt, temp=0.7, stops=['<END'], max_tokens=300)
+                                     "state":self.current_state}, prompt, temp=0.7, stops=['END'], max_tokens=300)
 
+        if consequences.endswith('<'):
+            consequences=consequences[:-1]
         print(f' Context Do consequences:\n {consequences}')
-        prompt=[UserMessage(content="""Update the following state description with the following action results.
-Limit your changes to the consequences for elements in the existing state or new elements added to the state.
-Most important are those consequences that might activate or inactive tasks or intentions by actors.
-
-<State>
-{{$state}}
-</State>
-
-<ActionResults>
-{{$consequences}}
-</ActionResults>
-
-Your response should be concise, and only include only an update of the physical situation.
-Your state description should be dispassionate, 
-and should begin with a brief one-sentence description of the current physical space suitable for a text-to-image generator. 
-
-<NewState>
-Sentence describing physical space, suitable for image generator,
-Updated State description of up to 300 words
-</NewState>
-
-Include ONLY the concise updated state description in your response. 
-Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-End your response with:
-<END>""")]
-
-        response = self.llm.ask({"consequences":consequences, "state":self.current_state},
-                                    prompt, temp=0.5, stops=['<END>'], max_tokens=500)
-        print(f'World action state update:\n{response}')
-        new_state = find('<NewState>', response)
-        if new_state is not None:
-            self.current_state = new_state
+        self.world_updates_from_act_consequences(consequences)
         return consequences
 
     def senses (self, sense_data='', ui_task_queue=None):
@@ -604,6 +612,20 @@ Reason step by step to a result, 'True' if NewText is repetitive, 'False' if it 
 If the answer is that it does not duplicate, respond 'False'
 If the answer is that it is largely duplicative, respond 'True'.
 
+===Examples===
+NewText:
+Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+
+LastAct:
+Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+
+Response:
+True
+
+-----
+
+===End Examples===
+
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -791,22 +813,22 @@ A SpecificAct is one which:
  
 Dialog guidance:
 - If speaking (mode is 'Say'), then:
-- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language.
+- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language. Speak in the first person.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 
 ===Example===
 RecentHistory:
-Samantha:Hi Joe, thanks for introducing yourself. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
+Samantha: Hi Joe, thanks for introducing yourself. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
 You Say Hi Samantha, I'm glad we can help each other out. Let's work together to find a way out of this forest and figure out how we got here. We might also be able to find some shelter and water along the way. 
 
 Response:
 That's great to hear. I'm glad we can work together to find our way out of this forest. And don't worry, we'll definitely keep an eye out for shelter and water. I understand how you're feeling, but let's try to stay positive and help each other out.
 
 ===Example===
-Samantha:Hi, it's nice to meet you too. I'm glad we can be here for each other in this confusing situation. Do you have any ideas on how we can find our way out of this forest and maybe solve the mystery of how we got here?
+Samantha: Hi, it's nice to meet you too. I'm glad we can be here for each other in this confusing situation. Do you have any ideas on how we can find our way out of this forest and maybe solve the mystery of how we got here?
 
-Joe:Well, I'm glad we can be here for each other too. As for finding our way out of this forest, I'm afraid I don't have any ideas yet. But let's keep our eyes open for any clues or landmarks that might help us figure out where we are and how to get back.
+Joe: Well, I'm glad we can be here for each other too. As for finding our way out of this forest, I'm afraid I don't have any ideas yet. But let's keep our eyes open for any clues or landmarks that might help us figure out where we are and how to get back.
 ===End Example===
 
 
