@@ -2,10 +2,11 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### Newest: 5/28/2024 - release 1.3 - improved  dialog naturalness, better formatting in main activity window.
+### release 0.1.4 (let's get real here, renumbered releases). Hugely improved dialog, consistency. Base version for next level of agh models.)
 
 ![Play screenshot](images/lost.jpg)
 
+- Newest: 5/28/2024 - release 1.3 - improved  dialog naturalness, better formatting in main activity window.
 - 5/27/2024 World updates now show in main dialog so they aren't such a surprise.
     **Talk to the characters!** When in step mode click 'Inject' and enter 'Character-name, question',
     e.g. Samantha, do you think it is a coincidence that you and Joe are here together? For now, other character hears the response, but they know the character isn't talking to them.
