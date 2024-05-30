@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHB
 from PyQt5.QtCore import QTimer, pyqtSlot, QSize
 import PyQt5.QtGui as QtGui
 from PyQt5.QtGui import QPixmap, QImage, QFont, QTextCursor
-import numpy as np
 import agh, human
 import llm_api
 

@@ -2,7 +2,6 @@ import os, sys, re, traceback, requests, json
 import random
 import socket
 import time
-import numpy as np
 import openai
 from openai import OpenAI
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
