@@ -41,7 +41,6 @@ def find(key,  form):
     return form[start_idx: start_idx+end_idx]
 
 
-
 class Context ():
     def __init__(self, actors, situation):
         self.initial_state = situation
@@ -509,7 +508,7 @@ End your response with:
         else:
             return False
 
-    def get_task(self, term):
+    def get_task_name(self, term):
         for task in list(self.last_acts.keys()):
             match=self.synonym_check(task, term)
             if match:
@@ -518,7 +517,7 @@ End your response with:
             
     def set_task_last_act(self, term, act):
         # pbly don't need this, at set we have canonical task
-        task = self.get_task(term)
+        task = self.get_task_name(term)
         if task == None:
             print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
             self.last_acts[term] = act
@@ -527,7 +526,7 @@ End your response with:
             self.last_acts[task] = act
 
     def get_task_last_act(self, term):
-        task = self.get_task(term)
+        task = self.get_task_name(term)
         if task == None:
             #print(f'GET_TASK_LAST_ACT {self.name} no match found: term {term}')
             return 'None'
@@ -561,12 +560,18 @@ End your response with:
         response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</END>'], max_tokens=12)
         return find('<Motivation', response)
                     
-    def find_or_make_task_xml(self, task_name, reason):
+    def get_task_xml(self, task_name):
         for candidate in self.priorities:
             #print(f'find_or_make testing\n {candidate}\nfor name {task_name}')
             if task_name == find('<Text>', candidate):
                 print(f'found existing task\n  {task_name}')
                 return candidate
+        return None
+    
+    def find_or_make_task_xml(self, task_name, reason):
+        candidate = self.get_task_xml(task_name)
+        if candidate != None:
+            return candidate
         new_task = f'<Priority><Text>{task_name}</Text><Reason>{reason}</Reason></Priority>'
         self.priorities.append(new_task)
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
@@ -698,15 +703,22 @@ END
                     #watcher responses never die
                     self.intentions.remove(intention)
             for n, task in enumerate(items):
-                self.priorities.append(task)
-                # next will be done in sense so we have current context!
-                #self.actualize_task(n, task) 
+                if task is not None:
+                    task_name = find('<Text>', task)
+                    if task_name is not None and str(task_name) != 'None':
+                        self.priorities.append(task)
+                    else:
+                        raise ValueError(f'update priorities created None task_name! {task}')
+                    # next will be done in sense so we have current context!
+                    #self.actualize_task(n, task) 
         except Exception as e:
             traceback.print_exc()
         #print(f'\n-----Done-----\n\n\n')
 
     def actualize_task(self, n, task_xml):
         task_name = find('<Text>', task_xml)
+        if task_xml is None or task_name is None:
+            raise ValueError(f'Invalid task {n}, {task_xml}')
         print(f'\n Actualizing task {n} {task_name}')
         last_act = self.get_task_last_act(task_name)
         reason = find('<Reason>', task_xml)
@@ -764,6 +776,7 @@ In choosing an Actionable (see format below), you can choose from three Mode val
 - 'Think' - reason about the current situation wrt your state and the task.
 - 'Say' - speak, to motivate others to act, to align or coordinate with them, to reason jointly to establish or maintain a bond. For example, if you want to build a shelter with Samantha, it might be effective to Say '
 - 'Do' - perform an act with physical consequences in the world.
+Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
 
 A SpecificAct is one which:
 - Can be described in terms of specific physical movements or steps
@@ -777,7 +790,8 @@ A SpecificAct is one which:
         If an act in the world (mode is 'Do'), is stated in the third person.
  
 Dialog guidance:
-If speaking (mode is 'Say'), then:
+- If speaking (mode is 'Say'), then:
+- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 
@@ -873,8 +887,7 @@ End your response with:
             act = find('<SpecificAct>', response)
             mode = find('<Mode>', response)
 
-            if mode is None:
-                mode = 'Do'
+            if mode is None: mode = 'Do'
 
             # test for dup act
             if mode=='Say':
@@ -893,8 +906,8 @@ End your response with:
                 dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert =f"The following act is repetitive of a previous act:\n'{act}'. What else could you do?"
-                    if tries == 0:
+                    duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do?"
+                    if tries <=1:
                         act = None # force redo
                         temp +=.3
                 else:
@@ -908,6 +921,9 @@ End your response with:
                 candidate_source = find('<Source>', candidate)
                 if candidate_source == task_name:
                     self.intentions.remove(candidate)
+                elif candidate_source is None or candidate_source == 'None':
+                    self.intentions.remove(candidate)
+
             self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reason>{reason}</Reason> <Source>{task_name}</Source> </Intent>')
             #ins = '\n'.join(self.intentions)
             #print(f'Intentions\n{ins}')
@@ -1061,7 +1077,7 @@ END
                 print(f'{self.name} removing dialog intention')
                 self.intentions.remove(intention)
 
-        print(f'{self.name} tell received from {from_actor.name}, {message}')
+        print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
 
         #generate response intention
         prompt=[UserMessage(content="""You are {{$character}}.
@@ -1111,7 +1127,8 @@ Reminders:
 - The response should be in keeping with your character's State.
 - The response should be significant advance of the dialog in history and especially your PreviousResponse, if any.
 - Do NOT merely echo the Input. Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
-- The response should be stated in the first person.
+- If the intent of the response is to agree, it is sufficient to state agreement without repeating the activity that is being agreed to
+- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language.
  
 If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 
@@ -1184,8 +1201,14 @@ END
                     dialog_option = True
 
         if dialog_option != True: #don't bother generating options we won't use
-            for n, task in enumerate(self.priorities):
-                self.actualize_task(n, task)
+            # if there is an active task, only actualize that one
+            if self.active_task != None and self.active_task != 'dialog' and self.active_task != 'watcher'\
+               and self.get_task_name(self.active_task) != None:
+                full_task = self.get_task_xml(self.active_task)
+                self.actualize_task(0, full_task)
+            else:
+                for n, task in enumerate(self.priorities):
+                    self.actualize_task(n, task)
         intention_choices=[]
         llm_choices=[]
         print(f'{self.name} selecting action options. active task is {self.active_task}')
@@ -1317,8 +1340,8 @@ END
         act_arg = find('<Act>', intention)
         self.reason = find('<Reason>', intention)
         print(f'{self.name} choose {intention}')
-        refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
         task_name = find('<Source>', intention)
+        refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
         print(f'Found and removing intention for task {task_name}')
         self.intentions.remove(intention)
         if task_name is not None:
