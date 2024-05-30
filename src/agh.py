@@ -5,40 +5,38 @@ import traceback
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import llm_api
 
-def findall(key,  form):
-    """ find multiple occurences of an xml field in a string """
+def findall(key, form):
+    """ find multiple occurrences of an xml field in a string """
     idx = 0
     items = []
     forml = form.lower()
     keyl = key.lower()
-    keyle = keyl[0]+'/'+keyl[1:]
+    keyle = keyl[0] + '/' + keyl[1:]
     while idx < len(forml):
-        start_idx = forml[idx:].find(keyl)+len(keyl)
-        if start_idx < 0:
+        start_idx = forml[idx:].find(keyl)
+        if start_idx == -1:
             return items
+        start_idx += len(keyl)
         end_idx = forml[idx+start_idx:].find(keyle)
-        if end_idx < 0:
+        if end_idx == -1:
             return items
         items.append(form[idx+start_idx:idx+start_idx+end_idx].strip())
-        idx += start_idx+end_idx
+        idx += start_idx + end_idx + len(keyle)
     return items
 
-def find(key,  form):
-    """ find first occurences of an xml field in a string """
-    idx = 0
+def find(key, form):
+    """ find first occurrences of an xml field in a string """
     forml = form.lower()
     keyl = key.lower()
-    keyle = keyl[0]+'/'+keyl[1:]
-    if keyl not in forml:
+    keyle = keyl[0] + '/' + keyl[1:]
+    start_idx = forml.find(keyl)
+    if start_idx == -1:
         return None
-    start_idx = forml[idx:].find(keyl)+len(keyl)
-    if start_idx < 0:
-        return None
-    end_idx = forml[idx+start_idx:].find(keyle)
-    if end_idx < 0:
-        return form[start_idx:] 
-    idx += start_idx+end_idx
-    return form[start_idx: start_idx+end_idx]
+    start_idx += len(keyl)
+    end_idx = forml[start_idx:].find(keyle)
+    if end_idx == -1:
+        return form[start_idx:]
+    return form[start_idx: start_idx + end_idx]
 
 
 class Context ():
@@ -80,7 +78,8 @@ class Context ():
         return filepath
 
     def world_updates_from_act_consequences(self, consequences):
-        prompt=[UserMessage(content="""Given the following immediate effects of an action on the environment, generate up to two concise sentences to add to the following state description
+        prompt=[UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
+It may be there are no significant updates to report.
 Limit your changes to the consequences for elements in the existing state or new elements added to the state.
 Most important are those consequences that might activate or inactive tasks or intentions by actors.
 
@@ -94,6 +93,7 @@ Most important are those consequences that might activate or inactive tasks or i
 
 Your response should be concise, and only include only statements about changes to the existing Environment.
 Do NOT repeat elements of the existing Environment, respond only with significant changes.
+Do NOT repeat as an update items already present at the end of the Environment statement.
 Your updates should be dispassionate. 
 
 <Updates>
@@ -108,11 +108,13 @@ End your response with:
 
         response = self.llm.ask({"consequences":consequences, "state":self.current_state},
                                 prompt, temp=0.5, stops=['<END>'], max_tokens=60)
-        print(f'\nWorld action state update:\n{response}\n')
         updates = find('<Updates>', response)
         if updates is not None:
             self.current_state += '\n'+updates
-            
+        else:
+            updates = ''
+        return updates
+    
     def do(self, actor, action):
         prompt=[UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
@@ -155,9 +157,10 @@ End your reponse with:
 
         if consequences.endswith('<'):
             consequences=consequences[:-1]
-        print(f' Context Do consequences:\n {consequences}')
-        self.world_updates_from_act_consequences(consequences)
-        return consequences
+        world_updates=self.world_updates_from_act_consequences(consequences)
+        print(f'\nContext Do consequences:\n {consequences}')
+        print(f' Context Do world_update:\n {world_updates}\n')
+        return consequences, world_updates
 
     def senses (self, sense_data='', ui_task_queue=None):
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
@@ -286,7 +289,8 @@ class Character():
             intro = f'{self.name}:' if act_name == 'Say' else ''
             visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
             intro = f'{self.name}:' if act_name == 'Say' else ''
-            self.show += f"\n{intro} {visible_arg}"
+            if act_name != 'Do':
+                self.show += f"\n{intro} {visible_arg}"
             self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
 
             # update thought
@@ -317,13 +321,13 @@ class Character():
             # if you acted in the world, ask Context for consequences of act
             # should others know about it?
             if act_name =='Do':
-                result = self.context.do(self, act_arg)
-                self.show += '\n  '+result # main window
-                self.add_to_history(f"You observe {result}")
-                print(f'{self.name} setting act_result to {result}')
-                self.act_result = result
+                consequences, world_updates = self.context.do(self, act_arg)
+                self.show += '\n  '+ consequences+'\n'+world_updates # main window
+                self.add_to_history(f"You observe {consequences}")
+                print(f'{self.name} setting act_result to {world_updates}')
+                self.act_result = world_updates
                 if target is not None: # targets of Do are tbd
-                    target.sense_input += '\n'+result
+                    target.sense_input += '\n'+world_updates
 
             self.previous_action = act_name
 
@@ -592,9 +596,9 @@ Analyze the following text for duplicative content.
 Does the following NewText duplicate, literally or substantively, text appearing in the LastAct or that is by you in History?
 To be repetitive, speech or an act must meet the following condition:
 - Literally or substantively duplicate previous speech or act by you {{$name}} in LastAct or in history.
-- Address the same subject, task, or theme as the previous speech or act it appears to repeat.
+- Address the same subject, task, or theme as the earlier speech or act it appears to repeat.
 
-Speech or an act that is a response or successor to previous speech or acts, while addressing the same subject, is NOT repetitive.
+Speech or an act that is a response or successor to the previous speech or act it appears to repeat, while addressing the same subject, and which contains substantive additional content, is NOT repetitive.
 
 <NewText>
 {{$text}}
@@ -731,6 +735,8 @@ END
                         self.priorities.append(task)
                     else:
                         raise ValueError(f'update priorities created None task_name! {task}')
+                else:
+                    raise ValueError(f'update priorities created None task_name! {task}')
                     # next will be done in sense so we have current context!
                     #self.actualize_task(n, task) 
         except Exception as e:
@@ -805,6 +811,7 @@ A SpecificAct is one which:
 - Has a clear beginning and end point
 - Can be performed or acted out by a person
 - Can be easily visualized or imagined as a film clip
+- Is consistent with any action commitments made in your last statements in RecentHistory
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
 - Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
 - Is stated in the appropriate person (voice):
@@ -920,9 +927,7 @@ End your response with:
                     if tries == 0:
                         act = None # force redo
                         temp +=.3
-                else:
-                    #print(f'\n*****Is repetitive: {dup}, try: {tries}*****\n   {act}\n')
-                    pass
+                    else: act = None # skip task, nothing interesting to do
 
             elif mode=='Do':
                 dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
@@ -932,8 +937,8 @@ End your response with:
                     if tries <=1:
                         act = None # force redo
                         temp +=.3
-                else:
-                    pass
+                    else:
+                        act = None #skip task, nothing interesting to do
             tries += 1
             
         if act is not None:
@@ -1001,6 +1006,8 @@ END""")
         # determine if text implies an intention to act, and create a formatted intention if so
         print(f'Update intentions from say or think\n {text}\n{reason}')
 
+        if source == 'dialog' or source=='watcher':
+            return
         prompt=[UserMessage(content="""Your task is to analyze the following text.
 
 <Text>
@@ -1071,13 +1078,16 @@ END
             if candidate_source == source:
                 self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
+        if source != None:
+            print(f'\nUpdate intention from Say setting active task to {source}')
+            self.active_task=source
         #ins = '\n'.join(self.intentions)
         #print(f'Intentions\n{ins}')
 
     def tell(self, from_actor, message, source='dialog'):
         if source == 'dialog':
             self.dialog_length += 1
-            if self.dialog_length > 2 and random.randint(1,3) == 1: # end a dialog after a couple of turns
+            if self.dialog_length >= 2 and random.randint(1,2) == 1: # end a dialog after a couple of turns
                 self.dialog_length = 0;
                 # clear all actor pending dialog tasks and intentions:
                 for actor in self.context.actors:
@@ -1093,11 +1103,11 @@ END
                 return
 
         #remove any other pending dialog intentions (keep watcher!) 
-        for intention in self.intentions:
-            i_source = find('<Source>', intention)
-            if i_source == 'dialog':
-                print(f'{self.name} removing dialog intention')
-                self.intentions.remove(intention)
+        #for intention in self.intentions:
+        #    i_source = find('<Source>', intention)
+        #    if i_source == 'dialog':
+        #        print(f'{self.name} removing dialog intention')
+        #        self.intentions.remove(intention)
 
         print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
 
@@ -1149,8 +1159,9 @@ Reminders:
 - The response should be in keeping with your character's State.
 - The response should be significant advance of the dialog in history and especially your PreviousResponse, if any.
 - Do NOT merely echo the Input. Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
-- If the intent of the response is to agree, it is sufficient to state agreement without repeating the activity that is being agreed to
-- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language.
+- If the intent of the response is to agree, it is sufficient to state agreement without repeating the activity that is being agreed to.
+- Speak in your own voice. Do not echo the speech style of the Input. 
+- Respond in the style of natural spoken dialog. Use short sentences, contractions, and casual language.
  
 If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 
@@ -1195,6 +1206,9 @@ END
             response_source='dialog'
         else:
             response_source = 'watcher'
+        dup = self.repetitive(response, message, '\n\n'.join(self.history))
+        if dup:
+            return # skip response, adds nothing
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
 
 
@@ -1221,6 +1235,8 @@ END
                 if mode == 'Say':
                     print('Found dialog say, use it!')
                     dialog_option = True
+        if not dialog_option and self.active_task == 'dialog':
+            self.active_task = None
 
         if dialog_option != True: #don't bother generating options we won't use
             # if there is an active task, only actualize that one
