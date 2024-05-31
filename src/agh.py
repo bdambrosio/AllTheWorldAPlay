@@ -609,11 +609,69 @@ End your response with:
         prompt=[UserMessage(content="""You are {{$name}}.
 Analyze the following text for duplicative content. 
 Does the following NewText duplicate, literally or substantively, text appearing in the LastAct or that is by you in History?
-To be repetitive, speech or an act must meet the following condition:
-- Literally or substantively duplicate previous speech or act by you {{$name}} in LastAct or in history.
-- Address the same subject, task, or theme as the earlier speech or act it appears to repeat.
+To be repetitive, speech or an act must meet the following conditions:
+- Literally or substantively duplicate previous thought, speech, or act by you, {{$name}}, in LastAct or in History.
+- Address the same subject or task as the earlier thought, speech or act it appears to repeat.
+- Add no new thought, speech, or action.
 
-Speech or an act that appears to repeat but which also contains substantive additional content, is NOT repetitive.
+Speech or an act that appears to repeat but which also contains substantive additional content is NOT repetitive.
+
+
+===Examples===
+
+NewText:
+Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+
+LastAct:
+Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+
+Response:
+True
+
+-----
+
+NewText:
+Hey, maybe we should start by looking for any signs of civilization or other people nearby. 
+That way, we can make sure we're not completely alone out here. Plus, it might help us figure out where we are and how we got here. What do you think?
+
+LastAct:
+Hey, let's stick together. We're stronger together than alone. Maybe we can help each other figure things out.
+
+Response:
+False
+
+----
+
+NewText:
+Joe continues exploring the forest, looking for any signs of human activity or clues about his past. 
+He keeps an eye out for footprints, discarded items, or anything else that might provide insight into how he ended up here.
+
+LastAct:
+Joe decides to start exploring the area around him, looking for any clues or signs that could help him understand how he ended up in the forest with no memory.
+
+Response:
+False
+
+----
+
+NewText:
+Hey Samantha, maybe we can work together to figure out what happened to us. 
+We seem to be in this together, so let's stick together and help each other out.
+
+LastAct:
+None
+
+History:
+You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?
+
+You think Whoever she is, she is pretty!
+
+You hear Samantha say: Hey Joe, nice to meet you. I'm Samantha. This is really strange, right? I can't remember anything either. 
+But maybe we can help each other figure things out. We should definitely look for shelter and water first, and then try to find a way out of this forest.
+
+Response:
+False
+===End Examples===
 
 <NewText>
 {{$text}}
@@ -630,21 +688,6 @@ Speech or an act that appears to repeat but which also contains substantive addi
 Reason step by step to a result, 'True' if NewText is repetitive, 'False' if it is not. 
 If the answer is that it does not duplicate, respond 'False'
 If the answer is that it is largely duplicative, respond 'True'.
-
-===Examples===
-NewText:
-Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
-
-LastAct:
-Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
-
-Response:
-True
-
------
-
-===End Examples===
-
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -654,13 +697,18 @@ End your response with:
                 ]
         response = self.llm.ask({"text":text, "last_act":last_act, "history":history, 'name':self.name},
                                 prompt, temp=0.5, stops=['</END>'], max_tokens=12)
-        if 'true' in response.lower():
+        response = response.lower()
+        idxt = response.find('true')
+        idxf = response.find('false')
+        if idxf > -1 and idxt> -1:
+            if idxf <= idxt: # sometime runon junk will have true later, ignore it!
+                return False
+            else:
+                return True
+        elif idxt> -1:
             return True
-        elif 'false' in response.lower():
-            return False
         else:
-            return False # don't redo if you don't have to
-                
+            return False
 
     def update_priorities(self):
         self.active_task = None
@@ -842,16 +890,11 @@ Dialog guidance:
 
 ===Example===
 RecentHistory:
-Samantha: Hi Joe, thanks for introducing yourself. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
-You Say Hi Samantha, I'm glad we can help each other out. Let's work together to find a way out of this forest and figure out how we got here. We might also be able to find some shelter and water along the way. 
+You say Hi Joe. Wow, glad I'm not alone out here. I'm Samantha. How do we get out of here?
+Joe: Yeah, feeling it. No idea. Who even knows how far lost we are. Let's look around a bit.
 
 Response:
-That's great to hear. I'm glad we can work together to find our way out of this forest. And don't worry, we'll definitely keep an eye out for shelter and water. I understand how you're feeling, but let's try to stay positive and help each other out.
-
-===Example===
-Samantha: Hi, it's nice to meet you too. I'm glad we can be here for each other in this confusing situation. Do you have any ideas on how we can find our way out of this forest and maybe solve the mystery of how we got here?
-
-Joe: Well, I'm glad we can be here for each other too. As for finding our way out of this forest, I'm afraid I don't have any ideas yet. But let's keep our eyes open for any clues or landmarks that might help us figure out where we are and how to get back.
+Yeah, maybe we're just a few minutes from a trail, but maybe we're really in it. I'm really freaked. Wait, who are you, anyway? 
 ===End Example===
 
 
@@ -866,7 +909,6 @@ Respond in XML:
 Task:
 'Situation: increased security measures; State: fear of losing Annie'
 
-Response:
 Response:
 <Actionable>
   <Mode>Do</Mode>
@@ -935,26 +977,29 @@ End your response with:
             if mode is None: mode = 'Do'
 
             # test for dup act
-            if mode=='Say':
+            if mode =='Say':
                 dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
-                    duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say?"
+                    duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say or how else could you say it?"
                     if tries == 0:
                         act = None # force redo
                         temp +=.3
-                    else: act = None # skip task, nothing interesting to do
+                    else:
+                        #act = None # skip task, nothing interesting to do
+                        pass
 
-            elif mode=='Do':
+            elif mode =='Do':
                 dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do?"
+                    duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
                     if tries <=1:
                         act = None # force redo
                         temp +=.3
                     else:
-                        act = None #skip task, nothing interesting to do
+                        #act = None #skip task, nothing interesting to do
+                        pass
             tries += 1
             
         if act is not None:
@@ -1214,7 +1259,7 @@ END
         if response is None:
             return
         unique = find('<Unique>', answer_xml)
-        if unique is None or 'False' in unique:
+        if unique is None or 'false' in unique.lower():
             return 
         reason = find('<Reason>', answer_xml)
         print(f' Queueing dialog response {response}')
@@ -1230,14 +1275,11 @@ END
 
     def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task}')
-        all_actions={"Act": """Act as follows: '{action}' for the following reason: '{reason}'""",
-                     "Answer":""" Answer the following question: '{question}'""",
-                     "Say":"""Speak by responding with: '{text}', because: '{reason}'""",
-
-                     "Think":"""Think about your situation, your Priorities, the Input, and RecentHistory with respect to Priorities. Use this template to report your thoughts and reason:
-<Action> <Name>Think</Name> <Arg> ..thoughts.. </Arg> <Reason> ..keywords or short sentence on reason.. </Reason> </Action>
-""",
-                     "Discuss":"""Reason step-by-step about discussion based on current situation, your state, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
+        all_actions={"Act": """Act as follows: '{action}'\n  because: '{reason}'""",
+                     "Answer": """ Answer the following question: '{question}'""",
+                     "Say": """Say: '{text}',\n  because: '{reason}'""",
+                     "Think": """Think: '{text}\n  because" '{reason}'""",
+                     "Discuss": """Reason step-by-step about discussion based on current situation, your state, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
 <Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><terse reason for bringing this up for discussion></Reason> </Action>
 """}
         
@@ -1286,9 +1328,11 @@ END
             if mode == 'Do':# and random.randint(1,3)==1: # too many action choices, just pick a couple for deliberation
                 llm_choices.append(all_actions["Act"].replace('{action}', act).replace('{reason}',str(reason)))
                 intention_choices.append(intention)
-
             elif mode == 'Say':
                 llm_choices.append(all_actions["Say"].replace('{text}', act).replace('{reason}',str(reason)))
+                intention_choices.append(intention)
+            elif mode == 'Think':
+                llm_choices.append(all_actions["Think"].replace('{text}', act).replace('{reason}',str(reason)))
                 intention_choices.append(intention)
 
         print()
@@ -1298,7 +1342,7 @@ END
         if len(llm_choices) == 0:
             print(f'{self.name} Oops, no available acts')
             return
-        prompt = [UserMessage(content=self.character+"""Your current situation is:
+        prompt = [UserMessage(content=self.character+"""\nYour current situation is:
 
 <Situation>
 {{$situation}}
@@ -1415,7 +1459,6 @@ END
                 
         if act_name=='Say' or act_name=='Do':
             task_name = find('<Source>', intention)
-            print(f'preparing to refresh task intention.\n  intention source field: {task_name}')
             # for now very simple task tracking model:
             if task_name is None:
                 task_name = self.make_task_name(self.reason)
@@ -1433,6 +1476,7 @@ END
             target = self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0]
         #this will effect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
+
         if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
             print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention
