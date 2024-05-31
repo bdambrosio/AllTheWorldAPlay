@@ -3,6 +3,6 @@ PyQt5>=5.15.10
 Pillow>=9.0.1
 fastapi>=0.111.0
 uvicorn>=0.29.0
-transformeers>=4.41.1
+transformers>=4.41.1
 exllamav2>=0.0.21
 diffusers>=0.27.2
