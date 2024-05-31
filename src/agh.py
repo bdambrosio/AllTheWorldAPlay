@@ -357,11 +357,9 @@ class Agh(Character):
 
     def generate_state(self):
         """ generate a state to track, derived from basic drives """
-        self.drive_terms = []
         prompt=[UserMessage(content="""A basic Drive is provided below. 
-Your task is to:
-- create a one to three word term that concisely designates this drive, and a state assessment given the current situation, your character, and recent history.
-- create a concise, one to four word, assessment for this drive given the current situation, your character, and recent history. The assessment is an evaluation of the degree to which the drive is unmet, and a short phrase stating the cause. Examples include: 'High, fear of losing Annie' or 'High, disorientation and unknown dangers'.
+Your task is to create an instantiated state description to track your current state wrt this drive.
+Create this instantiated state description given the basic Drive, current Situation, your Character, Memory, and recent History as given below.
 
 <Drive>
 {{$drive}}
@@ -375,16 +373,25 @@ Your task is to:
 {{$character}}
 </Character>
 
+<Memory>
+{{$memory}}
+</Memory>
+
 <History>
 {{$history}}
 </History>
 
 Respond using this XML format:
 
-<Drive> <Term>term designating the above drive</Term> <Assessment>value based on character and initial situation</Assessment> </Drive>
+<Drive> <Term>term designating the above drive</Term> <Assessment>a one or two word value, e.g. high, medium-high, medium, medium-low, low, etc.</Assessment> <Trigger> a concise, few word statement of the specific situational trigger for this drive instatiation </Trigger> </Drive>
 
-The term must contain at most three words.
-Assessment should be a concise statement, a keyword or at most a single concise sentence.
+The 'Term' must contain at most three words concisely summarizing the goal of this state element, for example 'Identify stranger's intention'.
+
+The 'Assessment' is one word describing the current distance from goal and/or it's urgency. eg, 'high' indicates we are far from the goal or it is highly important to make progress on this drive. Reason about factors like the position of the related drive in the Drive list (higher is more important), the Character and how they might react to the trigger (below), and how unique the Trigger is as an event. Look for reasons to given an assessment other than medium. Use nuanced assessments (very high, medium-low, etc) where appropriate. 
+
+The 'Trigger' is a concise phrase or sentence designating the Character, Situation, Memory, or History element(s) that trigger this instantion.
+
+
 Respond ONLY with the above XML
 Do on include any introductory, explanatory, or discursive text.
 End your response with:
@@ -395,21 +402,23 @@ End your response with:
         for drive in self.drives:
             print(f'{self.name} generating state for drive: {drive}')
             response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
+                                     "memory":self.memory,
                                      "character":self.character, "history":self.history},
                                     prompt, temp=0.3, stops=['<END>'], max_tokens=60)
             term = find('<Term>', response)
             assessment = find('<Assessment>', response)
+            trigger=find('<Trigger>', response)
             # these will be used for remainder of scenario
-            self.state[term] ={"drive":drive, "state": assessment}
+            self.state[term] ={"drive":drive, "state": assessment, 'trigger':trigger}
         print(f'{self.name}initial state {self.state}')
         
     def map_state(self):
         """ map state for llm input """
         mapped = []
         for key, item in self.state.items():
-            dscp = item['drive']
+            trigger = item['drive']
             value = item['state']
-            mapped.append(f"- Need: '{dscp}', State: '{value}'")
+            mapped.append(f"- '{key}: {trigger}', State: '{value}'")
         return '\n'.join(mapped)
 
     def update_state(self):
@@ -421,12 +430,18 @@ When last updated, your state was:
 {{$state}}
 </State>
 
-Your task is to update your physical state.
+Your task is to update your state.
 Your current situation is:
 
 <Situation>
 {{$situation}}
 </Situation>
+
+Your long-term memory includes:
+
+<Memory>
+{{$memory}}
+</Memory>
 
 Recent interactions not included in memory:
 
@@ -598,7 +613,7 @@ To be repetitive, speech or an act must meet the following condition:
 - Literally or substantively duplicate previous speech or act by you {{$name}} in LastAct or in history.
 - Address the same subject, task, or theme as the earlier speech or act it appears to repeat.
 
-Speech or an act that is a response or successor to the previous speech or act it appears to repeat, while addressing the same subject, and which contains substantive additional content, is NOT repetitive.
+Speech or an act that appears to repeat but which also contains substantive additional content, is NOT repetitive.
 
 <NewText>
 {{$text}}
@@ -656,7 +671,7 @@ Your basic drives include:
 {{$drives}}
 </Drives>
  
-Your task is to create a set of three short term goals given who you are, your Situation, your State, your Memory, and your recent RecentHistory as listed below. 
+Your task is to create a set of three short term goals given who you are, your Situation, your Stance, your Memory, and your recent RecentHistory as listed below. 
 Your current situation is:
 
 <Situation>
@@ -674,16 +689,16 @@ Recent conversation has been:
 {{$history}}
 </RecentHistory)>
 
+Your current Stance is:
+<Stance>
+{{$state}}
+</Stance>
 
-Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your State, your Memory, and your recent RecentHistory as listed above.
-
+Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your Stance, your Memory, and your recent RecentHistory as listed above.
 List your three most important-short term goals as instantiations from your current needs: 
 
-<Needs>
-{{$state}}
-</Needs>
             
-Needs are listed in a-priori priority order, highest first. However, a short-term goal gets its importance not only from the order in the listing above.  A short term goal also derives its importance by the degree to which the Needs it corresponds to has a State value of 'high'.
+Drives and Stances are listed in a-priori priority order, highest first. However, a short-term goal gets its importance from a combination of Stance order and Stance value (e.g., A Stance value of 'High' is more urgent than one with a value of 'Low').
 The List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
 Your Text must be consistent with the Reason.
 Priorities should be as specific as possible. 
@@ -694,6 +709,7 @@ limit your total response to 120 words.
 
 Reason step by step to determine the overall importance of each possible short-term goal. Then respond with the three with the highest overall importance. 
 Use the XML format:
+
 <Priorities>
 <Priority> <Text>statement of top priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
 <Priority> <Text>statement of second priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
@@ -841,8 +857,8 @@ Joe: Well, I'm glad we can be here for each other too. As for finding our way ou
 
 Respond in XML:
 <Actionable>
-  <Mode>'Say' or 'Do', corresponding to whether the act is a speech act or a physical act</Mode>
-  <SpecificAct>words to speak or specific action description</SpecificAct>
+  <Mode>'Think', 'Say' or 'Do', corresponding to whether the act is a reasoning, speech, or physical act</Mode>
+  <SpecificAct>thoughts, words to speak or physical action description</SpecificAct>
 </Actionable>
 
 ===Examples===
@@ -958,8 +974,6 @@ End your response with:
     def forward(self, num_hours):
         # roll conversation history forward.
         ## update physical state
-        self.generate_state()
-
         ## update long-term dialog memory
         prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
 Your task is to update your long-term memory of interactions with other actors.
@@ -1000,6 +1014,7 @@ END""")
         response = response.replace('<Memory>','')
         self.memory = response
         self.history = self.history[-4:]
+        self.generate_state() # why isn't this update_state? Because update is very short term!
         self.update_priorities()
         
     def update_intentions_wrt_say_think(self, source, text, reason):
@@ -1007,6 +1022,7 @@ END""")
         print(f'Update intentions from say or think\n {text}\n{reason}')
 
         if source == 'dialog' or source=='watcher':
+            print(f' source is dialog or watcher, no intention updates')
             return
         prompt=[UserMessage(content="""Your task is to analyze the following text.
 
@@ -1093,7 +1109,7 @@ END
                 for actor in self.context.actors:
                     for priority in actor.priorities:
                         if find('<Text>', priority) == 'dialog':
-                            print(f'{actor.name} removing dialog priority')
+                            print(f'{actor.name} removing dialog task!')
                             actor.priorities.remove(priority)
                     for intention in actor.intentions:
                         if find('<Source>', intention) == 'dialog':
@@ -1113,7 +1129,7 @@ END
 
         #generate response intention
         prompt=[UserMessage(content="""You are {{$character}}.
-Generate a response to the input below, given who you are, your Situation, your state, your Memory, and your recent RecentHistory as listed below.
+Generate a response to the input below, given who you are, your Situation, your State, your Memory (if any), and your recent RecentHistory (if any) as listed below.
 Your current situation is:
 
 <Situation>
@@ -1141,7 +1157,7 @@ Use the following XML template in your response:
 <Answer>
 <Response>response to this statement</Response>
 <Reason>concise reason for this answer</Reason>
-<Unique>'True' if you have something new to say, 'False' if your response is a repeat or rephrase of previous responses</Unique>
+<Unique>'True' if you have something new to say, 'False' if you have nothing worth saying or your response is a repeat or rephrase of previous responses</Unique>
 </Answer>
 
 Your last response was:
@@ -1288,6 +1304,12 @@ END
 {{$situation}}
 </Situation>
 
+Your fundamental needs / drives include:
+
+<Drives>
+{{$drives}}
+</Drives> 
+
 Your state is:
 
 <State>
@@ -1315,14 +1337,14 @@ New Observation:
 {{$input}}
 </Input>
 
-Given your current Priorities, New Observation, and the other information listed above, think step-by-step and choose one action to perform from the list below:
+Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step and choose your most pressing, highest need / priority action to perform from the list below:
 
 {{$actions}}
 
 Choose only one action. Respond with the number of your selection, using the format:
 <ActionIndex>number of chosen action</ActionIndex>
 
-Do not respond with more than one action 
+Do not respond with more than one action. 
 Consider the conversation history in choosing your action. 
 Respond in the context of the RecentHistory (if any) and in keeping with your character. 
 Respond using the XML format shown above for the chosen action
@@ -1338,7 +1360,7 @@ END
         if len(action_choices) > 1:
             response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
                                      "memory":self.memory, "situation": self.context.current_state,
-                                     "state": mapped_state,
+                                     "state": mapped_state, "drives":self.drives,
                                      "priorities":'\n'.join([find('<Text>', task) for task in self.priorities]),
                                      "actions":'\n'.join(action_choices)
                                      }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)

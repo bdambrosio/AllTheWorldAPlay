@@ -5,7 +5,7 @@ import llm_api
 
 # Create characters
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
-# I find it disorienting for characters to change racial characteristics every time they are rendered, so they are nailed down here.
+# I find it disorienting for characters to change ethnic characteristics every time they are rendered, so they are nailed down here.
 # I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
 S = agh.Agh("Samantha", """You are a pretty young woman of Sicilian descent. 
 You love the outdoors and hiking.
@@ -29,7 +29,7 @@ Your name is Samanatha""")
 S.drives = [
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.", 
     "finding a way out of the forest.",
-    "solving the mystery of how she ended up in the forest with no memory.",
+    "solving the mystery of how they ended up in the forest with no memory.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ]
