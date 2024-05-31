@@ -72,13 +72,13 @@ model = ExLlamaV2(config)
 
 if 'llama3-70B' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([45, 45, 48])
+    model.load([44, 44, 44])
     print('model load done..')
 
 else:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([40, 42, 42])
-    
+    model.load([44, 42, 42])
+
     print('model load done..')
 
 GENERATION_PROMPT=None
