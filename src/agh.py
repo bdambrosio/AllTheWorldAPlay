@@ -260,10 +260,14 @@ class Character():
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
 
+    def other(self):
+        for actor in self.context.actors:
+            if actor != self:
+                return actor
     def add_to_history(self, message):
         message = message.replace('\\','')
         self.history.append(message)
-        self.history = self.history[-5:] # memory is fleeting, otherwise we get very repetitive behavior
+        self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def greet(self):
             for actor in self.context.actors:
@@ -281,60 +285,65 @@ class Character():
         ### speak to someone
         #
         self.reason = reason
-        if act_name is not None and act_arg is not None and len(act_name) >0 and len(act_arg) > 0:
-            self_verb = 'hear' if act_name == 'Say' else 'see'
-            visible_arg = '' if act_name == 'Think' else act_arg
+        if act_name is None or act_arg is None or len(act_name) <=0 or  len(act_arg) <= 0:
+            return
+        self_verb = 'hear' if act_name == 'Say' else 'see'
+        visible_arg = '' if act_name == 'Think' else act_arg
             
-            # update main display
-            intro = f'{self.name}:' if act_name == 'Say' else ''
-            visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
-            intro = f'{self.name}:' if act_name == 'Say' else ''
-            if act_name != 'Do':
-                self.show += f"\n{intro} {visible_arg}"
-            self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
+        # update main display
+        intro = f'{self.name}:' if act_name == 'Say' else ''
+        visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
+        intro = f'{self.name}:' if act_name == 'Say' else ''
+        if act_name != 'Do':
+            self.show += f"\n{intro} {visible_arg}"
+        self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
 
-            # update thought
-            if act_name == 'Think':
-                self.thought = act_arg+'\n ... '+self.reason
-            else:
-                self.thought = act_arg[:42]+' ...\n ... '+self.reason
+        # update thought
+        if act_name == 'Think':
+            self.thought = act_arg+'\n ... '+self.reason
+        else:
+            self.thought = act_arg[:42]+' ...\n ... '+self.reason
 
 
-            if source != 'dialog' and source != 'watcher': 
+        if act_name == 'Do' and source != 'dialog' and source != 'watcher':
+            if self.active_task != source:
+                if target == None:
+                    target = self.other()
+                target.tell(self, act_arg)
                 self.active_task = source # dialog is peripheral to action, action task selection is sticky
 
-            #others see your act in the world
-            if act_name != 'Say': # Say impact on recipient handled by tell
-                for actor in self.context.actors:
-                    if actor != self:
-                        actor.add_to_history(self.show)
-            elif act_name == 'Say':
-                for actor in self.context.actors:
-                    if actor != self:
-                        if source != 'watcher': # when talking to watcher, others don't hear it.
-                            # create other actor response to say
-                            # note this assumes only two actors for now, otherwise need to add target
-                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                            actor.tell(self, act_arg, source)
+        #others see your act in the world
+        if act_name != 'Say': # Say impact on recipient handled by tell
+            for actor in self.context.actors:
+                if actor != self:
+                    actor.add_to_history(self.show)
+        elif act_name == 'Say':
+            for actor in self.context.actors:
+                if actor != self:
+                    if source != 'watcher': # when talking to watcher, others don't hear it.
+                        # create other actor response to say
+                        # note this assumes only two actors for now, otherwise need to add target
+                        actor.add_to_history(f'You hear {self.name} say: {act_arg}')
+                        actor.tell(self, act_arg, source)
 
 
-            # if you acted in the world, ask Context for consequences of act
-            # should others know about it?
-            if act_name =='Do':
-                consequences, world_updates = self.context.do(self, act_arg)
-                self.show += '\n  '+ consequences+'\n'+world_updates # main window
-                self.add_to_history(f"You observe {consequences}")
-                print(f'{self.name} setting act_result to {world_updates}')
-                self.act_result = world_updates
-                if target is not None: # targets of Do are tbd
-                    target.sense_input += '\n'+world_updates
+        # if you acted in the world, ask Context for consequences of act
+        # should others know about it?
+        if act_name =='Do':
+            consequences, world_updates = self.context.do(self, act_arg)
+            self.show += '\n  '+ consequences+'\n'+world_updates # main window
+            self.add_to_history(f"You observe {consequences}")
+            print(f'{self.name} setting act_result to {world_updates}')
+            self.act_result = world_updates
+            if target is not None: # targets of Do are tbd
+                target.sense_input += '\n'+world_updates
 
-            self.previous_action = act_name
+        self.previous_action = act_name
 
-            if act_name == 'Say' or act_name == 'Think':
-                #make sure future intentions are consistent with what we just did
-                # why don't we need this for 'Do?'
-                self.update_intentions_wrt_say_think(source, act_arg, reason)
+        if act_name == 'Say' or act_name == 'Think':
+            #make sure future intentions are consistent with what we just did
+            # why don't we need this for 'Do?'
+            self.update_intentions_wrt_say_think(source, act_arg, reason)
 
 class Agh(Character):
     def __init__ (self, name, character_description):
@@ -608,11 +617,6 @@ End your response with:
         """ test if content duplicates last_act or entry in history """
         prompt=[UserMessage(content="""You are {{$name}}.
 Analyze the following text for duplicative content. 
-Does the following NewText duplicate, literally or substantively, text appearing in the LastAct or that is by you in History?
-To be repetitive, speech or an act must meet the following conditions:
-- Literally or substantively duplicate previous thought, speech, or act by you, {{$name}}, in LastAct or in History.
-- Address the same subject or task as the earlier thought, speech or act it appears to repeat.
-- Add no new thought, speech, or action.
 
 Speech or an act that appears to repeat but which also contains substantive additional content is NOT repetitive.
 
@@ -673,21 +677,24 @@ Response:
 False
 ===End Examples===
 
-<NewText>
-{{$text}}
-</NewText>
-
-<LastAct>
-{{$last_act}}
-<LastAct>
-          
 <History>
 {{$history}}
 </History>
 
-Reason step by step to a result, 'True' if NewText is repetitive, 'False' if it is not. 
-If the answer is that it does not duplicate, respond 'False'
-If the answer is that it is largely duplicative, respond 'True'.
+<LastAct>
+{{$last_act}}
+<LastAct>
+
+<NewText>
+{{$text}}
+</NewText>
+          
+Does the above NewText duplicate, literally or substantively, text appearing in the LastAct or in History?
+To be repetitive, speech or an act must meet the following conditions:
+- Literally or substantively duplicate previous thought, speech, or act by you, {{$name}}, in LastAct or in History.
+- Address the same subject or task as the earlier thought, speech or act it appears to repeat.
+- Add no new thought, speech, or action.
+Reason step by step to a result, respond 'True' if NewText is repetitive, 'False' if it is not. 
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -963,7 +970,7 @@ End your response with:
         while act is None and tries < 2:
             response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
                                      'memory':self.memory, 'duplicative':duplicative_insert,
-                                     'history':'\n\n'.join(self.history), 'name':self.name,
+                                     'history':'\n\n'.join(self.history[:-3]), 'name':self.name,
                                      "situation":self.context.current_state,
                                      "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
@@ -978,7 +985,7 @@ End your response with:
 
             # test for dup act
             if mode =='Say':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[:-2]))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
                     duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say or how else could you say it?"
@@ -990,7 +997,7 @@ End your response with:
                         pass
 
             elif mode =='Do':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history))
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[:-2]))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
@@ -1058,7 +1065,7 @@ END""")
                                prompt, temp=0.4, stops=['END'], max_tokens=300)
         response = response.replace('<Memory>','')
         self.memory = response
-        self.history = self.history[-4:]
+        self.history = self.history[-2:]
         self.generate_state() # why isn't this update_state? Because update is very short term!
         self.update_priorities()
         
@@ -1139,7 +1146,7 @@ END
             if candidate_source == source:
                 self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
-        if source != None:
+        if source != None and self.active_task is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
             self.active_task=source
         #ins = '\n'.join(self.intentions)
@@ -1173,8 +1180,10 @@ END
         print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
 
         #generate response intention
-        prompt=[UserMessage(content="""You are {{$character}}.
-Generate a response to the input below, given who you are, your Situation, your State, your Memory (if any), and your recent RecentHistory (if any) as listed below.
+        prompt=[UserMessage(content="""Respond to the input below as {{$name}}.
+
+{{$character}}.
+
 Your current situation is:
 
 <Situation>
@@ -1218,24 +1227,25 @@ The statement you are responding to is:
 Reminders: 
 - Your task is to generate an response to the statement using the above XML format.
 - The response should be in keeping with your character's State.
-- The response should be significant advance of the dialog in history and especially your PreviousResponse, if any.
-- Do NOT merely echo the Input. Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
-- If the intent of the response is to agree, it is sufficient to state agreement without repeating the activity that is being agreed to.
+- The response can include body language or facial expressions as well as speech (e.g. 'Joe nods in agreement...')
+- The response is in the context of the Input, and can assume all Input information is implicitly present in the dialog.
+- Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
+- If the intent of the response is to agree, state agreement without repeating the feelings, opinions, motivations, or goals.
 - Speak in your own voice. Do not echo the speech style of the Input. 
 - Respond in the style of natural spoken dialog. Use short sentences, contractions, and casual language.
  
-If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
-
+If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then the referent should be omitted or use pronoun reference.
 ===Example===
 RecentHistory:
-Samantha: Hi Joe. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and solve the mystery of how we got here.
+Samantha: Hi Joe. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and find out how we got here.
 
 Response:
-That's great to hear. I'm glad we can work together to find our way out of this forest. And yeah, good idea on shelter and water. I can imagine how you're feeling, this is weird.
+Yeah. I hope we can find our way out here. And yeah, good idea on shelter and water. this is so weird.
 
 ===Example===
 Input:
-Samantha says Great! Let's stick together and see if we can find any clues or landmarks that might help us figure out where we are and how to get back. I'm still feeling a bit anxious and disoriented, but having someone else here with me makes me feel a bit better.
+Samantha says Great! Let's stick together and look for clues or landmarks to where we are or how to get back. 
+I'm feeling disoriented, but having someone else here with me helps.
 
 Joe: Sounds like a plan. Let's stay within sight. Keep an eye out for any paths or trails or trail markers.
 ===End Example===
@@ -1251,9 +1261,9 @@ END
         if source in self.last_acts:
             last_act=self.last_acts[source]
         answer_xml = self.llm.ask({'character':self.character, 'statement':f'{from_actor.name} says {message}',
-                                   "situation": self.context.current_state,
+                                   "situation": self.context.current_state,"name":self.name,
                                    "state":mapped_state, "memory":self.memory, 
-                                   'history':'\n'.join(self.history), 'last_act':str(last_act) 
+                                   'history':'\n'.join(self.history), 'last_act':str(last_act)
                                    }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
         response = find('<response>', answer_xml)
         if response is None:
@@ -1267,7 +1277,7 @@ END
             response_source='dialog'
         else:
             response_source = 'watcher'
-        dup = self.repetitive(response, message, '\n\n'.join(self.history))
+        dup = self.repetitive(response, message, '\n\n'.join(self.history[:-2]))
         if dup:
             return # skip response, adds nothing
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
@@ -1385,8 +1395,11 @@ Given who you are, your current Priorities, New Observation, and the other infor
 
 {{$actions}}
 
-Choose only one action. Respond with the number of your selection, using the format:
-<ActionIndex>number of chosen action</ActionIndex>
+Each action option above is prefixed by a single-digit index-number.
+
+<ActionIndex>
+index-number of chosen action
+</ActionIndex>
 
 Do not respond with more than one action. 
 Consider the conversation history in choosing your action. 
@@ -1418,6 +1431,8 @@ END
                 response = response[:idx]
             index = -1
             choice = find('<ActionIndex>', response)
+            if choice is None:
+                choice = response.strip() # llms sometimes ignore XML formatting for this prompt
             if choice is not None:
                 try:
                     draft = int(choice)
