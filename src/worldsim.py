@@ -150,7 +150,7 @@ class CustomWidget(QWidget):
         name.adjustSize()
         self.top_bar.addWidget(name)
         if type(self.entity) != agh.Context:
-            self.active_task = WrappingLabel(self.entity.active_task, self)
+            self.active_task = WrappingLabel(self.entity.active_task.peek(), self)
             self.active_task.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.active_task.setWordWrap(True)
             self.active_task.adjustSize()
@@ -299,7 +299,7 @@ class CustomWidget(QWidget):
         self.start_sense()
 
     def update_entity_state_display(self):
-        self.active_task.setText(self.entity.active_task)
+        self.active_task.setText(self.entity.active_task.peek())
         self.active_task.adjustSize()
         
         print(f'updating entity state display')

@@ -64,8 +64,8 @@ class Human (agh.Character):
             task_name = find('<Source>', intention)
             if act_name=='Say' or act_name=='Do':
                 self.last_acts[task_name]= act_dscp
-                if task_name != 'dialog' and task_name != 'inject':
-                    self.active_task = task_name
+                if task_name != 'dialog' and task_name != 'watcher':
+                    self.active_task.push(task_name)
                 self.reason = act_reason
                 #this will effect selected act and determine consequences
             self.acts(target, act_name, act_dscp, reason, task_name)
