@@ -18,7 +18,7 @@ class Human (agh.Character):
 
     def add_to_history(self, role, act, message):
         message = message.replace('\\','')
-        self.history.append(f"{role}: {act} {message}")
+        self.history.append(f"{role}: {act} {message}".strip())
         self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def update_physical_state(self, key, response):
