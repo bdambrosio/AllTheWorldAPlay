@@ -337,8 +337,9 @@ class MainWindow(QMainWindow):
            print(f'calling {actor.name} initialize')
            actor.initialize()
         for actor in self.actors:
-           print(f'calling {actor.name} greet')
-           actor.greet()
+            print(f'calling {actor.name} greet')
+            #actor.greet()
+            actor.see()
 
         for actor in self.actors:
            actor.widget.update_entity_state_display()

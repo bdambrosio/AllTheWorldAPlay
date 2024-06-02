@@ -99,6 +99,12 @@ class Context ():
             traceback.print_exc()
         return filepath
 
+    def get_actor_by_name(self, name):
+        for actor in self.actors:
+            if actor.name == name:
+                return actor
+        return None
+
     def world_updates_from_act_consequences(self, consequences):
         prompt=[UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
 It may be there are no significant updates to report.
@@ -292,7 +298,7 @@ class Character():
                 return actor
     def add_to_history(self, message):
         message = message.replace('\\','')
-        self.history.append(message)
+        self.history.append(message.strip())
         self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def greet(self):
@@ -306,6 +312,62 @@ class Character():
                 actor.show += f'\n{self.name}: {message}'
                 return
 
+    def see(self):
+        for actor in self.context.actors:
+            if actor != self:
+                self.add_to_history(f'You see {actor.name}')
+
+    def format_history(self):
+        return '\n\n'.join(self.history)
+
+    def say_target(self, text):
+        prompt=[UserMessage(content="""Determine the intended hearer of the following message spoken by you.
+{{$character}}
+
+You're recent history has been:
+
+<History>
+{{$history}}
+</History>
+        
+Known other actors include:
+        
+<Actors>
+{{$actors}}
+</Actors>
+        
+The message is:
+        
+<Message>
+{{$message}}
+</Message>
+        
+The recipient may be:
+- explicitly mentioned by name in the message, e.g. "Samantha, let's rest."
+- appear in the message as a pronoun reference to an actor named explicitly in History, e.g. "You go that way/"
+- may not appear at all in the message, as in conversational convention, but be inferrable from History e.g. "Ok, let's go"
+- may not be an actor named in the list of known actors.
+
+Respond using the following XML format:
+
+<Target>
+  <Name>intended recipient name</Name>
+</Target>
+
+Respond only with the above XML, instantiated with the name of the intended recipient
+Do not add any introductory, explanatory, or discursive matter.
+End your response with:
+</END>
+""")]
+        response = self.llm.ask({'character':self.character, 'history':self.format_history(),
+                                 'actors':'\n'.join([actor.name for actor in self.context.actors]),
+                                "message":text
+                                },
+                               prompt, temp=0.2, stops=['END'], max_tokens=180)
+
+        print(f'say target name: {response}')
+        return find('<Name>', response)
+
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         #
         ### speak to someone
@@ -314,12 +376,11 @@ class Character():
         if act_name is None or act_arg is None or len(act_name) <=0 or  len(act_arg) <= 0:
             return
         self_verb = 'hear' if act_name == 'Say' else 'see'
-        visible_arg = '' if act_name == 'Think' else act_arg
+        visible_arg = 'Thinking ...' if act_name == 'Think' else act_arg
             
         # update main display
-        intro = f'{self.name}:' if act_name == 'Say' else ''
+        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
         visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
-        intro = f'{self.name}:' if act_name == 'Say' else ''
         if act_name != 'Do':
             self.show += f"\n{intro} {visible_arg}"
         self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
@@ -330,15 +391,12 @@ class Character():
         else:
             self.thought = act_arg[:42]+' ...\n ... '+self.reason
 
-        if target == None:
-            target = self.other()
-
         if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
             if self.active_task.peek() != source:
                 self.active_task.push(source)  # dialog is peripheral to action, action task selection is sticky
 
         #others see your act in the world
-        if act_name != 'Say': # Say impact on recipient handled by tell
+        if act_name != 'Say': # everyone sees it
             for actor in self.context.actors:
                 if actor != self:
                     actor.add_to_history(self.show)
@@ -349,14 +407,15 @@ class Character():
                         # create other actor response to say
                         # note this assumes only two actors for now, otherwise need to add target
                         actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        actor.tell(self, act_arg, source, respond=True)
+                        if actor == target:
+                            actor.tell(self, act_arg, source, respond=True)
 
 
         # if you acted in the world, ask Context for consequences of act
         # should others know about it?
         if act_name =='Do':
             consequences, world_updates = self.context.do(self, act_arg)
-            self.show += '\n  '+ consequences+'\n'+world_updates # main window
+            self.show += '\n  '+ consequences.strip()+'\n'+world_updates.strip() # main window
             self.add_to_history(f"You observe {consequences}")
             print(f'{self.name} setting act_result to {world_updates}')
             self.act_result = world_updates
@@ -1028,12 +1087,12 @@ End your response with:
                 dup = self.repetitive(act, last_act, '\n\n'.join(self.history[-2:]))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
-                    duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say or how else could you say it?"
+                    duplicative_insert =f"\nThe following Say is duplicative of previous dialog:\n'{act}'\nWhat else could you say or how else could you say it?"
                     if tries == 0:
                         act = None # force redo
                         temp +=.3
                     else:
-                        #act = None # skip task, nothing interesting to do
+                        act = None # skip task, nothing interesting to do
                         pass
 
             elif mode =='Do':
@@ -1321,6 +1380,8 @@ END
             return
         unique = find('<Unique>', answer_xml)
         if unique is None or 'false' in unique.lower():
+            if self.active_task.peek() == 'dialog':
+                self.active_task.pop()
             return 
         reason = find('<Reason>', answer_xml)
         print(f' Queueing dialog response {response}')
@@ -1330,8 +1391,10 @@ END
             response_source = 'watcher'
         dup = self.repetitive(response, message, '\n\n'.join(self.history[-2:]))
         if dup:
+            if self.active_task.peek() == 'dialog':
+                self.active_task.pop()
             return # skip response, adds nothing
-        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
+        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Target>{from_actor.name}</Target><Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
 
 
     def senses(self, sense_data='', ui_queue=None):
@@ -1542,9 +1605,16 @@ END
             self.reason = self.reason
             self.thought = act_arg+'\n  '+self.reason
         target = None
-        if len(self.context.actors) > 1:
-            target = self.other()
-        #this will effect selected act and determine consequences
+
+        if act_name == 'Say':
+            #responses, at least, explicitly name target of speech.
+            target_name = find('<Target>', intention)
+            if target_name == None:
+                target_name = self.say_target(act_arg)
+            if target_name != None:
+                target = self.context.get_actor_by_name(target_name)
+
+        #this will affect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
 
         # maybe we should do this at start of next sense?

@@ -1,10 +1,11 @@
 Offset actor memory updates to spread delay across steps.
 tell receipt should refresh pushed intention?
-TWO tells from say in Acts, one to target, one to actor
 format Drives (a list of strings) as a bulleted list of items.
-Receive non-dialog tell, find or make task for response and set active?
 Show only updates on world update? (will make future acts more understandable)
 INCLUDE world event in actor update!
 A 'Do' can be a communication act such as smile, touch, show, ...
 
-On receipt of non-dialog tell, create task from most appropriate drive, push it as active?
+Memory formation - should accurately reflect actual events!
+
+Add testable termination condition when creating task?
+Sllightly longer display of action in actor widget, since we no longer display do in main activity window.
