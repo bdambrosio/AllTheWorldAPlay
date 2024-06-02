@@ -38,6 +38,28 @@ def find(key, form):
         return form[start_idx:]
     return form[start_idx: start_idx + end_idx]
 
+class Stack:
+    def __init__(self):
+        self.stack = []
+
+    def push(self, item):
+        self.stack.append(item)
+
+    def pop(self):
+        if not self.is_empty():
+            return self.stack.pop()
+        return None
+
+    def peek(self):
+        if not self.is_empty():
+            return self.stack[-1]
+        return None
+
+    def is_empty(self):
+        return len(self.stack) == 0
+
+    def size(self):
+        return len(self.stack)
 
 class Context ():
     def __init__(self, actors, situation):
@@ -138,7 +160,7 @@ given {{$name}} basic drives are:
 Respond with the observable result.
 Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
 It is usually not necessary or desirable to repeat the above action statement in your response.
-Format your response as one or more simple declaractive sentences.
+Format your response as one or more simple declarative sentences.
 Include in your response:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
 - sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
@@ -148,7 +170,7 @@ Do NOT extend the scenario with any follow on actions or effects.
 Be extremely terse when reporting character emotional state, only report the most significant emotional state changes.
 Be concise!
 Do not include any Introductory, explanatory, or discursive text.
-End your reponse with:
+End your response with:
 <END>
 """)]
         history = self.history()
@@ -168,7 +190,8 @@ End your reponse with:
         history = self.history()
         if random.randint(1,7) == 1:
             event = """
-Include a event occurence consistent with the PreviousState below, such as appearance of a new object, natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
+Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
+natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
 
 ===Examples===
 PreviousState:
@@ -221,22 +244,25 @@ Respond using the following XML format:
 
 <Situation>
 Sentence describing physical space, suitable for image generator,
-Updated State description of about 400 words
+Updated State description of about 300 words
 </Situation>
 
 Respond with an updated situation description reflecting a time passage of 3 hours and the events that have occurred.
 Include ONLY the concise updated situation description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 Do NOT carry the storyline beyond three hours from PreviousSituation.
-Limit your response to about 400 words
+Limit your response to about 330 words
 End your response with:
 END""")]
             
-        response = self.llm.ask({"situation":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=600)
+        response = self.llm.ask({"situation":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=500)
         new_situation = find('<Situation>', response)
         if new_situation is not None:
             self.current_state=new_situation
             self.show='\n-----scene-----\n'+new_situation
+        updates = self.world_updates_from_act_consequences(new_situation)
+        print(f'World updates:\n{updates}')
         for actor in self.actors:
+            actor.add_to_history(f"you notice {updates}\n")
             actor.forward(3) # forward three hours and update history, etc
         return response
 
@@ -256,7 +282,7 @@ class Character():
         self.thought='' # thoughts - displayed in character thoughts window
         self.sense_input = ''
         self.widget = None
-        self.active_task = None # task character is actively pursuing.
+        self.active_task = Stack() # task character is actively pursuing.
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
 
@@ -304,27 +330,26 @@ class Character():
         else:
             self.thought = act_arg[:42]+' ...\n ... '+self.reason
 
+        if target == None:
+            target = self.other()
 
-        if act_name == 'Do' and source != 'dialog' and source != 'watcher':
-            if self.active_task != source:
-                if target == None:
-                    target = self.other()
-                target.tell(self, act_arg)
-                self.active_task = source # dialog is peripheral to action, action task selection is sticky
+        if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
+            if self.active_task.peek() != source:
+                self.active_task.push(source)  # dialog is peripheral to action, action task selection is sticky
 
         #others see your act in the world
         if act_name != 'Say': # Say impact on recipient handled by tell
             for actor in self.context.actors:
                 if actor != self:
                     actor.add_to_history(self.show)
-        elif act_name == 'Say':
+        else:
             for actor in self.context.actors:
                 if actor != self:
                     if source != 'watcher': # when talking to watcher, others don't hear it.
                         # create other actor response to say
                         # note this assumes only two actors for now, otherwise need to add target
                         actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        actor.tell(self, act_arg, source)
+                        actor.tell(self, act_arg, source, respond=True)
 
 
         # if you acted in the world, ask Context for consequences of act
@@ -428,7 +453,7 @@ End your response with:
             trigger = item['drive']
             value = item['state']
             mapped.append(f"- '{key}: {trigger}', State: '{value}'")
-        return '\n'.join(mapped)
+        return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
 
     def update_state(self):
         """ update state """
@@ -618,28 +643,29 @@ End your response with:
         prompt=[UserMessage(content="""You are {{$name}}.
 Analyze the following text for duplicative content. 
 
-Speech or an act that appears to repeat but which also contains substantive additional content is NOT repetitive.
-
+A text is considered repetitive if:
+1. It duplicates previous thought, speech, or action literally or substantively.
+2. It addresses the same subject or task as the earlier text.
+3. It adds no new thought, speech, or action.
 
 ===Examples===
 
-NewText:
+LastAct:
 Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
 
-LastAct:
+NewText:
 Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
 
 Response:
 True
 
 -----
+LastAct:
+Hey, let's stick together. We're stronger together than alone. Maybe we can help each other figure things out.
 
 NewText:
 Hey, maybe we should start by looking for any signs of civilization or other people nearby. 
 That way, we can make sure we're not completely alone out here. Plus, it might help us figure out where we are and how we got here. What do you think?
-
-LastAct:
-Hey, let's stick together. We're stronger together than alone. Maybe we can help each other figure things out.
 
 Response:
 False
@@ -658,20 +684,19 @@ False
 
 ----
 
-NewText:
-Hey Samantha, maybe we can work together to figure out what happened to us. 
-We seem to be in this together, so let's stick together and help each other out.
-
 LastAct:
 None
 
 History:
 You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?
-
 You think Whoever she is, she is pretty!
 
 You hear Samantha say: Hey Joe, nice to meet you. I'm Samantha. This is really strange, right? I can't remember anything either. 
 But maybe we can help each other figure things out. We should definitely look for shelter and water first, and then try to find a way out of this forest.
+
+NewText:
+Hey Samantha, maybe we can work together to figure out what happened to us. 
+We seem to be in this together, so let's stick together and help each other out.
 
 Response:
 False
@@ -690,11 +715,7 @@ False
 </NewText>
           
 Does the above NewText duplicate, literally or substantively, text appearing in the LastAct or in History?
-To be repetitive, speech or an act must meet the following conditions:
-- Literally or substantively duplicate previous thought, speech, or act by you, {{$name}}, in LastAct or in History.
-- Address the same subject or task as the earlier thought, speech or act it appears to repeat.
-- Add no new thought, speech, or action.
-Reason step by step to a result, respond 'True' if NewText is repetitive, 'False' if it is not. 
+Respond 'True' if NewText is repetitive, 'False' if it is not.
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -718,7 +739,7 @@ End your response with:
             return False
 
     def update_priorities(self):
-        self.active_task = None
+        self.active_task = Stack() #new scene, start over. Or maybe we shouldn't?
         print(f'\n{self.name} Updating priorities\n')
         prompt = [UserMessage(content=self.character+"""You are {{$character}}.
 Your basic drives include:
@@ -779,7 +800,7 @@ END
         response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
                                  'drives':'\n'.join(self.drives),
                                  'memory':self.memory,
-                                 'history':'\n\n'.join(self.history),
+                                 'history':'\n\n'.join(self.history).strip(),
                                  "situation":self.context.current_state,
                                  "state":state_map
                                  },
@@ -823,9 +844,9 @@ END
         reason = find('<Reason>', task_xml)
         # crude, needs improvement
         #if reason is not None and 'Low' in reason:
-        #    if self.active_task == task_name:
+        #    if self.active_task.peek() == task_name:
         #        #active task is now satisfied!
-        #        self.active_task = None
+        #        self.active_task.pop() = None
         #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
@@ -883,6 +904,7 @@ A SpecificAct is one which:
 - Can be performed or acted out by a person
 - Can be easily visualized or imagined as a film clip
 - Is consistent with any action commitments made in your last statements in RecentHistory
+- Is consistent with the Situation (e.g., does not suggest as new an action described in Situation)
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
 - Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
 - Is stated in the appropriate person (voice):
@@ -922,6 +944,7 @@ Response:
   <SpecificAct>Call a meeting with the building management to discuss increased security measures for Annie and the household.</SpecificAct>
 </Actionable>
 
+----
 
 Task:
 'Establish connection with Joe given RecentHistory element: "Who is this guy?"'
@@ -931,6 +954,8 @@ Response:
   <Mode>Say</Mode>
   <SpecificAct>Hi, who are you?</SpecificAct>
 </Actionable>
+
+----
 
 Task:
 'Find out where I am given Situation element: "This is very very strange. Where am I?"'
@@ -952,11 +977,26 @@ Your name is {{$name}}, phrase the statement of specific action in your voice.
 Ensure you do not duplicate content of a previous specific act.
 {{$duplicative}}
 
-The task you are to transform into a specific action is:
-
+Again, the task to translate into an Actionable is:
 <Task>
-{{$task}} given: {{$reason}}
+{{$task}} given {{$reason}}
 </Task>
+
+Recent conversation has been:
+<RecentHistory>
+{{$history}}
+</RecentHistory)>
+
+And yhe Previous specific act for this Task, if any, was:
+
+<PreviousSpecificAct>
+{{$lastAct}}
+</PreviousSpecificAct>
+
+with the observed result of that was:
+<ObservedResult>
+{{$lastActResult}}.
+</ObservedResult>
 
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -970,7 +1010,7 @@ End your response with:
         while act is None and tries < 2:
             response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
                                      'memory':self.memory, 'duplicative':duplicative_insert,
-                                     'history':'\n\n'.join(self.history[:-3]), 'name':self.name,
+                                     'history':'\n\n'.join(self.history[-3:]).strip(), 'name':self.name,
                                      "situation":self.context.current_state,
                                      "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
@@ -985,7 +1025,7 @@ End your response with:
 
             # test for dup act
             if mode =='Say':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[:-2]))
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[-2:]))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
                     duplicative_insert =f"The following Say is duplicative of previous dialog:\n'{act}'. What else could you say or how else could you say it?"
@@ -997,7 +1037,7 @@ End your response with:
                         pass
 
             elif mode =='Do':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[:-2]))
+                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[-2:]))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
@@ -1052,7 +1092,7 @@ The updated memory will replace the current long-term memory, and should focus o
 1. Emotionally significant interactions and events.
 2. Factually significant information. Note that factual information can change, and should be updated when necessary. For example, a 'fact' about your location in Memory may no longer be valid if a Do action caused you to move since the last update.
 
-Limit your response to 240 words.
+Limit your response to 360 words.
 Respond ONLY with the updated long-term memory.
 Do not include any introductory, explanatory, discursive, or peripheral text.
 
@@ -1062,7 +1102,7 @@ END""")
         response = self.llm.ask({'me':self.name, 'memory':self.memory,
                                 'history':'\n\n'.join(self.history),
                                 "situation":self.context.current_state},
-                               prompt, temp=0.4, stops=['END'], max_tokens=300)
+                               prompt, temp=0.4, stops=['END'], max_tokens=500)
         response = response.replace('<Memory>','')
         self.memory = response
         self.history = self.history[-2:]
@@ -1146,36 +1186,42 @@ END
             if candidate_source == source:
                 self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
-        if source != None and self.active_task is None: # do we really want to take a spoken intention as definitive?
+        if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
-            self.active_task=source
+            self.active_task.push(source)
         #ins = '\n'.join(self.intentions)
         #print(f'Intentions\n{ins}')
 
-    def tell(self, from_actor, message, source='dialog'):
+    def tell(self, from_actor, message, source='dialog', respond=True):
+        # Respond = False tbd
+        if source == 'dialog' and self.previous_action == 'Say' and self.active_task.peek() != None:
+            # assuming this means this is a response to my previous action
+            source = self.active_task.peek()
+        elif source == 'dialog' and self.previous_action != 'Say':
+            #not a response to my Say:
+            self.active_task.push('dialog')
+        elif source != 'dialog':
+            print(f' non dialog tell')
         if source == 'dialog':
             self.dialog_length += 1
-            if self.dialog_length >= 2 and random.randint(1,2) == 1: # end a dialog after a couple of turns
+            if self.dialog_length > 1: # end a dialog after one turn
                 self.dialog_length = 0;
                 # clear all actor pending dialog tasks and intentions:
-                for actor in self.context.actors:
-                    for priority in actor.priorities:
-                        if find('<Text>', priority) == 'dialog':
-                            print(f'{actor.name} removing dialog task!')
-                            actor.priorities.remove(priority)
-                    for intention in actor.intentions:
-                        if find('<Source>', intention) == 'dialog':
-                            print(f'{actor.name} removing dialog intention')
-                            actor.intentions.remove(intention)
+                if self.active_task.peek() == 'dialog':
+                    self.active_task.pop()
+
+                for priority in self.priorities:
+                    if find('<Text>', priority) == 'dialog':
+                        print(f'{self.name} removing dialog task!')
+                        self.priorities.remove(priority)
+                for intention in self.intentions:
+                    if find('<Source>', intention) == 'dialog':
+                        print(f'{self.name} removing dialog intention')
+                        self.intentions.remove(intention)
                 #ignore this tell, dialog over
                 return
-
-        #remove any other pending dialog intentions (keep watcher!) 
-        #for intention in self.intentions:
-        #    i_source = find('<Source>', intention)
-        #    if i_source == 'dialog':
-        #        print(f'{self.name} removing dialog intention')
-        #        self.intentions.remove(intention)
+            elif self.active_task.peek() != None and self.active_task.peek() != 'dialog':
+                self.active_task.push('dialog')
 
         print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
 
@@ -1219,6 +1265,8 @@ Your last response was:
 {{$last_act}}
 </PreviousResponse>
 
+{{$activity}}
+
 The statement you are responding to is:
 <Input>
 {{$statement}}
@@ -1260,11 +1308,14 @@ END
         last_act = ''
         if source in self.last_acts:
             last_act=self.last_acts[source]
+        activity = ''
+        if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
+            activity = f'You are currently actively engaged in {self.get_task_xml(self.active_task.peek())}'
         answer_xml = self.llm.ask({'character':self.character, 'statement':f'{from_actor.name} says {message}',
                                    "situation": self.context.current_state,"name":self.name,
-                                   "state":mapped_state, "memory":self.memory, 
-                                   'history':'\n'.join(self.history), 'last_act':str(last_act)
-                                   }, prompt, temp=0.7, stops=['END', '</Answer>'], max_tokens=180)
+                                   "state":mapped_state, "memory":self.memory, "activity": activity,
+                                   'history':'\n'.join(self.history[-4:]), 'last_act':str(last_act)
+                                   }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
         response = find('<response>', answer_xml)
         if response is None:
             return
@@ -1277,14 +1328,14 @@ END
             response_source='dialog'
         else:
             response_source = 'watcher'
-        dup = self.repetitive(response, message, '\n\n'.join(self.history[:-2]))
+        dup = self.repetitive(response, message, '\n\n'.join(self.history[-2:]))
         if dup:
             return # skip response, adds nothing
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
 
 
     def senses(self, sense_data='', ui_queue=None):
-        print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task}')
+        print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
         all_actions={"Act": """Act as follows: '{action}'\n  because: '{reason}'""",
                      "Answer": """ Answer the following question: '{question}'""",
                      "Say": """Say: '{text}',\n  because: '{reason}'""",
@@ -1303,21 +1354,21 @@ END
                 if mode == 'Say':
                     print('Found dialog say, use it!')
                     dialog_option = True
-        if not dialog_option and self.active_task == 'dialog':
-            self.active_task = None
+        if not dialog_option and self.active_task.peek() == 'dialog':
+            self.active_task.pop()
 
         if dialog_option != True: #don't bother generating options we won't use
             # if there is an active task, only actualize that one
-            if self.active_task != None and self.active_task != 'dialog' and self.active_task != 'watcher'\
-               and self.get_task_name(self.active_task) != None:
-                full_task = self.get_task_xml(self.active_task)
+            if self.active_task.peek() != None and self.active_task.peek() != 'dialog' and self.active_task.peek() != 'watcher'\
+               and self.get_task_name(self.active_task.peek()) != None:
+                full_task = self.get_task_xml(self.active_task.peek())
                 self.actualize_task(0, full_task)
             else:
                 for n, task in enumerate(self.priorities):
                     self.actualize_task(n, task)
         intention_choices=[]
         llm_choices=[]
-        print(f'{self.name} selecting action options. active task is {self.active_task}')
+        print(f'{self.name} selecting action options. active task is {self.active_task.peek()}')
         # if there is a dialog option, use it
         for intention in self.intentions:
             mode = find('<Mode>', intention)
@@ -1330,8 +1381,8 @@ END
             if dialog_option and source != 'dialog' and source != 'watcher':
                 print(f'  dialog option true, skipping action option {source}')
                 continue
-            if self.active_task is not None and source != 'dialog' and source != 'watcher'\
-               and source is not None and source != self.active_task:
+            if self.active_task.peek() is not None and source != 'dialog' and source != 'watcher'\
+               and source is not None and source != self.active_task.peek():
                 print(f'  dialog mode, skipping action option {source}')
                 continue
             print(f' inserting action option {source}, {act[:48]}')
@@ -1347,10 +1398,11 @@ END
 
         print()
 
-        if random.randint(1,4) == 1: # task timeout at random to increase variety of action
-            self.active_task = None
+        #if random.randint(1,4) == 1: # task timeout at random to increase variety of action
+        #    self.active_task.pop()
         if len(llm_choices) == 0:
             print(f'{self.name} Oops, no available acts')
+            self.active_task.pop()
             return
         prompt = [UserMessage(content=self.character+"""\nYour current situation is:
 
@@ -1393,9 +1445,12 @@ New Observation:
 
 Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step and choose your most pressing, highest need / priority action to perform from the list below:
 
+<Actions>
 {{$actions}}
+</Actions>
 
 Each action option above is prefixed by a single-digit index-number.
+Use the number for the selected action in responding using the following XML format:
 
 <ActionIndex>
 index-number of chosen action
@@ -1472,7 +1527,7 @@ END
                     # only one shot at thoughts
                     self.intentions.remove(removal_candidate)
                 
-        if act_name=='Say' or act_name=='Do':
+        if not dialog_option and act_name=='Say' or act_name=='Do':
             task_name = find('<Source>', intention)
             # for now very simple task tracking model:
             if task_name is None:
@@ -1480,18 +1535,19 @@ END
                 print(f'No source found, created task name: {task_name}')
             task_xml = self.find_or_make_task_xml(task_name, self.reason)
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
-            self.last_acts[task_name]= act_arg
+            self.last_acts[task_name] = act_arg
         if act_name == 'Think':
             task = find('<Reason>', intention)
-            task_name = self.make_task_name(self.reason)
+            #task_name = self.make_task_name(self.reason)
             self.reason = self.reason
             self.thought = act_arg+'\n  '+self.reason
         target = None
-        if len(self.context.actors)> 1:
-            target = self.context.actors[1] if self==self.context.actors[0] else self.context.actors[0]
+        if len(self.context.actors) > 1:
+            target = self.other()
         #this will effect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
 
+        # maybe we should do this at start of next sense?
         if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
             print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention
