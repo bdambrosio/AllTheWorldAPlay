@@ -8,4 +8,6 @@ A 'Do' can be a communication act such as smile, touch, show, ...
 Memory formation - should accurately reflect actual events!
 
 Add testable termination condition when creating task?
-Sllightly longer display of action in actor widget, since we no longer display do in main activity window.
+Slightly longer display of action in actor widget, since we no longer display do in main activity window.
+
+Change Lanya's voice, too explicit about motivation
