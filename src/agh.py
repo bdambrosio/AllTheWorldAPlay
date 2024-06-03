@@ -5,6 +5,12 @@ import traceback
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import llm_api
 
+def find_first_digit(s):
+    for char in s:
+        if char.isdigit():
+            return char
+    return None  # Return None if no digit is found
+
 def findall(key, form):
     """ find multiple occurrences of an xml field in a string """
     idx = 0
@@ -415,6 +421,13 @@ End your response with:
         # should others know about it?
         if act_name =='Do':
             consequences, world_updates = self.context.do(self, act_arg)
+            priority = self.active_task.peek()
+            task_xml = self.get_task_xml(priority) if priority != None else None
+            termination_check = find('<Termination_check>', task_xml) if task_xml != None else None
+            satisfied = self.test_priority_termination(termination_check, consequences, world_updates) if termination_check != None else False
+            if satisfied and source == self.active_task.peek():
+                self.active_task.pop()
+                self.priorities.remove(task_xml)
             self.show += '\n  '+ consequences.strip()+'\n'+world_updates.strip() # main window
             self.add_to_history(f"You observe {consequences}")
             print(f'{self.name} setting act_result to {world_updates}')
@@ -451,7 +464,7 @@ class Agh(Character):
     def generate_state(self):
         """ generate a state to track, derived from basic drives """
         prompt=[UserMessage(content="""A basic Drive is provided below. 
-Your task is to create an instantiated state description to track your current state wrt this drive.
+Your task is to create an instantiated state to track your current state wrt this drive.
 Create this instantiated state description given the basic Drive, current Situation, your Character, Memory, and recent History as given below.
 
 <Drive>
@@ -476,7 +489,12 @@ Create this instantiated state description given the basic Drive, current Situat
 
 Respond using this XML format:
 
-<Drive> <Term>term designating the above drive</Term> <Assessment>a one or two word value, e.g. high, medium-high, medium, medium-low, low, etc.</Assessment> <Trigger> a concise, few word statement of the specific situational trigger for this drive instatiation </Trigger> </Drive>
+<State> 
+  <Term>term designating the above drive</Term>
+   <Assessment>a one or two word value, e.g. high, medium-high, medium, medium-low, low, etc.</Assessment>
+   <Trigger>a concise, few word statement of the specific situational trigger for this drive instantiation</Trigger> 
+   <Termination>testable condition for drive satisfaction</Termination>
+</State>
 
 The 'Term' must contain at most three words concisely summarizing the goal of this state element, for example 'Identify stranger's intention'.
 
@@ -484,6 +502,7 @@ The 'Assessment' is one word describing the current distance from goal and/or it
 
 The 'Trigger' is a concise phrase or sentence designating the Character, Situation, Memory, or History element(s) that trigger this instantion.
 
+The 'Termination' is a phrase that will be checked against History or action consequences to see if the drive is satisfied and should be terminated.
 
 Respond ONLY with the above XML
 Do on include any introductory, explanatory, or discursive text.
@@ -496,15 +515,69 @@ End your response with:
             print(f'{self.name} generating state for drive: {drive}')
             response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
                                      "memory":self.memory,
-                                     "character":self.character, "history":self.history},
-                                    prompt, temp=0.3, stops=['<END>'], max_tokens=60)
+                                     "character":self.character, "history":self.format_history},
+                                    prompt, temp=0.3, stops=['<END>'], max_tokens=100)
             term = find('<Term>', response)
             assessment = find('<Assessment>', response)
             trigger=find('<Trigger>', response)
+            termination_check=find('<Termination>', response)
             # these will be used for remainder of scenario
-            self.state[term] ={"drive":drive, "state": assessment, 'trigger':trigger}
+            self.state[term] ={"drive":drive, "state": assessment, 'trigger':trigger, 'termination_check': termination_check}
         print(f'{self.name}initial state {self.state}')
-        
+
+    def test_state_termination(self, state, consequences, updates=''):
+        """ generate a state to track, derived from basic drives """
+        prompt = [UserMessage(content="""An instantiated state for a basic drive is provided below 
+Your task is to test whether the instantiated state for this Drive has been satisfied as a result of recent events.
+
+<State>
+{{$state}}
+</State>
+
+<Situation>
+{{$situation}}
+</Situation>
+
+<Character>
+{{$character}}
+</Character>
+
+<History>
+{{$history}}
+</History>
+ 
+<Events>
+{{$events}}
+</Events>
+
+<Termination_check>
+{{$termination_check}}
+</Termination_check>
+
+Respond using this XML format:
+
+<Termination> 
+    <Level>value of state satisfaction, True if termination test is met in Events or History</Term>
+</Termination>
+
+the 'Level' above should be True if the termination test is met in Events or recent History, and False otherwise.  
+
+Respond ONLY with the above XML
+Do on include any introductory, explanatory, or discursive text.
+End your response with:
+<END>
+"""
+                                  )]
+
+        response = self.llm.ask({"drive": state, "situation": self.context.current_state,
+                                "memory": self.memory,
+                                "character": self.character, "history": self.format_history()},
+                                prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+        satisfied = find('<Level>', response)
+        if satisfied or satisfied.lower().strip() == 'true':
+            print(f'State {state} Satisfied!')
+        return satisfied
+
     def map_state(self):
         """ map state for llm input """
         mapped = []
@@ -662,9 +735,6 @@ Respond using this XML format:
 
 ===Examples===
 
-
-
-
 ===End Examples===
 
 <Motivation>
@@ -699,8 +769,10 @@ End your response with:
 
     def repetitive(self, text, last_act, history):
         """ test if content duplicates last_act or entry in history """
+        if last_act == None or len(last_act) < 10:
+            return False
         prompt=[UserMessage(content="""You are {{$name}}.
-Analyze the following text for duplicative content. 
+Analyze the following NewText for duplicative content. 
 
 A text is considered repetitive if:
 1. It duplicates previous thought, speech, or action literally or substantively.
@@ -708,73 +780,70 @@ A text is considered repetitive if:
 3. It adds no new thought, speech, or action.
 
 ===Examples===
+<LastAct>
+None
+</LastAct>
 
-LastAct:
+<NewText>
+Kidd starts walking around the city, observing the strange phenomena and taking mental notes of anything that catches his eye, hoping to uncover some clues about Bellona's secrets.
+</NewText>
+
+False
+----
+<LastAct>
 Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+</LastAct>
 
-NewText:
+<NewText>
 Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
+</NewText>
 
-Response:
 True
-
 -----
-LastAct:
+<LastAct>
 Hey, let's stick together. We're stronger together than alone. Maybe we can help each other figure things out.
+</LastAct>
 
-NewText:
+<NewText>
 Hey, maybe we should start by looking for any signs of civilization or other people nearby. 
 That way, we can make sure we're not completely alone out here. Plus, it might help us figure out where we are and how we got here. What do you think?
+</NewText>
 
-Response:
 False
-
 ----
+<LastAct>
+Joe decides to start exploring the area around him, looking for any clues or signs that could help him understand how he ended up in the forest with no memory.
+</LastAct>
 
-NewText:
+<NewText>
 Joe continues exploring the forest, looking for any signs of human activity or clues about his past. 
 He keeps an eye out for footprints, discarded items, or anything else that might provide insight into how he ended up here.
+</NewText>
 
-LastAct:
-Joe decides to start exploring the area around him, looking for any clues or signs that could help him understand how he ended up in the forest with no memory.
-
-Response:
 False
-
 ----
+<LastAct>
+K, whatcha doin' here, Lanya? Just explorin' this crazy place, tryna make sense of it all. Ain't really found my way yet, but I'm hopin' to figure somethin' out soon.
+</LastAct>
 
-LastAct:
-None
+<NewText>
+Hey Kidd, I'm just livin' life and explorin' this crazy city too! Wanna join me? We could check out some of my favorite spots and maybe even find some new ones together.
+</NewText>
 
-History:
-You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?
-You think Whoever she is, she is pretty!
-
-You hear Samantha say: Hey Joe, nice to meet you. I'm Samantha. This is really strange, right? I can't remember anything either. 
-But maybe we can help each other figure things out. We should definitely look for shelter and water first, and then try to find a way out of this forest.
-
-NewText:
-Hey Samantha, maybe we can work together to figure out what happened to us. 
-We seem to be in this together, so let's stick together and help each other out.
-
-Response:
 False
-===End Examples===
 
-<History>
-{{$history}}
-</History>
+===End Examples===
 
 <LastAct>
 {{$last_act}}
-<LastAct>
+</LastAct>
 
 <NewText>
 {{$text}}
 </NewText>
           
-Does the above NewText duplicate, literally or substantively, text appearing in the LastAct or in History?
-Respond 'True' if NewText is repetitive, 'False' if it is not.
+Does the above NewText duplicate, literally or substantively, text appearing in LastAct?
+Respond 'True' if NewText is duplicative, 'False' if it is not.
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -783,7 +852,7 @@ End your response with:
                             )
                 ]
         response = self.llm.ask({"text":text, "last_act":last_act, "history":history, 'name':self.name},
-                                prompt, temp=0.5, stops=['</END>'], max_tokens=12)
+                                prompt, temp=0.2, stops=['</END>'], max_tokens=12)
         response = response.lower()
         idxt = response.find('true')
         idxf = response.find('false')
@@ -846,10 +915,30 @@ Reason step by step to determine the overall importance of each possible short-t
 Use the XML format:
 
 <Priorities>
-<Priority> <Text>statement of top priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
-<Priority> <Text>statement of second priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
-<Priority> <Text>statement of third priority</Text> <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason> </Priority>
+ <Priority> 
+  <Text>statement of top priority</Text> 
+  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
+  <State>the primary Stance from which this priority is derived</State>
+  <Termination_check>termination condition</Termination_check>
+  </Priority>
+ <Priority>
+  <Text>statement of second priority</Text>
+  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
+  <State>the primary Stance from which this priority is derived</State>
+  <Termination_check>termination condition</Termination_check>
+ </Priority>
+ <Priority>
+  <Text>statement of third priority</Text> 
+  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
+  <State>the primary Stance from which this priority is derived</State>
+  <Termination_check>termination condition</Termination_check>
+ </Priority>
 </Priorities>
+
+'Text' is a concise statement of the goal or target to be achieved
+'Reason' is the reasoning that explains the motivation for this priority
+'State' is the primary Stance element from which this priority derives
+'Termination-check' is a concise, testable statement to determine whether recent events satisfy this priority Text
 
 Respond ONLY with the above XML. Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -863,7 +952,7 @@ END
                                  "situation":self.context.current_state,
                                  "state":state_map
                                  },
-                               prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=180)
+                               prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=500)
         try:
             priorities = find('<Priorities>', response)
             if priorities is None:
@@ -894,11 +983,53 @@ END
             traceback.print_exc()
         #print(f'\n-----Done-----\n\n\n')
 
+    def test_priority_termination(self, termination_check, consequences, updates=''):
+        """ test if consequences of recent acts (or world update) have satisfied priority """
+        prompt = [UserMessage(content="""A termination_check is provided below. 
+    Your task is to test whether this has now been satisfied as a result of recent events,
+    using the termination check as a guide for this assessment.
+
+    <History>
+    {{$history}}
+    </History>
+
+    <Events>
+    {{$events}}
+    </Events>
+
+    <Termination_check>
+    {{$termination_check}}
+    </Termination_check>
+
+    Respond using this XML format:
+
+    <Termination> 
+        <Level>value of priority (task) satisfaction, True if termination check is met in Events or History</Term>
+    </Termination>
+
+    the 'Level' above should be True if the termination check is met in Events or recent History, and False otherwise.  
+
+    Respond ONLY with the above XML
+    Do on include any introductory, explanatory, or discursive text.
+    End your response with:
+    <END>
+    """
+                                  )]
+
+        print(f'{self.name} testing priority termination_check: {termination_check}')
+        response = self.llm.ask({"termination_check": termination_check, "situation": self.context.current_state,
+                                    "memory": self.memory, "events": consequences+'\n'+updates,
+                                    "character": self.character, "history": self.format_history()},
+                                prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+        satisfied = find('<Level>', response)
+        if satisfied.lower().strip() == 'true':
+            print(f'Priority {termination_check} Satisfied!')
+        return satisfied.lower().strip() == 'true'
+
     def actualize_task(self, n, task_xml):
         task_name = find('<Text>', task_xml)
         if task_xml is None or task_name is None:
             raise ValueError(f'Invalid task {n}, {task_xml}')
-        print(f'\n Actualizing task {n} {task_name}')
         last_act = self.get_task_last_act(task_name)
         reason = find('<Reason>', task_xml)
         # crude, needs improvement
@@ -1092,7 +1223,7 @@ End your response with:
                         act = None # force redo
                         temp +=.3
                     else:
-                        act = None # skip task, nothing interesting to do
+                        #act = None # skip task, nothing interesting to do
                         pass
 
             elif mode =='Do':
@@ -1410,6 +1541,7 @@ END
 
         # do after we have all relevant updates from context and other actors
         dialog_option = False
+        my_active_task = self.active_task.peek()
         for intention in self.intentions:
             source = find('<Source>', intention)
             if source == 'dialog' or source =='watcher':
@@ -1417,6 +1549,9 @@ END
                 if mode == 'Say':
                     print('Found dialog say, use it!')
                     dialog_option = True
+            elif my_active_task != None and my_active_task == source:
+                print(f'Found intention for active_task {my_active_task}')
+                live_active=True
         if not dialog_option and self.active_task.peek() == 'dialog':
             self.active_task.pop()
 
@@ -1444,10 +1579,10 @@ END
             if dialog_option and source != 'dialog' and source != 'watcher':
                 print(f'  dialog option true, skipping action option {source}')
                 continue
-            if self.active_task.peek() is not None and source != 'dialog' and source != 'watcher'\
-               and source is not None and source != self.active_task.peek():
-                print(f'  dialog mode, skipping action option {source}')
-                continue
+            if my_active_task and  source != 'dialog' and source != 'watcher'\
+               and source is not None and source != my_active_task:
+                    print(f"  active_task '{my_active_task}', skipping action option {source}")
+                    continue
             print(f' inserting action option {source}, {act[:48]}')
             if mode == 'Do':# and random.randint(1,3)==1: # too many action choices, just pick a couple for deliberation
                 llm_choices.append(all_actions["Act"].replace('{action}', act).replace('{reason}',str(reason)))
@@ -1506,26 +1641,23 @@ New Observation:
 {{$input}}
 </Input>
 
-Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step and choose your most pressing, highest need / priority action to perform from the list below:
+Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step and c
+hoose your most pressing, highest need / priority action to perform from the numbered list below:
 
 <Actions>
 {{$actions}}
 </Actions>
 
-Each action option above is prefixed by a single-digit index-number.
-Use the number for the selected action in responding using the following XML format:
-
-<ActionIndex>
-index-number of chosen action
-</ActionIndex>
-
-Do not respond with more than one action. 
 Consider the conversation history in choosing your action. 
 Respond in the context of the RecentHistory (if any) and in keeping with your character. 
-Respond using the XML format shown above for the chosen action
-Do not include any introductory, explanatory, or discursive text, 
-Include only your immediate response. Do not include any follow-on conversation.
+Use the number for the selected action to instantiate the following XML format:
 
+<Action>
+index-number of chosen action
+</Action>
+
+Respond with the above XML, instantiated with the selected action number from the Action list. 
+Do not include any introductory, explanatory, or discursive text, 
 End your response with:
 END
 """
@@ -1535,7 +1667,7 @@ END
         if len(action_choices) > 1:
             response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
                                      "memory":self.memory, "situation": self.context.current_state,
-                                     "state": mapped_state, "drives":self.drives,
+                                     "state": mapped_state, "drives":'\n'.join(self.drives),
                                      "priorities":'\n'.join([find('<Text>', task) for task in self.priorities]),
                                      "actions":'\n'.join(action_choices)
                                      }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
@@ -1548,16 +1680,21 @@ END
                 idx = response.find('<|im_end|>')
                 response = response[:idx]
             index = -1
-            choice = find('<ActionIndex>', response)
+            choice = find('<Action>', response)
             if choice is None:
                 choice = response.strip() # llms sometimes ignore XML formatting for this prompt
             if choice is not None:
                 try:
-                    draft = int(choice)
+                    draft = int(choice.strip())
                     if draft > -1 and draft < len(intention_choices):
                         index = draft # found it!
                 except Exception as e:
-                    traceback.print_exc()
+                    try:
+                        draft = find_first_digit(response)
+                        draft = int(draft) if (draft != None and int(draft) < len(intention_choices)) else None
+                        index = draft if draft != None else -1
+                    except Exception as e:
+                        traceback.print_exc()
             if index > -1:
                 intention = intention_choices[index]
                 source = find('<Source>', intention)
