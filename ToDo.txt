@@ -1,13 +1,18 @@
 Offset actor memory updates to spread delay across steps.
 tell receipt should refresh pushed intention?
-format Drives (a list of strings) as a bulleted list of items.
 Show only updates on world update? (will make future acts more understandable)
-INCLUDE world event in actor update!
 A 'Do' can be a communication act such as smile, touch, show, ...
 
 Memory formation - should accurately reflect actual events!
 
-Add testable termination condition when creating task?
 Slightly longer display of action in actor widget, since we no longer display do in main activity window.
 
 Change Lanya's voice, too explicit about motivation
+
+In actualize, should one create a 'Say' if can't find target?...
+
+What to do about say or do to unknown actor?
+
+'Say' that expresses intent is actually a Think?
+
+'Passive' actors? (respond only when targets?)

@@ -297,6 +297,7 @@ class Character():
         self.active_task = Stack() # task character is actively pursuing.
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
+        self.llm = None # will be init by Worldsim
 
     def other(self):
         for actor in self.context.actors:
@@ -428,6 +429,11 @@ End your response with:
             if satisfied and source == self.active_task.peek():
                 self.active_task.pop()
                 self.priorities.remove(task_xml)
+                new_intentions = []
+                for intention in self.intentions:
+                    if find('<Source>', intention) != priority:
+                        new_intentions.append(intention)
+                self.intentions = new_intentions
             self.show += '\n  '+ consequences.strip()+'\n'+world_updates.strip() # main window
             self.add_to_history(f"You observe {consequences}")
             print(f'{self.name} setting act_result to {world_updates}')
@@ -701,7 +707,8 @@ End your response with:
         else:
             return False
 
-    def get_task_name(self, term):
+    def get_task_last_acts_key(self, term):
+        """ checks for name in Last_acts!"""
         for task in list(self.last_acts.keys()):
             match=self.synonym_check(task, term)
             if match:
@@ -710,7 +717,7 @@ End your response with:
             
     def set_task_last_act(self, term, act):
         # pbly don't need this, at set we have canonical task
-        task = self.get_task_name(term)
+        task = self.get_task_last_acts_key(term)
         if task == None:
             print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
             self.last_acts[term] = act
@@ -719,7 +726,7 @@ End your response with:
             self.last_acts[task] = act
 
     def get_task_last_act(self, term):
-        task = self.get_task_name(term)
+        task = self.get_task_last_acts_key(term)
         if task == None:
             #print(f'GET_TASK_LAST_ACT {self.name} no match found: term {term}')
             return 'None'
@@ -823,11 +830,11 @@ He keeps an eye out for footprints, discarded items, or anything else that might
 False
 ----
 <LastAct>
-K, whatcha doin' here, Lanya? Just explorin' this crazy place, tryna make sense of it all. Ain't really found my way yet, but I'm hopin' to figure somethin' out soon.
+I'll head back to the fields now and finish plowing the south field before the sun sets.
 </LastAct>
 
 <NewText>
-Hey Kidd, I'm just livin' life and explorin' this crazy city too! Wanna join me? We could check out some of my favorite spots and maybe even find some new ones together.
+After finishing plowing the south field, Jean will head over to the north field to check on the irrigation system and ensure the crops are getting enough water.
 </NewText>
 
 False
@@ -1223,7 +1230,7 @@ End your response with:
                         act = None # force redo
                         temp +=.3
                     else:
-                        #act = None # skip task, nothing interesting to do
+                        act = None # skip task, nothing interesting to do
                         pass
 
             elif mode =='Do':
@@ -1496,7 +1503,7 @@ END
 """)]
         mapped_state=self.map_state()
         last_act = ''
-        if source in self.last_acts:
+        if source in self.last_acts: #this is 'from_source' task_name!
             last_act=self.last_acts[source]
         activity = ''
         if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
@@ -1520,7 +1527,7 @@ END
             response_source='dialog'
         else:
             response_source = 'watcher'
-        dup = self.repetitive(response, message, '\n\n'.join(self.history[-2:]))
+        dup = self.repetitive(response, last_act, '')
         if dup:
             if self.active_task.peek() == 'dialog':
                 self.active_task.pop()
@@ -1558,7 +1565,7 @@ END
         if dialog_option != True: #don't bother generating options we won't use
             # if there is an active task, only actualize that one
             if self.active_task.peek() != None and self.active_task.peek() != 'dialog' and self.active_task.peek() != 'watcher'\
-               and self.get_task_name(self.active_task.peek()) != None:
+               and self.active_task.peek() != None:
                 full_task = self.get_task_xml(self.active_task.peek())
                 self.actualize_task(0, full_task)
             else:
@@ -1727,7 +1734,7 @@ END
                     # only one shot at thoughts
                     self.intentions.remove(removal_candidate)
                 
-        if not dialog_option and act_name=='Say' or act_name=='Do':
+        if not dialog_option and act_name == 'Say' or act_name == 'Do':
             task_name = find('<Source>', intention)
             # for now very simple task tracking model:
             if task_name is None:
@@ -1735,7 +1742,7 @@ END
                 print(f'No source found, created task name: {task_name}')
             task_xml = self.find_or_make_task_xml(task_name, self.reason)
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
-            self.last_acts[task_name] = act_arg
+            self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
             task = find('<Reason>', intention)
             #task_name = self.make_task_name(self.reason)
