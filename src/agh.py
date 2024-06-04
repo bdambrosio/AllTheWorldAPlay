@@ -1,4 +1,4 @@
-import os
+import os, json
 import time
 import random
 import traceback
@@ -77,6 +77,34 @@ class Context ():
         self.name='World'
         self.llm = None
         
+    def load(self, dir):
+        try:
+            with open(dir / 'scenario.json', 'r') as s:
+                scenario = json.load(s)
+                if 'name' in scenario.keys():
+                    print(f" {scenario['name']} found")
+                self.initial_state = scenario['initial_state']
+                self.current_state = scenario['current_state']
+            for actor in self.actors:
+                actor.load(dir)
+        except FileNotFoundError as e:
+            print(str(e))
+        pass
+
+    def save(self, dir, name):
+        try:
+            # first save world state
+            with open(dir / 'scenario.json', 'w') as s:
+                scenario = {'name':name, 'initial_state':self.initial_state, 'current_state': self.current_state}
+                json.dump(scenario, s, indent=4)
+
+            #now save actor states
+            for actor in self.actors:
+                actor.save(dir / str(actor.name+'.json'))
+
+        except FileNotFoundError as e:
+            print(str(e))
+
     def history(self):
         try:
             if self.actors is None or self.actors[0] is None:
@@ -240,7 +268,7 @@ Your response should be concise, and only include only an update of the physical
         """ + event + """
 Your situation description should be dispassionate, 
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-That is, advance the situation by approximately 3 hours. The situation as of 3 hours ago was:
+The situation as of 3 hours ago was:
 
 <PreviousSituation>
 {{$situation}}
@@ -252,6 +280,10 @@ In the interim, the characters in the world had the following interactions:
 {{$history}}
 </History>
 
+All actions performed by actors since the last situation update are including in the above History.
+Do not include in your updated situation any actions not listed above.
+Include characters in your response only with respect to the effects of their above actions on the situation.
+
 Respond using the following XML format:
 
 <Situation>
@@ -259,10 +291,11 @@ Sentence describing physical space, suitable for image generator,
 Updated State description of about 300 words
 </Situation>
 
-Respond with an updated situation description reflecting a time passage of 3 hours and the events that have occurred.
-Include ONLY the concise updated situation description in your response. Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-Do NOT carry the storyline beyond three hours from PreviousSituation.
-Limit your response to about 330 words
+Respond with an updated situation description reflecting a time passage of 3 hours and the environmental changes that have occurred.
+Include ONLY the concise updated situation description in your response. 
+Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+.
+Limit your total response to about 330 words
 End your response with:
 END""")]
             
@@ -396,7 +429,7 @@ End your response with:
         if act_name == 'Think':
             self.thought = act_arg+'\n ... '+self.reason
         else:
-            self.thought = act_arg[:42]+' ...\n ... '+self.reason
+            self.thought = act_arg[:64]+' ...\n ... '+self.reason
 
         if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
             if self.active_task.peek() != source:
@@ -466,6 +499,29 @@ class Agh(Character):
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.dialog_length = 0 # stop dialogs in tell after a few turns
 
+    def save(self, filepath):
+        allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
+        filtered_data = {}
+        for attr, value in self.__dict__.items():
+            if isinstance(value, allowed_types):
+                # Handle lists of strings specifically
+                if isinstance(value, list) and all(isinstance(item, str) for item in value):
+                    filtered_data[attr] = value
+                elif isinstance(value, dict):
+                    filtered_data[attr] = {k: v for k, v in value.items() if isinstance(v, allowed_types)}
+                else:
+                    filtered_data[attr] = value
+        with open(filepath, 'w') as fp:
+            json.dump(filtered_data, fp, indent=4)
+
+    def load(self, filepath):
+        try:
+            with open(filepath, 'r') as jf:
+                data = json.load(jf)
+                for attr, value in data.items():
+                    setattr(self, attr, value)
+        except Exception as e:
+            print(f' error restoring {self.name}, str(e)')
 
     def generate_state(self):
         """ generate a state to track, derived from basic drives """
@@ -907,10 +963,10 @@ Your current Stance is:
 
 Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your Stance, your Memory, and your recent RecentHistory as listed above.
 List your three most important-short term goals as instantiations from your current needs: 
-
-            
+           
 Drives and Stances are listed in a-priori priority order, highest first. However, a short-term goal gets its importance from a combination of Stance order and Stance value (e.g., A Stance value of 'High' is more urgent than one with a value of 'Low').
-The List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
+A short-term goal is one that is achievable in the current situation within a modest period of time, and which advances satisfaction of one or more of the Stances listed above.
+List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
 Your Text must be consistent with the Reason.
 Priorities should be as specific as possible. 
 For example, if you need sleep, say 'Sleep', not 'Physiological need'.
@@ -1029,9 +1085,9 @@ END
                                     "character": self.character, "history": self.format_history()},
                                 prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
         satisfied = find('<Level>', response)
-        if satisfied.lower().strip() == 'true':
+        if satisfied != None and satisfied.lower().strip() == 'true':
             print(f'Priority {termination_check} Satisfied!')
-        return satisfied.lower().strip() == 'true'
+        return False if satisfied == None else satisfied.lower().strip() == 'true'
 
     def actualize_task(self, n, task_xml):
         task_name = find('<Text>', task_xml)
@@ -1047,7 +1103,7 @@ END
         #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (act, a 'Think', 'Say', or 'Do') to advance the following perceived task:
+Your task is to generate an Actionable (act, a 'Think', 'Say', or 'Do') to advance the following task.
 
 <Task>
 {{$task}} given {{$reason}}
@@ -1104,10 +1160,13 @@ A SpecificAct is one which:
 - Is consistent with the Situation (e.g., does not suggest as new an action described in Situation)
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
 - Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
+- Significantly advances the story or task at hand.
 - Is stated in the appropriate person (voice):
         If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
         If an act in the world (mode is 'Do'), is stated in the third person.
  
+Prioritize actions that lead to meaningful progress in the narrative.
+
 Dialog guidance:
 - If speaking (mode is 'Say'), then:
 - Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language. Speak in the first person.
@@ -1762,6 +1821,7 @@ END
         self.acts(target, act_name, act_arg, self.reason, source)
 
         # maybe we should do this at start of next sense?
-        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
+        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher' and (refresh_task in self.priorities):
+
             print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention

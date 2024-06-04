@@ -1,4 +1,5 @@
-import sys, time
+import sys, time, os, json
+from pathlib import Path
 import traceback
 import threading 
 from queue import Queue
@@ -20,6 +21,8 @@ UPDATE_LOCK = threading.Lock()
 APP = None # pyQt5 app
 main_window = None
 WATCHER = None # the person watching, in-world representative created on the fly from Inject
+home_dir = os.path.expanduser("~")
+WORLDS_DIR = Path(home_dir, ".local/share/AllTheWorld/worlds/")
 
 def add_text_ns(widget, text):
     """add text to a TextEdit without losing scroll location"""
@@ -83,7 +86,7 @@ RUN = False
 STEP_CTR=0
 
 class InputWidget(QDialog):
-    def __init__(self):
+    def __init__(self, prompt):
         super().__init__()
         self.user_input = None
         self.setWindowTitle("User Input")
@@ -91,7 +94,7 @@ class InputWidget(QDialog):
 
         layout = QVBoxLayout()
 
-        self.label = QLabel("Character name, message:")
+        self.label = QLabel(prompt)
         layout.addWidget(self.label)
 
         self.input_field = QLineEdit()
@@ -101,11 +104,20 @@ class InputWidget(QDialog):
         self.submit_button.clicked.connect(self.submit_input)
         layout.addWidget(self.submit_button)
 
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.cancel_input)
+        layout.addWidget(self.cancel_button)
+
+
         self.setLayout(layout)
 
     def submit_input(self):
         self.user_input = self.input_field.text()
         self.accept()
+
+    def cancel_input(self):
+        self.user_input = None
+        self.close()
 
     def get_user_input(self):
         return self.user_input
@@ -320,8 +332,9 @@ class CustomWidget(QWidget):
         #    print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
         
 class MainWindow(QMainWindow):
-    def __init__(self, context, server):
+    def __init__(self, context, server, world_name=None):
         super().__init__()
+        self.world_name = world_name
         self.llm = llm_api.LLM(server)
         self.context = context
         #set refs to llm
@@ -417,10 +430,14 @@ class MainWindow(QMainWindow):
         self.refresh_button.clicked.connect(self.refresh)
         right_panel.addWidget(self.refresh_button)
 
-        self.reset_button = QPushButton("Reset")
-        self.reset_button.clicked.connect(self.reset)
-        right_panel.addWidget(self.reset_button)
-        
+        self.load_button = QPushButton("Load World")
+        self.load_button.clicked.connect(self.load)
+        right_panel.addWidget(self.load_button)
+
+        self.save_button = QPushButton("Save World")
+        self.save_button.clicked.connect(self.save)
+        right_panel.addWidget(self.save_button)
+
         right_panel.addStretch(1)
         
         right_panel_widget = QWidget()
@@ -482,7 +499,7 @@ class MainWindow(QMainWindow):
         global APP, WATCHER, main_window
         if WATCHER is None:
             WATCHER = human.Human('Watcher', main_window)
-        input_widget = InputWidget()
+        input_widget = InputWidget("Character name, message:")
         if input_widget.exec_() == QDialog.Accepted:
             user_input = input_widget.get_user_input()
             WATCHER.inject(user_input)
@@ -492,11 +509,46 @@ class MainWindow(QMainWindow):
             if type(widget.entity) != agh.Context:
                 widget.update_entity_state_display()
 
-    def reset(self):
-        global RUN
-        self.update_parameters()
-        self.append_text("Reset")
+    def load(self):
+        worlds = [d for d in os.listdir(WORLDS_DIR) if os.path.isdir(os.path.join(WORLDS_DIR, d))]
+        # print(models)
+        world_number = -1
+
+        while world_number < 0 or world_number > len(worlds) - 1:
+            print(f'Available worlds:')
+            for i in range(len(worlds)):
+                world_name = worlds[i]
+                try:
+                    with open(WORLDS_DIR / world_name / 'scenario.json', 'r') as s:
+                        scenario = json.load(s)
+                        if 'name' in scenario.keys():
+                            print(f" {i}. {scenario['name']}")
+                except FileNotFoundError as e:
+                    print(str(e))
+            number = input('\ninput world # to load: ')
+            try:
+                world_number = int(number)
+            except:
+                print(f'Enter a number between 0 and {len(worlds) - 1}')
+        self.world_name = worlds[world_number]
         RUN = False
+        self.context.load(WORLDS_DIR / world_name)
+
+    def save(self):
+        #get filename
+        if self.world_name is None:
+            input_widget = InputWidget("World name for save:")
+            if input_widget.exec_() == QDialog.Accepted:
+                self.world_name = input_widget.get_user_input()
+        if self.world_name == None:
+            return
+        input_widget = InputWidget(f'Saving {self.world_name}, ok?')
+        if input_widget.exec_() == QDialog.Accepted:
+            worlds_path = WORLDS_DIR / self.world_name
+            if not worlds_path.exists():
+                worlds_path.mkdir(parents=True, exist_ok=True)
+                print(f"Directory '{worlds_path}' created.")
+            self.context.save(worlds_path, self.world_name)
 
     def update_parameters(self):
         # Example: update custom widgets with internal_time
@@ -511,10 +563,17 @@ class MainWindow(QMainWindow):
                     widget.thoughts.clear()
                     widget.thoughts.insertPlainText(str(widget.entity.current_state))
 
-def main(context, server='local'):
-    global APP, main_window
+def main(context, server='local', world_name=None):
+    global APP, main_window, WORLDS_DIR
+    worlds_path = Path(WORLDS_DIR)
+    if not worlds_path.exists():
+        worlds_path.mkdir(parents=True, exist_ok=True)
+        print(f"Directory '{worlds_path}' created.")
+    else:
+        print(f"Directory '{worlds_path}' already exists.")
     APP = QApplication(sys.argv)
-    main_window = MainWindow(context, server=server)
+
+    main_window = MainWindow(context, server=server, world_name=None)
     sys.exit(APP.exec_())
 
 if __name__ == '__main__':
