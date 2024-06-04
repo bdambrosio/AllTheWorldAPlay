@@ -2,7 +2,7 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### 
+### 6/4/2024 - Added load/save. Really crude - to load, pick a saved world from list on cli. To save, give world a name in popup. Note: No overwrite check, so be careful! Not well tested. And, you still need to init from basic scenario dscp.
 
 ![Play screenshot](images/lost.jpg)
 
