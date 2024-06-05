@@ -75,9 +75,15 @@ if 'llama3-70B' in model_name:
     model.load([42, 46, 44])
     print('model load done..')
 
+elif 'command-r' in model_name:
+
+    print(f"Loading model: {model_name}\n context {context_size}")
+    model.load([38, 38, 24])
+
 else:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([42, 46, 42])
+    model.load([44, 48, 24])
+
 
     print('model load done..')
 

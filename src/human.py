@@ -46,6 +46,7 @@ class Human (agh.Character):
         for actor in self.context.actors:
             if actor.name == who.strip():
                 actor.tell(self, message[len(who):], source='watcher')
+                actor.add_to_history('You hear watcher say '+message)
     
     def update_intentions_wrt_say_think(self, source, text, reason):
         # determine if text implies an intention to act, and create a formatted intention if so
@@ -58,17 +59,17 @@ class Human (agh.Character):
             if self.intentions is None or len(self.intentions) ==0:
                 return
             intention = self.intentions[0]
-            act_name = find('<Mode>', intention)
-            act_dscp = find('<Act>', intention)
-            act_reason = find('<Reason>', intention)
-            task_name = find('<Source>', intention)
+            act_name = agh.find('<Mode>', intention)
+            act_dscp = agh.find('<Act>', intention)
+            act_reason = agh.find('<Reason>', intention)
+            task_name = agh.find('<Source>', intention)
             if act_name=='Say' or act_name=='Do':
                 self.last_acts[task_name]= act_dscp
                 if task_name != 'dialog' and task_name != 'watcher':
                     self.active_task.push(task_name)
                 self.reason = act_reason
                 #this will effect selected act and determine consequences
-            self.acts(target, act_name, act_dscp, reason, task_name)
+            self.acts(None, act_name, act_dscp, act_reason, task_name)
 
         except Exception as e:
             traceback.print_exc()

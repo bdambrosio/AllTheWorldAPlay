@@ -68,12 +68,13 @@ class Stack:
         return len(self.stack)
 
 class Context ():
-    def __init__(self, actors, situation):
+    def __init__(self, actors, situation, step='4 hours'):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
         for actor in self.actors:
             actor.context=self
+        self.step = step # amount of time to step per scene update
         self.name='World'
         self.llm = None
         
@@ -206,6 +207,7 @@ Include in your response:
 - sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
 - changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
 - changes in {{$name})'s or other actor's state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
+- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form.
 Do NOT extend the scenario with any follow on actions or effects.
 Be extremely terse when reporting character emotional state, only report the most significant emotional state changes.
 Be concise!
@@ -268,7 +270,7 @@ Your response should be concise, and only include only an update of the physical
         """ + event + """
 Your situation description should be dispassionate, 
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-The situation as of 3 hours ago was:
+The situation as of {{$step}} ago was:
 
 <PreviousSituation>
 {{$situation}}
@@ -291,7 +293,7 @@ Sentence describing physical space, suitable for image generator,
 Updated State description of about 300 words
 </Situation>
 
-Respond with an updated situation description reflecting a time passage of 3 hours and the environmental changes that have occurred.
+Respond with an updated situation description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
 Include ONLY the concise updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
@@ -299,16 +301,17 @@ Limit your total response to about 330 words
 End your response with:
 END""")]
             
-        response = self.llm.ask({"situation":self.current_state, 'history':history}, prompt, temp=0.6, stops=['END'], max_tokens=500)
+        response = self.llm.ask({"situation":self.current_state, 'history':history, 'step': self.step}, prompt, temp=0.6, stops=['END'], max_tokens=500)
         new_situation = find('<Situation>', response)
         if new_situation is not None:
+            updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state=new_situation
             self.show='\n-----scene-----\n'+new_situation
-        updates = self.world_updates_from_act_consequences(new_situation)
+        #self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            actor.forward(3) # forward three hours and update history, etc
+            actor.forward(self.step) # forward three hours and update history, etc
         return response
 
 class Character():
@@ -359,6 +362,29 @@ class Character():
 
     def format_history(self):
         return '\n\n'.join(self.history)
+
+    def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
+        termination_check = find('<Termination_check>', task_xml) if task_xml != None else None
+        if termination_check is None:
+            return
+        satisfied = self.test_priority_termination(termination_check, consequences, world_updates)
+        if satisfied:
+            task_name = find('<Text>', task_xml)
+            if task_name == self.active_task.peek():
+                self.active_task.pop()
+            try:
+                self.priorities.remove(task_xml)
+            except Exception as e:
+                # this can happen because we don't actually create a task for transient intents from Think or Say
+                print(str(e))
+            new_intentions = []
+            for intention in self.intentions:
+                if find('<Source>', intention) != task_name:
+                    new_intentions.append(intention)
+            self.intentions = new_intentions
+            if self.active_task.peek() is None:
+                self.update_priorities()
+
 
     def say_target(self, text):
         prompt=[UserMessage(content="""Determine the intended hearer of the following message spoken by you.
@@ -457,16 +483,9 @@ End your response with:
             consequences, world_updates = self.context.do(self, act_arg)
             priority = self.active_task.peek()
             task_xml = self.get_task_xml(priority) if priority != None else None
-            termination_check = find('<Termination_check>', task_xml) if task_xml != None else None
-            satisfied = self.test_priority_termination(termination_check, consequences, world_updates) if termination_check != None else False
-            if satisfied and source == self.active_task.peek():
-                self.active_task.pop()
-                self.priorities.remove(task_xml)
-                new_intentions = []
-                for intention in self.intentions:
-                    if find('<Source>', intention) != priority:
-                        new_intentions.append(intention)
-                self.intentions = new_intentions
+            for task in self.priorities.copy():
+                self.clear_task_if_satisfied(task, consequences, world_updates)
+
             self.show += '\n  '+ consequences.strip()+'\n'+world_updates.strip() # main window
             self.add_to_history(f"You observe {consequences}")
             print(f'{self.name} setting act_result to {world_updates}')
@@ -566,7 +585,8 @@ The 'Trigger' is a concise phrase or sentence designating the Character, Situati
 
 The 'Termination' is a phrase that will be checked against History or action consequences to see if the drive is satisfied and should be terminated.
 
-Respond ONLY with the above XML
+Respond with exactly one instance of the <State> XML form above. Respond ONLY with the above XML.
+
 Do on include any introductory, explanatory, or discursive text.
 End your response with:
 <END>
@@ -577,8 +597,8 @@ End your response with:
             print(f'{self.name} generating state for drive: {drive}')
             response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
                                      "memory":self.memory,
-                                     "character":self.character, "history":self.format_history},
-                                    prompt, temp=0.3, stops=['<END>'], max_tokens=100)
+                                     "character":self.character, "history":self.format_history()},
+                                    prompt, temp=0.3, stops=['<END>'], max_tokens=200)
             term = find('<Term>', response)
             assessment = find('<Assessment>', response)
             trigger=find('<Trigger>', response)
@@ -1048,9 +1068,9 @@ END
 
     def test_priority_termination(self, termination_check, consequences, updates=''):
         """ test if consequences of recent acts (or world update) have satisfied priority """
-        prompt = [UserMessage(content="""A termination_check is provided below. 
-    Your task is to test whether this has now been satisfied as a result of recent events,
-    using the termination check as a guide for this assessment.
+        prompt = [UserMessage(content="""A CompletionCriterion is provided below. 
+    Reason step-by-step to establish whether this CompletionCriterion has now been met as a result of recent Events,
+    using the CompletionCriterion as a guide for this assessment.
 
     <History>
     {{$history}}
@@ -1060,17 +1080,19 @@ END
     {{$events}}
     </Events>
 
-    <Termination_check>
+    <Completion_criterion>
     {{$termination_check}}
-    </Termination_check>
+    </Completion_criterion>
 
     Respond using this XML format:
 
-    <Termination> 
-        <Level>value of priority (task) satisfaction, True if termination check is met in Events or History</Term>
-    </Termination>
+    <Complete> 
+        <Level>value of task completion, True, Unknown, or False</Level>
+        <Evidence>concise statement of evidence in events to support this level of task completion</Evidence>
+    </Complete>
 
-    the 'Level' above should be True if the termination check is met in Events or recent History, and False otherwise.  
+    the 'Level' above should be True if the termination check is met in Events or recent History, 
+    Unknown if the Events do not support a definitive assessment, or False if Events provide little or no evidence for task completion.  
 
     Respond ONLY with the above XML
     Do on include any introductory, explanatory, or discursive text.
@@ -1083,7 +1105,7 @@ END
         response = self.llm.ask({"termination_check": termination_check, "situation": self.context.current_state,
                                     "memory": self.memory, "events": consequences+'\n'+updates,
                                     "character": self.character, "history": self.format_history()},
-                                prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+                                prompt, temp=0.3, stops=['<END>', '</Complete>'], max_tokens=120)
         satisfied = find('<Level>', response)
         if satisfied != None and satisfied.lower().strip() == 'true':
             print(f'Priority {termination_check} Satisfied!')
@@ -1319,34 +1341,39 @@ End your response with:
             #ins = '\n'.join(self.intentions)
             #print(f'Intentions\n{ins}')
                                     
-    def forward(self, num_hours):
+    def forward(self, step):
         # roll conversation history forward.
         ## update physical state
         ## update long-term dialog memory
         prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
-Your task is to update your long-term memory of interactions with other actors.
-Your current situation is:
-
-<Situation>
-{{$situation}}
-</Situation>
-
-Your memory include:
+Your task is to update your long-term memory."""\
+#Your current situation is:
+#
+#<Situation>
+#{{$situation}}
+#</Situation>
++"""
+Your previous long-term memory includes:
 <Memory>
 {{$memory}}
 </Memory>
 
 Recent interactions not included in memory:
 
-<RecentRecentHistory>
+<RecentHistory>
 {{$history}}
-</RecentRecentHistory)>
+</RecentHistory)>
 
-Respond with an complete, concise, updated memory. 
-The updated memory will replace the current long-term memory, and should focus on:
-
-1. Emotionally significant interactions and events.
-2. Factually significant information. Note that factual information can change, and should be updated when necessary. For example, a 'fact' about your location in Memory may no longer be valid if a Do action caused you to move since the last update.
+Respond with an complete, concise, accurate, updated memory. 
+The updated memory will replace the current long-term memory, and be a concise and accurate record.
+Memory should include two types of entries:
+1. Information, interactions, and events significant to one or more items in your Stance above.
+2. Factually significant information. Note that factual information can change, and should be updated when necessary. 
+  For example, a 'fact' about your location in Memory may no longer be valid if an action caused you to move since the last update.
+  
+Entries in the updated Memory should come from:
+1. Information from the previous memory that has not been invalidated by events in RecentHistory
+2. New information appearing in RecentHistory
 
 Limit your response to 360 words.
 Respond ONLY with the updated long-term memory.
@@ -1355,6 +1382,12 @@ Do not include any introductory, explanatory, discursive, or peripheral text.
 End your response with:
 END""")
                   ]
+
+        filtered_history = []
+        # thoughts are illusory,
+        for item in self.history:
+            if 'Think' not in item:
+                filtered_history.append(item)
         response = self.llm.ask({'me':self.name, 'memory':self.memory,
                                 'history':'\n\n'.join(self.history),
                                 "situation":self.context.current_state},
@@ -1474,6 +1507,9 @@ END
                     if find('<Source>', intention) == 'dialog':
                         print(f'{self.name} removing dialog intention')
                         self.intentions.remove(intention)
+                if self.active_task.peek() is None:
+                    self.update_priorities()
+
                 #ignore this tell, dialog over
                 return
             elif self.active_task.peek() != None and self.active_task.peek() != 'dialog':
@@ -1667,6 +1703,8 @@ END
         if len(llm_choices) == 0:
             print(f'{self.name} Oops, no available acts')
             self.active_task.pop()
+            if self.active_task.peek() is None:
+                self.update_priorities()
             return
         prompt = [UserMessage(content=self.character+"""\nYour current situation is:
 
@@ -1707,8 +1745,8 @@ New Observation:
 {{$input}}
 </Input>
 
-Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step and c
-hoose your most pressing, highest need / priority action to perform from the numbered list below:
+Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step 
+and choose your most pressing, highest need / priority action to perform from the numbered list below:
 
 <Actions>
 {{$actions}}
