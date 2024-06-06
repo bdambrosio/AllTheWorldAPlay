@@ -6,20 +6,19 @@ import readline
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import llm_api
 import agh
+import utils.xml_utils as xml
 
 class Human (agh.Character):
-    def __init__ (self, name, ui, character_description=''):
+    def __init__ (self, name, character_description=''):
         super().__init__(name, character_description)
-        self.ui = ui
-        self.context = ui.context
-        
+
     def initialize(self):
         """called from worldsim once everything is set up"""
 
-    def add_to_history(self, role, act, message):
+    def add_to_history(self, message):
         message = message.replace('\\','')
-        self.history.append(f"{role}: {act} {message}".strip())
-        self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
+        self.history.append(f"{message}".strip())
+        self.history = self.history[-16:] # memory is fleeting, otherwise we get very repetitive behavior
 
     def update_physical_state(self, key, response):
         pass
@@ -27,7 +26,7 @@ class Human (agh.Character):
     def forward(self, num_hours):
         pass
     
-    def tell(self, actor, message, source='dialog'):
+    def tell(self, actor, message, source='dialog', respond=True):
         print(f"{actor.name} says: {message}")
 
     def inject(self, message):
@@ -54,15 +53,16 @@ class Human (agh.Character):
         pass
 
     def senses(self, sense_data='', ui_queue=None):
+        self.inject(input("Watcher says: "))
         print(f'\n*********senses***********\nCharacter: {self.name}')
         try:
             if self.intentions is None or len(self.intentions) ==0:
                 return
             intention = self.intentions[0]
-            act_name = agh.find('<Mode>', intention)
-            act_dscp = agh.find('<Act>', intention)
-            act_reason = agh.find('<Reason>', intention)
-            task_name = agh.find('<Source>', intention)
+            act_name = xml.find('<Mode>', intention)
+            act_dscp = xml.find('<Act>', intention)
+            act_reason = xml.find('<Reason>', intention)
+            task_name = xml.find('<Source>', intention)
             if act_name=='Say' or act_name=='Do':
                 self.last_acts[task_name]= act_dscp
                 if task_name != 'dialog' and task_name != 'watcher':

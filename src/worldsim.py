@@ -8,8 +8,9 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHB
 from PyQt5.QtCore import QTimer, pyqtSlot, QSize
 import PyQt5.QtGui as QtGui
 from PyQt5.QtGui import QPixmap, QImage, QFont, QTextCursor
-import agh, human
+import context, agh, human
 import llm_api
+import utils.xml_utils as xml
 
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QTextEdit, QVBoxLayout
@@ -161,7 +162,7 @@ class CustomWidget(QWidget):
         name.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         name.adjustSize()
         self.top_bar.addWidget(name)
-        if type(self.entity) != agh.Context:
+        if type(self.entity) != context.Context:
             self.active_task = WrappingLabel(self.entity.active_task.peek(), self)
             self.active_task.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.active_task.setWordWrap(True)
@@ -251,15 +252,15 @@ class CustomWidget(QWidget):
         print(f'{self.entity.name} started sense')
 
     def format_intentions(self):
-        return '<br>'.join(["<b>"+str(agh.find('<Mode>', intention))
-                          +':</b>('+str(agh.find('<Source>', intention))+') '+str(agh.find('<Act>', intention))[:32]
-                          +'<br> Why: '+str(agh.find('<Reason>', intention))[:32]
+        return '<br>'.join(["<b>"+str(xml.find('<Mode>', intention))
+                          +':</b>('+str(xml.find('<Source>', intention))+') '+str(xml.find('<Act>', intention))[:32]
+                          +'<br> Why: '+str(xml.find('<Reason>', intention))[:32]
                           +'<br>'
                           for intention in self.entity.intentions])
             
     def format_tasks(self):
-        return '<br>'.join(["<b>"+str(agh.find('<Text>', task))
-                          +':</b> '+str(agh.find('<Reason>', task))
+        return '<br>'.join(["<b>"+str(xml.find('<Text>', task))
+                          +':</b> '+str(xml.find('<Reason>', task))
                           +'<br>'
                           for task in self.entity.priorities])
             
@@ -283,7 +284,7 @@ class CustomWidget(QWidget):
                 self.ui.display(self.entity.show)
                 self.entity.show=''
             for entity in self.entity.ui.actors:
-                if entity.name != 'World' and type(entity) != agh.Context:
+                if entity.name != 'World' and type(entity) != context.Context:
                     entity.widget.update_entity_state_display()
             path = self.entity.image('../images/worldsim.png')
             self.ui.set_image('../images/worldsim.png')
@@ -506,7 +507,7 @@ class MainWindow(QMainWindow):
 
     def refresh(self):
         for widget in self.custom_widgets:
-            if type(widget.entity) != agh.Context:
+            if type(widget.entity) != context.Context:
                 widget.update_entity_state_display()
 
     def load(self):
@@ -554,7 +555,7 @@ class MainWindow(QMainWindow):
         # Example: update custom widgets with internal_time
         for widget in self.custom_widgets:
             #print(f'{widget.entity.name} sensing')
-            if type(widget.entity) != agh.Context:
+            if type(widget.entity) != context.Context:
                 widget.update_value(self.internal_time)
             else:
                 if self.internal_time % 5 == 4:

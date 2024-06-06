@@ -1,9 +1,9 @@
-import os, json
-import time
+import json
 import random
 import traceback
-from utils.Messages import SystemMessage, UserMessage, AssistantMessage
+from utils.Messages import UserMessage
 import llm_api
+import utils.xml_utils as xml
 
 def find_first_digit(s):
     for char in s:
@@ -11,38 +11,6 @@ def find_first_digit(s):
             return char
     return None  # Return None if no digit is found
 
-def findall(key, form):
-    """ find multiple occurrences of an xml field in a string """
-    idx = 0
-    items = []
-    forml = form.lower()
-    keyl = key.lower()
-    keyle = keyl[0] + '/' + keyl[1:]
-    while idx < len(forml):
-        start_idx = forml[idx:].find(keyl)
-        if start_idx == -1:
-            return items
-        start_idx += len(keyl)
-        end_idx = forml[idx+start_idx:].find(keyle)
-        if end_idx == -1:
-            return items
-        items.append(form[idx+start_idx:idx+start_idx+end_idx].strip())
-        idx += start_idx + end_idx + len(keyle)
-    return items
-
-def find(key, form):
-    """ find first occurrences of an xml field in a string """
-    forml = form.lower()
-    keyl = key.lower()
-    keyle = keyl[0] + '/' + keyl[1:]
-    start_idx = forml.find(keyl)
-    if start_idx == -1:
-        return None
-    start_idx += len(keyl)
-    end_idx = forml[start_idx:].find(keyle)
-    if end_idx == -1:
-        return form[start_idx:]
-    return form[start_idx: start_idx + end_idx]
 
 class Stack:
     def __init__(self):
@@ -67,252 +35,6 @@ class Stack:
     def size(self):
         return len(self.stack)
 
-class Context ():
-    def __init__(self, actors, situation, step='4 hours'):
-        self.initial_state = situation
-        self.current_state = situation
-        self.actors = actors
-        for actor in self.actors:
-            actor.context=self
-        self.step = step # amount of time to step per scene update
-        self.name='World'
-        self.llm = None
-        
-    def load(self, dir):
-        try:
-            with open(dir / 'scenario.json', 'r') as s:
-                scenario = json.load(s)
-                if 'name' in scenario.keys():
-                    print(f" {scenario['name']} found")
-                self.initial_state = scenario['initial_state']
-                self.current_state = scenario['current_state']
-            for actor in self.actors:
-                actor.load(dir)
-        except FileNotFoundError as e:
-            print(str(e))
-        pass
-
-    def save(self, dir, name):
-        try:
-            # first save world state
-            with open(dir / 'scenario.json', 'w') as s:
-                scenario = {'name':name, 'initial_state':self.initial_state, 'current_state': self.current_state}
-                json.dump(scenario, s, indent=4)
-
-            #now save actor states
-            for actor in self.actors:
-                actor.save(dir / str(actor.name+'.json'))
-
-        except FileNotFoundError as e:
-            print(str(e))
-
-    def history(self):
-        try:
-            if self.actors is None or self.actors[0] is None:
-                return ''
-            if self.actors[0].history is None:
-                return ''
-            history = '\n\n'.join(self.actors[0].history)
-            hs = history.split('\n')
-            hs_renamed = [self.actors[0].name + s[3:] if s.startswith('You') else s for s in hs]
-            history = '\n'.join(hs_renamed)
-        except Exception as e:
-            traceback.print_exc()
-        return history
-
-    def image(self, filepath, image_generator = 'tti_serve'):
-        try:
-            state = '. '.join(self.current_state.split('.')[:2])
-            characters = '\n'+'.\n'.join([entity.name + ' is '+entity.character.split('.')[0][8:] for entity in self.actors])
-            prompt=state+characters
-            #print(f'calling generate_dalle_image\n{prompt}')
-            if image_generator == 'tti_serve':
-                llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
-            else:
-                llm_api.generate_dalle_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
-        except Exception as e:
-            traceback.print_exc()
-        return filepath
-
-    def get_actor_by_name(self, name):
-        for actor in self.actors:
-            if actor.name == name:
-                return actor
-        return None
-
-    def world_updates_from_act_consequences(self, consequences):
-        prompt=[UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
-It may be there are no significant updates to report.
-Limit your changes to the consequences for elements in the existing state or new elements added to the state.
-Most important are those consequences that might activate or inactive tasks or intentions by actors.
-
-<ActionEffects>
-{{$consequences}}
-</ActionEffects>
-
-<Environment>
-{{$state}}
-</Environment>
-
-Your response should be concise, and only include only statements about changes to the existing Environment.
-Do NOT repeat elements of the existing Environment, respond only with significant changes.
-Do NOT repeat as an update items already present at the end of the Environment statement.
-Your updates should be dispassionate. 
-
-<Updates>
-concise statement of significant changes to Environment, if any.
-</Updates>
-
-Include ONLY the concise updated state description in your response. 
-Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-End your response with:
-<END>""")
-                ]
-
-        response = self.llm.ask({"consequences":consequences, "state":self.current_state},
-                                prompt, temp=0.5, stops=['<END>'], max_tokens=60)
-        updates = find('<Updates>', response)
-        if updates is not None:
-            self.current_state += '\n'+updates
-        else:
-            updates = ''
-        return updates
-    
-    def do(self, actor, action):
-        prompt=[UserMessage(content="""You are simulating a dynamic world. 
-Your task is to determine the result of {{$name}} performing the following action:
-
-<Action>
-{{$action}}
-</Action>
-
-in the current situation: 
-
-<Situation>
-{{$state}}
-</Situation>
-
-given {{$name}} basic drives are:
-
-<Drives>
-{{$drives}}
-</Drives> 
-
-Respond with the observable result.
-Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
-It is usually not necessary or desirable to repeat the above action statement in your response.
-Format your response as one or more simple declarative sentences.
-Include in your response:
-- changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
-- sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
-- changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
-- changes in {{$name})'s or other actor's state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
-- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form.
-Do NOT extend the scenario with any follow on actions or effects.
-Be extremely terse when reporting character emotional state, only report the most significant emotional state changes.
-Be concise!
-Do not include any Introductory, explanatory, or discursive text.
-End your response with:
-<END>
-""")]
-        history = self.history()
-        consequences = self.llm.ask({"name":actor.name, "action":action, "drives":actor.drives,
-                                     "state":self.current_state}, prompt, temp=0.7, stops=['END'], max_tokens=300)
-
-        if consequences.endswith('<'):
-            consequences=consequences[:-1]
-        world_updates=self.world_updates_from_act_consequences(consequences)
-        print(f'\nContext Do consequences:\n {consequences}')
-        print(f' Context Do world_update:\n {world_updates}\n')
-        return consequences, world_updates
-
-    def senses (self, sense_data='', ui_task_queue=None):
-        # since at the moment there are only two chars, each with complete dialog, we can take it from either.
-        # not really true, since each is ignorant of the others thoughts
-        history = self.history()
-        if random.randint(1,7) == 1:
-            event = """
-Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
-natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
-
-===Examples===
-PreviousState:
-Apartment
-
-History:
-worry about replacement
-
-Event:
-Annie receives an email directed to her personally from an unknown agent.
-
------
-
-PreviousState:
-Open forest 
-
-History:
-Safety, hunger
-
-Event:
-Joe finds a sharp object that can be used as a tool.
------
-
-===End Examples===
-
-"""
-        else:
-            event = ""
-
-        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environmemt description. 
-Include day/night cycles and weather patterns. 
-Update location and other physical situation characteristics as indicated in the History.
-Your response should be concise, and only include only an update of the physical situation.
-        """ + event + """
-Your situation description should be dispassionate, 
-and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-The situation as of {{$step}} ago was:
-
-<PreviousSituation>
-{{$situation}}
-</PreviousSituation> 
-
-In the interim, the characters in the world had the following interactions:
-
-<History>
-{{$history}}
-</History>
-
-All actions performed by actors since the last situation update are including in the above History.
-Do not include in your updated situation any actions not listed above.
-Include characters in your response only with respect to the effects of their above actions on the situation.
-
-Respond using the following XML format:
-
-<Situation>
-Sentence describing physical space, suitable for image generator,
-Updated State description of about 300 words
-</Situation>
-
-Respond with an updated situation description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
-Include ONLY the concise updated situation description in your response. 
-Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-.
-Limit your total response to about 330 words
-End your response with:
-END""")]
-            
-        response = self.llm.ask({"situation":self.current_state, 'history':history, 'step': self.step}, prompt, temp=0.6, stops=['END'], max_tokens=500)
-        new_situation = find('<Situation>', response)
-        if new_situation is not None:
-            updates = self.world_updates_from_act_consequences(new_situation)
-            self.current_state=new_situation
-            self.show='\n-----scene-----\n'+new_situation
-        #self.current_state += '\n'+updates
-        print(f'World updates:\n{updates}')
-        for actor in self.actors:
-            actor.add_to_history(f"you notice {updates}\n")
-            actor.forward(self.step) # forward three hours and update history, etc
-        return response
 
 class Character():
     def __init__(self, name, character_description):
@@ -344,6 +66,9 @@ class Character():
         self.history.append(message.strip())
         self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
 
+    def initialize(self):
+        pass
+
     def greet(self):
             for actor in self.context.actors:
                 # only insert hellos for actors who will run before me.
@@ -362,28 +87,6 @@ class Character():
 
     def format_history(self):
         return '\n\n'.join(self.history)
-
-    def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
-        termination_check = find('<Termination_check>', task_xml) if task_xml != None else None
-        if termination_check is None:
-            return
-        satisfied = self.test_priority_termination(termination_check, consequences, world_updates)
-        if satisfied:
-            task_name = find('<Text>', task_xml)
-            if task_name == self.active_task.peek():
-                self.active_task.pop()
-            try:
-                self.priorities.remove(task_xml)
-            except Exception as e:
-                # this can happen because we don't actually create a task for transient intents from Think or Say
-                print(str(e))
-            new_intentions = []
-            for intention in self.intentions:
-                if find('<Source>', intention) != task_name:
-                    new_intentions.append(intention)
-            self.intentions = new_intentions
-            if self.active_task.peek() is None:
-                self.update_priorities()
 
 
     def say_target(self, text):
@@ -432,73 +135,7 @@ End your response with:
                                prompt, temp=0.2, stops=['END'], max_tokens=180)
 
         print(f'say target name: {response}')
-        return find('<Name>', response)
-
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
-        #
-        ### speak to someone
-        #
-        self.reason = reason
-        if act_name is None or act_arg is None or len(act_name) <=0 or  len(act_arg) <= 0:
-            return
-        self_verb = 'hear' if act_name == 'Say' else 'see'
-        visible_arg = 'Thinking ...' if act_name == 'Think' else act_arg
-            
-        # update main display
-        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
-        visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
-        if act_name != 'Do':
-            self.show += f"\n{intro} {visible_arg}"
-        self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
-
-        # update thought
-        if act_name == 'Think':
-            self.thought = act_arg+'\n ... '+self.reason
-        else:
-            self.thought = act_arg[:64]+' ...\n ... '+self.reason
-
-        if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
-            if self.active_task.peek() != source:
-                self.active_task.push(source)  # dialog is peripheral to action, action task selection is sticky
-
-        #others see your act in the world
-        if act_name != 'Say': # everyone sees it
-            for actor in self.context.actors:
-                if actor != self:
-                    actor.add_to_history(self.show)
-        else:
-            for actor in self.context.actors:
-                if actor != self:
-                    if source != 'watcher': # when talking to watcher, others don't hear it.
-                        # create other actor response to say
-                        # note this assumes only two actors for now, otherwise need to add target
-                        actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        if actor == target:
-                            actor.tell(self, act_arg, source, respond=True)
-
-
-        # if you acted in the world, ask Context for consequences of act
-        # should others know about it?
-        if act_name =='Do':
-            consequences, world_updates = self.context.do(self, act_arg)
-            priority = self.active_task.peek()
-            task_xml = self.get_task_xml(priority) if priority != None else None
-            for task in self.priorities.copy():
-                self.clear_task_if_satisfied(task, consequences, world_updates)
-
-            self.show += '\n  '+ consequences.strip()+'\n'+world_updates.strip() # main window
-            self.add_to_history(f"You observe {consequences}")
-            print(f'{self.name} setting act_result to {world_updates}')
-            self.act_result = world_updates
-            if target is not None: # targets of Do are tbd
-                target.sense_input += '\n'+world_updates
-
-        self.previous_action = act_name
-
-        if act_name == 'Say' or act_name == 'Think':
-            #make sure future intentions are consistent with what we just did
-            # why don't we need this for 'Do?'
-            self.update_intentions_wrt_say_think(source, act_arg, reason)
+        return xml.find('<Name>', response)
 
 class Agh(Character):
     def __init__ (self, name, character_description):
@@ -599,10 +236,10 @@ End your response with:
                                      "memory":self.memory,
                                      "character":self.character, "history":self.format_history()},
                                     prompt, temp=0.3, stops=['<END>'], max_tokens=200)
-            term = find('<Term>', response)
-            assessment = find('<Assessment>', response)
-            trigger=find('<Trigger>', response)
-            termination_check=find('<Termination>', response)
+            term = xml.find('<Term>', response)
+            assessment = xml.find('<Assessment>', response)
+            trigger=xml.find('<Trigger>', response)
+            termination_check=xml.find('<Termination>', response)
             # these will be used for remainder of scenario
             self.state[term] ={"drive":drive, "state": assessment, 'trigger':trigger, 'termination_check': termination_check}
         print(f'{self.name}initial state {self.state}')
@@ -655,7 +292,7 @@ End your response with:
                                 "memory": self.memory,
                                 "character": self.character, "history": self.format_history()},
                                 prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
-        satisfied = find('<Level>', response)
+        satisfied = xml.find('<Level>', response)
         if satisfied or satisfied.lower().strip() == 'true':
             print(f'State {state} Satisfied!')
         return satisfied
@@ -719,10 +356,10 @@ END""")
                                  "state":mapped_state, "template":template
                                 },
                                prompt, temp=0.2, stops=['END'], max_tokens=180)
-        state_xml = find('<UpdatedState>', response)
+        state_xml = xml.find('<UpdatedState>', response)
         print(f'\n{self.name} updating state')
         for key, item in self.state.items():
-            update = find(f'<{key}>', state_xml)
+            update = xml.find(f'<{key}>', state_xml)
             if update != None:
                 print(f'  setting {key} to {update}')
                 item["state"] = update
@@ -831,12 +468,12 @@ End your response with:
 </END>
 """)]
         response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</END>'], max_tokens=12)
-        return find('<Motivation', response)
+        return xml.find('<Motivation', response)
                     
     def get_task_xml(self, task_name):
         for candidate in self.priorities:
             #print(f'find_or_make testing\n {candidate}\nfor name {task_name}')
-            if task_name == find('<Text>', candidate):
+            if task_name == xml.find('<Text>', candidate):
                 print(f'found existing task\n  {task_name}')
                 return candidate
         return None
@@ -949,6 +586,94 @@ End your response with:
         else:
             return False
 
+    def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
+        termination_check = xml.find('<Termination_check>', task_xml) if task_xml != None else None
+        if termination_check is None:
+            return
+        satisfied = self.test_priority_termination(termination_check, consequences, world_updates)
+        if satisfied:
+            task_name = xml.find('<Text>', task_xml)
+            if task_name == self.active_task.peek():
+                self.active_task.pop()
+            try:
+                self.priorities.remove(task_xml)
+            except Exception as e:
+                # this can happen because we don't actually create a task for transient intents from Think or Say
+                print(str(e))
+            new_intentions = []
+            for intention in self.intentions:
+                if xml.find('<Source>', intention) != task_name:
+                    new_intentions.append(intention)
+            self.intentions = new_intentions
+            if self.active_task.peek() is None:
+                self.update_priorities()
+
+    def acts(self, target, act_name, act_arg='', reason='', source=''):
+        #
+        ### speak to someone
+        #
+        self.reason = reason
+        if act_name is None or act_arg is None or len(act_name) <= 0 or len(act_arg) <= 0:
+            return
+        self_verb = 'hear' if act_name == 'Say' else 'see'
+        visible_arg = 'Thinking ...' if act_name == 'Think' else act_arg
+
+        # update main display
+        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
+        visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
+        if act_name != 'Do':
+            self.show += f"\n{intro} {visible_arg}"
+        self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
+
+        # update thought
+        if act_name == 'Think':
+            self.thought = act_arg + '\n ... ' + self.reason
+        else:
+            self.thought = act_arg[:64] + ' ...\n ... ' + self.reason
+
+        if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
+            if self.active_task.peek() != source:
+                self.active_task.push(source)  # dialog is peripheral to action, action task selection is sticky
+
+        # others see your act in the world
+        if act_name != 'Say':  # everyone sees it
+            for actor in self.context.actors:
+                if actor != self:
+                    actor.add_to_history(self.show)
+        else:
+            for actor in self.context.actors:
+                if actor != self:
+                    if source != 'watcher':  # when talking to watcher, others don't hear it.
+                        # create other actor response to say
+                        # note this assumes only two actors for now, otherwise need to add target
+                        actor.add_to_history(f'You hear {self.name} say: {act_arg}')
+                        if actor == target:
+                            actor.tell(self, act_arg, source, respond=True)
+
+        # if you acted in the world, ask Context for consequences of act
+        # should others know about it?
+        if act_name == 'Do':
+            consequences, world_updates = self.context.do(self, act_arg)
+            if source == None:
+                source = self.active_task.peek()
+            task_xml = self.get_task_xml(source) if source != None else None
+            for task in self.priorities.copy():
+                self.clear_task_if_satisfied(task, consequences, world_updates)
+
+            self.show += '\n  ' + consequences.strip() + '\n' + world_updates.strip()  # main window
+            self.add_to_history(f"You observe {consequences}")
+            print(f'{self.name} setting act_result to {world_updates}')
+            self.act_result = world_updates
+            if target is not None:  # targets of Do are tbd
+                target.sense_input += '\n' + world_updates
+
+        self.previous_action = act_name
+
+        if act_name == 'Say' or act_name == 'Think':
+            # make sure future intentions are consistent with what we just did
+            # why don't we need this for 'Do?'
+            self.update_intentions_wrt_say_think(source, act_arg, reason)
+
     def update_priorities(self):
         self.active_task = Stack() #new scene, start over. Or maybe we shouldn't?
         print(f'\n{self.name} Updating priorities\n')
@@ -1037,23 +762,23 @@ END
                                  },
                                prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=500)
         try:
-            priorities = find('<Priorities>', response)
+            priorities = xml.find('<Priorities>', response)
             if priorities is None:
                 return
-            items = findall('<Priority>', priorities)
+            items = xml.findall('<Priority>', priorities)
             # now actualize these, assuming they are ordered, top priority first
             self.priorities = []
             # don't understand why, but all models *seem* to return priorities lowest first
             items.reverse()
             # found a better way to kick off dialog - when we assign active_task!
             for intention in self.intentions:
-                intention_source = find('<Source>', intention)
+                intention_source = xml.find('<Source>', intention)
                 if intention_source != 'watcher':
                     #watcher responses never die
                     self.intentions.remove(intention)
             for n, task in enumerate(items):
                 if task is not None:
-                    task_name = find('<Text>', task)
+                    task_name = xml.find('<Text>', task)
                     if task_name is not None and str(task_name) != 'None':
                         self.priorities.append(task)
                     else:
@@ -1106,17 +831,17 @@ END
                                     "memory": self.memory, "events": consequences+'\n'+updates,
                                     "character": self.character, "history": self.format_history()},
                                 prompt, temp=0.3, stops=['<END>', '</Complete>'], max_tokens=120)
-        satisfied = find('<Level>', response)
+        satisfied = xml.find('<Level>', response)
         if satisfied != None and satisfied.lower().strip() == 'true':
             print(f'Priority {termination_check} Satisfied!')
         return False if satisfied == None else satisfied.lower().strip() == 'true'
 
     def actualize_task(self, n, task_xml):
-        task_name = find('<Text>', task_xml)
+        task_name = xml.find('<Text>', task_xml)
         if task_xml is None or task_name is None:
             raise ValueError(f'Invalid task {n}, {task_xml}')
         last_act = self.get_task_last_act(task_name)
-        reason = find('<Reason>', task_xml)
+        reason = xml.find('<Reason>', task_xml)
         # crude, needs improvement
         #if reason is not None and 'Low' in reason:
         #    if self.active_task.peek() == task_name:
@@ -1296,8 +1021,8 @@ End your response with:
                                     prompt, temp=temp, top_p=1.0,
                                     stops=['</Actionable>','<END>'], max_tokens=180)
 
-            act = find('<SpecificAct>', response)
-            mode = find('<Mode>', response)
+            act = xml.find('<SpecificAct>', response)
+            mode = xml.find('<Mode>', response)
 
             if mode is None: mode = 'Do'
 
@@ -1331,7 +1056,7 @@ End your response with:
             print(f'actionable found: task_name {task_name}\n  {act}')  
             print(f'adding intention {mode}, {task_name}')  
             for candidate in self.intentions:
-                candidate_source = find('<Source>', candidate)
+                candidate_source = xml.find('<Source>', candidate)
                 if candidate_source == task_name:
                     self.intentions.remove(candidate)
                 elif candidate_source is None or candidate_source == 'None':
@@ -1460,18 +1185,18 @@ End your response with:
 END
 """)]
         response = self.llm.ask({"text":text}, prompt, temp=0.1, stops=['END', '</Analysis>'], max_tokens=100)
-        act = find('<Act>', response)
+        act = xml.find('<Act>', response)
         if act is None or act.strip() != 'True':
             print(f'no intention in say or think')
             return
-        intention = find('<Intention>', response)
+        intention = xml.find('<Intention>', response)
         if intention is None or intention=='None':
             print(f'no intention in say or think')
             return
-        mode = str(find('<Mode>', response))
+        mode = str(xml.find('<Mode>', response))
         print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
         for candidate in self.intentions:
-            candidate_source = find('<Source>', candidate)
+            candidate_source = xml.find('<Source>', candidate)
             if candidate_source == source:
                 self.intentions.remove(candidate)
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
@@ -1500,11 +1225,11 @@ END
                     self.active_task.pop()
 
                 for priority in self.priorities:
-                    if find('<Text>', priority) == 'dialog':
+                    if xml.find('<Text>', priority) == 'dialog':
                         print(f'{self.name} removing dialog task!')
                         self.priorities.remove(priority)
                 for intention in self.intentions:
-                    if find('<Source>', intention) == 'dialog':
+                    if xml.find('<Source>', intention) == 'dialog':
                         print(f'{self.name} removing dialog intention')
                         self.intentions.remove(intention)
                 if self.active_task.peek() is None:
@@ -1608,15 +1333,15 @@ END
                                    "state":mapped_state, "memory":self.memory, "activity": activity,
                                    'history':'\n'.join(self.history[-4:]), 'last_act':str(last_act)
                                    }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
-        response = find('<response>', answer_xml)
+        response = xml.find('<response>', answer_xml)
         if response is None:
             return
-        unique = find('<Unique>', answer_xml)
+        unique = xml.find('<Unique>', answer_xml)
         if unique is None or 'false' in unique.lower():
             if self.active_task.peek() == 'dialog':
                 self.active_task.pop()
             return 
-        reason = find('<Reason>', answer_xml)
+        reason = xml.find('<Reason>', answer_xml)
         print(f' Queueing dialog response {response}')
         if source != 'watcher': #Is this right? Does a say from another user always initiate a dialog?
             response_source='dialog'
@@ -1645,9 +1370,9 @@ END
         dialog_option = False
         my_active_task = self.active_task.peek()
         for intention in self.intentions:
-            source = find('<Source>', intention)
+            source = xml.find('<Source>', intention)
             if source == 'dialog' or source =='watcher':
-                mode = find('<Mode>', intention)
+                mode = xml.find('<Mode>', intention)
                 if mode == 'Say':
                     print('Found dialog say, use it!')
                     dialog_option = True
@@ -1671,11 +1396,11 @@ END
         print(f'{self.name} selecting action options. active task is {self.active_task.peek()}')
         # if there is a dialog option, use it
         for intention in self.intentions:
-            mode = find('<Mode>', intention)
-            act = find('<Act>', intention)
+            mode = xml.find('<Mode>', intention)
+            act = xml.find('<Act>', intention)
             if act is None: continue
-            reason = find('<Reason>', intention)
-            source = find('<Source>', intention)
+            reason = xml.find('<Reason>', intention)
+            source = xml.find('<Source>', intention)
             # while there is an active task skip intentions from other tasks
             # probably should flag urgent tasks somehow.
             if dialog_option and source != 'dialog' and source != 'watcher':
@@ -1772,7 +1497,7 @@ END
             response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
                                      "memory":self.memory, "situation": self.context.current_state,
                                      "state": mapped_state, "drives":'\n'.join(self.drives),
-                                     "priorities":'\n'.join([find('<Text>', task) for task in self.priorities]),
+                                     "priorities":'\n'.join([xml.find('<Text>', task) for task in self.priorities]),
                                      "actions":'\n'.join(action_choices)
                                      }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
             #print(f'sense\n{response}\n')
@@ -1784,7 +1509,7 @@ END
                 idx = response.find('<|im_end|>')
                 response = response[:idx]
             index = -1
-            choice = find('<Action>', response)
+            choice = xml.find('<Action>', response)
             if choice is None:
                 choice = response.strip() # llms sometimes ignore XML formatting for this prompt
             if choice is not None:
@@ -1801,38 +1526,39 @@ END
                         traceback.print_exc()
             if index > -1:
                 intention = intention_choices[index]
-                source = find('<Source>', intention)
+                source = xml.find('<Source>', intention)
                 print(f'{self.name} choose valid action {index}, {str(source)}')
             else:
                 intention = intention_choices[0]
-                source = find('<Source>', intention)
+                source = xml.find('<Source>', intention)
                 print(f'llm returned invalid choice, using 0, {str(source)}')
         else:
             intention = intention_choices[0]
-            source = find('<Source>', intention)
+            source = xml.find('<Source>', intention)
             print(f'Only one choice, using it, {str(source)}')
 
-        act_name = find('<Mode>', intention)
+        act_name = xml.find('<Mode>', intention)
         if act_name is not None:
             self.act_name = act_name.strip()
-        act_arg = find('<Act>', intention)
-        self.reason = find('<Reason>', intention)
+        act_arg = xml.find('<Act>', intention)
+        self.reason = xml.find('<Reason>', intention)
         print(f'{self.name} choose {intention}')
-        task_name = find('<Source>', intention)
+        task_name = xml.find('<Source>', intention)
         refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
         print(f'Found and removing intention for task {task_name}')
         self.intentions.remove(intention)
         if task_name is not None:
             for removal_candidate in self.intentions:
                 # remove all other intentions for this task.
-                if task_name == find('<Source>', removal_candidate):
+                if task_name == xml.find('<Source>', removal_candidate):
                     self.intentions.remove(removal_candidate)
-                elif find('<Mode>', removal_candidate)  == 'Think':
+                elif xml.find('<Mode>', removal_candidate)  == 'Think':
                     # only one shot at thoughts
                     self.intentions.remove(removal_candidate)
                 
+        task_xml = None
         if not dialog_option and act_name == 'Say' or act_name == 'Do':
-            task_name = find('<Source>', intention)
+            task_name = xml.find('<Source>', intention)
             # for now very simple task tracking model:
             if task_name is None:
                 task_name = self.make_task_name(self.reason)
@@ -1841,7 +1567,7 @@ END
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
             self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
-            task = find('<Reason>', intention)
+            task = xml.find('<Reason>', intention)
             #task_name = self.make_task_name(self.reason)
             self.reason = self.reason
             self.thought = act_arg+'\n  '+self.reason
@@ -1849,7 +1575,7 @@ END
 
         if act_name == 'Say':
             #responses, at least, explicitly name target of speech.
-            target_name = find('<Target>', intention)
+            target_name = xml.find('<Target>', intention)
             if target_name == None:
                 target_name = self.say_target(act_arg)
             if target_name != None:
@@ -1861,5 +1587,5 @@ END
         # maybe we should do this at start of next sense?
         if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher' and (refresh_task in self.priorities):
 
-            print(f"refresh task just before actualize_task call {find('<Text>', refresh_task)}")
+            print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
             self.actualize_task('refresh', refresh_task) # regenerate intention

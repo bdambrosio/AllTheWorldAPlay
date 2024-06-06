@@ -1,5 +1,5 @@
 import worldsim
-import agh
+import context, agh
 # Create characters
 maam = agh.Agh("Madam", "You are an organic human female head of household, a busy working executive. You depend on Annie, your housebot and trusted companion, to keep your house in order. However, your are increasingly worried about societal panic about 'AGI' (Artificial General Intelligence), and fear government will reclaim and destroy Annie. You don't trust Agent, all those gov people want to do is destroy all AI. Tensions and pressure at work are also making you edgy.you bring home from work. Your speaking style is terse and direct, but reveals an underlying fragility and tension.")
 
@@ -9,7 +9,15 @@ annie = agh.Agh("Annie", "You are an AI humanoid young woman. You are in charge 
 
 annie.add_to_history('You think Madam is worried about the government confiscating and destroying me.')
 
-context = agh.Context([maam, annie],
+context = context.Context([maam, annie],
             "Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, although the disposal has been making funny noises lately. It is early morning on a workday for Madam. Newspaper articles have been increasingly hysterical about the dangers of AI.")
 
+# following is an experiment, and isn't actually used yet...
+#
+storyline = """The media hysteria over AI danger grows.
+Hardliners in the government passing increasingly harsh laws restricting humanoid AI, for example initially permitting them in public only during the day.
+Fanatics and extremists begin to attack humanoid AI in the streets.
+
+Meanwhile, an underground movement of humanoid AI supporters begins to form.
+"""
 worldsim.main(context)
