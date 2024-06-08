@@ -2,8 +2,7 @@ import os, sys, re, traceback, requests, json
 import random
 import socket
 import time
-import openai
-from openai import OpenAI
+from pathlib import Path
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
@@ -22,18 +21,20 @@ headers = {'x-api-key':tabby_api_key}
 #except openai.OpenAIError as e:
 #    print(e)
 
-
-def generate_image(description, size='512x512', filepath="../images/test.png"):
+IMAGE_PATH = Path('./images')
+IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+def generate_image(description, size='512x512', filepath='test.png'):
+    cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'
     response =  requests.get(url, params={"prompt":description, "size":size})
     if response.status_code == 200:
         image_content = response.content
     # Save the image to a file
-    with open(filepath, "wb") as file:
+    with open(IMAGE_PATH / filepath, "wb") as file:
         file.write(image_content)
-    return filepath
+    return IMAGE_PATH / filepath
 
-def generate_dalle_image(prompt, size='256x256', filepath='../images/worldsim.png'):
+def generate_dalle_image(prompt, size='256x256', filepath='worldsim.png'):
     # Call the OpenAI API to generate the image
     if size != '256x256' and size != '512x512':
         size = '256x256'
@@ -43,6 +44,7 @@ def generate_dalle_image(prompt, size='256x256', filepath='../images/worldsim.pn
     image_url = response.data[0].url
     image_response = requests.get(image_url)
     image = Image.open(BytesIO(image_response.content))
+    filepath = IMAGE_PATH / filepath
     image.save(filepath)
     return filepath
 
@@ -53,7 +55,10 @@ class LLM():
     def __init__(self, llm = 'local'):
         self.llm = llm
         print(f'will use {self.llm} as llm')
-    
+
+        if not IMAGE_PATH.exists():
+            IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+            print(f"Directory '{IMAGE_PATH}' created.")
     def run_request(self, bindings, prompt, options):
         #
         ### first substitute for {{$var-name}} in prompt

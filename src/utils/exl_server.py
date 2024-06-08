@@ -73,12 +73,14 @@ model = ExLlamaV2(config)
 if 'llama3-70B' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
     model.load([42, 46, 44])
-    print('model load done..')
 
 elif 'command-r' in model_name:
-
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([38, 38, 24])
+    model.load([41, 48, 24])
+
+elif 'Qwen2' in model_name:
+    print(f"Loading model: {model_name}\n context {context_size}")
+    model.load([38,44,48])
 
 else:
     print(f"Loading model: {model_name}\n context {context_size}")
@@ -94,7 +96,8 @@ while GENERATION_PROMPT == None:
         GENERATION_PROMPT=True
     elif prime.lower().startswith('f'):
         GENERATION_PROMPT=False
-        
+
+print(f'loading tokenizers {models_dir+model_name}')
 hf_tokenizer = AutoTokenizer.from_pretrained(models_dir+model_name)
 exl_tokenizer = ExLlamaV2Tokenizer(config)
 cache = ExLlamaV2Cache(model)

@@ -23,6 +23,8 @@ def findall(key, form):
 
 def find(key, form):
     """ find first occurrences of an xml field in a string """
+    if form is None:
+        raise ValueError('None!')
     forml = form.lower()
     keyl = key.lower()
     keyle = keyl[0] + '/' + keyl[1:]

@@ -1,24 +1,20 @@
-import os, re
-import time
-import random
+import re
 import traceback
-import readline
-from utils.Messages import SystemMessage, UserMessage, AssistantMessage
-import llm_api
 import agh
 import utils.xml_utils as xml
 
 class Human (agh.Character):
     def __init__ (self, name, character_description=''):
         super().__init__(name, character_description)
+        self.name = name
+        self.character = character_description
 
     def initialize(self):
         """called from worldsim once everything is set up"""
 
     def add_to_history(self, message):
         message = message.replace('\\','')
-        self.history.append(f"{message}".strip())
-        self.history = self.history[-16:] # memory is fleeting, otherwise we get very repetitive behavior
+        self.history.add_to_history(message)
 
     def update_physical_state(self, key, response):
         pass

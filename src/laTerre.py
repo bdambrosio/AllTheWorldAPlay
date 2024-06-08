@@ -1,6 +1,6 @@
 import worldsim
 import agh
-import llm_api
+
 J = agh.Agh("Jean", """You are Jean Macquart, a hardworking young peasant farmer. 
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.

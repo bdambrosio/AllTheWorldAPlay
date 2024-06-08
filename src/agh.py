@@ -1,10 +1,8 @@
 import json
-import random
 import traceback
 from utils.Messages import UserMessage
-import llm_api
 import utils.xml_utils as xml
-
+from utils.memoryStream import MemoryStream
 def find_first_digit(s):
     for char in s:
         if char.isdigit():
@@ -40,7 +38,8 @@ class Character():
     def __init__(self, name, character_description):
         self.name = name
         self.character = character_description
-        self.history = []
+        self.llm = None # will be init by Worldsim
+        self.history = MemoryStream(name, self)
         self.memory = 'None'
         self.context=None
         self.priorities = [''] # will be displayed by main thread at top in character intentions text widget
@@ -55,16 +54,15 @@ class Character():
         self.active_task = Stack() # task character is actively pursuing.
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
-        self.llm = None # will be init by Worldsim
-
+        self.new_memory_cnt = 0 # number of memories since last consolidation
     def other(self):
         for actor in self.context.actors:
             if actor != self:
                 return actor
     def add_to_history(self, message):
         message = message.replace('\\','')
-        self.history.append(message.strip())
-        self.history = self.history[-8:] # memory is fleeting, otherwise we get very repetitive behavior
+        self.new_memory_cnt += 1
+        self.history.remember(message)
 
     def initialize(self):
         pass
@@ -85,8 +83,9 @@ class Character():
             if actor != self:
                 self.add_to_history(f'You see {actor.name}')
 
-    def format_history(self):
-        return '\n\n'.join(self.history)
+    def format_history(self, n=2):
+        memories = [memory.text for memory in self.history.n_most_recent(n)]
+        return '\n\n'.join(memories)
 
 
     def say_target(self, text):
@@ -234,7 +233,7 @@ End your response with:
             print(f'{self.name} generating state for drive: {drive}')
             response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
                                      "memory":self.memory,
-                                     "character":self.character, "history":self.format_history()},
+                                     "character":self.character, "history":self.format_history(4)},
                                     prompt, temp=0.3, stops=['<END>'], max_tokens=200)
             term = xml.find('<Term>', response)
             assessment = xml.find('<Assessment>', response)
@@ -346,16 +345,16 @@ Respond ONLY with the updated state.
 Do not include any introductory or peripheral text.
 limit your response to 120 words at most.
 End your response with:
-END""")
+<STOP>""")
                   ]
         mapped_state = self.map_state()
         template = self.make_state_template()
-        response = self.llm.ask({'character':self.character, 'memory':self.memory,
-                                 'history':'\n\n'.join(self.history),
-                                 "situation":self.context.current_state,
-                                 "state":mapped_state, "template":template
+        response = self.llm.ask({'character': self.character, 'memory':self.memory,
+                                 'history': self.format_history(8),
+                                 "situation": self.context.current_state,
+                                 "state": mapped_state, "template": template
                                 },
-                               prompt, temp=0.2, stops=['END'], max_tokens=180)
+                               prompt, temp=0.2, stops=['<STOP>'], max_tokens=180)
         state_xml = xml.find('<UpdatedState>', response)
         print(f'\n{self.name} updating state')
         for key, item in self.state.items():
@@ -722,26 +721,24 @@ limit your total response to 120 words.
 Reason step by step to determine the overall importance of each possible short-term goal. Then respond with the three with the highest overall importance. 
 Use the XML format:
 
-<Priorities>
- <Priority> 
+<Priority> 
   <Text>statement of top priority</Text> 
   <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
   <State>the primary Stance from which this priority is derived</State>
   <Termination_check>termination condition</Termination_check>
-  </Priority>
- <Priority>
+</Priority>
+<Priority>
   <Text>statement of second priority</Text>
   <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
   <State>the primary Stance from which this priority is derived</State>
   <Termination_check>termination condition</Termination_check>
- </Priority>
- <Priority>
+</Priority>
+<Priority>
   <Text>statement of third priority</Text> 
   <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
   <State>the primary Stance from which this priority is derived</State>
   <Termination_check>termination condition</Termination_check>
- </Priority>
-</Priorities>
+</Priority>
 
 'Text' is a concise statement of the goal or target to be achieved
 'Reason' is the reasoning that explains the motivation for this priority
@@ -750,22 +747,19 @@ Use the XML format:
 
 Respond ONLY with the above XML. Do not include any introductory, explanatory, or discursive text.
 End your response with:
-END
+<STOP>
 """)]
         state_map = self.map_state()
         response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
                                  'drives':'\n'.join(self.drives),
                                  'memory':self.memory,
-                                 'history':'\n\n'.join(self.history).strip(),
+                                 'history':self.format_history(6),
                                  "situation":self.context.current_state,
                                  "state":state_map
                                  },
-                               prompt, temp=0.6, stops=['</Priorities>', 'END'], max_tokens=500)
+                               prompt, temp=0.6, stops=['<STOP>'], max_tokens=500)
         try:
-            priorities = xml.find('<Priorities>', response)
-            if priorities is None:
-                return
-            items = xml.findall('<Priority>', priorities)
+            items = xml.findall('<Priority>', response)
             # now actualize these, assuming they are ordered, top priority first
             self.priorities = []
             # don't understand why, but all models *seem* to return priorities lowest first
@@ -874,10 +868,10 @@ Your memories include:
 {{$memory}}
 </Memory>
 
-Recent conversation has been:
+Recent history includes:
 <RecentHistory>
 {{$history}}
-</RecentHistory)>
+</RecentHistory>
 
 The Previous specific act for this Task, if any, was:
 
@@ -920,16 +914,6 @@ Dialog guidance:
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 
-===Example===
-RecentHistory:
-You say Hi Joe. Wow, glad I'm not alone out here. I'm Samantha. How do we get out of here?
-Joe: Yeah, feeling it. No idea. Who even knows how far lost we are. Let's look around a bit.
-
-Response:
-Yeah, maybe we're just a few minutes from a trail, but maybe we're really in it. I'm really freaked. Wait, who are you, anyway? 
-===End Example===
-
-
 Respond in XML:
 <Actionable>
   <Mode>'Think', 'Say' or 'Do', corresponding to whether the act is a reasoning, speech, or physical act</Mode>
@@ -939,7 +923,7 @@ Respond in XML:
 ===Examples===
 
 Task:
-'Situation: increased security measures; State: fear of losing Annie'
+Situation: increased security measures; State: fear of losing Annie
 
 Response:
 <Actionable>
@@ -950,7 +934,7 @@ Response:
 ----
 
 Task:
-'Establish connection with Joe given RecentHistory element: "Who is this guy?"'
+Establish connection with Joe given RecentHistory element: "Who is this guy?"
 
 Response:
 <Actionable>
@@ -961,7 +945,7 @@ Response:
 ----
 
 Task:
-'Find out where I am given Situation element: "This is very very strange. Where am I?"'
+Find out where I am given Situation element: "This is very very strange. Where am I?"
 
 Response:
 <Actionable>
@@ -973,7 +957,10 @@ Response:
 
 Use the XML format:
 
-<Actionable> <Mode>Think, Say, or Do<Mode><SpecificAct>statement of specific action</SpecificAct> </Actionable>
+<Actionable> 
+  <Mode>Think, Say, or Do<Mode>
+  <SpecificAct>statement of specific action</SpecificAct> 
+</Actionable>
 
 Respond ONLY with the above XML.
 Your name is {{$name}}, phrase the statement of specific action in your voice.
@@ -984,22 +971,6 @@ Again, the task to translate into an Actionable is:
 <Task>
 {{$task}} given {{$reason}}
 </Task>
-
-Recent conversation has been:
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-And yhe Previous specific act for this Task, if any, was:
-
-<PreviousSpecificAct>
-{{$lastAct}}
-</PreviousSpecificAct>
-
-with the observed result of that was:
-<ObservedResult>
-{{$lastActResult}}.
-</ObservedResult>
 
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -1013,7 +984,7 @@ End your response with:
         while act is None and tries < 2:
             response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
                                      'memory':self.memory, 'duplicative':duplicative_insert,
-                                     'history':'\n\n'.join(self.history[-3:]).strip(), 'name':self.name,
+                                     'history':self.format_history(6), 'name':self.name,
                                      "situation":self.context.current_state,
                                      "state":mapped_state, "task":task_name, "reason":reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
@@ -1028,7 +999,7 @@ End your response with:
 
             # test for dup act
             if mode =='Say':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[-2:]))
+                dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
                     duplicative_insert =f"\nThe following Say is duplicative of previous dialog:\n'{act}'\nWhat else could you say or how else could you say it?"
@@ -1040,11 +1011,11 @@ End your response with:
                         pass
 
             elif mode =='Do':
-                dup = self.repetitive(act, last_act, '\n\n'.join(self.history[-2:]))
+                dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
-                    if tries <=1:
+                    if tries <1:
                         act = None # force redo
                         temp +=.3
                     else:
@@ -1062,11 +1033,14 @@ End your response with:
                 elif candidate_source is None or candidate_source == 'None':
                     self.intentions.remove(candidate)
 
-            self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reason>{reason}</Reason> <Source>{task_name}</Source> </Intent>')
+            return f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reason>{reason}</Reason> <Source>{task_name}</Source> </Intent>'
+        else:
+            raise UserWarning('No intention constructed')
             #ins = '\n'.join(self.intentions)
             #print(f'Intentions\n{ins}')
                                     
     def forward(self, step):
+
         # roll conversation history forward.
         ## update physical state
         ## update long-term dialog memory
@@ -1110,16 +1084,17 @@ END""")
 
         filtered_history = []
         # thoughts are illusory,
-        for item in self.history:
-            if 'Think' not in item:
-                filtered_history.append(item)
+        #for item in [memory.text for memory in self.history.n_most_recent(16)]:
+        #    if 'Think' not in item:
+        #        filtered_history.append(item)
         response = self.llm.ask({'me':self.name, 'memory':self.memory,
-                                'history':'\n\n'.join(self.history),
+                                'history': self.format_history(self.new_memory_cnt),
                                 "situation":self.context.current_state},
                                prompt, temp=0.4, stops=['END'], max_tokens=500)
         response = response.replace('<Memory>','')
         self.memory = response
-        self.history = self.history[-2:]
+        #self.history = self.history[-2:]
+        self.new_memory_cnt = 0
         self.generate_state() # why isn't this update_state? Because update is very short term!
         self.update_priorities()
         
@@ -1137,6 +1112,8 @@ END""")
 </Text>
 
 Does it include an intention for 'I' to act? 
+An action can be physical or verbal.
+Thought, e.g. 'reflect on my situation', should NOT be reported as an intent to act.
 Respond using the following XML form:
 
 <Analysis>
@@ -1169,6 +1146,16 @@ Response:
 
 Text:
 'Good morning Annie. Call maintenance about the disposal noise please.'
+
+Response:
+<Analysis>
+<Act>False</Act>
+<Intention>None</Intention>
+<Mode>NA</Mode>
+</Analysis>
+
+Text:
+'Reflect on my thoughts and feelings to gain clarity and understanding, which will ultimately guide me towards finding my place in the world.'
 
 Response:
 <Analysis>
@@ -1328,10 +1315,10 @@ END
         activity = ''
         if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
             activity = f'You are currently actively engaged in {self.get_task_xml(self.active_task.peek())}'
-        answer_xml = self.llm.ask({'character':self.character, 'statement':f'{from_actor.name} says {message}',
+        answer_xml = self.llm.ask({'character': self.character, 'statement': f'{from_actor.name} says {message}',
                                    "situation": self.context.current_state,"name":self.name,
-                                   "state":mapped_state, "memory":self.memory, "activity": activity,
-                                   'history':'\n'.join(self.history[-4:]), 'last_act':str(last_act)
+                                   "state": mapped_state, "memory": self.memory, "activity": activity,
+                                   'history': self.format_history(4), 'last_act': str(last_act)
                                    }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -1353,7 +1340,107 @@ END
                 self.active_task.pop()
             return # skip response, adds nothing
         self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Target>{from_actor.name}</Target><Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
+        return response+'\n '+reason
 
+    def choose(self, sense_data, action_choices):
+        prompt = [UserMessage(content=self.character + """\nYour current situation is:
+
+        <Situation>
+        {{$situation}}
+        </Situation>
+
+        Your fundamental needs / drives include:
+
+        <Drives>
+        {{$drives}}
+        </Drives> 
+
+        Your state is:
+
+        <State>
+        {{$state}}
+        </State>
+
+        Your memories include:
+
+        <Memory>
+        {{$memory}}
+        </Memory>
+
+        Recent conversation has been:
+        <RecentHistory>
+        {{$history}}
+        </RecentHistory)>
+
+        Your current priorities include:
+        <Priorities>
+        {{$priorities}}
+        </Priorities>
+
+        New Observation:
+        <Input>
+        {{$input}}
+        </Input>
+
+        Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step 
+        and choose your most pressing, highest need / priority action to perform from the numbered list below:
+
+        <Actions>
+        {{$actions}}
+        </Actions>
+
+        Consider the conversation history in choosing your action. 
+        Respond in the context of the RecentHistory (if any) and in keeping with your character. 
+        Use the number for the selected action to instantiate the following XML format:
+
+        <Action>
+        index-number of chosen action
+        </Action>
+
+        Respond with the above XML, instantiated with the selected action number from the Action list. 
+        Do not include any introductory, explanatory, or discursive text, 
+        End your response with:
+        END
+        """
+                              )]
+
+        mapped_state = self.map_state()
+        action_choices = [f'{n} - {action}' for n, action in enumerate(action_choices)]
+        if len(action_choices) > 1:
+            response = self.llm.ask({'input': sense_data + self.sense_input, 'history': self.format_history(6),
+                                    "memory": self.memory, "situation": self.context.current_state,
+                                    "state": mapped_state, "drives": '\n'.join(self.drives),
+                                    "priorities": '\n'.join([xml.find('<Text>', task) for task in self.priorities]),
+                                    "actions": '\n'.join(action_choices)
+                                    }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
+        # print(f'sense\n{response}\n')
+        self.sense_input = ' '
+        if 'END' in response:
+            idx = response.find('END')
+            response = response[:idx]
+        if '<|im_end|>' in response:
+            idx = response.find('<|im_end|>')
+            response = response[:idx]
+        index = -1
+        choice = xml.find('<Action>', response)
+        if choice is None:
+            choice = response.strip()  # llms sometimes ignore XML formatting for this prompt
+        if choice is not None:
+            try:
+                draft = int(choice.strip())
+                if draft > -1 and draft < len(action_choices):
+                    index = draft  # found it!
+            except Exception as e:
+                try:
+                    draft = find_first_digit(response)
+                    draft = int(draft) if (draft != None and int(draft) < len(action_choices)) else None
+                    index = draft if draft != None else -1
+                except Exception as e:
+                    traceback.print_exc()
+        if index > -1:
+            return index
+        else:
+            return 0
 
     def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
@@ -1364,200 +1451,50 @@ END
                      "Discuss": """Reason step-by-step about discussion based on current situation, your state, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
 <Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><terse reason for bringing this up for discussion></Reason> </Action>
 """}
-        
 
         # do after we have all relevant updates from context and other actors
-        dialog_option = False
+        dialog_active = False
         my_active_task = self.active_task.peek()
-        for intention in self.intentions:
-            source = xml.find('<Source>', intention)
+        intention = None
+        for candidate in self.intentions:
+            source = xml.find('<Source>', candidate)
             if source == 'dialog' or source =='watcher':
-                mode = xml.find('<Mode>', intention)
-                if mode == 'Say':
-                    print('Found dialog say, use it!')
-                    dialog_option = True
-            elif my_active_task != None and my_active_task == source:
-                print(f'Found intention for active_task {my_active_task}')
-                live_active=True
-        if not dialog_option and self.active_task.peek() == 'dialog':
-            self.active_task.pop()
+                intention = candidate
 
-        if dialog_option != True: #don't bother generating options we won't use
-            # if there is an active task, only actualize that one
-            if self.active_task.peek() != None and self.active_task.peek() != 'dialog' and self.active_task.peek() != 'watcher'\
-               and self.active_task.peek() != None:
-                full_task = self.get_task_xml(self.active_task.peek())
-                self.actualize_task(0, full_task)
-            else:
-                for n, task in enumerate(self.priorities):
-                    self.actualize_task(n, task)
-        intention_choices=[]
-        llm_choices=[]
-        print(f'{self.name} selecting action options. active task is {self.active_task.peek()}')
-        # if there is a dialog option, use it
-        for intention in self.intentions:
-            mode = xml.find('<Mode>', intention)
-            act = xml.find('<Act>', intention)
-            if act is None: continue
-            reason = xml.find('<Reason>', intention)
-            source = xml.find('<Source>', intention)
-            # while there is an active task skip intentions from other tasks
-            # probably should flag urgent tasks somehow.
-            if dialog_option and source != 'dialog' and source != 'watcher':
-                print(f'  dialog option true, skipping action option {source}')
-                continue
-            if my_active_task and  source != 'dialog' and source != 'watcher'\
-               and source is not None and source != my_active_task:
-                    print(f"  active_task '{my_active_task}', skipping action option {source}")
-                    continue
-            print(f' inserting action option {source}, {act[:48]}')
-            if mode == 'Do':# and random.randint(1,3)==1: # too many action choices, just pick a couple for deliberation
-                llm_choices.append(all_actions["Act"].replace('{action}', act).replace('{reason}',str(reason)))
-                intention_choices.append(intention)
-            elif mode == 'Say':
-                llm_choices.append(all_actions["Say"].replace('{text}', act).replace('{reason}',str(reason)))
-                intention_choices.append(intention)
-            elif mode == 'Think':
-                llm_choices.append(all_actions["Think"].replace('{text}', act).replace('{reason}',str(reason)))
-                intention_choices.append(intention)
+        if intention is None and my_active_task != None and my_active_task != 'dialog' and my_active_task != 'watcher':
+            full_task = self.get_task_xml(my_active_task)
+            intention = self.actualize_task(0, full_task)
+            print(f'Found active_task {my_active_task}')
 
-        print()
+        if intention is None:
+            intention_choices = []
+            for n, task in enumerate(self.priorities):
+                choice =  f"{n}. {xml.find('<Text>', task)}, because {xml.find('<Reason>', task)}"
+                intention_choices.append(choice)
+                print(f'{self.name} considering action option {choice}')
 
-        #if random.randint(1,4) == 1: # task timeout at random to increase variety of action
-        #    self.active_task.pop()
-        if len(llm_choices) == 0:
-            print(f'{self.name} Oops, no available acts')
-            self.active_task.pop()
-            if self.active_task.peek() is None:
-                self.update_priorities()
-            return
-        prompt = [UserMessage(content=self.character+"""\nYour current situation is:
+            if len(intention_choices) == 0:
+                print(f'{self.name} Oops, no available acts')
+                return
 
-<Situation>
-{{$situation}}
-</Situation>
+            if len(intention_choices) > 1:
+                task_index = self.choose(sense_data, intention_choices)
+            intention = self.actualize_task(task_index, self.priorities[task_index])
 
-Your fundamental needs / drives include:
-
-<Drives>
-{{$drives}}
-</Drives> 
-
-Your state is:
-
-<State>
-{{$state}}
-</State>
-
-Your memories include:
-
-<Memory>
-{{$memory}}
-</Memory>
-
-Recent conversation has been:
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Your current priorities include:
-<Priorities>
-{{$priorities}}
-</Priorities>
-
-New Observation:
-<Input>
-{{$input}}
-</Input>
-
-Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step 
-and choose your most pressing, highest need / priority action to perform from the numbered list below:
-
-<Actions>
-{{$actions}}
-</Actions>
-
-Consider the conversation history in choosing your action. 
-Respond in the context of the RecentHistory (if any) and in keeping with your character. 
-Use the number for the selected action to instantiate the following XML format:
-
-<Action>
-index-number of chosen action
-</Action>
-
-Respond with the above XML, instantiated with the selected action number from the Action list. 
-Do not include any introductory, explanatory, or discursive text, 
-End your response with:
-END
-"""
-)                 ]
-        mapped_state = self.map_state()
-        action_choices = [f'{n} - {action}' for n,action in enumerate(llm_choices)] 
-        if len(action_choices) > 1:
-            response = self.llm.ask({'input':sense_data+self.sense_input, 'history':'\n\n'.join(self.history),
-                                     "memory":self.memory, "situation": self.context.current_state,
-                                     "state": mapped_state, "drives":'\n'.join(self.drives),
-                                     "priorities":'\n'.join([xml.find('<Text>', task) for task in self.priorities]),
-                                     "actions":'\n'.join(action_choices)
-                                     }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
-            #print(f'sense\n{response}\n')
-            self.sense_input = ' '
-            if 'END' in response:
-                idx = response.find('END')
-                response = response[:idx]
-            if '<|im_end|>' in response:
-                idx = response.find('<|im_end|>')
-                response = response[:idx]
-            index = -1
-            choice = xml.find('<Action>', response)
-            if choice is None:
-                choice = response.strip() # llms sometimes ignore XML formatting for this prompt
-            if choice is not None:
-                try:
-                    draft = int(choice.strip())
-                    if draft > -1 and draft < len(intention_choices):
-                        index = draft # found it!
-                except Exception as e:
-                    try:
-                        draft = find_first_digit(response)
-                        draft = int(draft) if (draft != None and int(draft) < len(intention_choices)) else None
-                        index = draft if draft != None else -1
-                    except Exception as e:
-                        traceback.print_exc()
-            if index > -1:
-                intention = intention_choices[index]
-                source = xml.find('<Source>', intention)
-                print(f'{self.name} choose valid action {index}, {str(source)}')
-            else:
-                intention = intention_choices[0]
-                source = xml.find('<Source>', intention)
-                print(f'llm returned invalid choice, using 0, {str(source)}')
-        else:
-            intention = intention_choices[0]
-            source = xml.find('<Source>', intention)
-            print(f'Only one choice, using it, {str(source)}')
-
+        self.intentions = [] # start anew next time
         act_name = xml.find('<Mode>', intention)
         if act_name is not None:
             self.act_name = act_name.strip()
         act_arg = xml.find('<Act>', intention)
         self.reason = xml.find('<Reason>', intention)
+        source = xml.find('<Source>', intention)
         print(f'{self.name} choose {intention}')
         task_name = xml.find('<Source>', intention)
         refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
-        print(f'Found and removing intention for task {task_name}')
-        self.intentions.remove(intention)
-        if task_name is not None:
-            for removal_candidate in self.intentions:
-                # remove all other intentions for this task.
-                if task_name == xml.find('<Source>', removal_candidate):
-                    self.intentions.remove(removal_candidate)
-                elif xml.find('<Mode>', removal_candidate)  == 'Think':
-                    # only one shot at thoughts
-                    self.intentions.remove(removal_candidate)
-                
+
         task_xml = None
-        if not dialog_option and act_name == 'Say' or act_name == 'Do':
+        refresh_task = None
+        if not dialog_active and act_name == 'Say' or act_name == 'Do':
             task_name = xml.find('<Source>', intention)
             # for now very simple task tracking model:
             if task_name is None:
@@ -1567,9 +1504,9 @@ END
             refresh_task = task_xml # intention for task was removed about, remember to rebuild
             self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
-            task = xml.find('<Reason>', intention)
+            task_name = xml.find('<Source>', intention)
             #task_name = self.make_task_name(self.reason)
-            self.reason = self.reason
+            self.reason = xml.find('<Reason>', intention)
             self.thought = act_arg+'\n  '+self.reason
         target = None
 
@@ -1585,7 +1522,8 @@ END
         self.acts(target, act_name, act_arg, self.reason, source)
 
         # maybe we should do this at start of next sense?
-        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher' and (refresh_task in self.priorities):
-
-            print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
-            self.actualize_task('refresh', refresh_task) # regenerate intention
+        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
+            for task in self.priorities:
+                if refresh_task == task:
+                    print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
+                    self.actualize_task('refresh', refresh_task) # regenerate intention
