@@ -126,7 +126,6 @@ async def get_stream(request: Request):
     messages = message_j['messages']
 
     formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
-)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inputs = tokenizer(formatted, return_tensors="pt").to(device)
 

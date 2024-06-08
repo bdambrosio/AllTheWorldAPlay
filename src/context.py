@@ -1,7 +1,7 @@
 import json
 import traceback
 import random
-import llm_api
+from utils import llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 
@@ -50,7 +50,7 @@ class Context():
                 return ''
             if self.actors[0].history is None:
                 return ''
-            history = '\n\n'.join(self.actors[0].history)
+            history = self.actors[0].format_history(14)
             hs = history.split('\n')
             hs_renamed = [self.actors[0].name + s[3:] if s.startswith('You') else s for s in hs]
             history = '\n'.join(hs_renamed)
@@ -66,9 +66,9 @@ class Context():
             prompt = state + characters
             # print(f'calling generate_dalle_image\n{prompt}')
             if image_generator == 'tti_serve':
-                llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
+                filepath = llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
             else:
-                llm_api.generate_dalle_image(f"""wide-view photorealistic. {prompt}""", size='512x512',
+                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic. {prompt}""", size='512x512',
                                              filepath=filepath)
         except Exception as e:
             traceback.print_exc()
@@ -119,6 +119,7 @@ End your response with:
         return updates
 
     def do(self, actor, action):
+        """ This is the world determining the effects of an actor action"""
         prompt = [UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
 
@@ -153,11 +154,11 @@ Be extremely terse when reporting character emotional state, only report the mos
 Be concise!
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
-<END>
+<STOP>
 """)]
         history = self.history()
         consequences = self.llm.ask({"name": actor.name, "action": action, "drives": actor.drives,
-                                     "state": self.current_state}, prompt, temp=0.7, stops=['END'], max_tokens=300)
+                                     "state": self.current_state}, prompt, temp=0.7, stops=['<STOP>'], max_tokens=300)
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -167,9 +168,67 @@ End your response with:
         return consequences, world_updates
 
     def senses(self, sense_data='', ui_task_queue=None):
+        """ This is where the world advances the timeline in the scenario
+            Note actors must compute their own time advance effects in the forward call
+        """
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
         # not really true, since each is ignorant of the others thoughts
         history = self.history()
+        if self.step == 'static': # static world, nothing changes!
+            prompt = [UserMessage(content="""You are a static world. Your task is to update the environment description. 
+            Update location and other physical situation characteristics as indicated in the History
+            Your response should be concise, and only include only an update of the physical situation.
+            Introduce new elements only when specifically appearing in History
+            Do NOT add description not present in the PreviousState or History below.
+            Your situation description should be dispassionate, 
+            and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
+            The previous state was:
+
+            <PreviousState>
+            {{$situation}}
+            </PreviousState> 
+
+            In the interim, the characters in the world had the following interactions:
+
+            <History>
+            {{$history}}
+            </History>
+
+            All actions performed by actors since the last situation update are including in the above History.
+            Do not include in your updated situation any actions not listed above.
+            Do not include any comments on actors or their actions. Only report the resulting world state
+
+            Respond using the following XML format:
+
+            <Situation>
+            Sentence describing physical space, suitable for image generator,
+            Updated State description of about 300 words
+            </Situation>
+
+            Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
+            Include ONLY the concise updated situation description in your response. 
+            Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+            .
+            Limit your total response to about 330 words
+            End your response with:
+            END""")]
+
+            response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
+                                    temp=0.6, stops=['END'], max_tokens=500)
+            new_situation = xml.find('<Situation>', response)
+            if new_situation is not None:
+                updates = self.world_updates_from_act_consequences(new_situation)
+                self.current_state = new_situation
+                self.show = '\n-----scene-----\n' + new_situation
+            # self.current_state += '\n'+updates
+            print(f'World updates:\n{updates}')
+            for actor in self.actors:
+                actor.add_to_history(f"you notice {updates}\n")
+                actor.forward(self.step)  # forward three hours and update history, etc
+            return response
+            self.show = '\n-----scene-----\n' + self.current_state
+            return
+
         if random.randint(1, 7) == 1:
             event = """
 Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
@@ -203,7 +262,7 @@ Joe finds a sharp object that can be used as a tool.
         else:
             event = ""
 
-        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environmemt description. 
+        prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
 Include day/night cycles and weather patterns. 
 Update location and other physical situation characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical situation.
@@ -233,7 +292,7 @@ Sentence describing physical space, suitable for image generator,
 Updated State description of about 300 words
 </Situation>
 
-Respond with an updated situation description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
+Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
 Include ONLY the concise updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
@@ -243,7 +302,7 @@ END""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
                                 temp=0.6, stops=['END'], max_tokens=500)
-        new_situation = find('<Situation>', response)
+        new_situation = xml.find('<Situation>', response)
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation

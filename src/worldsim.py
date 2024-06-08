@@ -1,15 +1,14 @@
-import sys, time, os, json
+import time, os, json
 from pathlib import Path
 import traceback
-import threading 
-from queue import Queue
-from PyQt5.QtCore import Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QScrollArea, QFrame, QSizePolicy, QLineEdit, QDialog
-from PyQt5.QtCore import QTimer, pyqtSlot, QSize
+import threading
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QLineEdit, QDialog
+from PyQt5.QtCore import QSize
 import PyQt5.QtGui as QtGui
-from PyQt5.QtGui import QPixmap, QImage, QFont, QTextCursor
+from PyQt5.QtGui import QFont, QTextCursor
 import context, agh, human
-import llm_api
+from utils import llm_api
 import utils.xml_utils as xml
 
 import sys
@@ -60,7 +59,7 @@ class HoverWidget(QWidget):
         self.setLayout(self.layout)
         
         # Load an image
-        self.set_image("path/to/your/image.jpg")
+        #self.set_image("path/to/your/image.jpg")
 
     def set_image(self, image_path):
         pixmap = QPixmap(image_path)
@@ -136,9 +135,10 @@ class BackgroundSense(QThread):
                 #print(f'calling {self.entity} senses')
                 #other source of effective input is assignment to self.entity.sense_input, e.g. from other say
                 result = self.entity.senses(sense_data = '')
+                self.taskCompleted.emit()
             except Exception as e:
                 traceback.print_exc()
-        self.taskCompleted.emit()
+
 
 agh_threads = []
 
@@ -179,7 +179,7 @@ class CustomWidget(QWidget):
         if self.entity.name !='World':
             h_layout = QHBoxLayout()
             self.image_label = HoverWidget(self.entity)
-            self.image_label.set_image('../images/'+self.entity.name+'.png')
+            self.image_label.set_image('images/'+self.entity.name+'.png')
             h_layout.addWidget(self.image_label)
             self.intentions = QTextEdit()
             self.intentions.setLineWrapMode(QTextEdit.WidgetWidth)
@@ -227,20 +227,20 @@ class CustomWidget(QWidget):
                 description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
                     self.entity.show + '. Location: '+context
                 prompt = "photorealistic style. "+description+rem_context
-                llm_api.generate_dalle_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
-                self.set_image("../images/"+self.entity.name+'.png')
+                llm_api.generate_dalle_image(prompt, size='192x192', filepath=self.entity.name + '.png')
+                self.set_image(str(llm_api.IMAGE_PATH)+self.entity.name+'.png')
             elif IMAGEGENERATOR == 'tti_serve':
                 description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
                     self.entity.show.replace(self.entity.name, '')[-72:] + '. Location: '+context
                 prompt = "photorealistic style. "+description
                 print(f' actor image prompt len {len(prompt)}')
-                llm_api.generate_image(prompt, size='192x192', filepath="../images/"+self.entity.name+'.png')
+                image_path = llm_api.generate_image(prompt, size='192x192', filepath=self.entity.name + '.png')
+                self.set_image(str(image_path))
         except Exception as e:
             traceback.print_exc()
-        self.set_image("../images/"+self.entity.name+'.png')
 
     def update_world_image(self):
-        image_path =  self.ui.context.image(filepath='../images/worldsim.png', image_generator=IMAGEGENERATOR)
+        image_path = self.ui.context.image(filepath='worldsim.png', image_generator=IMAGEGENERATOR)
         self.ui.set_image(image_path)
 
     def start_sense(self):
@@ -286,8 +286,8 @@ class CustomWidget(QWidget):
             for entity in self.entity.ui.actors:
                 if entity.name != 'World' and type(entity) != context.Context:
                     entity.widget.update_entity_state_display()
-            path = self.entity.image('../images/worldsim.png')
-            self.ui.set_image('../images/worldsim.png')
+            path = self.entity.image('images/worldsim.png')
+            self.ui.set_image('images/worldsim.png')
             #self.ui.display('\n----- context updated -----\n')
             self.ui.display('\n')
 
@@ -298,7 +298,7 @@ class CustomWidget(QWidget):
         
             
     def set_image(self, image_path):
-        pixmap = QPixmap(image_path)
+        pixmap = QPixmap(str(image_path))
         scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.set_image(scaled_pixmap)
         
@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
         #        traceback.print_exc()
       
     def set_image(self, image_path):
-        pixmap = QPixmap(image_path)
+        pixmap = QPixmap(str(image_path))
         scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(pixmap)
 
@@ -500,6 +500,7 @@ class MainWindow(QMainWindow):
         global APP, WATCHER, main_window
         if WATCHER is None:
             WATCHER = human.Human('Watcher', main_window)
+            WATCHER.context=self.context
         input_widget = InputWidget("Character name, message:")
         if input_widget.exec_() == QDialog.Accepted:
             user_input = input_widget.get_user_input()
@@ -509,6 +510,7 @@ class MainWindow(QMainWindow):
         for widget in self.custom_widgets:
             if type(widget.entity) != context.Context:
                 widget.update_entity_state_display()
+
 
     def load(self):
         worlds = [d for d in os.listdir(WORLDS_DIR) if os.path.isdir(os.path.join(WORLDS_DIR, d))]

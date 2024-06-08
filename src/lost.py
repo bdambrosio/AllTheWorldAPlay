@@ -1,7 +1,7 @@
 import worldsim
-import agh
-import llm_api
-# the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario. 
+import context, agh
+
+# the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 # Create characters
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
@@ -57,7 +57,7 @@ J.add_to_history("You think Whoever she is, she is pretty!")
 
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
-W = agh.Context([S, J],
+W = context.Context([S, J],
                 """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
 """)
 
