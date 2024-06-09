@@ -121,8 +121,9 @@ class InputWidget(QDialog):
 
     def get_user_input(self):
         return self.user_input
-    
+
 class BackgroundSense(QThread):
+    #class BackgroundSense():
     taskCompleted = pyqtSignal()
     def __init__(self, entity):
         super().__init__()
@@ -132,8 +133,8 @@ class BackgroundSense(QThread):
         global UPDATE_LOCK
         with UPDATE_LOCK:
             try:
-                #print(f'calling {self.entity} senses')
-                #other source of effective input is assignment to self.entity.sense_input, e.g. from other say
+                print(f'calling {self.entity} senses')
+                # other source of effective input is assignment to self.entity.sense_input, e.g. from other say
                 result = self.entity.senses(sense_data = '')
                 self.taskCompleted.emit()
             except Exception as e:
@@ -246,6 +247,8 @@ class CustomWidget(QWidget):
     def start_sense(self):
         self.background_task = BackgroundSense(self.entity)
         agh_threads.append(self.background_task)
+        #self.background_task.run()
+        #self.handle_sense_completed()
         self.background_task.taskCompleted.connect(self.handle_sense_completed)
         self.background_task.start()
         time.sleep(0.1) # ensure entities run in listed order

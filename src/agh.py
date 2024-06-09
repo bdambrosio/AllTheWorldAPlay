@@ -171,12 +171,13 @@ class Agh(Character):
 
     def load(self, filepath):
         try:
-            with open(filepath, 'r') as jf:
+            filename = self.name + '.json'
+            with open(filepath / filename, 'r') as jf:
                 data = json.load(jf)
                 for attr, value in data.items():
                     setattr(self, attr, value)
         except Exception as e:
-            print(f' error restoring {self.name}, str(e)')
+            print(f' error restoring {self.name}, {str(e)}')
 
     def generate_state(self):
         """ generate a state to track, derived from basic drives """
@@ -604,7 +605,7 @@ End your response with:
                 if xml.find('<Source>', intention) != task_name:
                     new_intentions.append(intention)
             self.intentions = new_intentions
-            if self.active_task.peek() is None:
+            if self.active_task.peek() is None and len(self.priorities) == 0:
                 self.update_priorities()
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
@@ -1032,7 +1033,7 @@ End your response with:
         if act is not None:
             print(f'actionable found: task_name {task_name}\n  {act}')  
             print(f'adding intention {mode}, {task_name}')  
-            for candidate in self.intentions:
+            for candidate in self.intentions.copy():
                 candidate_source = xml.find('<Source>', candidate)
                 if candidate_source == task_name:
                     self.intentions.remove(candidate)
@@ -1188,10 +1189,12 @@ END
             return
         mode = str(xml.find('<Mode>', response))
         print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
+        new_intentions = []
         for candidate in self.intentions:
             candidate_source = xml.find('<Source>', candidate)
-            if candidate_source == source:
-                self.intentions.remove(candidate)
+            if candidate_source != source:
+                new_intentions.append(candidate)
+        self.intentions = new_intentions
         self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
         if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
@@ -1224,11 +1227,11 @@ END
                 if self.active_task.peek() == 'dialog':
                     self.active_task.pop()
 
-                for priority in self.priorities:
+                for priority in self.priorities.copy():
                     if xml.find('<Text>', priority) == 'dialog':
                         print(f'{self.name} removing dialog task!')
                         self.priorities.remove(priority)
-                for intention in self.intentions:
+                for intention in self.intentions.copy():
                     if xml.find('<Source>', intention) == 'dialog':
                         print(f'{self.name} removing dialog intention')
                         self.intentions.remove(intention)
@@ -1491,6 +1494,7 @@ END
                 print(f'{self.name} Oops, no available acts')
                 return
 
+            task_index = 0
             if len(intention_choices) > 1:
                 task_index = self.choose(sense_data, intention_choices)
             intention = self.actualize_task(task_index, self.priorities[task_index])

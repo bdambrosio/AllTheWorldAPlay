@@ -6,7 +6,7 @@ import subprocess
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import socket
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from typing import Any, Dict
 from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteria
 
@@ -78,9 +78,9 @@ elif 'command-r' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
     model.load([41, 48, 24])
 
-elif 'Qwen2' in model_name:
+elif 'qwen' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([38,44,48])
+    model.load([36,44,48])
 
 else:
     print(f"Loading model: {model_name}\n context {context_size}")

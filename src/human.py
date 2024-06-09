@@ -3,7 +3,7 @@ import traceback
 import agh
 import utils.xml_utils as xml
 
-class Human (agh.Character):
+class Human (agh.Agh):
     def __init__ (self, name, character_description=''):
         super().__init__(name, character_description)
         self.name = name
@@ -12,18 +12,19 @@ class Human (agh.Character):
     def initialize(self):
         """called from worldsim once everything is set up"""
 
-    def add_to_history(self, message):
-        message = message.replace('\\','')
-        self.history.add_to_history(message)
 
     def update_physical_state(self, key, response):
         pass
 
     def forward(self, num_hours):
         pass
-    
-    def tell(self, actor, message, source='dialog', respond=True):
-        print(f"{actor.name} says: {message}")
+
+    def tell(self, to_actor, message, source=None, respond=True):
+        self.show = ''
+        return super().tell(to_actor, message, source=source, respond=respond)
+
+    def hear(self, from_actor, message, source='dialog', respond=True):
+        pass
 
     def inject(self, message):
         split_chars = ',;:\n'
