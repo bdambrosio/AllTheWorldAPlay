@@ -36,3 +36,16 @@ def find(key, form):
     if end_idx == -1:
         return form[start_idx:]
     return form[start_idx: start_idx + end_idx]
+
+
+def set(key, form, value):
+    current = find(key, form)
+    forml = form.lower()
+    keyl = key.lower()
+    keyle = keyl[0] + '/' + keyl[1:]
+    if current:
+        new_form = form.replace(keyl+current+keyle, keyl+value+keyle)
+    else:
+        new_form = form+keyl+value+keyle
+    return new_form
+
