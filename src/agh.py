@@ -647,7 +647,7 @@ End your response with:
                         # note this assumes only two actors for now, otherwise need to add target
                         actor.add_to_history(f'You hear {self.name} say: {act_arg}')
                         if actor == target:
-                            actor.tell(self, act_arg, source, respond=True)
+                            actor.hear(self, act_arg, source) # don't act immediately on receipt
 
         # if you acted in the world, ask Context for consequences of act
         # should others know about it?
@@ -671,6 +671,7 @@ End your response with:
         if act_name == 'Say' or act_name == 'Think':
             # make sure future intentions are consistent with what we just did
             # why don't we need this for 'Do?'
+            # how does this fit with new model of choose over tasks? won't this be ignored?
             self.update_intentions_wrt_say_think(source, act_arg, reason)
 
     def update_priorities(self):
@@ -844,7 +845,7 @@ End your response with:
         #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (act, a 'Think', 'Say', or 'Do') to advance the following task.
+Your task is to generate an Actionable (a 'Think', 'Say', or 'Do') to advance the following task.
 
 <Task>
 {{$task}} given {{$reason}}
@@ -888,19 +889,23 @@ Respond with an Actionable, including its Mode and SpecificAct.
 
 In choosing an Actionable (see format below), you can choose from three Mode values:
 - 'Think' - reason about the current situation wrt your state and the task.
-- 'Say' - speak, to motivate others to act, to align or coordinate with them, to reason jointly to establish or maintain a bond. For example, if you want to build a shelter with Samantha, it might be effective to Say '
+- 'Say' - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
+    Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
+    For example, if you want to build a shelter with Samantha, it might be effective to Say 'Samantha, let's build a shelter.'
 - 'Do' - perform an act with physical consequences in the world.
+
 Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
 
 A SpecificAct is one which:
-- Can be described in terms of specific physical movements or steps
-- Has a clear beginning and end point
-- Can be performed or acted out by a person
-- Can be easily visualized or imagined as a film clip
-- Is consistent with any action commitments made in your last statements in RecentHistory
-- Is consistent with the Situation (e.g., does not suggest as new an action described in Situation)
+- Can be described in terms of specific thoughts, words, physical movements or actions.
+- Has a clear beginning and end point.
+- Can be performed or acted out by a person.
+- Can be easily visualized or imagined as a film clip.
+- Is consistent with any action commitments made in your last statements in RecentHistory.
+- Is consistent with the Situation (e.g., does not suggest as new an action described in Situation).
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
-- Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
+- Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), 
+    given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
 - Significantly advances the story or task at hand.
 - Is stated in the appropriate person (voice):
         If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
@@ -911,7 +916,8 @@ Prioritize actions that lead to meaningful progress in the narrative.
 Dialog guidance:
 - If speaking (mode is 'Say'), then:
 - Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language. Speak in the first person.
-- If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
+- If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
+    then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 
 Respond in XML:
@@ -959,7 +965,7 @@ Use the XML format:
 
 <Actionable> 
   <Mode>Think, Say, or Do<Mode>
-  <SpecificAct>statement of specific action</SpecificAct> 
+  <SpecificAct>specific thoughts, words, or action</SpecificAct> 
 </Actionable>
 
 Respond ONLY with the above XML.
@@ -1193,12 +1199,19 @@ END
         #ins = '\n'.join(self.intentions)
         #print(f'Intentions\n{ins}')
 
-    def tell(self, from_actor, message, source='dialog', respond=True):
-        # Respond = False tbd
-        if source == 'dialog' and self.previous_action == 'Say' and self.active_task.peek() != None:
+    def tell(self, to_actor, message, source='dialog', respond=True):
+        if self.active_task.peek() != 'dialog':
+            self.active_task.push('dialog')
+        self.acts(to_actor,'Say', message, '', 'dialog')
+        return
+
+        #generate response intention
+    def hear(self, from_actor, message, source='dialog', respond=True):
+        # someone says something to you
+        if self.active_task.peek() == 'dialog' and self.previous_action == 'Say':
             # assuming this means this is a response to my previous action
             source = self.active_task.peek()
-        elif source == 'dialog' and self.previous_action != 'Say':
+        elif source == 'dialog' and self.previous_action != 'Say' and self.active_task.peek() != 'dialog':
             #not a response to my Say:
             self.active_task.push('dialog')
         elif source != 'dialog':
@@ -1221,14 +1234,15 @@ END
                         self.intentions.remove(intention)
                 if self.active_task.peek() is None:
                     self.update_priorities()
-
                 #ignore this tell, dialog over
                 return
             elif self.active_task.peek() != None and self.active_task.peek() != 'dialog':
                 self.active_task.push('dialog')
 
         print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
-
+        self.add_to_history(f'You hear {from_actor.name} say {message}')
+        if not respond:
+            return
         #generate response intention
         prompt=[UserMessage(content="""Respond to the input below as {{$name}}.
 
@@ -1318,7 +1332,7 @@ END
         answer_xml = self.llm.ask({'character': self.character, 'statement': f'{from_actor.name} says {message}',
                                    "situation": self.context.current_state,"name":self.name,
                                    "state": mapped_state, "memory": self.memory, "activity": activity,
-                                   'history': self.format_history(4), 'last_act': str(last_act)
+                                   'history': self.format_history(6), 'last_act': str(last_act)
                                    }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -1522,8 +1536,8 @@ END
         self.acts(target, act_name, act_arg, self.reason, source)
 
         # maybe we should do this at start of next sense?
-        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
-            for task in self.priorities:
-                if refresh_task == task:
-                    print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
-                    self.actualize_task('refresh', refresh_task) # regenerate intention
+        #if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
+        #    for task in self.priorities:
+        #        if refresh_task == task:
+        #            print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
+        #            self.actualize_task('refresh', refresh_task) # regenerate intention

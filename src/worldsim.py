@@ -286,8 +286,8 @@ class CustomWidget(QWidget):
             for entity in self.entity.ui.actors:
                 if entity.name != 'World' and type(entity) != context.Context:
                     entity.widget.update_entity_state_display()
-            path = self.entity.image('images/worldsim.png')
-            self.ui.set_image('images/worldsim.png')
+            path = self.entity.image('worldsim.png')
+            self.ui.set_image(path)
             #self.ui.display('\n----- context updated -----\n')
             self.ui.display('\n')
 
