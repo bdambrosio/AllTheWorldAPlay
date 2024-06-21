@@ -7,21 +7,22 @@ from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
 from io import BytesIO
-#import utils.ClaudeClient as anthropic_client
+import utils.ClaudeClient as anthropic_client
 import utils.llcppClient as llcpp_client
 
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
 tabby_api_key = os.getenv("TABBY_API_KEY")
-headers = {'x-api-key':tabby_api_key}
-#openai_api_key = os.getenv("OPENAI_API_KEY")
-#try:
+headers = {'x-api-key': tabby_api_key}
+# from openai import OpenAI
+# openai_api_key = os.getenv("OPENAI_API_KEY")
+# try:
 #    client = OpenAI()
-#except openai.OpenAIError as e:
+# except openai.OpenAIError as e:
 #    print(e)
 
-IMAGE_PATH = Path('./images')
+IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 def generate_image(description, size='512x512', filepath='test.png'):
     cwd = os.getcwd()
@@ -52,9 +53,25 @@ pattern = r'\{\$[^}]*\}'
 
 # options include 'local', 'Claude',
 class LLM():
-    def __init__(self, llm = 'local'):
+    def __init__(self, llm='local'):
         self.llm = llm
         print(f'will use {self.llm} as llm')
+        if llm.startswith('GPT'):
+            self.context_size = 32000
+        elif llm.startswith('mistral'):
+            self.context_size = 32000  # I've read mistral uses sliding 8k window
+        elif llm.startswith('claude'):
+            self.context_size = 32768  #
+        else:
+            self.context_size = 8192  # conservative local mis/mixtral default
+            try:
+                response = requests.post('http://127.0.0.1:5000/' + '/template')
+                if response.status_code == 200:
+                    template = response.json()['template']
+                    self.context_size = response.json()['context_size']
+                    print(f'template: {template}, context: {self.context_size}, prime: {response_prime_needed}')
+            except Exception as e:
+                print(f' fail to get prompt template from server {str(e)}')
 
         if not IMAGE_PATH.exists():
             IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -87,9 +104,9 @@ class LLM():
         if 'llama.cpp' in self.llm:
             response= llcpp_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
-        #if 'Claude' in self.llm:
-        #    response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
-        #    return response
+        if 'Claude' in self.llm:
+            response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
+            return response
         else:
             response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,

@@ -23,7 +23,7 @@ class Human (agh.Agh):
         self.show = ''
         return super().tell(to_actor, message, source=source, respond=respond)
 
-    def hear(self, from_actor, message, source='dialog', respond=True):
+    def hear(self, from_actor, message, source='dialog'):
         pass
 
     def inject(self, message):
@@ -41,7 +41,7 @@ class Human (agh.Agh):
         print(f'Inject target {who}')
         for actor in self.context.actors:
             if actor.name == who.strip():
-                actor.tell(self, message[len(who):], source='watcher')
+                actor.hear(self, message[len(who):], source='watcher')
                 actor.add_to_history('You hear watcher say '+message)
     
     def update_intentions_wrt_say_think(self, source, text, reason):

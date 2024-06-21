@@ -137,8 +137,9 @@ End your response with:
         return xml.find('<Name>', response)
 
 class Agh(Character):
-    def __init__ (self, name, character_description):
+    def __init__ (self, name, character_description, always_respond=False):
         super().__init__(name, character_description)
+        self.always_respond = always_respond # timeout dialogs?
         self.previous_action = ''
         self.sense_input = ''
         self.drives = [
@@ -767,7 +768,7 @@ End your response with:
             # don't understand why, but all models *seem* to return priorities lowest first
             items.reverse()
             # found a better way to kick off dialog - when we assign active_task!
-            for intention in self.intentions:
+            for intention in self.intentions.copy():
                 intention_source = xml.find('<Source>', intention)
                 if intention_source != 'watcher':
                     #watcher responses never die
@@ -790,36 +791,36 @@ End your response with:
     def test_priority_termination(self, termination_check, consequences, updates=''):
         """ test if consequences of recent acts (or world update) have satisfied priority """
         prompt = [UserMessage(content="""A CompletionCriterion is provided below. 
-    Reason step-by-step to establish whether this CompletionCriterion has now been met as a result of recent Events,
-    using the CompletionCriterion as a guide for this assessment.
+Reason step-by-step to establish whether this CompletionCriterion has now been met as a result of recent Events,
+using the CompletionCriterion as a guide for this assessment.
 
-    <History>
-    {{$history}}
-    </History>
+<History>
+{{$history}}
+</History>
 
-    <Events>
-    {{$events}}
-    </Events>
+<Events>
+{{$events}}
+</Events>
 
-    <Completion_criterion>
-    {{$termination_check}}
-    </Completion_criterion>
+<Completion_criterion>
+{{$termination_check}}
+</Completion_criterion>
 
-    Respond using this XML format:
+Respond using this XML format:
 
-    <Complete> 
-        <Level>value of task completion, True, Unknown, or False</Level>
-        <Evidence>concise statement of evidence in events to support this level of task completion</Evidence>
-    </Complete>
+<Complete> 
+    <Level>value of task completion, True, Unknown, or False</Level>
+    <Evidence>concise statement of evidence in events to support this level of task completion</Evidence>
+</Complete>
 
-    the 'Level' above should be True if the termination check is met in Events or recent History, 
-    Unknown if the Events do not support a definitive assessment, or False if Events provide little or no evidence for task completion.  
+the 'Level' above should be True if the termination check is met in Events or recent History, 
+Unknown if the Events do not support a definitive assessment, or False if Events provide little or no evidence for task completion.  
 
-    Respond ONLY with the above XML
-    Do on include any introductory, explanatory, or discursive text.
-    End your response with:
-    <END>
-    """
+Respond ONLY with the above XML
+Do on include any introductory, explanatory, or discursive text.
+End your response with:
+<END>
+"""
                                   )]
 
         print(f'{self.name} testing priority termination_check: {termination_check}')
@@ -1042,10 +1043,10 @@ End your response with:
 
             return f'<Intent> <Mode>{mode}</Mode> <Act>{act}</Act> <Reason>{reason}</Reason> <Source>{task_name}</Source> </Intent>'
         else:
-            raise UserWarning('No intention constructed')
-            #ins = '\n'.join(self.intentions)
-            #print(f'Intentions\n{ins}')
-                                    
+            print(f'No intention constructed, presumably duplicate')
+            return None
+            #raise UserWarning('No intention constructed')
+
     def forward(self, step):
 
         # roll conversation history forward.
@@ -1221,7 +1222,7 @@ END
             print(f' non dialog tell')
         if source == 'dialog':
             self.dialog_length += 1
-            if self.dialog_length > 1: # end a dialog after one turn
+            if self.dialog_length > 1 and not self.always_respond: # end a dialog after one turn
                 self.dialog_length = 0;
                 # clear all actor pending dialog tasks and intentions:
                 if self.active_task.peek() == 'dialog':
@@ -1362,63 +1363,63 @@ END
     def choose(self, sense_data, action_choices):
         prompt = [UserMessage(content=self.character + """\nYour current situation is:
 
-        <Situation>
-        {{$situation}}
-        </Situation>
+<Situation>
+{{$situation}}
+</Situation>
 
-        Your fundamental needs / drives include:
+Your fundamental needs / drives include:
 
-        <Drives>
-        {{$drives}}
-        </Drives> 
+<Drives>
+{{$drives}}
+</Drives> 
 
-        Your state is:
+Your state is:
 
-        <State>
-        {{$state}}
-        </State>
+<State>
+{{$state}}
+</State>
 
-        Your memories include:
+Your memories include:
 
-        <Memory>
-        {{$memory}}
-        </Memory>
+<Memory>
+{{$memory}}
+</Memory>
 
-        Recent conversation has been:
-        <RecentHistory>
-        {{$history}}
-        </RecentHistory)>
+Recent conversation has been:
+<RecentHistory>
+{{$history}}
+</RecentHistory)>
 
-        Your current priorities include:
-        <Priorities>
-        {{$priorities}}
-        </Priorities>
+Your current priorities include:
+<Priorities>
+{{$priorities}}
+</Priorities>
 
-        New Observation:
-        <Input>
-        {{$input}}
-        </Input>
+New Observation:
+<Input>
+{{$input}}
+</Input>
 
-        Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step 
-        and choose your most pressing, highest need / priority action to perform from the numbered list below:
+Given who you are, your current Priorities, New Observation, and the other information listed above, think step-by-step 
+and choose your most pressing, highest need / priority action to perform from the numbered list below:
 
-        <Actions>
-        {{$actions}}
-        </Actions>
+<Actions>
+{{$actions}}
+</Actions>
 
-        Consider the conversation history in choosing your action. 
-        Respond in the context of the RecentHistory (if any) and in keeping with your character. 
-        Use the number for the selected action to instantiate the following XML format:
+Consider the conversation history in choosing your action. 
+Respond in the context of the RecentHistory (if any) and in keeping with your character. 
+Use the number for the selected action to instantiate the following XML format:
 
-        <Action>
-        index-number of chosen action
-        </Action>
+<Action>
+index-number of chosen action
+</Action>
 
-        Respond with the above XML, instantiated with the selected action number from the Action list. 
-        Do not include any introductory, explanatory, or discursive text, 
-        End your response with:
-        END
-        """
+Respond with the above XML, instantiated with the selected action number from the Action list. 
+Do not include any introductory, explanatory, or discursive text, 
+End your response with:
+END
+"""
                               )]
 
         mapped_state = self.map_state()
@@ -1427,7 +1428,7 @@ END
             response = self.llm.ask({'input': sense_data + self.sense_input, 'history': self.format_history(6),
                                     "memory": self.memory, "situation": self.context.current_state,
                                     "state": mapped_state, "drives": '\n'.join(self.drives),
-                                    "priorities": '\n'.join([xml.find('<Text>', task) for task in self.priorities]),
+                                    "priorities": '\n'.join([str(xml.find('<Text>', task)) for task in self.priorities]),
                                     "actions": '\n'.join(action_choices)
                                     }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
         # print(f'sense\n{response}\n')
@@ -1495,10 +1496,20 @@ END
                 return
 
             task_index = 0
-            if len(intention_choices) > 1:
-                task_index = self.choose(sense_data, intention_choices)
-            intention = self.actualize_task(task_index, self.priorities[task_index])
+            while intention is None:
+                if len(intention_choices) > 1:
+                    task_index = self.choose(sense_data, intention_choices)
+                print(f'actualizing task {task_index}')
+                intention = self.actualize_task(task_index, self.priorities[task_index])
+                if intention is None:
+                    if len(intention_choices) > 1:
+                        del intention_choices[task_index]
+                    else:
+                        self.update_priorities()
+                        return self.senses(sense_data=sense_data, ui_queue=ui_queue)
 
+
+        print(f'Intention: {intention}')
         self.intentions = [] # start anew next time
         act_name = xml.find('<Mode>', intention)
         if act_name is not None:
