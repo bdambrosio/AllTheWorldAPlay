@@ -70,9 +70,9 @@ config.prepare()
 
 model = ExLlamaV2(config)
 
-if 'llama3-70B' in model_name:
+if 'llama3-70b' in model_name.lower() or 'llama-3-70b' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([42, 46, 44])
+    model.load([42, 44, 44])
 
 elif 'command-r' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
@@ -160,7 +160,8 @@ app = FastAPI()
 print(f"starting server")
 @app.post("/template")
 async def template(request: Request):
-    return {"context_size":context_size}
+    print(f'context size request, returning {context_size}')
+    return {"context_size": context_size}
     
 @app.post("/v1/chat/completions")
 async def get_stream(request: Request):

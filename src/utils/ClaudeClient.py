@@ -12,13 +12,8 @@ template = "claude-sonnet"
 client = anthropic.Client(api_key=api_key)
 # quick test of Claude API
 """
-message = client.messages.create(
-    model="claude-3-sonnet-20240229",
-    max_tokens=1024,
-    messages=[
-        {"role": "user", "content": "Hello, Claude"}
-    ]
-)
+message = client.messages.create(model="claude-3-sonnet-20240229",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
+message = client.messages.create(model="claude-3.5-sonnet-20240620",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
 print(f"\nClaude:\n{message.content}\n\n")
 """
 
@@ -75,7 +70,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
         elif 'sonnet' in template:
             print('using sonnet')
             try:
-                response = client.messages.create(model="claude-3-sonnet-20240229",
+                response = client.messages.create(model="claude-3-5-sonnet-20240620",
                                                        messages = msgs,
                                                        system = system_msg,
                                                        temperature=temp,
