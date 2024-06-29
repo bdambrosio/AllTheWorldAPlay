@@ -1,17 +1,23 @@
 import json
 import traceback
 import random
-from utils import llm_api
+from utils import llm_api, map
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
+
 
 class Context():
     def __init__(self, actors, situation, step='4 hours'):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
+        self.map = map.WorldMap(60, 60)
         for actor in self.actors:
+            #place all actors in the world
             actor.context = self
+            actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
+        for actor in self.actors:
+            actor.look() # provide initial local view
         self.step = step  # amount of time to step per scene update
         self.name = 'World'
         self.llm = None
@@ -81,6 +87,7 @@ class Context():
         return None
 
     def world_updates_from_act_consequences(self, consequences):
+        """ This needs overhaul to integrate and maintain consistency with world map."""
         prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
 It may be there are no significant updates to report.
 Limit your changes to the consequences for elements in the existing state or new elements added to the state.
@@ -133,15 +140,16 @@ in the current situation:
 {{$state}}
 </Situation>
 
-given {{$name}} basic drives are:
+given {{$name}} local map is:
 
-<Drives>
-{{$drives}}
-</Drives> 
+<LocalMap>
+{{$local_map}}
+</LocalMap
 
 Respond with the observable result.
 Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
 It is usually not necessary or desirable to repeat the above action statement in your response.
+Observable result must be consistent with information provided in the LocalMap.
 Format your response as one or more simple declarative sentences.
 Include in your response:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
@@ -157,7 +165,9 @@ End your response with:
 <STOP>
 """)]
         history = self.history()
-        consequences = self.llm.ask({"name": actor.name, "action": action, "drives": actor.drives,
+        local_map = actor.mapAgent.get_detailed_visibility_description()
+        local_map = xml.format_xml(local_map)
+        consequences = self.llm.ask({"name": actor.name, "action": action, "map": local_map,
                                      "state": self.current_state}, prompt, temp=0.7, stops=['<STOP>'], max_tokens=300)
 
         if consequences.endswith('<'):

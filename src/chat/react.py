@@ -3,7 +3,7 @@ import time
 import requests
 
 from PyQt5.QtWidgets import QApplication
-
+from pathlib import Path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.Messages import SystemMessage, UserMessage
 from utils.workingMemory import WorkingMemory
@@ -34,6 +34,8 @@ month_name = ['January','February','March','April','May','June','July','August',
 month_day = local_time.tm_mday
 hour = local_time.tm_hour
 
+OWL_DIR = Path.home() / '.local/share/AllTheWorld/owl_data/'
+OWL_DIR.mkdir(parents=True, exist_ok=True)
 
 react_intro_string = """Your assignment is to complete the Task given below. This may require multiple turns."""
 
@@ -210,8 +212,8 @@ End Example
 
 class Actor (agh.Agh):
 
-    def __init__(self, name, cot, personality='Agent is an intelligent, cooperative AI', always_respond=True):
-        super().__init__(name, personality, always_respond=always_respond) # actors by default always respond when spoken to
+    def __init__(self, name, cot, character_description=None, personality='Agent is an intelligent, cooperative AI', always_respond=True):
+        super().__init__(name, character_description if character_description is not None else personality, always_respond=always_respond) # actors by default always respond when spoken to
         self.cot = cot
         self.name = name
         self.personality = personality

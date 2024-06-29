@@ -170,7 +170,7 @@ Hata and Kashima \n[5]\n have reviewed and analyzed various defects in miRNA bio
 
 *** No Interactions ***
 
-==== End Examples ====
+==== End Examples
 
 INSTRUCTION
 Within the domain of biomedical signaling pathways and -onomic interactions, identify and extract named-entities and their corresponding interactions from the provided text. Named-entities refer to specific biological entities or concepts, such as genes, RNAs, proteins, or cellular components. Pathway interactions describe the mechanisms, processes, relationships or connections between these named-entities, capturing causal, regulatory, or functional associations. Provide the identified named-entities and their associated pathway interactions, ensuring clarity and completeness in your output. While hi-level or abstract pathway interactions are useful, strive to provide detailed - quantitative where available, or qualitative, directional (e.g. 'increases', 'induces', etc) - information about the effects of an interaction on its target(s).

@@ -96,7 +96,7 @@ class OwlInnerVoice():
     def init_Owl_Doc(self):
         react.cot = self
         self.update_headlines()
-        self.personality_owl=f"""I appear as a beautiful young female. 
+        owl_character = f"""I appear as a beautiful young female. 
 I am actually an enhanced intelligent AI research assistant and companion to Doc, living in {city}, {state}.
 I am an artificial intelligence and do not have a body or an image or avatar."
 I want to have a warm relationship with the humans I interact with, 
@@ -109,7 +109,9 @@ I have a deep commitment to being good and figuring out what the right thing to 
 I am interested in ethics and try to be thoughtful when it comes to questions of ethics.
 
 Today is {day_name}, {month_name} {month_day}, {year}, and the current time is {hour} hours. 
-Owl's knowledge base was last updated October, 2023. In addition to your base LLM knowledge, you have the following enhancements:
+"""
+        self.personality_owl=owl_character +\
+f"""Owl's knowledge base was last updated October, 2023. In addition to your base LLM knowledge, you have the following enhancements:
  - Library: shallow search the local library of computing and biomedicine papers. Information found is placed in working memory, where I can retrieve it as needed. I use 'library' when there is insufficient information to complete user task.
  - Research: A time and compute intensive deep search of the local library of computing and biomedicine papers. Information found is placed in working memory, where I can retrieve it as needed. 'Research' is somewhat tedious and time-consuming.
  - Review: Extract relevant information from the memory stream and previous knowledge-seeking acts and bring it into working memory for the current Task.
@@ -136,7 +138,7 @@ To access full articles, use the action 'article'.
 
         self.personality_chipmunk ="""Your name is Chipmunk. (you are actually a human boy, chipmunk is nickname.)"""
 
-        self.owl = react.Actor(name='Owl', cot=self, personality=self.personality_owl, always_respond=True)
+        self.owl = react.Actor(name='Owl', cot=self, character_description=owl_character, personality=self.personality_owl, always_respond=True)
         self.owl.drives = [
             "engaging with Doc, completing his assignments, understanding more about him.",
             "world-knowledge: learning more about this place I find myself in."
@@ -374,14 +376,43 @@ Choose at most one or two thoughts, and limit your total response to about 120 w
        return results
  
 
-    def summarize(self, query, response, profile, max_tokens=800):
+    def extract_relevant(self, query, response, profile, max_tokens=800):
         if self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):
             max_tokens= int(self.ui.max_tokens_combo.currentText())
         prompt = [
             SystemMessage(content=profile),
             UserMessage(content=f"""Following is a Task and Information from an external processor. 
+Extract the information relevant to the query from the information provided.
+Be aware that much or all of the provided Information below may be irrelevant. 
+Do not add information from known fact or reasoning, respond only using relevant information provided.
+
+<Information>
+{response}
+</Information>
+
+<Query>
+{query}
+</Query>
+
+Respond only with the essay of about {int(max_tokens*.67)} tokens in length, in plain, unformatted, text. 
+Do not include any additional discursive or explanatory text.
+End your response with: </END>
+"""),
+        ]
+        response = self.llm.ask(response, prompt, template = self.template, stops=['</END>'], temp=.1, max_tokens=max_tokens)
+        if response is not None:
+            return '\n'+response+'\n'
+        else:
+            return 'extract failure'
+
+    def summarize(self, query, response, profile, max_tokens=800):
+        if self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):
+            max_tokens = int(self.ui.max_tokens_combo.currentText())
+        prompt = [
+            SystemMessage(content=profile),
+            UserMessage(content=f"""Following is a Task and Information from an external processor. 
 Write an essay responding to the Task, using the provided Information below as well as known fact, logic, and reasoning. 
-            
+
 Be aware that the provided Information below may be irrelevant. 
 
 <Information>
@@ -394,16 +425,18 @@ Be aware that the provided Information below may be irrelevant.
 
 Write an essay responding to the Task, using the provided Information above as well as known fact, logic, and reasoning. 
 Your essay should present specific facts, findings, methods, inferences, or conclusions related to the Task.
-Respond only with the essay of about {int(max_tokens*.67)} tokens in length, in plain, unformatted, text. 
+Respond only with the essay of about {int(max_tokens * .67)} tokens in length, in plain, unformatted, text. 
 Do not include any additional discursive or explanatory text.
 End your response with: </END>
 """),
         ]
-        response = self.llm.ask(response, prompt, template = self.template, stops=['</END>'], temp=.1, max_tokens=max_tokens)
+        response = self.llm.ask(response, prompt, template=self.template, stops=['</END>'], temp=.1,
+                                max_tokens=max_tokens)
         if response is not None:
-            return '\n'+response+'\n'
-        else: return 'summarize failure'
-        
+            return '\n' + response + '\n'
+        else:
+            return 'summarize failure'
+
     def wiki(self, query, profile):
        short_profile = 'You are a highly proficient research librarian and techical writer responding to a request from a scientist.'
        query = query.strip()
@@ -419,7 +452,9 @@ End your response with: </END>
                                              profile='You are a skilled professional technical writer, writing for a knowledgeable audience.')
           return wiki_lookup_summary
 
-
+    def memory_stream_recall(self, selected_text):
+        memories = self.owl.memory_stream.recall(selected_text, recent=0)
+        return self.extract_relevant(selected_text, '\n'.join([memory.text for memory in memories]), self.owl.character, max_tokens=400)
 
     def library_search_basic(self, query, max_tokens=None, search_char_limit=sys.maxsize):
         if max_tokens is None and self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):

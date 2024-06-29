@@ -1,4 +1,9 @@
 import pickle
+from pathlib import Path
+
+
+STACK_DIR = Path.home() / '.local/share/AllTheWorld/pStacks/'
+STACK_DIR.mkdir(parents=True, exist_ok=True)
 
 class PersistentStack:
     def __init__(self, filename):
@@ -35,12 +40,12 @@ class PersistentStack:
         self.save()
 
     def save(self):
-        with open(self.filename, 'wb') as file:
+        with open(STACK_DIR / self.filename, 'wb') as file:
             pickle.dump(self.stack, file)
 
     def load(self):
         try:
-            with open(self.filename, 'rb') as file:
+            with open(STACK_DIR / self.filename, 'rb') as file:
                 self.stack = pickle.load(file)
         except Exception as e:
             print(f'PersistentStack load error {str(e)}')

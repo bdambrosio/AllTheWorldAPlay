@@ -76,6 +76,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
                                                        temperature=temp,
                                                        stop_sequences = stop_sequences,
                                                        max_tokens = max_t)
+                print(response)
                 return json.loads(response.json())["content"][0]["text"]
             except Exception as e:
                 return {"status":'error', "message":{"content": str(e)}}

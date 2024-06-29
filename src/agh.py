@@ -3,6 +3,7 @@ import traceback
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 from utils.memoryStream import MemoryStream
+import utils.map
 def find_first_digit(s):
     for char in s:
         if char.isdigit():
@@ -55,6 +56,7 @@ class Character():
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.new_memory_cnt = 0 # number of memories since last consolidation
+
     def other(self):
         for actor in self.context.actors:
             if actor != self:
@@ -139,6 +141,7 @@ End your response with:
 class Agh(Character):
     def __init__ (self, name, character_description, always_respond=False):
         super().__init__(name, character_description)
+        self.mapAgent = None # actor proxy in 2D map world, will be set later
         self.always_respond = always_respond # timeout dialogs?
         self.previous_action = ''
         self.sense_input = ''
@@ -154,6 +157,10 @@ class Agh(Character):
         # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.dialog_length = 0 # stop dialogs in tell after a few turns
+        self.my_map = [[{} for i in range(100)] for i in range(100)]
+        # don't know where we are starting, so just put actor in center of self-relative map to start
+        self.x = 50
+        self.y = 50
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -179,6 +186,31 @@ class Agh(Character):
                     setattr(self, attr, value)
         except Exception as e:
             print(f' error restoring {self.name}, {str(e)}')
+
+    def look(self, height=5):
+        obs = self.mapAgent.look()
+        view = {}
+        for dir in ['CURRENT', 'NORTH', 'NORTHEAST', 'EAST', 'SOUTHEAST', 'SOUTH', 'SOUTHWEST', 'WEST', 'NORTHWEST']:
+            dir_obs = utils.map.extract_direction_info(obs, dir)
+            if dir == 'CURRENT':
+                del dir_obs['visibility'] # empty, since visibility means how far one can see
+            view[dir] = dir_obs
+        self.my_map[self.x][self.y] = view
+        return self.my_map
+
+
+    def format_look(self):
+        obs = self.my_map[self.x][self.y]
+        if obs is None:
+            return 'have never looked around from this location'
+        return f"""A look at the current location and in each of 8 compass points. 
+terrain is the environment type perceived.
+slope is the ground slope in the given direction
+resources is a list of resource type detected and distance in the given direction from the current location
+agents is the other actors visible
+streams is the water resources visible
+{json.dumps(obs, indent=2)}
+"""
 
     def generate_state(self):
         """ generate a state to track, derived from basic drives """
@@ -231,11 +263,12 @@ End your response with:
 """
                             )]
         self.state = {}
+        history = self.format_history(4)
         for drive in self.drives:
             print(f'{self.name} generating state for drive: {drive}')
             response = self.llm.ask({"drive":drive, "situation":self.context.current_state,
                                      "memory":self.memory,
-                                     "character":self.character, "history":self.format_history(4)},
+                                     "character":self.character, "history": history},
                                     prompt, temp=0.3, stops=['<END>'], max_tokens=200)
             term = xml.find('<Term>', response)
             assessment = xml.find('<Assessment>', response)
@@ -376,6 +409,7 @@ End your response with:
 
     def initialize(self):
         """called from worldsim once everything is set up"""
+        self.history.clear()
         self.generate_state()
         self.update_priorities()
 
@@ -454,10 +488,6 @@ Respond using this XML format:
 
 <Name>task-name</Name>
 
-===Examples===
-
-===End Examples===
-
 <Motivation>
 {{$reason}}
 </Motivation>
@@ -474,7 +504,7 @@ End your response with:
     def get_task_xml(self, task_name):
         for candidate in self.priorities:
             #print(f'find_or_make testing\n {candidate}\nfor name {task_name}')
-            if task_name == xml.find('<Text>', candidate):
+            if task_name == xml.find('<Name>', candidate):
                 print(f'found existing task\n  {task_name}')
                 return candidate
         return None
@@ -483,7 +513,7 @@ End your response with:
         candidate = self.get_task_xml(task_name)
         if candidate != None:
             return candidate
-        new_task = f'<Priority><Text>{task_name}</Text><Reason>{reason}</Reason></Priority>'
+        new_task = f'<Plan><Name>{task_name}</Name><Rationale>{reason}</Rationale></Plan>'
         self.priorities.append(new_task)
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
         return new_task
@@ -593,7 +623,7 @@ End your response with:
             return
         satisfied = self.test_priority_termination(termination_check, consequences, world_updates)
         if satisfied:
-            task_name = xml.find('<Text>', task_xml)
+            task_name = xml.find('<Name>', task_xml)
             if task_name == self.active_task.peek():
                 self.active_task.pop()
             try:
@@ -622,6 +652,7 @@ End your response with:
         # update main display
         intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
         visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
+
         if act_name != 'Do':
             self.show += f"\n{intro} {visible_arg}"
         self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
@@ -667,6 +698,14 @@ End your response with:
             self.act_result = world_updates
             if target is not None:  # targets of Do are tbd
                 target.sense_input += '\n' + world_updates
+        elif act_name == 'Move':
+            moved = self.mapAgent.move(act_arg)
+            if moved:
+                dx, dy = self.mapAgent.get_direction_offset(act_arg)
+                self.x = self.x + dx
+                self.y = self.y + dy
+        elif act_name == 'Look':
+            self.look()
 
         self.previous_action = act_name
 
@@ -685,7 +724,7 @@ Your basic drives include:
 {{$drives}}
 </Drives>
  
-Your task is to create a set of three short term goals given who you are, your Situation, your Stance, your Memory, and your recent RecentHistory as listed below. 
+Your task is to create a set of three short term plans given who you are, your Situation, your Stance, your Memory, and your recent RecentHistory as listed below. 
 Your current situation is:
 
 <Situation>
@@ -708,45 +747,45 @@ Your current Stance is:
 {{$state}}
 </Stance>
 
-Reminder: Your task is to create a set of three short term goals, derived from your priorities, given the Situation, your Stance, your Memory, and your recent RecentHistory as listed above.
-List your three most important-short term goals as instantiations from your current needs: 
+Reminder: Your task is to create a set of three short term plans given your personality, the situation, your drives and stance, your Memory, and your recent RecentHistory as listed above.
            
-Drives and Stances are listed in a-priori priority order, highest first. However, a short-term goal gets its importance from a combination of Stance order and Stance value (e.g., A Stance value of 'High' is more urgent than one with a value of 'Low').
-A short-term goal is one that is achievable in the current situation within a modest period of time, and which advances satisfaction of one or more of the Stances listed above.
-List ONLY your most important priorities as simple declarative statements, without any introductory, explanatory, or discursive text.
-Your Text must be consistent with the Reason.
-Priorities should be as specific as possible. 
+Drives and Stances are listed in a-priori priority order, highest first. 
+A short-term plan must be intended to achieve at least one objective in your stance.
+It gets its importance from a combination of Stance order and Stance value (e.g., A Stance value of 'High' is more urgent than one with a value of 'Low').
+A short-term plan is one that is achievable in the current situation within a modest period of time, 
+ and which advances satisfaction of one or more of the Stances listed above.
+A short-term plan includes a list of steps, a rationale, and a termination check. using XML formatting as shown:
+
+<Plan>
+  <Name>Make Shelter</Name>
+  <Steps>
+    1 identify protected location
+    2 gather sticks and branches
+    3 build shelter
+  </Steps>
+  <Rationale> I am in a forest and need shelter for the night. sticks and branches are likely nearby </Rationale>
+  <TerminationCheck> Shelter is complete </TerminationCheck>
+</Plan> 
+
+Respond ONLY your highest priority plan without any introductory, explanatory, or discursive text.
+Plans should be as specific as possible. 
 For example, if you need sleep, say 'Sleep', not 'Physiological need'.
-Similarly, if your safety is threatened by a wolf, respond "Safety from wolf", not merely "Safety"
-Reason statements must be concise and limited to a few keywords or at most a single terse sentence.
+Similarly, if your safety is threatened by a wolf, an example response might be: 
+
+- Identify direction of wolf
+- run in opposite direction
+
+and not merely
+ 
+- achieve Safety
+ 
+Rationale statements must be concise and limited to a few keywords or at most two terse sentences.
 limit your total response to 120 words. 
 
-Reason step by step to determine the overall importance of each possible short-term goal. Then respond with the three with the highest overall importance. 
-Use the XML format:
+Reason step by step to determine the overall importance of each possible short-term goal. 
+Then respond with the three with the highest overall importance. 
+Use the XML format shown above.
 
-<Priority> 
-  <Text>statement of top priority</Text> 
-  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
-  <State>the primary Stance from which this priority is derived</State>
-  <Termination_check>termination condition</Termination_check>
-</Priority>
-<Priority>
-  <Text>statement of second priority</Text>
-  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
-  <State>the primary Stance from which this priority is derived</State>
-  <Termination_check>termination condition</Termination_check>
-</Priority>
-<Priority>
-  <Text>statement of third priority</Text> 
-  <Reason>concise Situation element, state, Memory element, or RecentHistory element that motivates this</Reason>
-  <State>the primary Stance from which this priority is derived</State>
-  <Termination_check>termination condition</Termination_check>
-</Priority>
-
-'Text' is a concise statement of the goal or target to be achieved
-'Reason' is the reasoning that explains the motivation for this priority
-'State' is the primary Stance element from which this priority derives
-'Termination-check' is a concise, testable statement to determine whether recent events satisfy this priority Text
 
 Respond ONLY with the above XML. Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -762,7 +801,7 @@ End your response with:
                                  },
                                prompt, temp=0.6, stops=['<STOP>'], max_tokens=500)
         try:
-            items = xml.findall('<Priority>', response)
+            items = xml.findall('<Plan>', response)
             # now actualize these, assuming they are ordered, top priority first
             self.priorities = []
             # don't understand why, but all models *seem* to return priorities lowest first
@@ -775,7 +814,7 @@ End your response with:
                     self.intentions.remove(intention)
             for n, task in enumerate(items):
                 if task is not None:
-                    task_name = xml.find('<Text>', task)
+                    task_name = xml.find('<Name>', task)
                     if task_name is not None and str(task_name) != 'None':
                         self.priorities.append(task)
                     else:
@@ -834,11 +873,11 @@ End your response with:
         return False if satisfied == None else satisfied.lower().strip() == 'true'
 
     def actualize_task(self, n, task_xml):
-        task_name = xml.find('<Text>', task_xml)
+        task_name = xml.find('<Name>', task_xml)
         if task_xml is None or task_name is None:
             raise ValueError(f'Invalid task {n}, {task_xml}')
         last_act = self.get_task_last_act(task_name)
-        reason = xml.find('<Reason>', task_xml)
+        reason = xml.find('<Rationale>', task_xml)
         # crude, needs improvement
         #if reason is not None and 'Low' in reason:
         #    if self.active_task.peek() == task_name:
@@ -847,10 +886,10 @@ End your response with:
         #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (a 'Think', 'Say', or 'Do') to advance the following task.
+Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the first step of the following task.
 
 <Task>
-{{$task}} given {{$reason}}
+{{$task}}
 </Task>
 
 Your current situation is:
@@ -894,7 +933,10 @@ In choosing an Actionable (see format below), you can choose from three Mode val
 - 'Say' - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
     Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
     For example, if you want to build a shelter with Samantha, it might be effective to Say 'Samantha, let's build a shelter.'
-- 'Do' - perform an act with physical consequences in the world.
+- 'Look' - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
+    points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
+- 'Move' - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
+- 'Do' - perform an act (other than move) with physical consequences in the world.
 
 Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
 
@@ -924,8 +966,8 @@ Dialog guidance:
 
 Respond in XML:
 <Actionable>
-  <Mode>'Think', 'Say' or 'Do', corresponding to whether the act is a reasoning, speech, or physical act</Mode>
-  <SpecificAct>thoughts, words to speak or physical action description</SpecificAct>
+  <Mode>'Think', 'Say', 'Move', or 'Do', corresponding to whether the act is a reasoning, speech, or physical act</Mode>
+  <SpecificAct>thoughts, words to speak, DIRECTION (if 'Move' mode), or physical action description</SpecificAct>
 </Actionable>
 
 ===Examples===
@@ -957,8 +999,21 @@ Find out where I am given Situation element: "This is very very strange. Where a
 
 Response:
 <Actionable>
-  <Mode>Do</Mode>
-  <SpecificAct>Samantha starts to look around for any landmarks or signs of civilization, hoping to find something familiar that might give her a clue as to her whereabouts.</SpecificAct>
+  <Mode>Look</Mode>
+  <SpecificAct>Samantha starts to look around for any landmarks or signs of civilization</SpecificAct>
+</Actionable>
+
+----
+
+Task:
+Find food.
+
+
+Response:
+<Actionable>
+  <Mode>Move</Mode>
+  <SpecificAct>SouthWest</SpecificAct>
+  <Reason>I need to find food, and my previous Look showed berries one move SouthWest.</Reason>
 </Actionable>
 
 ===End Examples===
@@ -990,16 +1045,16 @@ End your response with:
         duplicative_insert = ''
         temp = 0.6
         while act is None and tries < 2:
-            response = self.llm.ask({'character':self.character, 'goals':'\n'.join(self.priorities),
+            response = self.llm.ask({'character':self.character,
                                      'memory':self.memory, 'duplicative':duplicative_insert,
                                      'history':self.format_history(6), 'name':self.name,
-                                     "situation":self.context.current_state,
-                                     "state":mapped_state, "task":task_name, "reason":reason,
+                                     "situation":self.context.current_state + '\n'+ self.format_look(),
+                                     "state": mapped_state, "task": task_xml, "reason": reason,
                                      "lastAct": last_act, "lastActResult": self.act_result
                                      },
                                     prompt, temp=temp, top_p=1.0,
                                     stops=['</Actionable>','<END>'], max_tokens=180)
-
+            print(response)
             act = xml.find('<SpecificAct>', response)
             mode = xml.find('<Mode>', response)
 
@@ -1029,6 +1084,9 @@ End your response with:
                     else:
                         #act = None #skip task, nothing interesting to do
                         pass
+            elif mode == 'Look' and self.previous_action == 'Look':
+                act = None
+                temp += .3
             tries += 1
             
         if act is not None:
@@ -1229,7 +1287,7 @@ END
                     self.active_task.pop()
 
                 for priority in self.priorities.copy():
-                    if xml.find('<Text>', priority) == 'dialog':
+                    if xml.find('<Name>', priority) == 'dialog':
                         print(f'{self.name} removing dialog task!')
                         self.priorities.remove(priority)
                 for intention in self.intentions.copy():
@@ -1428,7 +1486,7 @@ END
             response = self.llm.ask({'input': sense_data + self.sense_input, 'history': self.format_history(6),
                                     "memory": self.memory, "situation": self.context.current_state,
                                     "state": mapped_state, "drives": '\n'.join(self.drives),
-                                    "priorities": '\n'.join([str(xml.find('<Text>', task)) for task in self.priorities]),
+                                    "priorities": '\n'.join([str(xml.find('<Name>', task)) for task in self.priorities]),
                                     "actions": '\n'.join(action_choices)
                                     }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
         # print(f'sense\n{response}\n')
@@ -1463,6 +1521,7 @@ END
     def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
         all_actions={"Act": """Act as follows: '{action}'\n  because: '{reason}'""",
+                     "Move": """Move in direction: '{direction}'\n because: '{reason}'""",
                      "Answer": """ Answer the following question: '{question}'""",
                      "Say": """Say: '{text}',\n  because: '{reason}'""",
                      "Think": """Think: '{text}\n  because" '{reason}'""",
@@ -1487,7 +1546,7 @@ END
         if intention is None:
             intention_choices = []
             for n, task in enumerate(self.priorities):
-                choice =  f"{n}. {xml.find('<Text>', task)}, because {xml.find('<Reason>', task)}"
+                choice =  f"{n}. {xml.find('<Name>', task)}, because {xml.find('<Rationale>', task)}"
                 intention_choices.append(choice)
                 print(f'{self.name} considering action option {choice}')
 

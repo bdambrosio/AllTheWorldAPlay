@@ -114,7 +114,7 @@ class MemoryStream():
             else:
                 self.earliest_memory_date = datetime.now()
 
-            print(f"loaded {self.faiss_filename}")
+            print(f"loaded {self.faiss_filename} items {len(self._stream)}")
         except Exception:
             self.memory_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
             faiss.write_index(self.memory_indexIDMap, str(self.faiss_filename))
@@ -130,7 +130,7 @@ class MemoryStream():
             pickle.dump(self._stream, file)
         # now set earliest created date for normalization of created dates in retrieval
         self.memory_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
-        faiss.write_index(self.memory_indexIDMap, self.faiss_filename)
+        faiss.write_index(self.memory_indexIDMap, str(self.faiss_filename))
         self.earliest_memory_date = datetime.now()
         print(f"recreated {self.filename} and {self.faiss_filename}")
 
@@ -185,10 +185,9 @@ class MemoryStream():
             #age and recency are normalized to total age of memory stream
             age = math.log((datetime.now() - memory.created).total_seconds()+600.0) /age_normalizer 
             recency = math.log((datetime.now() - memory.accessed).total_seconds()+600.0) /age_normalizer
-            overall = age*0.1+recency*0.1+score
+            overall = age*0.05+recency*0.05+score
             #print(id, score, age, recency, overall)
-            
-            rescored_tuples.append((overall, id))
+            rescored_tuples .append((overall, id))
         #sort by score and pick top 8
         scored_memory_tuples = sorted(rescored_tuples, key=lambda x: x[0])[:8]
         scored_memories = [self._stream[m_tuple[1]] for m_tuple in scored_memory_tuples]

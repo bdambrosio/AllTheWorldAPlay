@@ -88,10 +88,10 @@ app = FastAPI()
 print(f"starting server")
 @app.post("/template")
 async def template(request: Request):
-    yield {"context_size":context_size}
+    return {"context_size":context_size}
     
 @app.post("/v1/chat/completions")
-async def get_stream(request: Request):
+async def get_response(request: Request):
     global generator, settings, hf_tokenizer, exl_tokenizer
     query = await request.json()
     print(f'request: {query}')
@@ -126,6 +126,7 @@ async def get_stream(request: Request):
     messages = message_j['messages']
 
     formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
+    print(formatted)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inputs = tokenizer(formatted, return_tensors="pt").to(device)
 
@@ -136,7 +137,7 @@ async def get_stream(request: Request):
                               do_sample=True,
                               max_new_tokens=max_tokens,
                               top_p=top_p,
-                              stopping_criteria=stopping_criteria,
+                              #stopping_criteria=stopping_criteria,
                               temperature=temp,
                               num_return_sequences=1,
                               attention_mask=attention_mask)
