@@ -65,7 +65,7 @@ class LLM():
         else:
             self.context_size = 8192  # conservative local mis/mixtral default
             try:
-                response = requests.post('http://127.0.0.1:5000/' + '/template')
+                response = requests.post('http://127.0.0.1:5000' + '/template')
                 if response.status_code == 200:
                     template = response.json()['template']
                     self.context_size = response.json()['context_size']
@@ -94,10 +94,11 @@ class LLM():
                 new_content = message.content
                 for match in matches:
                     var = match[2:-1]
-                    #print(f'var {var}, content {new_content}')
+                    print(f'var {var}')
                     if var in bindings.keys():
                         new_content = new_content.replace('{{$'+var+'}}', str(bindings[var]))
                     else:
+                        print(f' var not in bindings {var} {bindings}')
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
@@ -123,6 +124,7 @@ class LLM():
             return response.content.decode('utf-8')
             # assume tabby or other open-ai like return
         else:
+            traceback.print_exc()
             raise Exception(response)
 
     def ask(self, input, prompt_msgs, client=None, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False):

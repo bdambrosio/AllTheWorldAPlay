@@ -10,7 +10,6 @@ from PyQt5.QtGui import QFont, QTextCursor
 import context, agh, human
 from utils import llm_api
 import utils.xml_utils as xml
-
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QTextEdit, QVBoxLayout
 from PyQt5.QtGui import QPixmap
@@ -214,7 +213,7 @@ class CustomWidget(QWidget):
     def update_actor_image(self):
         try:
             #add first two sentences of initial context for background
-            context = self.entity.context.initial_state.split('.')
+            context = self.entity.context.current_state.split('.')
             if len(context[0].strip()) > 0:
                 context = context[0].strip()
                 rem_context = context[1:]
@@ -231,8 +230,14 @@ class CustomWidget(QWidget):
                 llm_api.generate_dalle_image(prompt, size='192x192', filepath=self.entity.name + '.png')
                 self.set_image(str(llm_api.IMAGE_PATH)+self.entity.name+'.png')
             elif IMAGEGENERATOR == 'tti_serve':
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
-                    self.entity.show.replace(self.entity.name, '')[-72:] + '. Location: '+context
+                context = ''
+                i = 0
+                candidates = self.entity.context.current_state.split('.')
+                while len(context) < 128 and i < len(candidates):
+                    context += candidates[i]+'. '
+                    i +=1
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+\
+                    self.entity.show.replace(self.entity.name, '')[-72:].strip() + 'is n '+context
                 prompt = "photorealistic style. "+description
                 print(f' actor image prompt len {len(prompt)}')
                 image_path = llm_api.generate_image(prompt, size='192x192', filepath=self.entity.name + '.png')
@@ -262,8 +267,8 @@ class CustomWidget(QWidget):
                           for intention in self.entity.intentions])
             
     def format_tasks(self):
-        return '<br>'.join(["<b>"+str(xml.find('<Text>', task))
-                          +':</b> '+str(xml.find('<Reason>', task))
+        return '<br>'.join(["<b>"+str(xml.find('<Name>', task))
+                          +':</b> '+str(xml.find('<Rationale>', task))
                           +'<br>'
                           for task in self.entity.priorities])
             
@@ -580,6 +585,7 @@ def main(context, server='local', world_name=None):
     APP = QApplication(sys.argv)
 
     main_window = MainWindow(context, server=server, world_name=None)
+
     sys.exit(APP.exec_())
 
 if __name__ == '__main__':

@@ -386,7 +386,7 @@ Response:
 3. A very brief definition of any domain-specific NERs used in the definition of the term RNAi.
 
 
-====End Examples
+====End Example
 
 Response ONLY with your list of items to cover. Do not include any introductory, discursive, or explanatory text.
 End your response with:

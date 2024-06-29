@@ -58,8 +58,7 @@ max_tokens = 7144
 class ImageDisplay(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.image_files = ["images/Owl2.png", "images/Owl.png", "images/Owl_as_human.png","images/Owl_as_human2.png",
-                            "images/jnani2.png"]
+        self.image_files = ["../images/Owl2.png", "../images/Owl.png"]
         self.current_image_index=0
         # Create layout manager
         layout = QtWidgets.QVBoxLayout()
@@ -183,11 +182,11 @@ class ChatApp(QtWidgets.QWidget):
       self.max_tokens_combo.setToolTip('max_tokens for most LLM calls. For multiple-call actions like research, controls overall response, and proportionally, internal calls')
       self.max_tokens_combo.setCurrentText('600')
       
-      #self.tts_button = QPushButton("Speak") # launch working memory editor
-      #self.tts_button.setStyleSheet("QPushButton { background-color: #101820; color: #FAEBD7; }")
-      #self.tts_button.setFont(self.widgetFont)
-      #self.tts_button.setToolTip('toggles text to speech if you have the TTS server running.')
-      #self.tts_button.clicked.connect(self.speak)
+      self.tts_button = QPushButton("Speak") # launch working memory editor
+      self.tts_button.setStyleSheet("QPushButton { background-color: #101820; color: #FAEBD7; }")
+      self.tts_button.setFont(self.widgetFont)
+      self.tts_button.setToolTip('toggles text to speech if you have the TTS server running.')
+      self.tts_button.clicked.connect(self.speak)
 
       #label = QLabel(" Planner")
       #label.setStyleSheet("QLabel {background-color: #202020; color: #AAAAAA; }")
@@ -215,6 +214,13 @@ class ChatApp(QtWidgets.QWidget):
 
       #spacer = QSpacerItem(0, 20)  # vertical spacer with 20 pixels height
       #control_layout.addItem(spacer)  # Add spacer to the layout
+
+      self.recall_button = QPushButton("Recall")
+      self.recall_button.setStyleSheet("QPushButton { background-color: #101820; color: #FAEBD7; }")
+      self.recall_button.setFont(self.widgetFont)
+      self.recall_button.clicked.connect(self.recall)
+      self.recall_button.setToolTip('uses new text in the input window as a google search query.')
+      control_layout.addWidget(self.recall_button)
 
       ext_label = QLabel("External")
       ext_label.setStyleSheet("QLabel {background-color: #202020; color: #AAAAAA; }")
@@ -408,7 +414,20 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       print(f'clear_mem calling {type(self.owlCoT.owl.memory_stream)}')
       self.owlCoT.owl.memory_stream.clear()
    
-   #
+   def recall(self):
+      """ recall from memory stream """
+      global PREV_LEN, op
+      selectedText = ''
+      cursor = self.input_area.textCursor()
+      if cursor.hasSelection():
+         selectedText = cursor.selectedText()
+      elif PREV_LEN < len(self.input_area.toPlainText()) + 2:
+         selectedText = self.input_area.toPlainText()[PREV_LEN:]
+
+      selectedText = selectedText.strip()
+      memories = self.owlCoT.memory_stream_recall(selectedText)
+      self.display_response(memories)
+
    ## External tools
    #
    def google_search(self): # extended search of s2 and ingest reports

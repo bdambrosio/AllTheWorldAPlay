@@ -1,3 +1,4 @@
+import xml.dom.minidom
 # a couple of utils for retrieving data from XML
 # ridiculous computationally, but LLMs seem much more robust at producing XML than JSON.
 
@@ -48,4 +49,24 @@ def set(key, form, value):
     else:
         new_form = form+keyl+value+keyle
     return new_form
+
+def format_xml(xml_string, indent=2):
+    """
+    Print a formatted version of the given XML string with specified indentation.
+
+    :param xml_string: The XML string to format
+    :param indent: Number of spaces for each indentation level (default: 2)
+    """
+    dom = xml.dom.minidom.parseString(xml_string)
+    pretty_xml = dom.toprettyxml(indent=' ' * indent)
+
+    # Remove empty lines
+    lines = pretty_xml.split('\n')
+    non_empty_lines = [line for line in lines if line.strip()]
+    formatted_xml = '\n'.join(non_empty_lines)
+    return formatted_xml
+
+
+def print_formatted_xml(xml_string, indent=2):
+    print(format_xml(xml_string, indent))
 
