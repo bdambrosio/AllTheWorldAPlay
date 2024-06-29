@@ -2,10 +2,12 @@
 
 ## A simple toy to test the Humanity of your LLM
 
-### 6/4/2024 - Added load/save. Really crude - to load, pick a saved world from list on cli. To save, give world a name in popup. Note: No overwrite check, so be careful! Not well tested. And, you still need to init from basic scenario dscp.
+### 6/29/2004 - Work in progress - integrating a procedurally generated initial worldmap. Many other changes in agent architecture also in progress. 
+I recommend you stick with a release for now, untill this stabilizes.
 
 ![Play screenshot](images/lost.jpg)
 
+- 6/4/2024 - Added load/save. Really crude - to load, pick a saved world from list on cli. To save, give world a name in popup. Note: No overwrite check, so be careful! Not well tested. And, you still need to init from basic scenario dscp.
 - Status: I *think* scene level basic dialog and action coordination is no longer biggest pblm, moving to act-level plot/narrative arc. ie, ok ppl, you've spent enough time looking for water, let's get on with it.
 - release 0.1.4 (let's get real here, renumbered releases). Hugely improved dialog, consistency. Base version for next level of agh models.)
 - 5/28/2024 - release 1.3 - improved  dialog naturalness, better formatting in main activity window.
