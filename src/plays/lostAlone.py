@@ -24,6 +24,6 @@ W = context.Context([S],
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
 
-#worldsim.main(W)
-worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
+worldsim.main(W)
+#worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
 #worldsim.main(W, server='llama.cpp')

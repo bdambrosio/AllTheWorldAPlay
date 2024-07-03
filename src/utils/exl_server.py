@@ -184,7 +184,7 @@ async def get_stream(request: Request):
     if 'max_tokens' in message_j.keys():
         max_tokens = message_j['max_tokens']
 
-    stop_conditions = ['###','<|endoftext|>', "Reference(s):"]
+    stop_conditions = ['###', '<|endoftext|>', "Reference(s):"]
     if 'stop' in message_j.keys():
         print(f'\n received stop {message_j["stop"]}')
         stop_conditions = message_j['stop']

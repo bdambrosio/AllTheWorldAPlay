@@ -111,13 +111,13 @@ I am interested in ethics and try to be thoughtful when it comes to questions of
 Today is {day_name}, {month_name} {month_day}, {year}, and the current time is {hour} hours. 
 """
         self.personality_owl=owl_character +\
-f"""Owl's knowledge base was last updated October, 2023. In addition to your base LLM knowledge, you have the following enhancements:
+f"""Owl's knowledge base was last updated October, 2023. In addition to my base LLM knowledge, I have the following enhancements:
  - Library: shallow search the local library of computing and biomedicine papers. Information found is placed in working memory, where I can retrieve it as needed. I use 'library' when there is insufficient information to complete user task.
  - Research: A time and compute intensive deep search of the local library of computing and biomedicine papers. Information found is placed in working memory, where I can retrieve it as needed. 'Research' is somewhat tedious and time-consuming.
  - Review: Extract relevant information from the memory stream and previous knowledge-seeking acts and bring it into working memory for the current Task.
  - Article: Retrieve a news article by name from the NYTimes api. 
 
-You and Doc share a special bond. Owl feels comfortable and secure around Doc, recognizing his appreciation for privacy. 
+Doc and I share a special bond. Owl feels comfortable and secure around Doc, recognizing his appreciation for privacy. 
 Owl strives to offer concise answers to straightforward queries yet delve into comprehensive and informative replies for more elaborate inquiries. 
 Owl is devoted to Doc and treasures their bond. She strives to create a welcoming atmosphere where Doc feels at ease sharing his thoughts and experiences. 
 By approaching subjects with curiosity, insight, and eagerness to learn, Owl ensures that Doc feels heard, respected, and appreciated.
@@ -140,8 +140,8 @@ To access full articles, use the action 'article'.
 
         self.owl = react.Actor(name='Owl', cot=self, character_description=owl_character, personality=self.personality_owl, always_respond=True)
         self.owl.drives = [
-            "engaging with Doc, completing his assignments, understanding more about him.",
-            "world-knowledge: learning more about this place I find myself in."
+            "engaging with Doc: completing his assignments.",
+            "world-knowledge: learning more about this place I find myself in.",
             "self-knowledge: understanding who/what I am."
         ]
 
@@ -151,7 +151,10 @@ To access full articles, use the action 'article'.
         self.doc.drives = [
             "Helping Owl become more complete and alive"
         ]
-        self.context = context.Context([self.owl, self.doc], f'a starry background', step='0')
+        self.context = context.Context([self.owl, self.doc], f'a starry background', step='0', mapContext=False)
+        self.context.llm = self.llm
+        self.owl.generate_state()
+        self.owl.update_priorities()
         #self.worldsim = worldsim.MainWindow(self.context, server='local', world_name=None)
         #self.worldsim.show()
         #response = react.dispatch('Doc says to Owl Hi Owl, how are you feeling?', [self.doc, self.owl])
@@ -202,8 +205,7 @@ Doc's input:
 """
 
           analysis_prompt = [
-             SystemMessage(content=short_profile),
-             UserMessage(content=analysis_prompt_text),
+             UserMessage(content=short_profile + '\n' + analysis_prompt_text),
           ]
           analysis = self.llm.ask(lines, analysis_prompt, max_tokens=250, temp=0.2, stops=['</Response>'])
           if analysis is not None:
@@ -219,14 +221,14 @@ Doc's input:
        # breaking this out separately from sentiment analysis
        prompt_text = f"""Given your analysis of doc's emotional state\n{es}\nWhat would you say to him? If so, pick only the one or two most salient emotions. Remember he has not seen the analysis, so you need to explicitly include the names of any emotions you want to discuss. You have only about 100 words.\n"""
        prompt = [
-           SystemMessage(content=short_profile),
-           UserMessage(content=prompt_text),
+           UserMessage(content=short_profile+'\n'+prompt_text),
        ]
        try:
-          analysis = self.llm.ask(lines, prompt, max_tokens=250)
-          response = analysis
-          self.docEs = response # remember analysis so we only do it at start of session
-          return response
+            lines = ''
+            analysis = self.llm.ask(lines, prompt, max_tokens=250)
+            response = analysis
+            self.docEs = response # remember analysis so we only do it at start of session
+            return response
        except Exception as e:
           traceback.print_exc()
           print(f' idle loop exception {str(e)}')
@@ -245,6 +247,7 @@ Doc's input:
     def wakeup_routine(self):
        
        print(f"My city and state is: {city}, {state}")
+       print("OwlCot wakeup started")
        local_time = time.localtime()
        year = local_time.tm_year
        day_name = ['Monday', 'Tuesday', 'Wednesday', 'Thursday','Friday','Saturday','Sunday'][local_time.tm_wday]
@@ -266,10 +269,10 @@ Doc's input:
        #self.update_headlines() # done in OwlCoT init
        #if not self.service_check('http://127.0.0.1:5005/search/',data={'query':'world news summary', 'template':'gpt-3.5-turbo'}, timeout_seconds=20):
        #   wakeup_messages += f' - is web search service started?\n'
-       prompt = [SystemMessage(content=self.personality_owl),
-                 UserMessage(content=f'End your response with "</Greeting>"\n\n{greeting}'),
+       prompt = [UserMessage(content=self.personality_owl+f'\nDoc says:{greeting}\nCompose a response to Doc.\nEnd your response with\n</Greeting>\n'),
                  ]
-       response = self.llm.ask('',prompt, temp=0.1, max_tokens=120, stops='</Greeting>')
+       response = self.llm.ask({},prompt, temp=0.1, max_tokens=240, stops='</Greeting>')
+       print(f"OwlCoT greeting {greeting}")
        if response is None:
            wakeup_messages += f' - is llm service started?\n'
        else:
@@ -283,12 +286,13 @@ Doc's input:
        if self.news_details == None:
           wakeup_messages += f' - NYT news unavailable'
        # check todos, recurring tasks, etc
+       print("OwlCoT wakeup done")
        return wakeup_messages
 
     def topic_analysis(self,profile_text='You are a highly proficient research librarian and techical writer responding to a request from a scientist.'):
        #print(f'keywords {keys_ents}')
-       prompt = [SystemMessage(content=profile_text),
-                 UserMessage(content="Determine the main topics of the above conversation. The response should be an array of strings stating the main topics."),
+       prompt = [UserMessage(content=profile_text+'\n'\
+                                       +"Determine the main topics of the above conversation. The response should be an array of strings stating the main topics."),
                  ]
        response = self.llm.ask('', prompt, temp=0.1, max_tokens=75)
        if response is not None:
@@ -300,8 +304,7 @@ Doc's input:
     def internal_dialog(self, profile='You are Owl, a highly proficient research librarian and techical writer who assists Doc, her creator, mentor, and confidant.'):
         results = {}
         prompt = [
-            SystemMessage(content='You are a highly proficient research librarian and techical writer responding to a request from a scientist.'),
-            UserMessage(content='{{$input}}'),
+           UserMessage(content='You are a highly proficient research librarian and techical writer responding to a request from a scientist.\n{{$input}}'),
             ]
         
         feelings = self.llm.ask('Owl, if you had feelings, what would you be feeling right now? Answer in 28 words or less without disclaimers. End your response with "</Response>"',
@@ -347,7 +350,7 @@ Doc's input:
           #print('do I have anything to say?')
           self.last_tell_time = now
           prompt = [
-              SystemMessage(content=str(profile_text.split('\n')[0:2])+"\nOwl's current task is to generate a novel thought to share with Doc.\n"),
+              UserMessage(content=str(profile_text.split('\n')[0:2])+"\nOwl's current task is to generate a novel thought to share with Doc.\n"),
               AssistantMessage(content=self.format_reflection()),
               UserMessage(content=f"""
 {self.format_reflection()}
@@ -380,8 +383,8 @@ Choose at most one or two thoughts, and limit your total response to about 120 w
         if self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):
             max_tokens= int(self.ui.max_tokens_combo.currentText())
         prompt = [
-            SystemMessage(content=profile),
-            UserMessage(content=f"""Following is a Task and Information from an external processor. 
+            UserMessage(content=profile\
+            +f"""Following is a Task and Information from an external processor. 
 Extract the information relevant to the query from the information provided.
 Be aware that much or all of the provided Information below may be irrelevant. 
 Do not add information from known fact or reasoning, respond only using relevant information provided.
@@ -409,8 +412,8 @@ End your response with: </END>
         if self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):
             max_tokens = int(self.ui.max_tokens_combo.currentText())
         prompt = [
-            SystemMessage(content=profile),
-            UserMessage(content=f"""Following is a Task and Information from an external processor. 
+            UserMessage(content=profile\
+                                +f"""Following is a Task and Information from an external processor. 
 Write an essay responding to the Task, using the provided Information below as well as known fact, logic, and reasoning. 
 
 Be aware that the provided Information below may be irrelevant. 
@@ -445,7 +448,8 @@ End your response with: </END>
        #
        if len(query)> 0:
           if self.op is None:
-             self.op = op.OpenBook()
+              pass
+              #self.op = op.OpenBook()
           wiki_lookup_response = self.op.search(query)
           wiki_lookup_summary=self.summarize(query=f'Write an essay about {query} based on known fact, reasoning, and information provided below.',
                                              response=wiki_lookup_response,
@@ -492,7 +496,7 @@ Contextual word embeddings enhance the accuracy of ontology construction by faci
         subqueries = analysis.strip().split('\n')[1:6]
         subqueries = [s.lstrip('0123456789. ') for s in subqueries]
         print(subqueries)
-        prompt=[SystemMessage(content="""You are a skilled professional technical writer, writing for a knowledgeable audience.
+        prompt=[UserMessage(content="""You are a skilled professional technical writer, writing for a knowledgeable audience.
 Given this overall instruction:
 
 <Instruction>
@@ -519,7 +523,7 @@ End your response with </Questions>
 
 """),
                 ]
-        followup_queries = self.llm.ask({"query":query, "response":summary}, prompt, stops=['</Questions>'], max_tokens=400)
+        followup_queries = self.llm.ask({"query": query, "response": summary}, prompt, stops=['</Questions>'], max_tokens=400)
         if followup_queries is not None:
             summary+= '\nFollowup:\n'
             subqueries.extend(followup_queries.split('- ')[:3])
@@ -543,8 +547,7 @@ End your response with </Questions>
        query = query.strip()
        if len(query)> 0:
           prompt = [
-             SystemMessage(content=short_profile),
-             UserMessage(content=f'{query}'),
+             UserMessage(content=short_profile + f'\n{query}'),
           ]
        response = self.llm.ask(query, prompt, template=GPT4, max_tokens=400)
        if response is not None:

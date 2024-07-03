@@ -49,8 +49,7 @@ async def search(query: str, model:str = 'gpt-3.5-turbo', max_chars: int = 1200)
                 
         print(f'text from google_search\n{text}\n')
         prompt = [
-            SystemMessage(content=f'summarize the following text, removing duplications, with respect to {query}'),
-            UserMessage(content='Text:\n{{$input}}'),
+            UserMessage(content=f'summarize the following text, removing duplications, with respect to: {query}\n'+'Text:\n{{$input}}'),
         ]
         summary = cot.llm.ask({"input": text}, prompt, max_tokens=int(max_chars/2))
         return {"result":summary, "source_urls":source_urls}

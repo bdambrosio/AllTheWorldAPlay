@@ -94,7 +94,6 @@ class LLM():
                 new_content = message.content
                 for match in matches:
                     var = match[2:-1]
-                    print(f'var {var}')
                     if var in bindings.keys():
                         new_content = new_content.replace('{{$'+var+'}}', str(bindings[var]))
                     else:
@@ -154,8 +153,7 @@ class LLM():
        
 if __name__ == '__main__':
     llm = LLM()
-    response = llm.ask({}, [SystemMessage(content='You are Owl, a smart and helpful bot'),
-                            UserMessage(content='Who are you?'),
+    response = llm.ask({}, [UserMessage(content='You are Owl, a smart and helpful bot\n\nWho are you?'),
                             ], max_tokens=10, temp=.4)
     
     print(response)

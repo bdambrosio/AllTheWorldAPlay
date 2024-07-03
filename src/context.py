@@ -7,7 +7,7 @@ import utils.xml_utils as xml
 
 
 class Context():
-    def __init__(self, actors, situation, step='4 hours'):
+    def __init__(self, actors, situation, step='4 hours', mapContext=True):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
@@ -15,9 +15,11 @@ class Context():
         for actor in self.actors:
             #place all actors in the world
             actor.context = self
-            actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
-        for actor in self.actors:
-            actor.look() # provide initial local view
+            if mapContext:
+                actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
+            for actor in self.actors:
+                if actor.mapAgent != None:
+                    actor.look() # provide initial local view
         self.step = step  # amount of time to step per scene update
         self.name = 'World'
         self.llm = None
@@ -167,7 +169,7 @@ End your response with:
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
-        consequences = self.llm.ask({"name": actor.name, "action": action, "map": local_map,
+        consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
                                      "state": self.current_state}, prompt, temp=0.7, stops=['<STOP>'], max_tokens=300)
 
         if consequences.endswith('<'):

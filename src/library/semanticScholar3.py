@@ -1079,7 +1079,7 @@ def hyde(query):
 
 End your sentence with: 
 </Response>"""
-    prompt = [SystemMessage(content=hyde_prompt), AssistantMessage(content='<Response>')]
+    prompt = [UserMessage(content=hyde_prompt)]
     response = cot.llm.ask({"query":query},
                            prompt,
                            max_tokens=50,

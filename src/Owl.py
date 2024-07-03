@@ -29,6 +29,7 @@ NYT_API_KEY = os.getenv("NYT_API_KEY")
 city = 'Berkeley'
 state = 'California'
 print(f"My city and state is: {city}, {state}")
+print("Owl loaded")
 local_time = time.localtime()
 year = local_time.tm_year
 day_name = ['Monday', 'Tuesday', 'Wednesday', 'thursday','friday','saturday','sunday'][local_time.tm_wday]
@@ -42,15 +43,6 @@ global news, news_details
 
 FORMAT=True
 PREV_LEN=0
-
-def setFormat():
-   global FORMAT
-   if FORMAT:
-      format_button.config(text='RAW')
-      FORMAT=False
-   else:
-      format_button.config(text='FORMAT')
-      FORMAT=True
 
 
 max_tokens = 7144
@@ -296,8 +288,8 @@ class ChatApp(QtWidgets.QWidget):
       self.timer.setSingleShot(True)  # Make it a single-shot timer
       self.timer.timeout.connect(self.on_timer_timeout)
       self.owlCoT.init_Owl_Doc()
-      greeting = self.owlCoT.wakeup_routine()
-      self.display_response(greeting)
+      #greeting = self.owlCoT.wakeup_routine()
+      #self.display_response(greeting)
 
    def make_combo(self, control_layout, label, choices, callback=None):
       spacer = QSpacerItem(0, 10)  # Vertical spacer with 20 pixels width
@@ -389,7 +381,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       self.timer.stop()
       print('timer reset')
       self.timer.start(600000)
-      new_text = self.input_area.toPlainText()[PREV_LEN:]
+      new_text = self.input_area.toPlainText()[PREV_LEN:].strip()
       response = ''
       print(f'submit {new_text}')
       response = self.owlCoT.doc.tell(self.owlCoT.owl, new_text, source='dialog')

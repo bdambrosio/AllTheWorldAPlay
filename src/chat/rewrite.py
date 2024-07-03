@@ -139,7 +139,7 @@ def extract_ners(text, title=None, paper_topic=None, outline=None, template=None
     if outline is not None and type(outline) is dict:
         topic += json.dumps(outline, indent=2)
         
-    kwd_messages=[SystemMessage(content="""Your task is to extract all NERs (Named-entities, relations, or keywords, which may appear as acronyms) important to the topic {{$topic}} that appear in the following Text.
+    kwd_messages=[UserMessage(content="""Your task is to extract all NERs (Named-entities, relations, or keywords, which may appear as acronyms) important to the topic {{$topic}} that appear in the following Text.
 
 <Text>
 {{$text}}
@@ -250,7 +250,7 @@ def format_outline(json_data, indent=0):
 
 
 def extract(title, text, draft, instruction, ners, tokens):
-    prompt_prefix = SystemMessage(content="""You are to perform an analysis task. 
+    prompt_prefix = UserMessage(content="""You are to perform an analysis task. 
 Analyze and extract information from:
 
 {{$text}}.
@@ -266,7 +266,7 @@ Note that your task at this time is information extraction:
 4. Limit your response to {{$tokens}} words. End your response with </END>""")
 
     if draft is not None and len(draft) > 0:
-        prompt_prefix = SystemMessage(content="""Your task is to extend an analysis / information extraction with new text.
+        prompt_prefix = UserMessage(content="""Your task is to extend an analysis / information extraction with new text.
 Given the analysis result from text provided so far:
 
 <PreviousAnalysis>
@@ -332,8 +332,8 @@ Your task at this time is to respond with known fact and information extraction 
 3. Include the actual names of any NERs needed as answers to {{$extract_topic}}.
 4. Limit your response to {{$tokens}} words. End your response with </Answer>"""
 
-    prompt = [SystemMessage(content=prompt_text),
-              AssistantMessage(content="""""")
+    prompt = [UserMessage(content=prompt_text),
+              #AssistantMessage(content="""""")
               ]
     extract = cot.llm.ask({"section_draft": section_draft, "extract_topic":extract_topic, "tokens":int(tokens*.67), "text":text},
                           prompt, max_tokens=tokens, stops=['</Answer>'])
@@ -346,15 +346,14 @@ def write(paper_title, paper_outline, section_title, draft, paper_summaries, ner
     ### Write initial content
     #
         
-    messages=[SystemMessage(content=f"""You are a skilled researcher and technical writer writing for an audience of research scientists knowledgable in the field. You should write in a professional tone, avoiding flowery hyperlatives such as 'synergystic', 'meticulous', 'pioneering', etc., even when they appear in the source material, except in rare cases where there use is warranted.
+    messages=[UserMessage(content=f"""You are a skilled researcher and technical writer writing for an audience of research scientists knowledgable in the field. You should write in a professional tone, avoiding flowery hyperlatives such as 'synergystic', 'meticulous', 'pioneering', etc., even when they appear in the source material, except in rare cases where there use is warranted.
 
 You are writing a paper titled:
 {paper_title}
 The outline for the full paper is:
 {format_outline(paper_outline)}
 
-"""),
-              UserMessage(content=f"""Your current task is to write the part titled: '{section_title}'
+Your current task is to write the part titled: '{section_title}'
 The following research texts are provided for your use in this writing task.
 
 <RESEARCH TEXTS>
@@ -403,7 +402,7 @@ End the section as follows:
 def rewrite(paper_title, paper_outline, section_title, draft, paper_summaries, ners, section_topic, section_token_length, parent_section_title,
             heading_1, heading_1_draft, template):
     missing_ners = literal_missing_ners(ners, draft)
-    sysMessage = SystemMessage(content=f"""You are a skilled researcher and technical writer writing for an audience of research scientists knowledgable in the field. You write in a professional, objective tone.
+    sysMessage = f"""You are a skilled researcher and technical writer writing for an audience of research scientists knowledgable in the field. You write in a professional, objective tone.
 You are writing a paper titled:
 {paper_title}
 
@@ -420,7 +419,7 @@ The {heading_1} section content up to this point is:
 </PRIOR_SECTION_CONTENT>
 
 """
-)
+
 
     MESelectMessage = f"""You are rewriting the draft for the section titled: '{section_title}', to increase the density of relevant information it contains. Your current task is to select the most important missing ners from the current draft. The following ners in the source material above have been identified as missing in the current draft:
 
@@ -455,9 +454,7 @@ End your response with:
 </END>
 """
 
-    messages=[sysMessage,
-              UserMessage(content=MESelectMessage),
-              ]
+    messages=[UserMessage(content=sysMessage+'\n'+MESelectMessage)]
     response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)},
                            messages, template=template, max_tokens=200, temp=0.1, stops=['</END>'])
     if response is None or len(response) == 0:
@@ -526,7 +523,7 @@ def add_pp_rewrite(paper_title, paper_outline, section_title, draft, paper_summa
     missing_ners = literal_missing_ners(ners, draft)
 
     # add a new paragraph on new ners
-    sysMessage = SystemMessage(content=f"""You are a brilliant research analyst, 
+    sysMessage = """You are a brilliant research analyst, 
 able to see and extract connections and insights across a range of details in multiple seemingly independent papers. 
 You write in a professional, objective tone. You are writing a paper titled:
 {paper_title}
@@ -544,7 +541,7 @@ The {heading_1} section content up to this point is:
 </PRIOR_SECTION_CONTENT>
 
 """
-)
+
 
     MESelectMessage = f"""You are rewriting the draft for the section titled: '{section_title}', to increase the density of relevant information it contains. Your current task is to select the most important missing ners from the current draft. The following ners in the source material above have been identified as missing in the current draft:
 
@@ -609,10 +606,7 @@ end the rewrite as follows:
 </INSTRUCTIONS>
 """
 
-    messages=[sysMessage,
-              UserMessage(content=MESelectMessage),
-              #AssistantMessage(content="<ME>\n")
-              ]
+    messages=[UserMessage(content=sysMessage+MESelectMessage)]
     response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)}, messages, max_tokens=200, temp=0.1, stops=['</ME>'])
     if response is None or len(response) == 0:
         return draft
@@ -646,7 +640,7 @@ end the rewrite as follows:
 def depth_rewrite(paper_title, section_title, draft, paper_summaries, ners, section_topic, section_token_length, parent_section_title, heading_1, heading_1_draft):
 
     missing_ners = literal_missing_ners(ners, draft)
-    sysMessage = SystemMessage(content=f"""You are a brilliant research analyst, able to see and extract connections and insights across a range of details in multiple seemingly independent papers. You write in a professional, objective tone
+    sysMessage = f"""You are a brilliant research analyst, able to see and extract connections and insights across a range of details in multiple seemingly independent papers. You write in a professional, objective tone
 You are writing a paper titled: '{paper_title}'
 
 The following is a set of published research extracts that may be useful in writing the draft of this part of the paper:
@@ -656,7 +650,7 @@ The following is a set of published research extracts that may be useful in writ
 </RESEARCH TEXTS>
 
 """
-)
+
 
     MESelectMessage = f"""You are rewriting the draft for the section titled: '{section_title}', to increase the density of relevant information it contains. Your current task is to select the most important ners in the current draft. The following ners have been identified as present in the current draft:
 
@@ -722,17 +716,12 @@ end the rewrite as follows:
 </INSTRUCTIONS>
 """
 
-    messages=[sysMessage,
-              UserMessage(content=MESelectMessage),
-              #AssistantMessage(content="<AE>\n")
-              ]
+    messages=[UserMessage(content=sysMessage+'\n'+MESelectMessage)]
     #ners from research summaries mentioned in current draft
     included_ners = literal_included_ners(ners, draft)
     #select ners to expand
-    print(f'\ntemplate {template}')
     response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "ners": ners_to_str(included_ners)},
                            messages,
-                           template=template,
                            max_tokens=200, temp=0.1, stops=['</AE>'])
     if response is None or len(response) == 0:
         return draft

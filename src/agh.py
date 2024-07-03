@@ -1,4 +1,6 @@
 import json
+import random
+import string
 import traceback
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
@@ -139,9 +141,14 @@ End your response with:
         return xml.find('<Name>', response)
 
 class Agh(Character):
-    def __init__ (self, name, character_description, always_respond=False):
+    def __init__ (self, name, character_description, mapAgent=True, always_respond=False):
         super().__init__(name, character_description)
-        self.mapAgent = None # actor proxy in 2D map world, will be set later
+        if mapAgent:
+            self.mapAgent = None # actor proxy in 2D map world, will be set later
+            self.my_map = [[{} for i in range(100)] for i in range(100)]
+            # don't know where we are starting, so just put actor in center of self-relative map to start
+            self.x = 50
+            self.y = 50
         self.always_respond = always_respond # timeout dialogs?
         self.previous_action = ''
         self.sense_input = ''
@@ -157,10 +164,6 @@ class Agh(Character):
         # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.dialog_length = 0 # stop dialogs in tell after a few turns
-        self.my_map = [[{} for i in range(100)] for i in range(100)]
-        # don't know where we are starting, so just put actor in center of self-relative map to start
-        self.x = 50
-        self.y = 50
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -340,6 +343,7 @@ End your response with:
             mapped.append(f"- '{key}: {trigger}', State: '{value}'")
         return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
 
+    #deprecated, no longer used
     def update_state(self):
         """ update state """
         prompt = [UserMessage(content=self.character+"""{{$character}}
@@ -678,8 +682,9 @@ End your response with:
                     if source != 'watcher':  # when talking to watcher, others don't hear it.
                         # create other actor response to say
                         # note this assumes only two actors for now, otherwise need to add target
-                        actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        if actor == target:
+                        if actor != target:
+                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
+                        else:
                             actor.hear(self, act_arg, source) # don't act immediately on receipt
 
         # if you acted in the world, ask Context for consequences of act
@@ -709,7 +714,7 @@ End your response with:
 
         self.previous_action = act_name
 
-        if act_name == 'Say' or act_name == 'Think':
+        if act_name == 'Think':
             # make sure future intentions are consistent with what we just did
             # why don't we need this for 'Do?'
             # how does this fit with new model of choose over tasks? won't this be ignored?
@@ -878,12 +883,6 @@ End your response with:
             raise ValueError(f'Invalid task {n}, {task_xml}')
         last_act = self.get_task_last_act(task_name)
         reason = xml.find('<Rationale>', task_xml)
-        # crude, needs improvement
-        #if reason is not None and 'Low' in reason:
-        #    if self.active_task.peek() == task_name:
-        #        #active task is now satisfied!
-        #        self.active_task.pop() = None
-        #    return
 
         prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the first step of the following task.
@@ -1268,8 +1267,31 @@ END
         return
 
         #generate response intention
+
+    def random_string(self, length=8):
+        """Generate a random string of fixed length"""
+        letters = string.ascii_lowercase
+        return self.name+''.join(random.choices(letters, k=length))
+
     def hear(self, from_actor, message, source='dialog', respond=True):
         # someone says something to you
+        if self.name == 'Owl' and from_actor.name == 'Doc':
+            # doc is asking a question or assigning a task
+            new_task_name = self.random_string()
+            new_task = f"""<Plan><Name>{new_task_name}</Name>
+<Steps>
+  1. Respond to Doc's statement:
+  {message}
+</Steps>
+<Target>
+{from_actor.name}
+</Target>
+<Rationale>engaging with Doc: completing his assignments.</Rationale>
+<TerminationCheck>Responded</TerminationCheck>
+</Plan>"""
+            self.priorities.append(new_task)
+            self.active_task.push(new_task_name)
+            return
         if self.active_task.peek() == 'dialog' and self.previous_action == 'Say':
             # assuming this means this is a response to my previous action
             source = self.active_task.peek()
@@ -1280,12 +1302,12 @@ END
             print(f' non dialog tell')
         if source == 'dialog':
             self.dialog_length += 1
-            if self.dialog_length > 1 and not self.always_respond: # end a dialog after one turn
+            if self.dialog_length > 1 and not self.always_respond:
+                # end a dialog after one turn
                 self.dialog_length = 0;
                 # clear all actor pending dialog tasks and intentions:
                 if self.active_task.peek() == 'dialog':
                     self.active_task.pop()
-
                 for priority in self.priorities.copy():
                     if xml.find('<Name>', priority) == 'dialog':
                         print(f'{self.name} removing dialog task!')
