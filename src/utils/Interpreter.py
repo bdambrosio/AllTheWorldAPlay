@@ -280,8 +280,9 @@ Your conversation style is warm, gentle, humble, and engaging."""
         criteron = self.resolve_arg(arg0)
         input_list = self.resolve_arg(arg1)
         prompt = [
-            SystemMessage(content='Following is a criterion and a List. Select one entry from the List that best aligns with Criterion. Respond only with the chosen item. Include the entire item in your response.'),
-            UserMessage(content=f'Criterion:\n{criterion}\nList:\n{input_list}\n')
+            UserMessage(content="""Following is a criterion and a List. Select one entry from the List that best aligns with Criterion. '
+Respond only with the chosen item. Include the entire item in your response.
+Criterion:\n{criterion}\nList:\n{input_list}\n""")
         ]
        
         response = self.llm.ask('', prompt, max_tokens=400, temp=0.01)
@@ -309,9 +310,13 @@ Your conversation style is warm, gentle, humble, and engaging."""
         input_list = self.resolve_arg(arg1)
         # untested
         prompt = [
-            SystemMessage(content='Following is a Context and a List. Select one Item from List that best aligns with Context. Use the following JSON format for your response:\n{"choice":Item}. Include the entire Item in your response'),
-            UserMessage(content=f'Context:\n{context}\nList:\n{choices}')
-        ]
+            UserMessage(content="""Following is a Context and a List. Select one Item from List that best aligns with Context. 
+Use the following JSON format for your response:
+{"choice":Item}
+Include the entire Item in your response
+Context:\n{context}\nList:\n{choices}
+"""
+                        )]
        
         options = PromptCompletionOptions(completion_type='chat', model=self.template, temperature = 0.1, max_tokens=400)
         response = self.cot.llm.ask({"input":''}, prompt, max_tokens=400)
@@ -353,8 +358,11 @@ Your conversation style is warm, gentle, humble, and engaging."""
             raise InvalidAction(f'argument for first must be list {arguments}')       
         list = self.resolve_arg(arguments)
         prompt = [
-            SystemMessage(content='The following is a list. Please select and respond with only the first entry. Include the entire first entry in your response.'),
-            UserMessage(content=f'List:\n{list}\n')
+            SystemMessage(content="""The following is a list. Please select and respond with only the first entry. 
+Include the entire first entry in your response.
+List:
+{list}
+""")
         ]
         
         response = self.llm.ask('', prompt)

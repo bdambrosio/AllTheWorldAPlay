@@ -11,6 +11,7 @@ import utils.persistentStack as ps
 import utils.memoryStream as ms
 import utils.pyqt as pyqt
 import agh
+import utils.xml_utils as xml
 
 cot = None # will be initialized in owlCoT.init_Owl_Doc and in __main__ below
 # find out where we are
@@ -25,7 +26,7 @@ state = 'CA'
 # commented out for now due to frequent timeouts
 #city, state = get_city_state()
 
-print(f"My city and state is: {city}, {state}")
+print('react loaded')
 local_time = time.localtime()
 year = local_time.tm_year
 day_name = ['Monday', 'Tuesday', 'Wednesday', 'Thursday','Friday','Saturday','Sunday'][local_time.tm_wday]
@@ -200,7 +201,8 @@ How are you feeling?
 Response:
 <Act>answer</Act>
 <Target>Doc</Target>
-<Content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, everything seems to be operating smoothly so far!</Content>
+<Content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, 
+everything seems to be operating smoothly so far!</Content>
 </End>
 
 End Example
@@ -358,7 +360,7 @@ class Actor (agh.Agh):
 
     def validate_library_question(self, question):
         question = question.split('?')[0] # only one question to library!
-        question = pyqt_utils.confirmation_popup("Ask Library?", question)
+        question = pyqt.confirmation_popup("Ask Library?", question)
         if type(question) is str and question.strip().lower() not in self.library_questions:
             self.library_questions.append(question.strip().lower())
             return True, question
@@ -377,7 +379,7 @@ class Actor (agh.Agh):
             "Appropriateness: Ensure that the generated text is suitable for the intended audience and purpose. This includes considering factors like tone, style, and level of complexity."
         ]
         
-        prompt = [SystemMessage(content="""Given the Task and your Analysis of it below, evaluate the following Proposal below against each of the following Measures and respond with a concise statement of your evaluation. Your evaluation should focus on the degree to which the proposal actually addresses and proposes detailed solutions to the Task and its Analysis items, and include evaluations of those proposed solution elements against the Measures.
+        prompt = [UserMessage(content="""Given the Task and your Analysis of it below, evaluate the following Proposal below against each of the following Measures and respond with a concise statement of your evaluation. Your evaluation should focus on the degree to which the proposal actually addresses and proposes detailed solutions to the Task and its Analysis items, and include evaluations of those proposed solution elements against the Measures.
 
 <Task>
 {{$task}}
@@ -426,11 +428,25 @@ Evaluation
 
 """)
         return response
-                                        
+
+    def actualize_task(self, n, task_xml):
+        task_name = xml.find('<Name>', task_xml)
+        task_rationale = xml.find('<Rationale>', task_xml)
+        if task_xml is None or task_name is None:
+            raise ValueError(f'Invalid task {n}, {task_xml}')
+        last_act = self.get_task_last_act(task_name)
+        target = xml.find('<Target>', task_xml)
+        doc_say = xml.find('<steps>', task_xml).split('\n')[2:]
+        doc_say = '\n'.join(doc_say)
+        doc_say = xml.find('<steps>', task_xml).strip()
+        response = self.task(self.other(), 'say', doc_say, deep=False, respond_immediately=False)
+        intention = f'<Intent> <Mode>Say</Mode> <Act>{response}</Act><Target>{target}</Target> <Reason>{task_rationale}</Reason> <Source>{task_name}</Source><Intent>'
+        return intention
+
     def task(self, sender, act, task_text, deep=False, respond_immediately=False):
         """sender says/asks/ [to] self ... content sentence ..."""
         
-        self.conversant = sender; self.conversant_action=act; self.conversant_content=task_text;
+        self.conversant = sender; self.conversant_action=act; self.conversant_content=task_text
         #print(f'\n**********\n{self.conversant.name}/{self.conversant_action}/{self.conversant_content}\n**********\n')
         full_msg = f'{self.conversant.name} {self.conversant_action} {self.name} {self.conversant_content}'
         self.remember(full_msg)
@@ -471,33 +487,13 @@ Evaluation
         proceed = 'y'
         step_count = 0
         while (proceed !='n'):
-            input_text = f"""
-<Task>
-{self.task_stack.peek()}
-</Task>
-
-<OriginatingActor>
-{self.conversant.name}
-</OriginatingActor>
-
-"""
-
-            task_analysis_text = f"""
-<Task_Analysis>
-{self.analysis_stack.peek()}
-</Task_Analysis>
-
-"""
-
+            input_text = f"<Task>\n{self.task_stack.peek()}\n</Task>\n<OriginatingActor>\n{self.conversant.name}\n</OriginatingActor>\n"
+            task_analysis_text = f"<Task_Analysis>\n{self.analysis_stack.peek()}\n</Task_Analysis>"
             #
             ## orient
             #
-            userMsg = UserMessage(content=input_text
-                                  +(task_analysis_text if len(self.analysis_stack.peek())>0 else '')
-                                  +act_string+orient_think_string)
-            prompt = [SystemMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek())),
-                      userMsg,
-                      ]
+            userMsg = input_text+(task_analysis_text if len(self.analysis_stack.peek())>0 else '')+act_string+orient_think_string
+            prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek())+userMsg)]
             response = self.cot.llm.ask({}, prompt, stop_on_json=True, temp=0.01, stops=['</End>'], max_tokens=1000)
             thought = self.orientation_and_thought(response)
             if thought and len(thought)>0:
@@ -506,10 +502,9 @@ Evaluation
             #
             ## Now choose action
             #
-            userMsg = UserMessage(content=input_text+'\n\n'+thought+'\n\n'+\
-                                  (respond_string if (respond_immediately and self.review) else act_prefix_string+act_string))
-            prompt = [SystemMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek())),
-                      userMsg,
+            userMsg = input_text+'\n\n'+thought+'\n\n'+\
+                      (respond_string if (respond_immediately and self.review) else act_prefix_string+act_string)
+            prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek()) +userMsg)
                       ]
             response = self.cot.llm.ask({},prompt, temp=0.01, stops=['</End>'], max_tokens=2000)
             #print(f'Status:\n{response}')
@@ -549,7 +544,6 @@ Evaluation
                 self.depth_stack.pop()
                 raise Exception(f"react loop fail, no action in response {response}")
 
-
             # decode action - simple if tests for now
             if act.lower() == 'answer':
                 self.review=False
@@ -578,7 +572,7 @@ If such instances are unavailable, provide promising research or development opp
 Target your response at about 1600 tokens""",
                                                  max_tokens=2000)
 
-                    self.evaluate_draft(self.name + response_action + target+' '+content.strip())
+                    #self.evaluate_draft(self.name + response_action + target+' '+content.strip())
                 self.remember(self.name+' says to '+target+" "+content)
                 #print(f"\n*****************\n{self.name} Answers: {content}\n*****************\n")
                 if self.conversant_action.startswith('ask'):
@@ -671,8 +665,8 @@ def parse_message(message, actors):
     parse = message.strip().split(' ')
     """ actor says/asks/answers [to] recipient content..."""
     actor_name = parse[0].strip()
-    if actor_name == 'self':
-        actor_name = self.name
+    #if actor_name == 'self':
+    #    actor_name = self.name
     try:
         index = [actor_name.lower() for a in actors].index(actor_name.lower())
         actor = actors[index]
@@ -685,8 +679,8 @@ def parse_message(message, actors):
     else:
         recipient_name = parse[2]
         content = ' '.join(parse[3:])
-    if recipient_name == 'self':
-        recipient_name = self.name
+    #if recipient_name == 'self':
+    #    recipient_name = self.name
     try:
         index = [a.name.lower() for a in actors].index(recipient_name.lower())
         recipient = actors[index]

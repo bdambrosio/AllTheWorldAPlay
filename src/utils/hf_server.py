@@ -9,17 +9,18 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteria, 
 # Initialize model and cache
 
 
-class StopOnTokens(StoppingCriteria):
-    def __init__(self, stop_ids):
-        self.stop_ids = stop_ids
+# Custom stopping criteria
+class StringStoppingCriteria(StoppingCriteria):
+    def __init__(self, stopping_strings, tokenizer):
+        self.stopping_strings = [tokenizer.encode(s, add_special_tokens=False) for s in stopping_strings]
+        self.tokenizer = tokenizer
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        # Check if any of the input_ids match the stop tokens
-        for stop_id in self.stop_ids:
-            if input_ids[0, -1] == stop_id:
+        generated_tokens = input_ids[0].tolist()
+        for stop_tokens in self.stopping_strings:
+            if stop_tokens == generated_tokens[-len(stop_tokens):]:
                 return True
         return False
-
 
 models_dir = "/home/bruce/Downloads/models/"
 
@@ -81,6 +82,7 @@ while GENERATION_PROMPT == None:
 tokenizer = AutoTokenizer.from_pretrained(models_dir+model_name)
 model = AutoModelForCausalLM.from_pretrained(models_dir+model_name,
                                              device_map="auto",
+                                             attn_implementation = 'eager', # for gemma
                                              torch_dtype=torch.bfloat16
                                              )
 
@@ -88,7 +90,7 @@ app = FastAPI()
 print(f"starting server")
 @app.post("/template")
 async def template(request: Request):
-    return {"context_size":context_size}
+    return {"context_size": context_size}
     
 @app.post("/v1/chat/completions")
 async def get_response(request: Request):
@@ -118,15 +120,15 @@ async def get_response(request: Request):
         print(f'\n received stop {message_j["stop"]}')
         stop_conditions = message_j['stop']
 
-    stop_ids = [tokenizer.convert_tokens_to_ids(tokenizer.tokenize(token))[0] for token in stop_conditions]
+    # Define stopping criteria
+    stopping_criteria = StoppingCriteriaList([StringStoppingCriteria(stop_conditions, tokenizer)])
     # Define the stopping criteria list
-    stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_ids)])
     #gconfig = GenerationConfig(stop_strings = stop_conditions, temperature=temp, top_p=top_p, max_new_tokens=max_tokens, do_sample=True)
 
     messages = message_j['messages']
 
     formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
-    print(formatted)
+    #print(formatted)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inputs = tokenizer(formatted, return_tensors="pt").to(device)
 
@@ -137,7 +139,7 @@ async def get_response(request: Request):
                               do_sample=True,
                               max_new_tokens=max_tokens,
                               top_p=top_p,
-                              #stopping_criteria=stopping_criteria,
+                              stopping_criteria=stopping_criteria,
                               temperature=temp,
                               num_return_sequences=1,
                               attention_mask=attention_mask)

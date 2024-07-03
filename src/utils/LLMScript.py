@@ -6,7 +6,6 @@ import chat.rewrite as rw
 import numpy as np
 from umap.umap_ import UMAP
 import matplotlib.pyplot as plt
-import chat.OwlCoT
 from utils.Interpreter import Interpreter
 
 
@@ -49,7 +48,7 @@ class LLMScript:
 
     def facts(self, query, ids, texts):
         """ should we add a depth parameter? or max_tokens? """
-        prompt=[SystemMessage(content="""You are a skilled technical writer. 
+        prompt=[UserMessage(content="""You are a skilled technical writer. 
 Your task is to collect notes from the Text provided below to support writing a technical report on {{$query}}."
 Your response should include all background, facts, methods, and findings useful for writing the report, and can be up to 1400 words in length.
 Respond in list format as shown in the following example:
@@ -122,7 +121,7 @@ End your response with
     #
     def process1(self, arg1, instruction, dest=None, max_tokens=250, stop='</END>'):
         resolved_arg= self.interpreter.resolve_arg(arg1)
-        prompt = [SystemMessage(content=instruction+"""\n
+        prompt = [UserMessage(content=instruction+"""\n
 Limit your response to {{$length}} words. Do not include any discursive or explanatory text. 
 End your response with:
 {{$eos}}
@@ -147,10 +146,9 @@ End your response with:
         resolved_arg2 = self.interpreter.resolve_arg(arg2)
         #resolved_inst = instruction.replace(arg1, 'the user Input provided below')
         #resolved_inst = resolved_inst.replace(arg2, 'the user SecondInput provided below')
-        prompt = [SystemMessage(content="""{{$instruction}}
+        prompt = [UserMessage(content="""{{$instruction}}
 
-"""),
-                  UserMessage(content="""<Text1>
+<Text1>
 {{$text1}}
 </Text1>
 
@@ -179,10 +177,9 @@ End your response with:
         resolved_arg1 = self.interpreter.resolve_arg(arg1)
         resolved_arg2 = self.interpreter.resolve_arg(arg2)
         resolved_arg3 = self.interpreter.resolve_arg(arg3)
-        prompt = [SystemMessage(content="""{{$instruction}}
+        prompt = [UserMessage(content="""{{$instruction}}
 
-"""),
-                  UserMessage(content="""<Text1>
+<Text1>
 {{$text1}}
 </Text1>
 
@@ -401,11 +398,12 @@ End your response with:
 
 
 if __name__=='__main__':
-    cot = chat.OwlCoT.OwlInnerVoice()
+    #cot = chat.OwlCoT.OwlInnerVoice()
+    cot = None
     print('created cot')
     interp = Interpreter.Interpreter(cot)
     print('created interp')
-    si = utils.LLMScript(cot)
+    si = LLMScript(cot)
     print('created si')
     import requests
     article = cot.search_titles('Beth Linker is turning good posture on its head')
