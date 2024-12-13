@@ -295,9 +295,9 @@ def llm_tldr (text, query, max_chars):
             print(f'google llm_tldr response is not a dict')
             return ''
     if 'relevant' in response:
-        if 'yes' in str(response['relevant']).lower():
+        if 'yes' in str(response['relevant']).lower(): # type: ignore
             if 'extract' in response: # type: ignore
-                return response['extract']
+                return response['extract'] # type: ignore
         else:
             return ''
 
@@ -359,16 +359,18 @@ def compute_keyword_weights(keywords):
     return keyword_weights
 
 
+"""
 def get_url(query, url, client, model, max_chars):
     try:
         keywords = query.split(' ')
         weights = compute_keyword_weights(keywords)
         full_text = \
-            process_urls(extract_query, keywords, weights, [url], search_level, 10, max_chars)
+            process_urls(query, keywords, weights, [url], search_level, 10, max_chars)
     except:
         traceback.print_exc()
     return  full_text
-    
+"""
+
 def search_google(client_cot, original_query, search_level, query_phrase, keywords, max_chars):
   global cot
   if cot is None:

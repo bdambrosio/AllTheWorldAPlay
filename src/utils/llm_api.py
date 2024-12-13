@@ -38,6 +38,7 @@ def generate_image(description, size='512x512', filepath='test.png'):
         file.write(image_content)
     return IMAGE_PATH / filepath
 
+"""
 def generate_dalle_image(prompt, size='256x256', filepath='worldsim.png'):
     # Call the OpenAI API to generate the image
     if size != '256x256' and size != '512x512':
@@ -51,6 +52,7 @@ def generate_dalle_image(prompt, size='256x256', filepath='worldsim.png'):
     filepath = IMAGE_PATH / filepath
     image.save(filepath)
     return filepath
+"""
 
 pattern = r'\{\$[^}]*\}'
 
