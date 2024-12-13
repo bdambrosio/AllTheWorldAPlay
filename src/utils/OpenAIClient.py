@@ -4,7 +4,6 @@ from dataclasses import dataclass, asdict
 import json, os
 from utils.Messages import SystemMessage
 from utils.Messages import AssistantMessage
-from utils.Colorize import Colorize
 from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
@@ -14,26 +13,27 @@ class OpenAIClient():
     DefaultEndpoint = 'https://api.openai.com'
     UserAgent = 'Owl'
 
-    def __init__(self, api_key=None):
+    def __init__(self, client, api_key=None):
         self._session = requests.Session()
         self._client = client
         
-    def executeRequest(self, prompt, options: LLMRequestOptions, template:str):
+    def executeRequest(self, prompt, options: LLMRequestOptions):
         startTime = time.time()
-        if options.stop: #options.stop only allows a single stop string for now.
-            stop=[options.stop]
+        if options.stops: #options.stop only allows a single stop string for now.
+            stops=options.stops
         else:
-            stop=[]
+            stops=[]
         if options.stop_on_json:
-            stop.append('}')
+            stops.append('}')
 
         try:
             response = client.chat.completions.create(
-                model=template, messages=prompt,
+                model=options.model, messages=prompt,
                 max_tokens=options.max_tokens, temperature=options.temperature, top_p=options.top_p,
-                stop=options.stop, stream=False)
+                stop=options.stops, stream=False, response_format = { "type": "json_object" })
             item = response.choices[0].message
-            return {"status":'success', "message":{"role":'assistant', "content":item.content}}
+            return item.content
+            #return {"status":'success', "message":{"role":'assistant', "content":item.content}}
         except Exception as e:
             return {"status":'error', "message":str(e)}
             

@@ -43,7 +43,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
         }
         headers = {"Content-Type": "application/json"}
         response = requests.post(url, headers=headers, data=json.dumps(data))
-        print(response)
+        #print(response)
         print(response.json()['content'])
         return response.json()['content']
     except Exception as e:

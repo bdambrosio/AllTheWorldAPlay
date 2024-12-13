@@ -9,7 +9,7 @@ import readline as rl
 from fastapi import FastAPI
 from utils.Messages import LLMMessage, SystemMessage, UserMessage, AssistantMessage
 #from pyexts import utilityV2 as ut
-#import pyexts.llmsearch.google_search_concurrent as gs
+import chat.google_search_concurrent as gs
 import warnings
 from PyPDF2 import PdfReader
 from pathlib import Path
@@ -20,6 +20,7 @@ from selenium.webdriver.chrome.options import Options
 import wordfreq as wf
 from bs4 import BeautifulSoup
 from chat.OwlCoT import OwlInnerVoice
+#from utils import utilityV2 as ut
 #from unstructured.partition.html import partition_html
 history = {}
 
@@ -28,16 +29,51 @@ cot = OwlInnerVoice(None)
 PAPERS_DIR = Path.home() / '.local/share/AllTheWorld/library/papers/'
 PAPERS_DIR.mkdir(parents=True, exist_ok=True)
 
+def get_search_phrase_and_keywords(cot, query_string):
+    print(f'get phrase query_string:{query_string}')
+    phrase = ''; keywords = []
+
+    phrase_prompt = [UserMessage(content="""<Text>
+{{$input}}
+</Text>
+
+Analyze the above Text and generate a concise google search engine search phrase.
+Respond  only the the search phrase
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</END>
+""")
+              ]
+    response = cot.llm.ask({'input':query_string}, phrase_prompt, max_tokens=100, stops=['</END>'])
+    phrase = response.strip()
+
+    keyword_prompt = [UserMessage(content="""<Text>
+{{$input}}
+</Text>
+
+Analyze the above Text and extract all keywords including any named-entities.
+Respond with the list of keywords, and only the list of keywords (including any named-entities)
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</END>
+""")
+                      ]
+    response = cot.llm.ask({'input':query_string}, keyword_prompt, max_tokens=100, stops=['</END>'])
+    keywords = response
+    return phrase, keywords
+
+
+
 @app.get("/search/")
 #{self.query}&model={GPT4}&max_chars={max_tokens*4}')
 async def search(query: str, model:str = 'gpt-3.5-turbo', max_chars: int = 1200):
     response_text = ''
     storeInteraction = True
     try:
-        query_phrase, keywords = ut.get_search_phrase_and_keywords(cot, query)
+        query_phrase, keywords = get_search_phrase_and_keywords(cot, query)
         print(f'query phrase: {query_phrase}\n keywords: {keywords}')
         google_result= \
-            gs.search_google(query, gs.QUICK_SEARCH, query_phrase, keywords, max_chars)
+            gs.search_google(cot, query, gs.QUICK_SEARCH, query_phrase, keywords, max_chars)
         
         print(f'google_result:\n{google_result}')
         source_urls = []
@@ -55,7 +91,7 @@ async def search(query: str, model:str = 'gpt-3.5-turbo', max_chars: int = 1200)
         return {"result":summary, "source_urls":source_urls}
     except Exception as e:
         traceback.print_exc()
-    return {"result":str(e)}
+        return {"result":str(e)}
 
 def read_pdf(filepath):
     """Takes a filepath to a PDF and returns a string of the PDF's contents"""

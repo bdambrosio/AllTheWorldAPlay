@@ -8,6 +8,7 @@ from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
 from io import BytesIO
 import utils.ClaudeClient as anthropic_client
+import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
 
 response_prime_needed = False
@@ -15,12 +16,14 @@ tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
 tabby_api_key = os.getenv("TABBY_API_KEY")
 headers = {'x-api-key': tabby_api_key}
-# from openai import OpenAI
-# openai_api_key = os.getenv("OPENAI_API_KEY")
-# try:
-#    client = OpenAI()
-# except openai.OpenAIError as e:
-#    print(e)
+from openai import OpenAI
+import openai
+openai_api_key = os.getenv("OPENAI_API_KEY")
+try:
+   openai_api = OpenAI()
+   openai_client = openai_client.OpenAIClient(openai_api)
+except openai.OpenAIError as e:
+   print(e)
 
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,7 @@ class LLM():
         if not IMAGE_PATH.exists():
             IMAGE_PATH.mkdir(parents=True, exist_ok=True)
             print(f"Directory '{IMAGE_PATH}' created.")
+
     def run_request(self, bindings, prompt, options):
         #
         ### first substitute for {{$var-name}} in prompt
@@ -107,7 +111,11 @@ class LLM():
         if 'Claude' in self.llm:
             response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
+        if options.model is not None and 'gpt' in options.model:
+            response= openai_client.executeRequest(prompt=substituted_prompt, options=options)
+            return response
         else:
+            if options.stops is None: options.stops = []
             response =  requests.post(url, headers= headers,
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
@@ -126,20 +134,20 @@ class LLM():
             traceback.print_exc()
             raise Exception(response)
 
-    def ask(self, input, prompt_msgs, client=None, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False):
+    def ask(self, input, prompt_msgs, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None):
 
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
         if top_p is None: top_p = 1.0
           
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
-                                    stops=stops, stop_on_json=stop_on_json)
+                                    stops=stops, stop_on_json=stop_on_json, model=model)
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             response = self.run_request(input, prompt_msgs, options)
-            response = response.replace('<|im_end|>', '')
-            if stops is not None: # claude returns eos
+            #response = response.replace('<|im_end|>', '')
+            if stops is not None and type(response) is str: # claude returns eos
                 if type(stops) is str:
                     stops = [stops]
                     for stop in stops:

@@ -14,6 +14,7 @@ import arxiv
 from arxiv import SortCriterion, SortOrder
 import faiss
 from utils.Messages import SystemMessage
+from utils.Messages import UserMessage
 from utils.Messages import AssistantMessage
 import utils.pyqt as pyqt
 from PyQt5 import QtGui

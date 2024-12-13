@@ -1,0 +1,1 @@
+/home/bruce/Downloads/llama.cpp/build/bin/server -m /home/bruce/Downloads/models/'+model_name+'/Meta-Llama-3-70B-Instruct-Q6_K.gguf-part-a-c 8192 -ngl 90 -b 256

@@ -1,0 +1,13 @@
+0. llama-3-8B-Instruct - Do, Say, Think/
+1. Hermes-2-Theta-Llama-3-8B, gets lost. retry?
+3. dolphin-2.9.1-yi-1.5-34b, context: 8192
+7. llama-3-70B-Instruct-exl2, context: 16384 - good!
+10. dolphin-2.9-llama3-8b, context: 8192
+11. llama-3-70B-Instruct-GPTQ, context: 8192
+14. Smaug-Mixtral-8.0bpw-exl2, context: 32768
+15. dolphin-2.9.1-yi-1.5-34b-exl2, context: 8192
+18. command-r-plus-6.0bpw-exl2, context: 8192
+19. mistral-7b-instruct, context: 32768
+21. llama-3-Smaug-8B, context: 8192
+22. Yi-1.5-34B-Chat-exl2, context: 8192
+23. mistral-7B-v0.2, context: 8192
