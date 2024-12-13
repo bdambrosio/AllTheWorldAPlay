@@ -142,7 +142,7 @@ To access full articles, use the action 'article'.
         self.owl.drives = [
             "engaging with Doc: completing his assignments.",
             "world-knowledge: learning more about this place I find myself in.",
-            "self-knowledge: understanding who/what I am."
+            #"self-knowledge: understanding who/what I am."
         ]
 
         self.owl.llm = self.llm
@@ -310,12 +310,12 @@ Doc's input:
         feelings = self.llm.ask('Owl, if you had feelings, what would you be feeling right now? Answer in 28 words or less without disclaimers. End your response with "</Response>"',
                                 prompt, template = self.template, temp=.6, max_tokens=48, stops=['</Response>'])
         if feelings is not None:
-            self.add_exchange("Owl, how are you feeling?", feelings)
+            #self.add_exchange("Owl, how are you feeling?", feelings)
             results['ai_feelings'] = feelings
         goals = self.llm.ask({"input":'What would Owl like to be doing right now in 32 words or less? End your response with </Response>'},
                              prompt, template = self.template, temp=.6, max_tokens=48, stops=['</Response>'])
         if goals is not None:
-            self.add_exchange("Owl, what would you wish for?", goals)
+            #self.add_exchange("Owl, what would you wish for?", goals)
             results['ai_goals'] = goals
         print(f'internal_dialog feelings:\n{feelings}\ngoals:\n{goals}')
         return results
@@ -580,7 +580,7 @@ End your response with </Questions>
                self.web_widget.display_response('\nWeb result:\n'+search_result['result']+'\n')
                if 'source_urls' in search_result:
                    self.web_widget.display_response('\nSources:\n'+'\n'.join(search_result['source_urls'])+'\n')
-         self.add_exchange("Search result:\n", str(search_result['result'])+'\n')
+         #self.add_exchange("Search result:\n", str(search_result['result'])+'\n')
          return '\nWeb result:\n'+str(search_result['result'])+'\n'
          # return response
       else:
@@ -607,8 +607,8 @@ class WebSearch(QThread):
          
    def long_running_task(self):
        max_tokens = int(self.max_tokens)
-       template = self.ui.owlCoT.llm.template
-       response = requests.get(f'http://127.0.0.1:5005/search/?query_string={self.query}&model={template}&max_chars={max_tokens*4}')
+       template = 'GPT4-4o'
+       response = requests.get(f'http://127.0.0.1:5005/search?query={self.query}&model={template}&max_chars={max_tokens*4}')
        data = response.json()
        return data
 

@@ -4,7 +4,7 @@ from utils.Messages import SystemMessage, UserMessage
 import library.semanticScholar3 as s2
 import chat.rewrite as rw
 import numpy as np
-from umap.umap_ import UMAP
+#from umap.umap_ import UMAP
 import matplotlib.pyplot as plt
 from utils.Interpreter import Interpreter
 
@@ -31,6 +31,8 @@ class LLMScript:
             max_tokens = int(self.cot.llm.context_size/2)
         papers = s2.search(resolved_arg1, dscp='', web=web, top_k=top_k)
         sections = [s[1] for s in papers]
+        ids = [id for key, item in papers.items() if item is not None for id in item]
+       
         # note this is [[paper_ids], [[title, section],...]]
         # print(f' {ids}\n{sections}')
         facts = None
@@ -320,7 +322,7 @@ Provide your response in the following format:
             
         s2.save_paper_df()
 
-    def umap(self):
+    """def umap(self):
         # Load the embeddings (example using digits dataset)
         papers = s2.paper_library_df
         embeddings = np.array([s2.embedding_request(paper, 'search_document: ') for paper in papers['summary']])
@@ -343,7 +345,7 @@ Provide your response in the following format:
         plt.ylabel('UMAP Dimension 2')
         plt.title('UMAP Visualization of Reduced Embeddings')
         plt.show()
-        
+    """    
     def sufficient_response(self, arg1,
                             personality="You are a skilled researcher and technical writer",
                             context=''):

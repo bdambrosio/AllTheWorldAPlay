@@ -70,21 +70,21 @@ config.prepare()
 
 model = ExLlamaV2(config)
 
-if 'llama3-70b' in model_name.lower() or 'llama-3-70b' in model_name.lower():
+if 'Llama-3.1-70B' in model_name.lower() or 'llama-3-70b' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([42, 44, 44])
+    model.load([36, 36])
 
 elif 'command-r' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([41, 48, 24])
+    model.load([36, 48])
 
 elif 'qwen' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([36,44,48])
+    model.load([36,44])
 
 else:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([44, 48, 24])
+    model.load([36, 48])
 
 
     print('model load done..')
@@ -175,7 +175,7 @@ async def get_stream(request: Request):
     temp = 0.1
     if 'temp' in message_j.keys():
         temp = message_j['temp']
-    
+
     top_p = 1.0
     if 'top_p' in message_j.keys():
         top_p = message_j['top_p']
@@ -193,14 +193,24 @@ async def get_stream(request: Request):
     if 'stop_on_json' in message_j.keys() and message_j['stop_on_json']==True:
         stop_on_json=True
 
-    messages = message_j['messages']
-
     settings.temperature = temp
     settings.top_p = top_p
+    generator.set_stop_conditions(stop_conditions)
+
+    raw = False
+    if 'raw' in message_j.keys():
+        raw = message_j['raw']
+        formatted = message_j['prompt']
+        input_ids = exl_tokenizer.encode(formatted)
+        print(f'input_ids {input_ids.shape}')
+        generator.begin_stream(input_ids, settings)
+        return StreamingResponse(stream_data(query, max_new_tokens = max_tokens, stop_on_json=stop_on_json))
+
+
+    messages = message_j['messages']
     formatted = hf_tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
     input_ids = exl_tokenizer.encode(formatted)
     print(f'input_ids {input_ids.shape}')
-    generator.set_stop_conditions(stop_conditions)
     generator.begin_stream(input_ids, settings)
     return StreamingResponse(stream_data(query, max_new_tokens = max_tokens, stop_on_json=stop_on_json))
 

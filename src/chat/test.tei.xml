@@ -1,0 +1,922 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">BENCHMARKING THE SPECTRUM OF AGENT CAPABILITIES</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2022-02-12">12 Feb 2022</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Danijar</forename><surname>Hafner</surname></persName>
+							<email>@danijar.com</email>
+						</author>
+						<title level="a" type="main">BENCHMARKING THE SPECTRUM OF AGENT CAPABILITIES</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2022-02-12">12 Feb 2022</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">B84E969A896E37B3B68CF530CBFEC6DE</idno>
+					<idno type="arXiv">arXiv:2109.06780v2[cs.AI]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1-SNAPSHOT" ident="GROBID" when="2024-06-19T01:48+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Evaluating the general abilities of intelligent agents requires complex simulation environments. Existing benchmarks typically evaluate only one narrow task per environment, requiring researchers to perform expensive training runs on many different environments. We introduce Crafter, an open world survival game with visual inputs that evaluates a wide range of general abilities within a single environment. Agents either learn from the provided reward signal or through intrinsic objectives and are evaluated by semantically meaningful achievements that can be unlocked during each episode, such as discovering resources and crafting tools. Consistently unlocking all achievements requires strong generalization, deep exploration, and long-term reasoning. We experimentally verify that Crafter is of appropriate difficulty to drive future research and provide baselines scores of reward agents and unsupervised agents. Furthermore, we observe sophisticated behaviors emerging from maximizing the reward signal, such as building tunnel systems, bridges, houses, and plantations. We hope that Crafter will accelerate research progress by quickly evaluating a wide spectrum of abilities.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">INTRODUCTION</head><p>Crafter is an open world survival game for reinforcement learning research. Shown in Figure <ref type="figure" target="#fig_0">1</ref>, Crafter features randomly generated 2D worlds with forests, lakes, mountains, and caves. The player needs to forage for food and water, find shelter to sleep, defend against monsters, collect materials, and build tools. The game mechanics are inspired by the popular game Minecraft and were simplified and optimized for research productivity. Crafter aims to be a fruitful benchmark for reinforcement learning by focusing on the following design goals:</p><p>Research challenges Crafter poses substantial challenges to current methods. Procedural generation requires strong generalization, the technology tree evaluates wide and deep exploration, image observations calls for representation learning, repeated subtasks and sparse rewards evaluate long-term reasoning and credit assignment.</p><p>Meaningful evaluation Agents are evaluated by a range of achievements that can be unlocked in each episode. The achievements correspond to meaningful milestones in behavior, offering insights into ability spectrum of both reward agents and unsupervised agents.</p><p>Iteration speed Crafter evaluates many agent abilities within a single environment, vastly reducing the computational requirements over benchmarks suites that require training on many separate environments from scratch, while making it more likely that the measured performance is representative of new domains. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">RELATED WORK</head><p>Benchmarks have been a driving force behind the progress and successes of reinforcement learning as a field <ref type="bibr" target="#b2">(Bellemare et al., 2013;</ref><ref type="bibr" target="#b3">Brockman et al., 2016;</ref><ref type="bibr" target="#b14">Kempka et al., 2016;</ref><ref type="bibr" target="#b1">Beattie et al., 2016;</ref><ref type="bibr" target="#b23">Tassa et al., 2018;</ref><ref type="bibr" target="#b13">Juliani et al., 2018)</ref>. Benchmarks often require a large amount of computational resources and yet only test a small fraction of the abilities that a general agent should master <ref type="bibr" target="#b7">(Cobbe et al., 2020)</ref>. This section directly compares Crafter to four particularly related benchmarks.</p><p>Minecraft Crafter is inspired by the successful 3D video game Minecraft, which is available to researchers via Malmo <ref type="bibr" target="#b12">(Johnson et al., 2016)</ref> and <ref type="bibr">MineRL (Guss et al., 2019)</ref>. Minecraft features diverse open worlds with randomly generated and modifiable terrain, as well as many different resources, tools, and monsters. However, Minecraft is too complex to be solved by current methods <ref type="bibr" target="#b17">(Milani et al., 2020)</ref>, it is unclear by what metric agents should be evaluated by, the environment is slow, and can be difficult to use because it requires Java and a window server. In comparison, Crafter captures many principles of Minecraft in a simple and fast environment, where results can be obtained in a matter of hours, and where a large number of semantically meaningful evaluation metrics are available for reinforcement learning with or without extrinsic reward. The goal of Crafter is not to replace Minecraft but progress faster towards it.</p><p>Atari The Atari Learning Environment <ref type="bibr" target="#b2">(Bellemare et al., 2013)</ref> has been the gold standard benchmark in reinforcement learning. It comprises around 54 individual games, depending on the evaluation protocol <ref type="bibr" target="#b18">(Mnih et al., 2015;</ref><ref type="bibr" target="#b20">Schulman et al., 2017;</ref><ref type="bibr" target="#b0">Badia et al., 2020;</ref><ref type="bibr" target="#b9">Hafner et al., 2020)</ref>. While the large number of games tests different abilities of agents, they require a large amount of computation.</p><p>The recommended protocol of training the agent with 5 random seeds on each game for 200M steps requires over 2000 GPU days <ref type="bibr" target="#b6">(Castro et al., 2018;</ref><ref type="bibr" target="#b10">Hessel et al., 2018)</ref>. This substantially slows down experimentation and makes the complete benchmark infeasible for most academic labs. Moreover, Atari games are nearly deterministic, so agents can approximately memorize their action sequences and are not required to generalize to new situations <ref type="bibr" target="#b16">(Machado et al., 2018)</ref>.</p><p>ProcGen ProcGen <ref type="bibr" target="#b7">(Cobbe et al., 2020)</ref> provides a benchmark that is similar to Atari but explicitly addresses the determinism present in Atari through the use of procedural generation and randomized textures. It consists of 16 games, where each episode features a randomly generated level layout. Similarly, Crafter relies on procedural generation to provide a different world map with different distribution of resources and monsters for every episode. However, ProcGen still requires training methods on 16 individual games for 200M environment steps, which each focus on a narrow aspect of an agent's general abilities. In comparison, Crafter evaluates many different abilities of an agent by training only on a single environment for 5M steps, substantially accelerating experimentation.</p><p>NetHack NetHack <ref type="bibr" target="#b15">(Küttler et al., 2020)</ref> is a text-based game, where the player traverses a randomly generated system of dungeons with many different items and creatures. Unlike the other discussed environments, NetHack uses symbolic inputs and thus does not evaluate an agent's ability to learn representations of high-dimensional inputs. The game is challenging due to the large amount of knowledge required about the many different items and their effects, even for human players. As a result, NetHack requires many environment steps for agents to acquire this domain-specific knowledge; 1B steps were used in the original paper. In contrast, Crafter generates diverse complex worlds from simple underlying rules, focusing more on generalization than memorization of facts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">CRAFTER BENCHMARK</head><p>We introduce Crafter, a benchmark that evaluates a variety of agent abilities in a single environment. This section describes the game mechanics of the environment, the interface of agent inputs and actions, the evaluation protocol that is based on a range of semantically meaningful achievements, and the open challenges that Crafter poses for future research.</p><p>Figure <ref type="figure">3</ref>: Crafter procedurally generates a unique world for every episode that features several terrain types: grasslands, forests, lakes, mountains, caves. Memorizing action sequences is thus not a viable strategy and agents are forced to learn behaviors that generalize to new situations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">GAME MECHANICS</head><p>This section describes the game mechanics of Crafter, namely its randomly generated world maps, the levels of health and other internal quantities that the player has to maintain, the resources it can collect and objects and tools it can make from them, as well as the creatures and how they are influenced by the time of day. The images of all materials and objects are shown in Figure E.1. All randomness in the environment is uniquely determined by an integer seed that is derived from the initial seed passed to the environment and the episode number.</p><p>Terrain generation A unique world is generated for every episode, shown in Figure <ref type="figure">3</ref>. The world leverages an underlying grid of 64 × 64 cells but the agent only observes the world through pixel images. The terrain features grasslands, lakes, and mountains. Lakes can have shores, grasslands can have forests, and mountains can have caves, ores, and lava. These are determined by OpenSimplex noise <ref type="bibr" target="#b22">(Spencer, 2014)</ref>, a form of locally smooth noise. Within the areas determined by noise, objects appear with equal probability at any location, such as trees in forests and skeletons in caves.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Health and survival</head><p>The player has levels of health, food, water, and rest that it must prevent from reaching zero. The levels for food, water, and rest decrease over time and are restored by drinking from a lake, chasing cows or growing fruits to eat, and sleeping in places where monsters cannot attack. Once one of the three levels reaches zero, the player starts losing health points. It can also lose health points when attacked by monsters. When the health points reach zero, the player dies. Health points regenerate over time when the player is not hungry, thirsty, or sleepy.</p><p>Resources and crafting There are many resources, such as saplings, wood, stone, coal, iron, and diamonds, the player can collect in its inventory and use to build tools and place objects in the world. Many of the resources require tools that the place must first build from more basic resources, leading to a technology tree with several levels. Standing nearby a table enables the player to craft wood pickaxes and swords, as well as stone pickaxes and stone swords. Crafting a furnace from stone enables crafting iron pickaxes and iron swords from both iron, coal, and wood.</p><p>Creatures and night Creatures are initialized in random locations and move randomly. Zombies and cows live in grasslands and are automatically spawned and despawned to ensure a given amount of creatures. At night, the agent's view is restricted and noisy and a larger number of zombies is spawned. This makes it difficult to survive without securing a shelter, such as a cave. Skeletons live in caves and try to keep the player at a distance to shoot arrows at the player. The player can interact with creatures to decrease their health points. Cows move randomly and offer a food source.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">ENVIRONMENT INTERFACE</head><p>This section defines the specification of the environment, explains the available actions, agent inputs, episode termination, and additional information provided by the environment. The design goal of these is to make the environment easy to use and inspect. The environment uses the Gym interface <ref type="bibr" target="#b3">(Brockman et al., 2016)</ref> with visual agent inputs and flat categorical actions. Figure <ref type="figure">4</ref>: The 22 achievements that can be unlocked within each episode. The arrows indicate which achievements will be completed along the way of working toward more challenging achievements. Several of the earlier tasks have to be repeated multiple times, such as collecting resources, to progress further. A reward is only given when an achievement is unlocked for the first time during the episode.</p><p>Observations Agent receive color images of size 64 × 64 × 3 as their only inputs. The image shows a local top-down view of the map, reaching 4 cells west and east and 3 cells north and south of the player position. Below this view of the world, the image shows the current inventory state of the player, including its health points, food, water, and rest levels, collected materials, and crafted tools. The agent needs to learn to read its inventory state out of the image.</p><p>Actions The action space is a flat categorical space with 17 actions, represented by integer indices. The actions allow the player to move in all 4 directions along the grid, interact with the object in front of it, go to sleep, place objects, and make tools. Each object and tool has a separate action associated with it. Tools are kept in the inventory whereas objects are automatically placed in front of the player. If the agent does not hold the required materials for making an object or tool, the action has no effect.</p><p>Termination Each episode terminates when the player's health points reach 0. This can happen when the player dies out of hunger, thirst, or tiredness, when attacked by a zombie or skeleton, or when falling into lava. Health points automatically regenerate, as long as the agent is not too hungry, thirsty, or sleepy. There is no negative reward for dying, as the reward signal already includes a penalty for losing health points. Episodes also end when reaching the time limit of 10,000 steps.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Additional information</head><p>The environment allows access to privileged information about the world state that the agent is forbidden to observe. This includes numeric inventory counts, achievement counts, the current coordinate of the player on the grid, and a semantic grid representation of the map. These can be used for debugging purposes or for other research scenarios, such as predicting the underlying environment state to evaluate representation learning or video prediction models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">EVALUATION PROTOCOL</head><p>To evaluate the diverse abilities of artificial agents on Crafter, we define two benchmarks. The first benchmark allows agents to access a provided reward signal, while the second benchmark does not and requires agents to purely learn from intrinsic objectives. Besides access to the provided reward signal, the evaluation protocols are identical. An agent is granted a budget of 1M environment steps to interact with the environment. The agent performance is evaluated through success rates of the individual achievements throughout its training, as well as an aggregated score.</p><p>Achievements To evaluate a wide spectrum of agent abilities, Crafter defines 22 achievements. The achievements are shown in Figure <ref type="figure">4</ref> and correspond to semantically meaningful behaviors, such as collecting various resources, building objects and tools, finding food and water, defeating monsters, and waking up safely after sleeping. The achievements cover a wide range of difficulties, making them suitable to evaluate both weak and strong players and providing continuous feedback throughout the development process of new methods. Some achievements are independent of each other to test for breadth of exploration, while others depend on each other to test for deep exploration.</p><p>Reward Crafter provides a sparse reward signal that is the sum of two components. The main component is a reward of +1 every time the agent unlocks each achievement for the first time during the current episode. The second component is a reward of -0.1 for every health point lost and a reward of +0.1 for every health point that is regenerated. Because the maximum number of health points is 9, the second reward component only affects the first decimal of the episode return, and ceiling the episode return yields the number of achievements unlocked during the episode.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Success rates</head><p>The success rates offer insights into the breadth of abilities learned by an agent. The success rates are computed separately for each of the achievements, as the fraction of training episodes during which the agent has unlocked the achievement at least once. It is computed across all episodes that lead up to the budget of 1M environment steps, requiring agents to be data-efficient. 1 Note that the number of environment steps is fixed but the number of episodes can differ between agents. Unlocking an achievement more than once per episode does not affect the success rate.</p><p>Score The score summarizes the agent abilities into a single number. It is computed by aggregating the success rates for the individual achievements. Unlocking difficult achievements, even if it happens rarely, should contribute more than increasing the success rate of achievements that are already unlocked frequently even further. To account for the range of difficulties of the achievements, we average the success rates in log-space, known as the geometric mean. 2 Unlike the reward, the score thus takes the achievement's difficulties into account, without having to know them beforehand.</p><p>Discussion Aggregating across tasks via a geometric mean weighs tasks based on their difficulty to the agent, resulting in higher scores for agents that explore more broadly. For example, collecting a diamond 1% of the time instead of 0% is a meaningful improvement, whereas collecting wood 95% of the time instead of 90% is not. This allows distinguishing how broadly agents have explored their environment even if they achieve similar rewards. The geometric mean also establishes a meaningful metric for unsupervised agents, which may get bored of tasks after performing them a few times and then move on to new tasks. A caveat of the geometric mean is that agents with rewards are evaluated by something they only indirectly optimize for, which can change their ranking order. Increasing reward and score is generally correlated, but capacity-limited agents may choose to optimize reward by mastering easy tasks and ignoring hard tasks, which only slowly increases the geometric mean.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.4">RESEARCH CHALLENGES</head><p>Crafter aims to evaluate a diverse range of agent abilities within a single environment. Thus, if a method performs well on Crafter there should be a high chance that it also handles the challenges of other environments. The challenges also make Crafter suitable for evaluating progress on open research questions, such as strong generalization, wide and deep exploration, discovering reusable skills, and long-term memory and reasoning. Crafter is designed to pose the following challenges:</p><p>Exploration Independent achievements evaluate wide exploration, without offering a linear path for the agent to follow. Dependent achievements evaluate deep exploration of the technology tree. Collecting a diamond requires an iron pickaxe, which in turn requires a furnace, table, coal, iron, and wood. The furnace requires collecting stone, which requires building a wood pickaxe at a table.</p><p>Generalization Every episode is situated in a unique world that is procedurally generated. Moreover, many aspects of the game reoccur in different contexts, such as creatures and resources that can be found in different landscapes and times of day. This forces successful agents to recognize similar situations in different circumstances and be robust to changes in irrelevant details.</p><p>1 While allowing a large number of environment steps would help agents achieve higher scores more easily, it would result in a comparison of compute resources rather than algorithm quality.  Crafter scores are computed as the geometric mean across achievements of their success rates within the budget of 1M environment steps. Numbers in Table <ref type="table" target="#tab_1">1</ref>.</p><p>Reusable skills Advancing in the game requires the agent to repeat several behaviors over long horizons, such as finding food, defending against monsters, and collecting common materials that are needed many times. The behavior of a successful agent naturally decomposes into sub-tasks, making Crafter suitable for studying hierarchical reinforcement learning.</p><p>Credit assignment Only sparse rewards are given for unlocking an achievement for the first time during each episode. Moreover, several achievements require long-term reasoning, such as collecting the necessary resources for crafting a particular tool or planting saplings that can be harvested many hundred time steps later. This makes Crafter a challenge for temporal credit assignment.</p><p>Memory The agent inputs only show the player's immediate surroundings, making Crafter partially observed. To survive for a long time, agents need to remember where to find lakes to drink and open grasslands to hunt. Moreover, to effectively find rare resources, such as iron and diamonds, the agent needs to remember what parts of the map it has already searched.</p><p>Representation The agent observes its environment via high-dimensional images, from which it has to extract entities that are meaningful for decision making. Similar to applications in the real world, the reward signal is sparse and the amount of environment interaction limited. As a result, successful agents will likely rely on explicit representation learning techniques.</p><p>Survival In previous environments, the player can often survive by doing nothing. This allows for degenerate solutions to intrinsic objectives, unlike the real world where animals are forced to adapt to survive and maintain homeostasis and allostasis. In Crafter, the player struggles to survive through the constant pressure of maintaining enough water, food, rest, and defending against zombies.  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Method</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">EXPERIMENTS</head><p>To established baselines for future work, we train various reinforcement learning methods on Crafter either with and without rewards. The two benchmarks follow the evaluation protocol in Section 3.3, which grants each agent a budget of 1M environment frames and computes the success rates of the individual achievements across all training episodes, as well as an aggregate score for the agent. Furthermore, we analyze the emergent agent behaviors qualitatively and record a dataset of human expert players to estimate the difficulty of the environment. The environment, code for the baseline agents and figures in this paper, and the human dataset are available on the project website.<ref type="foot" target="#foot_0">3</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">BENCHMARK WITH REWARDS</head><p>We provide baselines scores for three reinforcement learning algorithms on Crafter with rewards. DreamerV2 <ref type="bibr" target="#b9">(Hafner et al., 2020</ref>) learns a world model and optimizes a policy through planning in latent space. We used its default hyper parameters for Atari and increased the model size. PPO <ref type="bibr" target="#b20">(Schulman et al., 2017</ref>) is a popular method that learns to map input images to actions through policy gradients. We use a convolutional neural network policy with hyper parameters that were tuned for Atari <ref type="bibr" target="#b11">(Hill et al., 2018)</ref>. Rainbow <ref type="bibr" target="#b10">(Hessel et al., 2018)</ref> is based on Q-Learning and combines several advances, including for exploration. The defaults for Atari did not work well, so we tuned the hyper parameters for Crafter and found a compromise between Atari defaults and the data-efficient version of the method (van Hasselt et al., 2019) to be ideal. All agents trained for 1M environment steps in under 24 hours on a single GPU and we repeated the training for 10 random seeds per method. The training reward curves are included in Appendix D.</p><p>The scores are listed in Table <ref type="table" target="#tab_1">1</ref> and visualized in Figure <ref type="figure" target="#fig_3">5</ref>. DreamerV2 achieves a score of 10.0%, followed by PPO with 4.6% and Rainbow of 4.3%. Despite these being top reinforcement learning methods, they lack behind the score of expert human players of 50.5%, which we describe in further detail in Section 4.3. We conclude that Crafter is a challenging benchmark, where current methods make learning progress but future research is needed to achieve high performance. For comparison, we report the episode returns in Table <ref type="table" target="#tab_1">1</ref>, computed over the episodes within the last 10 5 environment steps of training. We find a trend similar to the scores but notice that the methods are harder to tell apart, because differences on hard tasks that are rarely achieved affect the return less. Moreover, the scores are more meaningful for unsupervised agents, which should explore many achievements over time, but not necessarily remain interested in them until the end of training. The success rates for individual achievements are visualized in Figure <ref type="figure" target="#fig_5">7</ref>, which offer insights into the breadth and depth of agent abilities. Rainbow displays high success rates on easier achievements. PPO learned to additionally make stone tools and furnaces. DreamerV2 achieved these more frequently and discovered growing and harvesting plants. None of the agents learned to collect and use iron for tools or to collect diamonds, or to achieve high success rates on many of the achievements.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">UNSUPERVISED BENCHMARK</head><p>We provide baselines scores for two unsupervised reinforcement learning agents on Crafter without rewards. We also include a baseline that simply chooses random actions. RND <ref type="bibr">(Burda et al., 2018b)</ref> is a popular exploration method that seeks out novel inputs, estimated as the prediction error of a network that aims to predict fixed random embeddings of the input images. We use its default parameters for Atari. Plan2Explore <ref type="bibr" target="#b21">(Sekar et al., 2020</ref>) learns a world model to plan for the expected information gain of imagined trajectories, allowing it to directly seek out imagined states that have not been experienced before. We implement Plan2Explore on top of DreamerV2 and keep the same hyper parameters. We use a non-episodic value function as RND does, which helps exploration in episodic environments <ref type="bibr">(Burda et al., 2018b)</ref>. All agents trained for 1M environment steps in under 24 hours on a single GPU and we repeated the training for 10 random seeds per method.</p><p>The scores are listed in Table <ref type="table" target="#tab_1">1</ref> and in Figure <ref type="figure" target="#fig_3">5</ref>. Plan2Explore achieves a score of 2.1%, followed by RND at 2.0%, both ahead of the random agent at 1.6%. Despite these being top unsupervised reinforcement learning methods, they lack far behind optimal performance or even the performance of agents that learn with rewards, posing a substantial challenge for future research. The results are encouraging, showing that unsupervised objectives by themselves can lead to meaningful behaviors <ref type="bibr">(Burda et al., 2018a)</ref> in Crafter. Inspecting the success rates for individual achievements in Figure <ref type="figure" target="#fig_4">6</ref> confirms that Plan2Explore and RND make progress in exploring the different behaviors compared to the random agent, including occasionally collecting coal, placing furnaces, and making stone swords, which are several steps deep into the technology tree.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">EMERGENT BEHAVIORS</head><p>To better understand the potential of the environment, we train DreamerV2 for 50M steps and investigate the behaviors qualitatively. In this amount of time, the agent learns to build stone tools and even iron tools on individual occurrences. Interestingly, we observe a range of sophisticated emergent behaviors, such as building tunnel systems, building bridges to cross lakes, and outsmarting skeletons by dodging arrows, blocking arrows with stones, and digging through walls to surprise skeletons from the side. Furthermore, DreamerV2 learns to seek shelter to protect itself from the zombies at night by hiding in caves and even digging its own caves and closing the entrances with stones. Finally, we find that the agent sometimes manages to build plantations of many saplings, defends them against monsters, and eats the growing fruits in order to ensure a reliable and steady food supply. A video of the emergent behaviors is available on the project website.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">HUMAN EXPERTS DATASET</head><p>Crafter includes a graphical user interface that allows humans to play the game via the keyboard and record the trajectories of the game. The human interface can be installed via the command shown in Figure <ref type="figure" target="#fig_1">2</ref>. Through the human interface, we recorded the games of 5 human experts for a combined total of 100 episodes. The experts were given the instructions of the game and allowed several hours of practice. Out of the 100 episodes, 5 episodes unlock all 22 achievements. The human experts achieved a score of 50.5%, unlocking all achievements as shown in Table <ref type="table">C</ref>.1. The achievements most difficult to humans were to collect diamonds and grow and harvest plans, with success rates of 12% and 8%, respectively. While the human dataset is separate from the Crafter benchmark, it provides an estimate of human performance and can be used for research on learning from demonstrations and imitation learning. The human dataset is available on the project website.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">DISCUSSION</head><p>Future work We selected the difficulty of Crafter to be challenging yet not hopeless for current methods. As research progresses towards solving the challenges that are currently present, it may become necessary to extend Crafter by new enemies, resources, items, and achievements. Being written purely in Python, Crafter can easily be extended in this way. Moreover, grouping the 22 achievements into categories, such as memory, generalization, and exploration, would allow us to summarize agent abilities more abstractly <ref type="bibr" target="#b19">(Osband et al., 2019)</ref>. We did not attempt such a categorization because it is subjective and will become clearer as more researchers use the environment.</p><p>Summary We introduced Crafter, a benchmark with visual inputs that evaluates a variety of general agent abilities in a single environment. We described the game mechanics, evaluation protocol, and open challenges posed by the benchmark, and performed experiments with several agents with and without rewards to provide baseline scores. Agents are evaluated based on how frequently they manage to unlock achievements that correspond to semantically meaningful milestones of behavior.</p><p>We conclude that Crafter is well suited and of appropriate difficulty to guide future research on intelligent agents, both for learning from extrinsic rewards and purely from intrinsic objectives.</p><p>A SUCCESS RATES WITH REWARDS Table <ref type="table">C</ref>.1: Success rates of human experts on Crafter. The success rates of human experts are computed as the fraction of all 100 recorded games during which the achievement has been unlocked at least once. To compute the score analogously to the artificial agents, we randomly split the 100 games into 5 groups that are treated as the different seeds. We then follow the same procedure as for the artificial agents.      </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Agent view of a procedurally generated world in Crafter, showing terrain types, resources, and creatures. Agents learn from image inputs and aim to unlock a range of semantically meaningful achievements during each episode. The achievements evaluate strong generalization, wide and deep exploration, and long-term reasoning.</figDesc><graphic coords="1,345.60,426.40,158.40,158.40" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>$Figure 2 :</head><label>2</label><figDesc>Figure 2: Play Crafter yourself through the human interface.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head></head><label></label><figDesc>2 The Crafter score of an agent is computed as S . = exp( 1 N N i=1 ln(1 + si)) -1, where si ∈ [0; 100] is the agent's success rate of achievement i and N = 22 is the number of achievements.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 5 :</head><label>5</label><figDesc>Figure5: Crafter Benchmark Scores for various agents with and without rewards. Current top methods achieve scores of up to 10% that are far from the 50% of human experts, posing a substantial challenge for future research. Crafter scores are computed as the geometric mean across achievements of their success rates within the budget of 1M environment steps. Numbers in Table1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>CFigure 6 :</head><label>6</label><figDesc>Figure6: Agent ability spectrum showing the success rates of agents with rewards. These are unlocking percentages for all 22 achievements, computed over all training episodes. Rainbow manages to drink water and forage for food. PPO additionally rarely collects coal and builds stone tools. DreamerV2 achieves these more frequently and additionally sometimes grows and eats fruits. Numbers in Appendix A.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figure 7 :</head><label>7</label><figDesc>Figure7: Agent ability spectrum showing the success rates for Crafter without rewards. Random actions unlock the 6 easiest achievements sometimes, such as drinking water and collecting wood. Plan2Explore forages for food and defeats monsters more frequently, to ensure longer survival. RND additionally collects stones and rarely even collects coal and builds furnaces. Numbers in Appendix B.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>Figure D.1: Total episode reward with shaded standard deviation. The optimal achievable episode reward is 22. While visualizing rewards can be informative for debugging, final performance on Crafter should be reported by computing the score instead. The score takes the different difficulties of the achievements into account and is defined as the geometric mean of the success rates for all achievements, as described in Section 3.3.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure G. 1 :</head><label>1</label><figDesc>Figure G.1: Achievement counts of Rainbow with shaded min and max.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure I. 1 :</head><label>1</label><figDesc>Figure I.1: Achievement counts of DreamerV2 with shaded min and max.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure J. 1 :</head><label>1</label><figDesc>Figure J.1: Achievement counts of random actions with shaded min and max.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure K. 1 :</head><label>1</label><figDesc>Figure K.1: Achievement counts of unsupervised RND with shaded min and max.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head>Figure L. 1 :</head><label>1</label><figDesc>Figure L.1: Achievement counts of unsupervised Plan2Explore with shaded min and max.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1 :</head><label>1</label><figDesc>Crafter benchmark scores. The Crafter score is computed as the geometric mean of success rates for all 22 achievements available in the environment. The score prefers general agents that unlock a wide range of achievements over those that unlock a small number of achievements very frequently. For example, an agent that explores many different achievements over the course of training achieves a higher score than one that only performs same simple tasks over an over. The score thus establishes a meaningful metric both for agents with and without reward.</figDesc><table><row><cell></cell><cell>Score (%)</cell><cell>Return</cell></row><row><cell>Human Experts</cell><cell cols="2">50.5±6.8 14.3±2.3</cell></row><row><cell>DreamerV2</cell><cell>10.0±1.2</cell><cell>9.0±1.7</cell></row><row><cell>PPO</cell><cell>4.6±0.3</cell><cell>4.2±1.2</cell></row><row><cell>Rainbow</cell><cell>4.3±0.2</cell><cell>5.0±1.3</cell></row><row><cell cols="2">Plan2Explore (Unsup) 2.1±0.1</cell><cell>2.1±1.5</cell></row><row><cell>RND (Unsup)</cell><cell>2.0±0.1</cell><cell>0.7±1.3</cell></row><row><cell>Random</cell><cell>1.6±0.0</cell><cell>2.1±1.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>Success rates on Crafter with rewards. Success rates are computed as the fraction of episodes during which the achievement has been unlocked at least once. It is computed across all training episodes within the budget of 1M environment steps. The score is the geometric mean of success rates over all achievements, as described in Section 3.3. Note that the score is computed for each seed separately before averaging over seeds and not the other way around. Numbers within 95% of the best number in each row are highlighted in bold. Success rates on Crafter without rewards. Success rates are computed as the fraction of episodes during which the achievement has been unlocked at least once. It is computed across all training episodes within the budget of 1M environment steps. The score is the geometric mean of success rates over all achievements, as described in Section 3.3. Note that the score is computed for each seed separately before averaging over seeds and not the other way around. Numbers within 95% of the best number in each row are highlighted in bold.C SUCCESS RATES OF HUMAN EXPERTS</figDesc><table><row><cell>Achievement Collect Coal Collect Diamond Collect Drink Collect Iron Collect Sapling Collect Stone Collect Wood Defeat Skeleton Defeat Zombie Eat Cow Eat Plant Make Iron Pickaxe Make Iron Sword Make Stone Pickaxe Make Stone Sword Make Wood Pickaxe Make Wood Sword Place Furnace Place Plant Place Stone Place Table Wake Up Score Table A.1: B SUCCESS RATES WITHOUT REWARDS Rainbow 0.0% 0.0% 24.0% 0.0% 97.4% 0.2% 74.9% 0.7% 39.6% 26.1% 0.0% 0.0% 0.0% 0.0% 0.0% 4.8% 9.8% 0.0% 94.2% 0.0% 52.3% 93.3% 4.3% Achievement Random Collect Coal 0.0% Collect Diamond 0.0% Collect Drink 9.3% Collect Iron 0.0% Collect Sapling 50.2% Collect Stone 0.0% Collect Wood 24.4% Skeleton 0.0% Defeat Zombie 0.1% Eat Cow 0.4% Eat Plant 0.0% Make Iron Pickaxe 0.0% Make Iron Sword 0.0% Make Stone Pickaxe 0.0% Make Stone Sword 0.0% Make Wood Pickaxe 0.3% Make Wood Sword 0.3% Place Furnace 0.0% Place Plant 44.6% Place Stone 0.0% Place Table 4.4% Wake Up 93.6% Score 1.6% Collect Coal Collect Diamond Collect Drink Collect Iron Collect Sapling Collect Stone Collect Wood Defeat Skeleton Defeat Zombie Eat Cow Eat Make Iron Pickaxe Make Iron Sword Make Stone Pickaxe Make Stone Sword Make Wood Pickaxe Make Wood Sword Place Furnace Place Plant Place Stone Place Table Wake Up Table B.1: Achievement Score</cell><cell>PPO 0.4% 0.0% 30.3% 0.0% 66.7% 3.0% 83.0% 0.2% 2.0% 12.0% 0.0% 0.0% 0.0% 0.0% 0.0% 21.1% 20.1% 0.1% 65.0% 1.7% 66.1% 92.5% 4.6% RND 0.1% 0.0% 52.1% 0.0% 34.1% 0.6% 49.6% 0.3% 0.3% 0.9% 0.0% 0.0% 0.0% 0.0% 0.0% 2.5% 2.6% 0.1% 21.4% 0.4% 16.7% 7.8% 2.0% Human Experts 86.0% 12.0% 92.0% 53.0% 67.0% 100.0% 100.0% 31.0% 84.0% 89.0% 8.0% 26.0% 22.0% 78.0% 78.0% 100.0% 45.0% 32.0% 24.0% 90.0% 100.0% 73.0% 50.5%</cell><cell>DreamerV2 14.7% 0.0% 80.0% 0.0% 86.6% 42.7% 92.7% 2.6% 53.1% 17.1% 0.1% 0.0% 0.0% 0.2% 0.3% 59.6% 40.2% 1.8% 84.4% 29.0% 85.7% 92.8% 10.0% Plan2Explore 0.1% 0.0% 48.7% 0.0% 25.5% 0.5% 46.8% 0.2% 0.2% 0.7% 0.0% 0.0% 0.0% 0.0% 0.0% 3.3% 3.3% 0.0% 14.0% 0.3% 16.3% 47.8% 2.1%</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_0"><p>https://danijar.com/crafter</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Acknowledgements We would like to thank <rs type="person">Oleh Rybkin</rs>, <rs type="person">Ben Eysenbach</rs>, <rs type="person">Sherjil Ozair</rs>, <rs type="person">Julius Kunze</rs>, <rs type="person">Feryal Behbahani</rs>, <rs type="person">Timothy Lillicrap</rs>, <rs type="person">Jimmy Ba</rs>, <rs type="person">Nicolas Heess</rs>, <rs type="person">Kory Mathewson</rs>, <rs type="person">Mohammad Norouzi</rs>, <rs type="person">Hamza Merzic</rs>, and <rs type="person">Sergey Levine</rs> for discussions and feedback.</p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Agent57: Outperforming the atari human benchmark</title>
+		<author>
+			<persName><forename type="first">Adrià</forename><surname>Puigdomènech Badia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bilal</forename><surname>Piot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Kapturowski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pablo</forename><surname>Sprechmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Vitvitskyi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaohan</forename><surname>Daniel Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Blundell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Machine Learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="507" to="517" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">Charles</forename><surname>Beattie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><forename type="middle">Z</forename><surname>Leibo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denis</forename><surname>Teplyashin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marcus</forename><surname>Wainwright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heinrich</forename><surname>Küttler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Lefrancq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Green</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Víctor</forename><surname>Valdés</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amir</forename><surname>Sadik</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1612.03801</idno>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The arcade learning environment: An evaluation platform for general agents</title>
+		<author>
+			<persName><forename type="first">Yavar</forename><surname>Marc G Bellemare</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Naddaf</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Veness</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bowling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">47</biblScope>
+			<biblScope unit="page" from="253" to="279" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Openai gym</title>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Brockman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vicki</forename><surname>Cheung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ludwig</forename><surname>Pettersson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonas</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jie</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Zaremba</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuri</forename><surname>Burda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harri</forename><surname>Edwards</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Pathak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amos</forename><surname>Storkey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Trevor</forename><surname>Darrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexei</forename><forename type="middle">A</forename><surname>Efros</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1808.04355</idno>
+		<title level="m">Large-scale study of curiosity-driven learning</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Exploration by random network distillation</title>
+		<author>
+			<persName><forename type="first">Yuri</forename><surname>Burda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harrison</forename><surname>Edwards</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amos</forename><surname>Storkey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleg</forename><surname>Klimov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1810.12894</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<monogr>
+		<title level="m" type="main">Dopamine: A research framework for deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Pablo</forename><surname>Samuel Castro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Subhodeep</forename><surname>Moitra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carles</forename><surname>Gelada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurabh</forename><surname>Kumar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><forename type="middle">G</forename><surname>Bellemare</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1812.06110</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Leveraging procedural generation to benchmark reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Karl</forename><surname>Cobbe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Hesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Hilton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International conference on machine learning</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="2048" to="2056" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">The minerl competition on sample efficient reinforcement learning using human priors</title>
+		<author>
+			<persName><forename type="first">Cayden</forename><surname>William H Guss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katja</forename><surname>Codel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Hofmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noboru</forename><surname>Houghton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephanie</forename><surname>Kuno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sharada</forename><surname>Milani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>Mohanty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Perez Liebana</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholay</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Topin</surname></persName>
+		</author>
+		<idno>arXiv-1904</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv e-prints</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Mastering atari with discrete world models</title>
+		<author>
+			<persName><forename type="first">Danijar</forename><surname>Hafner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Lillicrap</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Norouzi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jimmy</forename><surname>Ba</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2010.02193</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Rainbow: Combining improvements in deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Hessel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><surname>Modayil</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hado</forename><surname>Van Hasselt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Schaul</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Ostrovski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Will</forename><surname>Dabney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Horgan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bilal</forename><surname>Piot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mohammad</forename><surname>Azar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Silver</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-Second AAAI Conference on Artificial Intelligence</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<author>
+			<persName><forename type="first">Ashley</forename><surname>Hill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonin</forename><surname>Raffin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maximilian</forename><surname>Ernestus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Gleave</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anssi</forename><surname>Kanervisto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rene</forename><surname>Traore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><surname>Hesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleg</forename><surname>Klimov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Nichol</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Plappert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Szymon</forename><surname>Sidor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuhuai</forename><surname>Wu</surname></persName>
+		</author>
+		<ptr target="https://github.com/hill-a/stable-baselines" />
+		<title level="m">Stable baselines</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">The malmo platform for artificial intelligence experimentation</title>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Johnson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katja</forename><surname>Hofmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Hutton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Bignell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">IJCAI</title>
+		<imprint>
+			<publisher>Citeseer</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="4246" to="4247" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Unity: A general platform for intelligent agents</title>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Juliani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent-Pierre</forename><surname>Berges</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ervin</forename><surname>Teng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Cohen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jonathan</forename><surname>Harper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Elion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Goy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuan</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hunter</forename><surname>Henry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marwan</forename><surname>Mattar</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1809.02627</idno>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Vizdoom: A doom-based ai research platform for visual reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Michał</forename><surname>Kempka</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marek</forename><surname>Wydmuch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Grzegorz</forename><surname>Runc</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakub</forename><surname>Toczek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wojciech</forename><surname>Jaśkowski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">2016 IEEE Conference on Computational Intelligence and Games (CIG)</title>
+		<imprint>
+			<publisher>IEEE</publisher>
+			<date type="published" when="2016">2016</date>
+			<biblScope unit="page" from="1" to="8" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title level="m" type="main">The nethack learning environment</title>
+		<author>
+			<persName><forename type="first">Heinrich</forename><surname>Küttler</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nantas</forename><surname>Nardelli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexander</forename><forename type="middle">H</forename><surname>Miller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roberta</forename><surname>Raileanu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Selvatici</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Grefenstette</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tim</forename><surname>Rocktäschel</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2006.13760</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Revisiting the arcade learning environment: Evaluation protocols and open problems for general agents</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Marlos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><forename type="middle">G</forename><surname>Machado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erik</forename><surname>Bellemare</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Talvitie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matthew</forename><surname>Veness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Hausknecht</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Bowling</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Artificial Intelligence Research</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="page" from="523" to="562" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Retrospective analysis of the 2019 minerl competition on sample efficient reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Stephanie</forename><surname>Milani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholay</forename><surname>Topin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Brandon</forename><surname>Houghton</surname></persName>
+		</author>
+		<author>
+			<persName><surname>William H Guss</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Sharada</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Keisuke</forename><surname>Mohanty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oriol</forename><surname>Nakata</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Vinyals</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sean</forename><surname>Noboru</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kuno</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NeurIPS 2019 Competition and Demonstration Track</title>
+		<imprint>
+			<publisher>PMLR</publisher>
+			<date type="published" when="2020">2020</date>
+			<biblScope unit="page" from="203" to="214" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Human-level control through deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Volodymyr</forename><surname>Mnih</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Koray</forename><surname>Kavukcuoglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Silver</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrei</forename><forename type="middle">A</forename><surname>Rusu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joel</forename><surname>Veness</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marc</forename><forename type="middle">G</forename><surname>Bellemare</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Graves</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Riedmiller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andreas</forename><forename type="middle">K</forename><surname>Fidjeland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Georg</forename><surname>Ostrovski</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nature</title>
+		<imprint>
+			<biblScope unit="volume">518</biblScope>
+			<biblScope unit="issue">7540</biblScope>
+			<biblScope unit="page">529</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Behaviour suite for reinforcement learning</title>
+		<author>
+			<persName><forename type="first">Ian</forename><surname>Osband</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yotam</forename><surname>Doron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Hessel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Aslanides</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eren</forename><surname>Sezener</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andre</forename><surname>Saraiva</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katrina</forename><surname>Mckinney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tor</forename><surname>Lattimore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Csaba</forename><surname>Szepesvari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Satinder</forename><surname>Singh</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1908.03568</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Proximal policy optimization algorithms</title>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Filip</forename><surname>Wolski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Prafulla</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Radford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleg</forename><surname>Klimov</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1707.06347</idno>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Planning to explore via self-supervised world models</title>
+		<author>
+			<persName><forename type="first">Ramanan</forename><surname>Sekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Oleh</forename><surname>Rybkin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kostas</forename><surname>Daniilidis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pieter</forename><surname>Abbeel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danijar</forename><surname>Hafner</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deepak</forename><surname>Pathak</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.05960</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Noise!</title>
+		<author>
+			<persName><forename type="first">Kurt</forename><surname>Spencer</surname></persName>
+		</author>
+		<ptr target="https://uniblock.tumblr.com/post/97868843242/noise" />
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<author>
+			<persName><forename type="first">Yuval</forename><surname>Tassa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yotam</forename><surname>Doron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alistair</forename><surname>Muldal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Erez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yazhe</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>De Las</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Casas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abbas</forename><surname>Budden</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Josh</forename><surname>Abdolmaleki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Merel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Lefrancq</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1801.00690</idno>
+		<title level="m">Deepmind control suite</title>
+		<imprint>
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">When to use parametric models in reinforcement learning?</title>
+		<author>
+			<persName><forename type="first">Matteo</forename><surname>Hado P Van Hasselt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Hessel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Aslanides</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="14322" to="14333" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${fileDirname}",
+            "name": "Python: Debug with Virtual Environment",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/bruce/Downloads/AllTheWorldAPlay/src/Owl.py", 
+            "pythonPath": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",  // On Windows: venv\\Scripts\\python.exe
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins"
+            }
+        }
+    ]
+}

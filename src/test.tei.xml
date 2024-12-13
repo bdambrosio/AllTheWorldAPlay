@@ -1,0 +1,1613 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Small Molecule Optimization with Large Language Models</title>
+				<funder>
+					<orgName type="full">Yandex Armenia fellowship</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+				<date type="published" when="2024-07-26">26 Jul 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Guevorguian</forename><surname>Philipp</surname></persName>
+						</author>
+						<author>
+							<persName><surname>Yerevann</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Menua</forename><surname>Bedrosian</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yerevann</forename><forename type="middle">Tigran</forename><surname>Fahradyan</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Gayane</forename><surname>Chilingaryan</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Yerevann</forename><surname>Hrant</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Khachatrian</forename><surname>Yerevann</surname></persName>
+						</author>
+						<author>
+							<persName><forename type="first">Armen</forename><surname>Aghajanyan</surname></persName>
+						</author>
+						<title level="a" type="main">Small Molecule Optimization with Large Language Models</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-07-26">26 Jul 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">7E68C2E25433CF562A7BC1E2F5A80607</idno>
+					<idno type="arXiv">arXiv:2407.18897v1[cs.LG]</idno>
+					<note type="submission">Preprint. Under review.</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.1-SNAPSHOT" ident="GROBID" when="2024-07-30T16:10+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Recent advancements in large language models have opened new possibilities for generative molecular drug design. We present Chemlactica and Chemma, two language models fine-tuned on a novel corpus of 110M molecules with computed properties, totaling 40B tokens. These models demonstrate strong performance in generating molecules with specified properties and predicting new molecular characteristics from limited samples. We introduce a novel optimization algorithm that leverages our language models to optimize molecules for arbitrary properties given limited access to a black box oracle. Our approach combines ideas from genetic algorithms, rejection sampling, and prompt optimization. It achieves stateof-the-art performance on multiple molecular optimization benchmarks, including an 8% improvement on Practical Molecular Optimization compared to previous methods. We publicly release the training corpus, the language models and the optimization algorithm.</p><p>We present a novel approach that harnesses LLMs to generate and optimize small molecules with unprecedented efficiency and accuracy. Our method uniquely combines LLMs' generative capabilities with evolutionary strategies, enabling more effective exploration of chemical space than traditional graph-based or SMILES-based models. Our training corpus, models and code can be found at https://github.com/yerevann/chemlactica.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1">Introduction</head><p>Molecular optimization is a cornerstone of drug discovery, involving the complex task of identifying compounds with specific desirable properties. This process traditionally requires extensive laboratory experimentation, making it time-consuming and costly. Computational methods have emerged as powerful tools to accelerate this process, yet they often need help with the vast and discrete nature of chemical space <ref type="bibr" target="#b30">[Wu et al., 2018]</ref>.</p><p>Large language models (LLMs) have recently demonstrated remarkable capabilities across various domains, from natural language processing to code generation <ref type="bibr" target="#b3">[Brown et al., 2020</ref><ref type="bibr">, OpenAI, 2023]</ref>. While there have been initial attempts to apply LLMs to chemical tasks <ref type="bibr" target="#b14">[Irwin et al., 2022</ref><ref type="bibr" target="#b7">, Edwards et al., 2022</ref><ref type="bibr" target="#b5">, Chilingaryan et al., 2024]</ref>, these efforts have often been limited in scope or performance. Our work represents a significant leap forward, leveraging the full power of LLMs to revolutionize molecular optimization for drug discovery.</p><p>1. We develop a comprehensive molecular corpus derived from PubChem <ref type="bibr" target="#b19">[Kim et al., 2015]</ref>,</p><p>encompassing over 110 million molecules and their properties. This corpus, richer in chemical information compared to SMILES-only corpora used in previous studies, serves as the foundation for training our specialized LLMs: Chemlactica (125M and 1.3B parameters) and Chemma (2B parameters). These models demonstrate a deep understanding of molecular structures and properties, enabling more accurate predictions and generations.</p><p>2. We introduce a new molecule optimization algorithm that unifies concepts from genetic algorithms, rejection sampling, and prompt optimization. This algorithm leverages our trained LLMs to efficiently navigate the vast chemical space, generating molecules with targeted properties.</p><p>3. Our approach demonstrates state-of-the-art performance on multiple molecular optimization benchmarks. On the challenging Practical Molecular Optimization (PMO) tasks <ref type="bibr" target="#b10">[Gao et al., 2022]</ref>, we achieved an average improvement of 8% over the previous best method. In drug discovery case studies involving protein-ligand docking, our method generates viable drug candidates up to 4 times faster than existing approaches.</p><p>4. We illustrate the adaptability of our models through efficient fine-tuning for various molecular property predictions. With just a few hundred training examples, our models achieve competitive performance on standard benchmarks like ESOL and FreeSolv, showcasing their potential for rapid adaptation to new tasks in drug discovery pipelines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Related Work</head><p>Language Models for Molecular Representation While graph-based representations are common for molecules, string-based representations, particularly Simplified Molecular Input Line Entry System (SMILES) <ref type="bibr" target="#b29">[Weininger, 1988]</ref>, have gained traction due to their compatibility with language models. This approach leverages the power of pre-trained language models and enables efficient processing of molecular data. Notable examples include ChemFormer <ref type="bibr" target="#b14">[Irwin et al., 2022]</ref>, MolT5 <ref type="bibr" target="#b7">[Edwards et al., 2022]</ref>, and BARTSmiles <ref type="bibr" target="#b5">[Chilingaryan et al., 2024]</ref>, which adapt traditional language model architectures to chemical tasks. These models demonstrate the potential of applying natural language processing techniques to molecular design and property prediction.</p><p>Molecular Optimization Techniques Molecular optimization, a key challenge in drug discovery, involves navigating a vast combinatorial space of potential drugs while satisfying multiple constraints.</p><p>Traditional approaches include genetic algorithms adapted for molecular graphs, often incorporating domain-specific heuristics <ref type="bibr" target="#b16">[Jensen, 2019]</ref>. More recent methods leverage machine learning, particularly deep learning techniques. For instance, variational autoencoders <ref type="bibr" target="#b21">[Kingma and Welling, 2013]</ref> have been applied to generate and optimize molecules in latent space. The GFlowNets <ref type="bibr" target="#b1">[Bengio et al., 2021]</ref> represents a novel approach designed to sample compositional objects (like molecules) with reward-proportional probability, making it well-suited for optimization tasks. Extensions of GFlowNets <ref type="bibr" target="#b18">[Kim et al., 2024]</ref> incorporating genetic search have shown promising results in molecular optimization.</p><p>Recurrent Neural Networks in Molecular Design Recurrent neural networks (RNNs) have also been applied to molecular optimization. A notable example is REINVENT <ref type="bibr" target="#b23">[Olivecrona et al., 2017]</ref>, which uses policy-based reinforcement learning to generate molecules with desired properties. Recent enhancements to REINVENT, such as augmented memory and beam enumeration <ref type="bibr">[Guo and Schwaller, 2023b]</ref>, have further improved its performance. These approaches combine molecular diversity filters, experience replay mechanisms, and substructure filtering to increase sample efficiency in molecular optimization tasks.</p><p>Large Language Models in Optimization The success of large language models (LLMs) has led to their application in various optimization tasks beyond text generation. For instance, Chen et al.</p><p>[2023] combined prompt tuning with evolutionary algorithms to design neural network architectures, outperforming human experts on specific tasks. Similarly, EvoPrompt <ref type="bibr">[Guo et al., 2023]</ref> developed a general evolutionary algorithm using language models, optimizing task-specific prompts for various downstream applications. These studies demonstrate the potential of LLMs in complex optimization problems, paving the way for their application in molecular design and optimization.</p><p>Our work builds upon these foundations, uniquely combining the strengths of large language models with evolutionary strategies for molecular optimization. We extend the application of LLMs beyond simple property prediction or generation, developing a comprehensive framework for navigating the complex landscape of molecular design.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Training Corpus</head><p>Molecular Database from PubChem We constructed a comprehensive SQL database using PubChem dumps, encompassing information on molecules, similar molecule pairs, experimental properties, and bioassays. Using rdkit <ref type="bibr" target="#b22">[Landrum et al., 2013]</ref>, we computed key molecular properties, including synthesizability score (SAS), quantitatively estimated drug-likeness (QED), molecular weight (MW), total polar surface area (TPSA), partition coefficient (CLogP), and various structural features such as hydrogen donors/acceptors and ring counts. Due to differences in SMILES canonicalization between PubChem and rdkit, we standardized all SMILES strings using rdkit's implementation.</p><p>Our dataset's cutoff date is January 26th, 2023, excluding any subsequent additions or modifications to PubChem. To ensure data integrity, molecules that failed rdkit's MolFromSmiles parsing were discarded.</p><p>To incorporate similarity information, we utilized PubChem's related molecule data, which includes pairs with Tanimoto similarity ≥0.8 based on PubChem fingerprints. From the resulting 200 billion pairs, we sampled 4 billion and recalculated their similarities using the ECFC4 fingerprint for improved accuracy and consistency with widely used methods.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>JSONL Corpus Generation</head><p>We transformed our database into a corpus of JSONL files, with each molecule represented as a single JSON object. Below is an abbreviated example for aspirin: This representation includes molecular identifiers, computed properties, similarity data, synonyms, experimental properties, and the PubChem compound identifier (CID).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Text Generation Template</head><p>We developed a template system using paired tags to delimit each property and data point. For instance, a molecule's QED value is represented as</p><formula xml:id="formula_0">[QED]0.84[/QED].</formula><p>To enhance the model's versatility in both property prediction and property-conditioned molecular generation, we randomized the property order and alternated the position of the primary molecule (start vs. in-between other tags) with equal probability.</p><p>This carefully curated and structured corpus forms the foundation for training our language models, enabling them to learn complex relationships between molecular structures and properties.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4">Model Training and Evaluation</head><p>Selection of Pretrained Language Models We chose models for continued pretraining based on their general-purpose performance and domain-specific knowledge. At its release, Galactica outperformed models like OPT, Chinchilla, and BLOOM on tasks such as BIG-bench, MMLU, and TruthfulQA <ref type="bibr" target="#b25">[Taylor et al., 2022]</ref>. Its pretraining included two million PubChem molecules, SMILES-specific tagging, and a scientific corpus, making it well-suited for molecular data. Gemma, while not explicitly trained on molecular data, underwent extensive pretraining (2 trillion tokens for Gemma-2B) and demonstrated state-of-the-art performance on benchmarks like MMLU, HellaSwag, and Human eval, comparable to larger models like LLaMA 2 and Mistral <ref type="bibr" target="#b26">[Team et al., 2024]</ref>.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Tokenization and Sample Preparation</head><p>We utilized the original tokenizers from Gemma and Galactica, adding chemistry-specific tokens [START_SMILES] and [END_SMILES] to Gemma's tokenizer for consistency. To optimize training efficiency, we included all opening and closing tags as special tokens (e.g., <ref type="bibr">[QED]</ref>). Samples of varying lengths were tokenized and grouped into blocks of 2048 tokens, separated by model-specific separator tokens (EOS "&lt;/s&gt;" for Chemlactica, BOS "&lt;bos&gt;" for Chemma).</p><p>Training Methodology Both Chemma and Chemlactica were trained using the Adam optimizer <ref type="bibr" target="#b20">[Kingma and Ba, 2014]</ref> with cross-entropy loss and a causal language modeling objective. We applied dropout only to Chemlactica, maintaining consistency with the original model architectures.</p><p>Chemma-2B was trained in full bfloat16 for computational efficiency. We leveraged PyTorch's <ref type="bibr" target="#b24">[Paszke et al., 2019]</ref> Fully Sharded Data Parallel (FSDP) <ref type="bibr" target="#b31">[Zhao et al., 2023]</ref> and Flash Attention <ref type="bibr" target="#b6">[Dao, 2024]</ref> for optimized training. The training was conducted locally at Yerevan State University (Chemlactica-125M: 306 A100 hours) and on Nebius.ai cloud (Chemma-2B: 488 H100 GPU hours, Chemlactica-1.3B: 288 H100 GPU hours). Preparatory work before the final training runs consumed multiple thousands of A100 hours.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Evaluation of Computed Property Prediction and Conditional Generation</head><p>To assess our models' proficiency in learning computed properties, we conducted two comprehensive experiments:</p><p>Property Prediction We randomly sampled a fixed set of 100 molecules from the validation set.</p><p>For each property, we prompted the models with</p><formula xml:id="formula_1">[START_SMILES]M i [END_SMILES][QED],</formula><p>where M i represents the SMILES string of the molecule. We then calculated the Root Mean Square Error (RMSE) between predicted and actual property values to evaluate performance.</p><p>Conditional Generation For each property, we sampled 100 values v i from the distribution of PubChem molecules. We then prompted the models to generate molecules with</p><formula xml:id="formula_2">[QED]v i [/QED][START_SMILES].</formula><p>Using rdkit, we computed the actual property values of the generated SMILES and calculated the RMSE against the target v i .</p><p>Table <ref type="table" target="#tab_0">1</ref> presents the results for both Property Prediction (PP) and Conditional Generation (CG) across various properties for our three model variants. For Chemma-2B, we provide evaluations at different training data volumes, including a compute-controlled run with 2.1B tokens to ensure fair comparison with Chemlactica-125M.</p><p>To account for potential invalid generations, we compute a corrected RMSE by substituting the property values of invalid SMILES with the mean value of the respective property's distribution in our dataset.</p><p>Our generation process incorporates several techniques to improve output quality:</p><p>• Chain-of-Thought (CoT): We omit [START_SMILES] from the initial prompt, enabling the model to generate more property values before the molecule itself.</p><p>• Repetition Penalty: Applied to discourage repetitive outputs <ref type="bibr" target="#b17">[Keskar et al., 2019]</ref>.</p><p>• Undesired Token Suppression: Employed to ensure the model eventually generates</p><formula xml:id="formula_3">[START_SMILES].</formula><p>Table <ref type="table" target="#tab_1">2</ref> provides an ablation study of these sampling components across our three models, demonstrating their individual and combined impacts on generation quality. Surprisingly, the best combinations of hyperparameters coincide for all three models.</p><p>These experiments comprehensively show our models' capabilities in predicting molecular properties and generating molecules with specified properties. These are crucial tasks in computational drug discovery and molecular design. Model calibration in language modeling refers to the alignment between a model's predicted probabilities for generating specific text and the actual likelihood of that text being correct. To assess the calibration of our models, we developed a suite of multiple-choice property prediction questions based on our training data format.</p><p>We generated 2000 questions for each computed property, resulting in 10,000 responses. Each question presented a SMILES string as input:</p><p>[START_SMILES]&lt;SMILES&gt; <ref type="bibr">[END_SMILES]</ref> followed by five potential continuations, with only one being correct. This methodology is inspired by the calibration analysis in the GPT-4 technical report <ref type="bibr">[OpenAI, 2023]</ref>, which highlights calibration as a key indicator of high-quality pretraining.</p><p>For each response, we calculated the model's predicted probability based on the perplexity of the text, normalizing it against other responses for the same question. These probabilities were then aggregated and sorted into 10 equal-width bins. We plotted the fraction of correct responses for each bin, allowing us to visualize the relationship between the model's confidence and accuracy.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2.2">Results</head><p>Figures 1a and 1b present the calibration plots for Chemma-2B and Chemlactica-125M, respectively. The x-axis represents the 10 probability bins, while the left y-axis shows the correct response fraction.</p><p>The right y-axis and red bars indicate the number of occurrences within each bin.</p><p>Chemlactica and Chemma models demonstrate robust calibration, as evidenced by the near-linear relationship between assigned probabilities and correct outcomes across all computed properties. This relationship closely follows the diagonal grey line, which represents perfect calibration.</p><p>These results suggest that the perplexity scores generated by our models serve as reliable confidence indicators for molecular data predictions (averaged over a set of molecules), provided the data falls within the distribution of the training corpus. This calibration is crucial for practical applications, as it allows users to accurately gauge the reliability of the models' outputs in various molecular prediction and generation tasks.   </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Property Prediction</head><p>Supervised fine-tuning recipe. We designed and implemented a fine-tuning strategy to evaluate our model's adaptability to novel tasks not present in the initial training corpus. To this end, we fined-tuned our models on 6 tasks introduced by Fang et al.</p><p>[2023a] and 3 others by MoleculeNet <ref type="bibr" target="#b30">Wu et al. [2018]</ref>. Inspired by instruction tuning methodologies, we generated a specialized training corpus formatted as follows:</p><formula xml:id="formula_4">[START_SMILES]m smiles [END_SMILES][PROPERTY]&lt;VALUE&gt;[/PROPERTY].</formula><p>We only trained the model on generated responses following the [PROPERTY] tag during the finetuning process. Our initial experiments indicated that a general fine-tuning recipe of 15 epochs yielded satisfactory results with a peak learning rate of 10e -4 with 3 epochs of warmup and a NEFTune noise <ref type="bibr" target="#b15">[Jain et al., 2023]</ref> of 5. However, we observed that our models could significantly benefit from a more rigorous hyperparameter optimization process. Consequently, we conducted an extensive hyperparameter tuning study, exploring a grid of values within the following ranges: Learning rate: [0.00001, 0.00005, 0.0001, 0.0002], Number of epochs: <ref type="bibr">[10,</ref><ref type="bibr">15,</ref><ref type="bibr">20]</ref>, Warmup epoch ratios: [0, 0.4, 1], NEFTune noise : [0.0, 5.0, 10.0]. The results presented in Table <ref type="table" target="#tab_2">3</ref> and<ref type="table" target="#tab_3">4</ref> showcase the abilities of our models after the hyperparameter tuning stage. The details of hyperparameters selected per task and model can be found in the Appendix A.1. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Molecular Optimization Algorithm</head><p>We present a novel population-based algorithm for molecular optimization that leverages our trained language models. The algorithm addresses the challenging task of navigating the vast chemical space to find molecules with desired properties, subject to a limited evaluation budget. Formally, we define the molecular optimization problem as:</p><formula xml:id="formula_5">m * = arg max m∈M O(m)</formula><p>where m represents a molecule, M is the constraint set of valid molecules (typically very large), and O : M → R is a black-box oracle function that evaluates molecular properties. This oracle could represent complex processes such as lab experiments or quantum simulations.</p><p>Our approach maintains a pool of P high-performing molecules and iteratively generates new candidates using a language model. It is built on three key innovations:</p><p>LLM-enhanced genetic algorithm We leverage our language models to generate molecules similar to the current pool. This can be viewed as a genetic algorithm where traditional crossover/mutation operations are replaced by language model generation. For S randomly selected molecules from the pool, we generate a new molecule using the prompt:</p><p>[SIMILAR]m if the best molecule (in terms of oracle score) has not improved for K iterations then 5. Take all the molecules from the P ool with their corresponding similar molecules (using which they have been generated), m i , (m i,1 , m i,2 , . . . , m i,S ), i = 1, . . . , P respectively.</p><p>train_samples i ← molecules2prompt((m i,1 , m i,2 , . . . , m i,S ), m i ), i = 1, . . . , P 6. Train LM on train_samples i , i = 1, . . . , P . end if until optim. problem stopping condition This approach allows for more intelligent exploration of the chemical space compared to traditional mutation operators.</p><p>Explicit oracle modeling Inspired by the rejection sampling technique <ref type="bibr" target="#b0">[Bai et al., 2022</ref><ref type="bibr" target="#b27">, Touvron et al., 2023]</ref>, we incorporate oracle feedback directly into the language model by fine-tuning on high-performing molecules. This is done using prompts of the form:</p><formula xml:id="formula_6">[PROPERTY]O(m)[/PROPERTY][START_SMILES]m smiles [END_SMILES]</formula><p>This explicit modeling allows the language model to learn the relationship between molecular structure and oracle scores, enabling more targeted generation.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>In-context learning</head><p>In early experiments we tried to use in-context learning during generation and fine-tuning by making our prompts shorter than the model's context length. This did not improve the results, and we abandoned the idea in further experiments. Note that there was no explicit training for in-context learning during the pretraining phase.</p><p>Algorithm 1 presents our complete optimization procedure, which includes initialization of an empty molecule pool, iterative generation of new molecules using the language model, evaluation of new molecules using the oracle function, updating the pool to maintain the top-P molecules, and periodic fine-tuning of the language model when progress stagnates. Algorithm 2 details our prompt construction process, which is crucial for effective molecule generation and model fine-tuning.</p><p>We employ a dynamic fine-tuning strategy to adapt the language model throughout the optimization process. Fine-tuning is triggered if the best molecule doesn't improve for K consecutive iterations, with the maximum number of fine-tuning rounds limited by the oracle budget. We use a learning rate scheduler with warm-up steps, and each fine-tuning step consists of multiple epochs with a portion of data reserved for validation to prevent overfitting.</p><p>Given the complexity of our algorithm, we adopt a focused hyperparameter tuning strategy, prioritizing the most sensitive parameters while keeping others fixed. This approach balances computational By combining these elements, our algorithm effectively leverages the power of large language models for molecular optimization, demonstrating strong performance across a range of tasks as detailed in Section 6.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Experiments</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.1">Practical Molecular Optimization</head><p>Problem formulation. Inspired by real-world molecular design setting <ref type="bibr" target="#b10">Gao et al. [2022]</ref> propose a practical molecular optimization (PMO) benchmark consisting of 23 molecular optimization problems. PMO focuses on sample efficiency, generalizability to different optimization objectives, and robustness to hyperparameter selection of the molecular optimization algorithms. To assess the optimization ability and sample efficiency, <ref type="bibr" target="#b10">Gao et al. [2022]</ref> put a limit on the number of oracle calls for each task to be 10000 and report the area under the curve (AUC) of the top-10 average property value versus the number of oracle calls as the performance metric. AUC values are calculated after every 100 oracle call, then combined and normalized to map the [0, 1] range.</p><p>Our approach. Using our proposed optimization algorithm we evaluate Chemlactica-125M, Chemlactica-1.3B and Chemma-2B models. The hyperparameters for the optimization algorithm are tuned for each model separately according to the hyperparameter tuning methodology. For this benchmark, we use the bfloat16 data type for the language model's parameters.</p><p>Results. Our method performs strongly, surpassing the existing approaches. Our algorithm powered by the smallest Chemlactica-125M model already improves over the state-of-the-art by a significant margin, with an AUC Top-10 of 17.170 (Chemlactica-125M) vs 16.213 (Genetic-guided GFlowNets). Additionally, strengthening the generator model improves the performance. Chemlactica-1.3B and Chemma-2B achieve AUC Top-10 of 17.284 and 17.534, respectively. For a more comprehensive Note that, unlike most of the other methods, our language models can leverage additional information about the oracle if the oracle internally calculates common molecular properties. These properties can be explicitly written in the prompts used in the optimization loop. In Appendix A.4 we show that such rich prompts can significantly improve the metrics on several PMO tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.2">Multi-property Optimization with Docking</head><p>Problem formulation. This benchmark, initially proposed in the REINVENT paper <ref type="bibr" target="#b2">[Blaschke et al., 2020]</ref>, evaluates a model's capability to generate viable molecules for practical drug discovery. Specifically, it assesses the model's ability to generate plausible molecules that optimize docking scores (minimize docking energy) against specified protein targets. The benchmark focuses on three targets with extensive real-world applications: the dopamine type 2 receptor (DRD2), MK2-kinase, and acetylcholinesterase. To ensure the generation of realistic molecules, the oracle reward function incorporates additional constraints, including the maximization of QED and a molecular weight limit of 500 Da.</p><p>The primary objective is to maximize the reward function with minimal oracle calls, emphasizing sample efficiency. We quantify this efficiency using two metrics: oracle burden and generative yield. Oracle burden measures the number of oracle calls required to generate N unique molecules above a predefined reward threshold. At the same time, generative yield represents the number of unique molecules generated above a reward threshold for a fixed number of oracle calls. To maintain consistency with recent implementations, we adopt the molecular preprocessing, conformational generation, docking parameters, and aggregate reward function from the Beam Enumeration paper <ref type="bibr">[Guo and Schwaller, 2023b]</ref>, specifically comparing our results with the beam structure 15 methods, which demonstrated superior average-case performance.</p><p>Results. We used the exact same hyperparameters as those selected in the PMO experiment. Table <ref type="table" target="#tab_6">6</ref> presents our approach's performance on this benchmark, simulating real-world drug design scenarios. Chemma-2B consistently achieves the highest performance for the generative yield metric across all evaluated receptors. Conversely, Chemlactica-125M demonstrates superior performance in terms of oracle burden, except for MK2 at oracle burden 1, where Chemma outperforms it. Notably, Chemlactica-1.3B achieved even better yield scores on the DRD2 target. Appendix A.7 shows the set of molecules generated at the beginning and at the end of the optimization trajectory for DRD2 docking.</p><p>These results suggest that model size is crucial in balancing exploration and exploitation of the molecular space. Smaller models appear more adept at initial space exploration, while larger models excel in exploiting the reward space. This trade-off between oracle burden and generative yield could have significant implications for applied drug design, particularly when access to oracle functions is limited or costly.</p><p>Our findings validate the effectiveness of our approach, demonstrating that our models can leverage pre-training information and selective fine-tuning to optimize complex reward functions, even with limited data unseen during pre-training. Furthermore, the successful transfer of training parameters and sampling strategies from the molecular optimization benchmark to this task underscores our method's flexibility and robustness. This adaptability suggests that our approach could be particularly valuable in scenarios where extensive hyperparameter tuning is impractical or undesirable.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.3">QED Maximization with Similarity Constrained Molecular Design</head><p>Problem formulation. The objective of this optimization problem is to generate a molecule that has a high QED and is similar to some given molecule. More formally, given a molecule M , the objective of the problem is to generate a new molecule M ′ such that sim(M ′ , M ) ≥ 0.4 and qed(M ′ ) ≥ 0.9.</p><p>Following <ref type="bibr" target="#b28">Wang et al. [2023]</ref> 800 molecules are selected with QED in the range [0.7, 0.8] as the inputs to the optimization problem, and the performance is measured by the percentage of the molecules that have been optimized (satisfy the QED and similarity constraints). In addition, a maximum number of QED evaluations is chosen to optimize each lead molecule.</p><p>Our approach. Since this is a lead optimization problem, we add the lead molecule to all prompts in addition to the molecules added from the pool. The lead molecule is added by enclosing it in [SIMILAR] tag. For this task, we design an oracle function by combining the QED value of the generated molecule with the similarity value of the lead molecule and the generated molecule. Additionally, we decreased the maximum number of QED evaluations to 10000, compared to the baselines, which used 50000.</p><p>Results. For this task, we only evaluate the Chemlactica-125M model, which achieves better success rates compared to the best existing approaches, 99.0% (Chemlactica-125M) versus 94.6% (RetMol), while being constrained to use 5 times less QED evaluations at maximum. Since the performance of the Chemlactica-125M is very close to perfect, we have not evaluated other models for this task. Table <ref type="table" target="#tab_7">7</ref> illustrates the performance of different algorithms.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Conclusion</head><p>This paper presents three language models: Chemlactica-125M, Chemlactica-1.3B, and Chemma-2B. These models were trained on a novel corpus encompassing over 100 million molecules and their properties. We demonstrate the efficacy of these models on multiple tasks in chemistry research, with a particular focus on molecular optimization. Our proposed optimization algorithm combines the capabilities of language models with concepts from genetic algorithms. This approach has shown strong performance across various benchmarks, indicating its potential for addressing complex molecular design challenges. We publicly release our training corpus, pretrained models, optimization algorithm, and associated training recipes to support reproducibility and further research in this area.</p><p>While our work demonstrates promising results in molecular optimization and related tasks, we acknowledge that it represents an early step in applying language models to chemical research. We hope our contributions will provide a valuable foundation for future work in this domain, potentially enabling new molecular design and analysis approaches.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Limitations</head><p>The language models introduced in this paper operate only on SMILES representations and do not support 3D coordinates of atoms, limiting their reliability in scenarios where 3D conformation is critical. Furthermore, the models have very limited understanding of other biological entities like proteins, which constrains their practical applicability in certain areas of biochemistry and drug discovery. While effective, the optimization algorithms presented in this paper have not been exhaustively tuned, suggesting potential room for improvement. Additionally, our current approach does not account for synthetic accessibility or other practical considerations in drug design, which may limit its immediate applicability in real-world drug discovery pipelines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Broader Impact</head><p>The molecular optimization models presented in this work have the potential for both positive and negative societal impacts. On the positive side, these models could significantly benefit the drug discovery and healthcare industries by accelerating the development of new therapeutic compounds. This acceleration may lead to faster responses to emerging health challenges and potentially reduce the cost of drug development.</p><p>However, as with many dual-use technologies, there is a risk that sufficiently advanced versions of these models could lower the barriers for malicious actors attempting to develop chemical or biological weapons. This risk underscores the importance of responsible development and deployment of such technologies.</p><p>Given these potential impacts, we recommend that future work in this area include rigorous evaluation of these algorithms and language models in designing potentially harmful substances to better understand and mitigate risks. Additionally, developing safeguards and ethical guidelines for using and disseminating molecular optimization models is crucial. Collaboration with experts in biosecurity and ethics will be essential to ensure that the development of these technologies proceeds in a manner that maximizes benefits while minimizing the potential for harm.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Appendix</head><p>A.1 Hyperparameters</p><p>Table <ref type="table" target="#tab_8">8</ref> lists the hyperparameters we used for pretraining the language models.</p><p>For supervised fine-tuning we did a grid search over the following hyperparameters: peak learning rate, number of epochs, warmup steps and the amount of Neftune noise. Table <ref type="table" target="#tab_9">9</ref> shows the best values for all tasks and models. Warmup steps are written as a ratio of the total training steps here.</p><p>Methodology for Hyperparameter Tuning of the Optimization Algorithm Given the large number of hyperparameters in our optimization algorithm, we adopt a two-step approach. First, we identify and freeze the hyperparameters that empirically show less sensitivity to the algorithm's performance. Then, we focus on tuning the more sensitive hyperparameters using grid search.</p><p>For tuning, we utilize the perindopril_mpo and zaleplon_mpo tasks from the PMO benchmark, following the methodology in <ref type="bibr" target="#b10">[Gao et al., 2022]</ref>. We report the AUC Top-10 metric from three independent runs with different seeds for each hyperparameter configuration. The best-performing configuration is then applied across all benchmarks in our evaluation. Notably, we tune the hyperparameters separately for Chemlactica-125M, Chemlactica-1.3B, and Chemma-2B to account for model-specific optimal settings.</p><p>A key hyperparameter, N , which determines the number of molecules generated before updating the pool, is set to 200. We employ vanilla temperature sampling for molecule generation throughout the optimization process. To address the need for generating thousands of unique molecules in many optimization benchmarks, we implement a dynamic temperature scheduling strategy. The sampling temperature starts at 1 and linearly increases to 1.5 as the number of oracle evaluations grows. This gradual temperature increase promotes the generation of more diverse molecules over time, reducing repetition and encouraging exploration of the chemical space.</p><p>Grid search. We perform grid search on P (pool size), S (number of similar molecules), K (finetuning tolerance level) and lr (fine-tuning peak learning rate) with the following grid:</p><formula xml:id="formula_7">• P = [10, 30, 50] • S = [0, 1, 2, 5] • K = [3, 5, 7] • lr = [10 -4 , 10 -5 ]</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.2 Detailed Results for Practical Molecular Optimization</head><p>Table <ref type="table" target="#tab_10">10</ref> shows the evaluations of Chemlactica-125M, Chemlactica-1.3B and Gemma-2B, along with other methods on 23 tasks of the PMO benchmark. There is no method that uniformly beats all others The reason is that the oracle has a binary multiplier term that is usually equal to zero, so there is no supervision signal for the entire generation process.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.3 Ablation Study on the Optimization Algorithm</head><p>A key component of our proposed optimization algorithm is the fine-tuning step, which is activated when the algorithm's progress stagnates. To assess the impact of this fine-tuning step, we conducted a comparative analysis of optimization processes both with and without this feature. For this evaluation, we selected four representative tasks from the PMO benchmark: jnk3, median1, sitagliptin_mpo, and scaffold_hop. These tasks were chosen to provide a diverse set of challenges and to be representative of the broader benchmark.</p><p>Table <ref type="table" target="#tab_11">11</ref> presents the quantitative results of these experiments. To provide a more comprehensive understanding of the fine-tuning effect, we visualize the optimization trajectories in Figures 6 through 8. These visualizations aggregate data from five independent runs, offering insights into both the mean performance and its variance across different initializations.</p><p>This ablation study allows us to isolate the impact of the fine-tuning step and understand its contribution to the overall performance of our optimization algorithm across different types of molecular optimization tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.4 Leveraging Known Molecular Properties in Optimization Tasks</head><p>Our language models possess knowledge of various molecular properties such as QED, CLogP, and TPSA. However, we deliberately avoid utilizing this information in Algorithm 1 to maintain fair comparison with other methods. This decision stems from the fact that our models have been trained on properties that are components of the oracle functions we optimize against (e.g., those in PMO).</p><p>Exploiting this partial oracle information could potentially give our method an unfair advantage.</p><p>We conducted a separate set of experiments to explore the models' capacity to utilize additional information in solving optimization problems. We selected four tasks from the PMO benchmark: jnk3, median1, sitagliptin_mpo, and scaffold_hop. For these tasks, we modified Algorithm 2 to incorporate relevant known properties into the prompt p between steps 2 and 3.</p><p>Table <ref type="table" target="#tab_1">12</ref> presents a performance comparison between our standard approach and this propertyaugmented version. The specific syntax used for adding these properties to the prompts is detailed in Table <ref type="table" target="#tab_13">13</ref>. Notably, no additional properties were added for the jnk3 task as our models lack specific knowledge about its oracle function.</p><p>The results demonstrate a significant performance improvement across all models when these additional properties are incorporated. This finding suggests that our models can effectively leverage their pre-existing knowledge of molecular properties to enhance their performance in molecular design tasks. However, it's important to note that while this approach showcases the potential of our    during our models' pretraining stages, typically have negligible impact on performance and may even provide a regularizing effect. However, in the context of molecular optimization involving multiple rounds of fine-tuning, lower numerical precision leads to significantly degraded performance. Several factors contribute to this phenomenon in the specific case of molecular optimization with language models.</p><p>Table <ref type="table" target="#tab_1">12</ref>: The performance of the extended version of our optimization algorithm on selected PMO tasks. The prompts used in the optimization contain the description of the tasks in the format our language models has seen during pretraining. See Table <ref type="table" target="#tab_13">13</ref> for the additional tags used in the prompts.   Challenges in Batched Generation Molecular optimization pipelines require repeated model calls for generation, followed by oracle function scoring. While batched processing accelerates this process through GPU parallelization, it introduces complications. The necessary padding for batch processing alters matrix sizes, affecting multiply-accumulate operations within the model. These small errors accumulate as they propagate through the model's layers. Lower precision exacerbates these errors, leading to larger discrepancies in logit values and, consequently more significant impacts on the generated molecules.</p><p>Cascading Effects of Sub-optimal Generations In our approach, high-scoring generated molecules are used for both additional fine-tuning and identifying similar molecules to guide optimization. However, when lower precision leads to sub-optimal molecule generation, it creates a negative feedback loop. The model is fine-tuned on and guided by these lower-quality molecules, hindering the generation of higher-scoring molecules in subsequent iterations. This causal relationship between successive generations underlies the particularly adverse effects of low precision in molecular optimization pipelines.</p><p>Precision Ablation Study To quantify the impact of numerical precision on the optimization process, we conducted an ablation study comparing 32-bit floating point precision with bfloat16 precision. Table <ref type="table" target="#tab_14">14</ref> presents the results of this comparison across all drug discovery case studies described in Section 6.2. Despite the potential computational costs, these results demonstrate the critical importance of maintaining higher numerical precision in molecular optimization tasks.      </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.6 Visualization of the Model Outputs on Property Prediction and Conditional Generation Tasks</head></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>[</head><label></label><figDesc>WEIGHT]180.16[/WEIGHT][TPSA]63.60[/TPSA][CLOGP]1.31[/CLOGP] [START_SMILES]CC(=O)OC1=CC=CC=C1C(=O)O[END_SMILES] [SAS]1.58[/SAS][QED]0.92[/QED] [SIMILAR]O=C(Oc1ccccc1C(=O)O)c1ccccc1O 0.59[/SIMILAR] [SYNONYM]aspirin[/SYNONYM] [PROPERTY]Vapor Pressure 2.52X10-5 mm Hg at 25 °C (calc)[/PROPERTY] [CID]2244[/CID]</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Figure 1 :</head><label>1</label><figDesc>Figure 1: Model calibration on synthetic multiple choice question where y=x represents perfect calibration.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>m 1 , m 2 , . . . , m S ), m 1. Check if the outcome should be a molecule generation prompt or a training sample. if m is null then 1.1. Sample similarity values for molecules in the prompt, desirable oracle score and set the suffix for a molecule generation. v sim i ∼ U(0.4, 0.9), i = 1, . . . , S v max ← the maximum oracle score achieved at this moment v prop ∼ U(v max , oracle_max) suf f ix ← [START_SMILES] else 1.3. Compute the correct similarity values for the molecules in the prompt and the correct oracle score, set the suffix for a training sample. v sim i = similar(m i , m), i = 1, . . . , S v prop = O(m) suf f ix ← [START_SMILES]m smiles [END_SMILES]eos end if 2. Concatenate all molecules in the prompt with their similarity values. p ← bos[SIMILAR]m smiles 1 if at least one fine-tuning has been performed then 2.1. Add the oracle score to the prompt. p ← concat(p, [PROPERTY]v prop [/PROPERTY]) end if 3. Add the appropriate suffix. return concat(p, suf f ix) efficiency with optimization performance. Detailed methodology and results of our hyperparameter tuning experiments are provided in Appendix A.1.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head>Figures</head><label></label><figDesc>Figures 2e-2eshow the performance of Chemma-2B for property prediction and conditional molecular generations tasks. Each dot in the scatter plot corresponds to one molecule. The histogram in the background is the actual distribution of those properties in the database. The purple line shows RMSE error for the given value of the property.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>(greedy sampling) 0/100 invalid SMILES, 7/100 from PubChem rmse 0.415 rmse_c 0.415 mape 0.105 corr: 0.786 (c) SAS-conditioned generation of molecules. (greedy sampling) 0/100 invalid SMILES, 15/100 from PubChem rmse 6.942 rmse_c 6.942 mape 0.054 corr: 0.985 (d) TPSA-conditioned generation of molecules. invalid SMILES rmse 0.140 mape 0.234 corr: 0.874 (f) Similarity-conditioned generation of molecules.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head>Figure 2 :</head><label>2</label><figDesc>Figure 2: Illustration of errors made by Chemma-2B during property prediction and conditional generation for various properties.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head>Figure 3 :Figure 4 :</head><label>34</label><figDesc>Figure 3: Optimization process visualization using Chemlactica-125M model for sitagliptin_mpo task with four different seeds.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>Figure 5 :Figure 6 :</head><label>56</label><figDesc>Figure 5: Optimization process visualization using Chemma-2B model for sitagliptin_mpo task with four different seeds.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>Figure 7 :Figure 8 :</head><label>78</label><figDesc>Figure 7: Mean oracle score ± standard deviation of the generated molecule for Chemlactica-1.3B.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 :</head><label>1</label><figDesc>RMSE (RSME corrected for mean) ↓ for Property Prediction and Conditional Generation for different tasks and models.</figDesc><table><row><cell></cell><cell>QED</cell><cell></cell><cell></cell><cell>SIM</cell><cell></cell><cell>SAS</cell></row><row><cell></cell><cell>PP</cell><cell>CG</cell><cell>PP</cell><cell>CG</cell><cell>PP</cell><cell>CG</cell></row><row><cell cols="4">Chemlactica-125M 0.016 0.101 (0.108) 0.046</cell><cell>0.183</cell><cell>0.078</cell><cell>0.315 (0.379)</cell></row><row><cell>Chemlactica-1.3B</cell><cell cols="3">0.004 0.050 (0.050) 0.043</cell><cell>0.167</cell><cell>0.066</cell><cell>0.400 (0.400)</cell></row><row><cell>Chemma-2B-2.1B</cell><cell cols="3">0.016 0.100 (0.100) 0.049</cell><cell>0.126</cell><cell>0.073</cell><cell>0.384 (0.382)</cell></row><row><cell>Chemma-2B-39B</cell><cell cols="3">0.004 0.075 (0.075) 0.046</cell><cell>0.140</cell><cell>0.037</cell><cell>0.415 (0.415)</cell></row><row><cell></cell><cell cols="2">CLOGP</cell><cell></cell><cell>TPSA</cell><cell></cell><cell>WEIGHT</cell></row><row><cell></cell><cell>PP</cell><cell>CG</cell><cell>PP</cell><cell>CG</cell><cell>PP</cell><cell>CG</cell></row><row><cell cols="7">Chemlactica-125M 0.106 0.568 (0.568) 1.322 5.216 (5.244) 9.350 30.276 (30.276)</cell></row><row><cell>Chemlactica-1.3B</cell><cell cols="6">0.100 0.405 (0.405) 0.893 5.543 (15.640) 3.576 16.877 (16.877)</cell></row><row><cell>Chemma-2B-2.1B</cell><cell cols="6">0.137 1.675 (1.675) 1.638 7.077 (7.077) 8.962 39.695 (41.109)</cell></row><row><cell>Chemma-2B-39B</cell><cell cols="6">0.034 0.461 (0.461) 0.959 6.942 (6.942) 1.931 18.933 (20.395)</cell></row><row><cell cols="2">4.2 Model Calibration</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>4.2.1 Methodology</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Ablation study on Conditional Generation hyperparameters. Each row represents one combination of Chain-of-Thought (CoT), repetition penalty (rep.), and suppression (supp.). All experiments are done on the molecular weight prediction task.</figDesc><table><row><cell></cell><cell></cell><cell></cell><cell cols="2">Chemlactica-125M</cell><cell cols="2">Chemlactica-1.3B</cell><cell>Chemma-2B</cell></row><row><cell cols="3">CoT rep. supp.</cell><cell cols="2">RMSE (c) ↓ Invalids ↓</cell><cell cols="2">RMSE (c) ↓ Invalids ↓</cell><cell cols="2">RMSE (c) ↓ Invalids ↓</cell></row><row><cell cols="2">No 1.0</cell><cell>No</cell><cell>70.02 (70.02)</cell><cell>0/100</cell><cell>15.41 (65.22)</cell><cell>1/100</cell><cell>16.56 (65.58)</cell><cell>1/100</cell></row><row><cell cols="2">No 1.0</cell><cell>No</cell><cell>70.11 (70.11)</cell><cell>0/100</cell><cell>15.81 (65.32)</cell><cell>1/100</cell><cell>12.15 (64.54)</cell><cell>1/100</cell></row><row><cell cols="2">Yes 1.0</cell><cell cols="2">No 112.52 (112.52)</cell><cell cols="2">0/100 187.26 (187.26)</cell><cell cols="2">0/100 198.48 (191.89)</cell><cell>46/100</cell></row><row><cell cols="3">Yes 1.010 No</cell><cell>82.28 (82.28)</cell><cell cols="2">0/100 137.19 (137.19)</cell><cell cols="2">0/100 170.02 (170.02)</cell><cell>0/100</cell></row><row><cell cols="3">Yes 1.0 Yes</cell><cell>33.46 (33.46)</cell><cell>0/100</cell><cell>18.53 (25.22)</cell><cell>1/100</cell><cell>31.98 (31.85)</cell><cell>1/100</cell></row><row><cell cols="3">Yes 1.005 Yes</cell><cell>34.52 (34.52)</cell><cell>0/100</cell><cell>17.14 (17.14)</cell><cell>0/100</cell><cell>29.71 (29.71)</cell><cell>0/100</cell></row><row><cell cols="3">Yes 1.010 Yes</cell><cell>30.27 (30.27)</cell><cell>0/100</cell><cell>16.87 (16.87)</cell><cell>0/100</cell><cell>18.93 (20.39)</cell><cell>1/100</cell></row><row><cell cols="3">Yes 1.015 Yes</cell><cell>30.27 (30.27)</cell><cell>0/100</cell><cell>18.07 (19.61)</cell><cell>1/100</cell><cell>18.99 (20.44)</cell><cell>1/100</cell></row><row><cell cols="3">Yes 1.020 Yes</cell><cell>31.17 (31.17)</cell><cell>1/100</cell><cell>16.33 (18.03)</cell><cell>1/100</cell><cell>24.16 (25.27)</cell><cell>1/100</cell></row><row><cell cols="3">Yes 1.050 Yes</cell><cell>45.38 (45.38)</cell><cell>1/100</cell><cell>16.49 (34.48)</cell><cell cols="2">1/100 74.78 (130.11)</cell><cell>63/100</cell></row><row><cell cols="3">Yes 1.100 Yes</cell><cell>35.20 (35.20)</cell><cell>0/100</cell><cell>16.61 (32.37)</cell><cell cols="2">1/100 740.28 (488.73)</cell><cell>59/100</cell></row><row><cell>1.0</cell><cell></cell><cell></cell><cell></cell><cell>175000</cell><cell></cell><cell></cell><cell></cell></row><row><cell>0.2 0.4 0.6 0.8 P(correct)</cell><cell></cell><cell></cell><cell></cell><cell>25000 50000 75000 100000 125000 150000 Number of Occurences</cell><cell></cell><cell></cell><cell></cell></row><row><cell>0.0</cell><cell cols="3">Bin Ranges (0.3, 0.4] (0.2, 0.3] (0.1, 0.2] (-0.001, 0.1] (0.4, 0.5] (0.5, 0.6] (0.6, 0.7] (0.7, 0.8] (0.8, 0.9] (0.9, 1.0]</cell><cell>0</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 3 :</head><label>3</label><figDesc>Regression tasks from MoleculeNet, all values are RMSE ↓.</figDesc><table><row><cell></cell><cell>ESOL</cell><cell>FreeSolv</cell><cell>Lipophilicity</cell><cell>Avg</cell></row><row><cell>MoleculeNet GC</cell><cell>0.970</cell><cell>1.400</cell><cell>0.655</cell><cell>1.008</cell></row><row><cell>Chemformer</cell><cell>0.633</cell><cell>1.230</cell><cell>0.598</cell><cell>0.820</cell></row><row><cell>MoLFormer-XL</cell><cell>0.279</cell><cell>0.231</cell><cell>0.529</cell><cell>0.346</cell></row><row><cell>GROVER large</cell><cell>0.831</cell><cell>1.544</cell><cell>0.560</cell><cell>0.978</cell></row><row><cell>MolCLR</cell><cell>1.110</cell><cell>2.200</cell><cell>0.650</cell><cell>1.320</cell></row><row><cell>iMolCLR</cell><cell>1.130</cell><cell>2.090</cell><cell>0.640</cell><cell>1.287</cell></row><row><cell>BARTSmiles</cell><cell>0.308</cell><cell>0.338</cell><cell>0.540</cell><cell>0.395</cell></row><row><cell cols="5">Chemlactica-125M 0.270 ± 0.011 0.306 ± 0.011 0.533 ± 0.009 0.369 ± 0.000</cell></row><row><cell>Chemlactica-1.3B</cell><cell cols="4">0.281 ± 0.005 0.356 ± 0.009 0.557 ± 0.021 0.403 ± 0.013</cell></row><row><cell>Chemma-2B</cell><cell cols="4">0.298 ± 0.014 0.359 ± 0.040 0.563 ± 0.004 0.406 ± 0.012</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 4 :</head><label>4</label><figDesc>Regression tasks from the ADMET benchmark. All numbers are Pearson correlation ↑.</figDesc><table><row><cell></cell><cell>HLM</cell><cell>MDR1-MDCK ER</cell><cell>Solubility</cell></row><row><cell>MPNN2 (from the original paper)</cell><cell>0.68</cell><cell>0.78</cell><cell>0.59</cell></row><row><cell>Chemlactica-125M</cell><cell>0.68 ± 0.011</cell><cell>0.77 ± 0.012</cell><cell>0.57 ± 0.035</cell></row><row><cell>Chemlactica-1.3B</cell><cell>0.68 ± 0.004</cell><cell>0.77 ± 0.009</cell><cell>0.54 ± 0.043</cell></row><row><cell>Chemma-2B</cell><cell>0.67 ± 0.004</cell><cell>0.78 ± 0.009</cell><cell>0.53 ± 0.024</cell></row><row><cell></cell><cell>RLM</cell><cell>hPPB</cell><cell>rPPB</cell></row><row><cell>MPNN2 (from the original paper)</cell><cell>0.74</cell><cell>0.77</cell><cell>0.70</cell></row><row><cell>Chemlactica-125M</cell><cell>0.71 ± 0.004</cell><cell>0.73 ± 0.004</cell><cell>0.60 ± 0.098</cell></row><row><cell>Chemlactica-1.3B</cell><cell>0.65 ± 0.004</cell><cell>0.74 ± 0.001</cell><cell>0.62 ± 0.017</cell></row><row><cell>Chemma-2B</cell><cell>0.68 ± 0.005</cell><cell>0.75 ± 0.004</cell><cell>0.60 ± 0.030</cell></row></table><note><p><p><p><p><p><p><p><p><p>Results. Table</p>3</p>lists the results for three regression tasks from MoleculeNet</p><ref type="bibr" target="#b30">[Wu et al., 2018]</ref></p>.</p>Fang  et al. [2023b]  </p>introduces a new dataset for six ADMET targets. The authors provided training/test split but no validation set. We used a random 20% of the training set as a validation set to pick the best hyperparameters. Table</p>4</p>shows the results.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head></head><label></label><figDesc>Initialize an empty P ool ← {} repeat 1. Generate prompts for molecule generation. for i = 1 to N do (m i,1 , m i,2 , . . . , m i,S ) ← random_subset(P ool) p i ← molecules2prompt((m i,1 , m i,2 , . . . , m i,S ), null) end for 2. Generate N new and unique molecules with the language model. m i ← LM (p i ), i = 1, . . . , N 3. Update the pool with m i s and keep only the top-P molecules. P ool ← P ool ∪ {m 1 , . . . , m N } P ool ← top-P (P ool) 4. Fine-tune if necessary.</figDesc><table /><note><p>smiles 1 0.8[/SIMILAR]...[SIMILAR]m smiles S 0.8[/SIMILAR][START_SMILES] Algorithm 1 molecular_optimization Input: P , S, N , K</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 5 :</head><label>5</label><figDesc>PMO benchmark with Chemlactica-125M, Chemlactica-1.3B and Chemma-2B in comparison with other methods. REINVENT results are taken from<ref type="bibr" target="#b10">Gao et al. [2022]</ref>, Augmented memory is taken fromGuo and Schwaller [2023a], and Genetic-guided (GG) GFlowNets are taken from<ref type="bibr" target="#b18">Kim et al. [2024]</ref>. Values are the average of 5 runs with different seeds, metric is Top-10 AUC ↑ ±</figDesc><table><row><cell>standard deviation</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>jnk3</cell><cell>median1</cell><cell>scaffold_hop sitagliptin_mpo</cell><cell>sum of 4</cell><cell>sum of 23</cell></row><row><cell>REINVENT</cell><cell cols="3">0.783 ± 0.023 0.356 ± 0.009 0.560 ± 0.019 0.021 ± 0.003</cell><cell>1.720</cell><cell>14.196</cell></row><row><cell cols="4">Augmented memory 0.739 ± 0.110 0.326 ± 0.013 0.567 ± 0.008 0.284 ± 0.050</cell><cell>1.916</cell><cell>15.002</cell></row><row><cell>GG GFlowNets</cell><cell cols="3">0.764 ± 0.069 0.379 ± 0.010 0.615 ± 0.100 0.634 ± 0.039</cell><cell>2.392</cell><cell>16.213</cell></row><row><cell>Chemlactica-125M</cell><cell cols="5">0.881 ± 0.058 0.359 ± 0.060 0.626 ± 0.016 0.649 ± 0.051 2.515 ± 0.119 17.170 ± 0.424</cell></row><row><cell>Chemlactica-1.3B</cell><cell cols="5">0.866 ± 0.021 0.382 ± 0.047 0.673 ± 0.080 0.586 ± 0.062 2.506 ± 0.155 17.284 ± 0.284</cell></row><row><cell>Chemma-2B</cell><cell cols="5">0.891 ± 0.032 0.382 ± 0.022 0.669 ± 0.110 0.613 ± 0.018 2.555 ± 0.099 17.534 ± 0.214</cell></row><row><cell cols="6">understanding of the optimization dynamics, Figures 3-5 illustrate visualizations of the optimization</cell></row><row><cell cols="5">processes for sitagliptin_mpo task with different seeds for different models.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 6 :</head><label>6</label><figDesc>Drug discovery case studies via docking function reward optimization. All experiments were run with a maximum oracle budget of 5000 oracle calls. Note that both oracle burden and generative yield values are reward-threshold dependent, and mean values from the reported baseline works are reported. The parentheses for oracle burden indicate how many unique molecules need to be generated for consideration. The best performance on each task-metric combination is bolded. Note that the hyperparameters of our models are not tuned for this task; instead, we used the best-performing hyperparameters on the PMO benchmark.</figDesc><table><row><cell>Metric</cell><cell>Target</cell><cell>Reinvent</cell><cell cols="3">Beam Chemlactica Chemlactica</cell><cell>Chemma</cell></row><row><cell></cell><cell></cell><cell cols="2">Baseline Structure 15</cell><cell>125M</cell><cell>1.3B</cell><cell>2B</cell></row><row><cell>Generative Yield 0.7 ↑</cell><cell>DRD2</cell><cell cols="2">1879 ± 16 3474 ± 158</cell><cell cols="2">3733 ± 512 3659 ± 288</cell><cell>3848 ± 98</cell></row><row><cell></cell><cell>MK2</cell><cell cols="2">879 ± 10 3127 ± 138</cell><cell cols="3">3772 ± 578 3660 ± 535 3578 ± 452</cell></row><row><cell></cell><cell>AChE</cell><cell cols="2">2437 ± 53 3824 ± 162</cell><cell cols="3">4108 ± 67 4193 ± 128 4092 ± 284</cell></row><row><cell></cell><cell>DRD2</cell><cell cols="2">102 ± 6 1780 ± 439</cell><cell cols="3">2827 ± 510 2621 ± 614 2985 ± 194</cell></row><row><cell>Generative Yield 0.8 ↑</cell><cell>MK2</cell><cell>2 ± 0</cell><cell cols="4">987 ± 211 2569 ± 1156 2216 ± 522 1058 ± 465</cell></row><row><cell></cell><cell>AChE</cell><cell cols="2">147 ± 11 2059 ± 327</cell><cell cols="3">3246 ± 168 3652 ± 349 3096 ± 372</cell></row><row><cell></cell><cell>DRD2</cell><cell>168 ± 149</cell><cell>126 ± 90</cell><cell>20 ± 29</cell><cell>11 ± 10</cell><cell>74 ± 62</cell></row><row><cell>Oracle burden 0.8 (1) ↓</cell><cell>MK2</cell><cell>1724 ± 802</cell><cell>736 ± 166</cell><cell>345 ± 312</cell><cell>78 ± 125</cell><cell>189 ± 278</cell></row><row><cell></cell><cell>AChE</cell><cell>83 ± 29</cell><cell>105 ± 29</cell><cell>22 ± 28</cell><cell>15 ± 23</cell><cell>74 ± 72</cell></row><row><cell></cell><cell>DRD2</cell><cell>883 ± 105</cell><cell>582 ± 83</cell><cell>114 ± 08</cell><cell>160 ± 130</cell><cell>240 ± 11</cell></row><row><cell>Oracle burden 0.8 (10) ↓</cell><cell>MK2</cell><cell cols="2">Failed 1122 ± 154</cell><cell>493 ± 418</cell><cell>248 ± 261</cell><cell>440 ± 548</cell></row><row><cell></cell><cell>AChE</cell><cell>481 ± 108</cell><cell>462</cell><cell>224 ± 17</cell><cell>91 ± 103</cell><cell>168 ± 94</cell></row><row><cell></cell><cell>DRD2</cell><cell>4595 ± 0</cell><cell>1120 ± 25</cell><cell>364 ± 119</cell><cell>430 ± 250</cell><cell>518 ± 41</cell></row><row><cell>Oracle burden 0.8 (100) ↓</cell><cell>MK2</cell><cell cols="2">Failed 2189 ± 181</cell><cell>865 ± 533</cell><cell>486 ± 346</cell><cell>934 ± 918</cell></row><row><cell></cell><cell cols="3">AChE 3931 ± 286 1110 ± 265</cell><cell>497 ± 58</cell><cell>333 ± 131</cell><cell>433 ± 143</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_7"><head>Table 7 :</head><label>7</label><figDesc>Performance comparison of different algorithms on QED and Similarity constrained molecular optimization problem.</figDesc><table><row><cell></cell><cell>Success Rate (%) ↑</cell></row><row><cell>QMO</cell><cell>92.8</cell></row><row><cell>RetMol</cell><cell>94.5</cell></row><row><cell>Chemlactica-125M</cell><cell>99.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head>Table 8 :</head><label>8</label><figDesc>Hyperparameters of our language models. All cross-entropy losses use mean reduction. None of our (and many other) methods get non-zero result on valsartan_smarts.</figDesc><table><row><cell></cell><cell cols="3">Chemlactica-125M Chemlactica-1.3B Chemma-2B</cell></row><row><cell>Peak learning rate</cell><cell>1.4e-3</cell><cell>1.0e-4</cell><cell>1.0e-3</cell></row><row><cell>Warmup steps</cell><cell>500</cell><cell>500</cell><cell>500</cell></row><row><cell>Context length</cell><cell>2048</cell><cell>2048</cell><cell>2048</cell></row><row><cell>ADAM β 1</cell><cell>0.9</cell><cell>0.9</cell><cell>0.9</cell></row><row><cell>ADAM β 2</cell><cell>0.95</cell><cell>0.95</cell><cell>0.95</cell></row><row><cell>ADAM ϵ</cell><cell>1e-8</cell><cell>1e-8</cell><cell>1e-8</cell></row><row><cell>Weight Decay</cell><cell>0.1</cell><cell>0.1</cell><cell>0.1</cell></row><row><cell>Dropout</cell><cell>0.1</cell><cell>0.1</cell><cell>None</cell></row><row><cell>Attention Dropout</cell><cell>0.1</cell><cell>0.1</cell><cell>None</cell></row><row><cell>Precision</cell><cell>Mixed</cell><cell>Mixed</cell><cell>BF16</cell></row><row><cell>Loss Function</cell><cell>CE Loss</cell><cell>CE Loss</cell><cell>CE Loss</cell></row><row><cell>Vocabulary Size</cell><cell>50066</cell><cell>50066</cell><cell>256000</cell></row><row><cell>Gradient Clipping</cell><cell>1.0</cell><cell>1.0</cell><cell>1.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 9 :</head><label>9</label><figDesc>Selected hyperparameters for property prediction tasks as a result of the grid search. We report learning rate (LR), warmup ratio (WU), number of epochs (Ep.) and Neftune noise (Nef.).</figDesc><table><row><cell></cell><cell cols="2">Chemlactica-125M</cell><cell></cell><cell>Chemlactica-1B</cell><cell></cell><cell>Chemma-2B</cell></row><row><cell>Task</cell><cell>LR</cell><cell>WU Ep. Nef.</cell><cell>LR</cell><cell>WU Ep. Nef.</cell><cell>LR</cell><cell>WU Ep. Nef.</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 10 :</head><label>10</label><figDesc>Comparision of different methods on PMO. The values represent the AUC Top-10 ↑ metric averaged over five independent runs with different seeds.</figDesc><table><row><cell>Oracle</cell><cell>REINVENT</cell><cell>Augmented</cell><cell>Genetic</cell><cell>Chemlactica</cell><cell>Chemlactica</cell><cell>Chemma</cell></row><row><cell></cell><cell></cell><cell>Memory</cell><cell>GFN</cell><cell>125M</cell><cell>1.3B</cell><cell>2B</cell></row><row><cell>albuterol_similarity</cell><cell cols="4">0.882 ± 0.006 0.913 ± 0.009 0.949 ± 0.010 0.951 ± 0.011</cell><cell>0.947 ± 0.012</cell><cell>0.951 ± 0.009</cell></row><row><cell>amlodipine_mpo</cell><cell cols="4">0.635 ± 0.035 0.691 ± 0.047 0.761 ± 0.019 0.772 ± 0.091</cell><cell>0.769 ± 0.083</cell><cell>0.766 ± 0.107</cell></row><row><cell>celecoxib_rediscover</cell><cell cols="4">0.713 ± 0.067 0.796 ± 0.008 0.802 ± 0.029 0.906 ± 0.046</cell><cell>0.911 ± 0.013</cell><cell>0.920 ± 0.011</cell></row><row><cell>deco_hop</cell><cell cols="4">0.666 ± 0.044 0.658 ± 0.024 0.733 ± 0.109 0.801 ± 0.101</cell><cell>0.836 ± 0.117</cell><cell>0.831 ± 0.123</cell></row><row><cell>drd2</cell><cell cols="4">0.945 ± 0.007 0.963 ± 0.006 0.974 ± 0.006 0.965 ± 0.007</cell><cell>0.968 ± 0.005</cell><cell>0.972 ± 0.006</cell></row><row><cell>fexofenadine_mpo</cell><cell cols="4">0.784 ± 0.006 0.859 ± 0.009 0.856 ± 0.039 0.881 ± 0.031</cell><cell>0.891 ± 0.039</cell><cell>0.931 ± 0.014</cell></row><row><cell>gsk3</cell><cell cols="4">0.865 ± 0.043 0.881 ± 0.021 0.881 ± 0.042 0.926 ± 0.022</cell><cell>0.916 ± 0.027</cell><cell>0.928 ± 0.021</cell></row><row><cell>isomers_c7h8n2o2</cell><cell cols="4">0.852 ± 0.036 0.853 ± 0.087 0.969 ± 0.003 0.951 ± 0.012</cell><cell>0.933 ± 0.017</cell><cell>0.947 ± 0.009</cell></row><row><cell cols="5">isomers_c9h10n2o2pf2cl 0.642 ± 0.054 0.736 ± 0.051 0.897 ± 0.007 0.927 ± 0.006</cell><cell>0.929 ± 0.012</cell><cell>0.914 ± 0.017</cell></row><row><cell>jnk3</cell><cell cols="4">0.783 ± 0.023 0.739 ± 0.110 0.764 ± 0.069 0.881 ± 0.058</cell><cell>0.866 ± 0.021</cell><cell>0.891 ± 0.032</cell></row><row><cell>median1</cell><cell cols="4">0.356 ± 0.009 0.326 ± 0.013 0.379 ± 0.010 0.359 ± 0.060</cell><cell>0.382 ± 0.047</cell><cell>0.382 ± 0.022</cell></row><row><cell>median2</cell><cell cols="4">0.276 ± 0.008 0.291 ± 0.008 0.294 ± 0.007 0.328 ± 0.032</cell><cell>0.329 ± 0.016</cell><cell>0.366 ± 0.018</cell></row><row><cell>mestranol_similarity</cell><cell cols="4">0.618 ± 0.048 0.750 ± 0.049 0.708 ± 0.057 0.896 ± 0.064</cell><cell>0.850 ± 0.051</cell><cell>0.926 ± 0.023</cell></row><row><cell>osimertinib_mpo</cell><cell cols="4">0.837 ± 0.009 0.855 ± 0.004 0.860 ± 0.008 0.907 ± 0.015</cell><cell>0.892 ± 0.013</cell><cell>0.879 ± 0.016</cell></row><row><cell>perindopril_mpo</cell><cell cols="4">0.537 ± 0.016 0.613 ± 0.015 0.595 ± 0.014 0.709 ± 0.052</cell><cell>0.755 ± 0.066</cell><cell>0.711 ± 0.062</cell></row><row><cell>qed</cell><cell cols="4">0.941 ± 0.000 0.942 ± 0.000 0.942 ± 0.000 0.942 ± 0.000</cell><cell>0.942 ± 0.000</cell><cell>0.941 ± 0.000</cell></row><row><cell>ranolazine_mpo</cell><cell cols="4">0.760 ± 0.009 0.801 ± 0.006 0.819 ± 0.018 0.864 ± 0.014</cell><cell>0.883 ± 0.017</cell><cell>0.868 ± 0.015</cell></row><row><cell>scaffold_hop</cell><cell cols="4">0.560 ± 0.019 0.567 ± 0.008 0.615 ± 0.100 0.626 ± 0.016</cell><cell>0.673 ± 0.080</cell><cell>0.669 ± 0.110</cell></row><row><cell>sitagliptin_mpo</cell><cell cols="4">0.021 ± 0.003 0.284 ± 0.050 0.634 ± 0.039 0.649 ± 0.051</cell><cell>0.586 ± 0.062</cell><cell>0.613 ± 0.018</cell></row><row><cell cols="5">thiothixene_rediscovery 0.534 ± 0.013 0.550 ± 0.041 0.583 ± 0.034 0.624 ± 0.102</cell><cell>0.693 ± 0.119</cell><cell>0.698 ± 0.121</cell></row><row><cell cols="5">troglitazone_rediscovery 0.441 ± 0.032 0.540 ± 0.048 0.511 ± 0.054 0.734 ± 0.130</cell><cell>0.765 ± 0.138</cell><cell>0.824 ± 0.049</cell></row><row><cell>valsartan_smarts</cell><cell cols="4">0.178 ± 0.358 0.000 ± 0.000 0.135 ± 0.271 0.000 ± 0.000</cell><cell>0.000 ± 0.000</cell><cell>0.000 ± 0.000</cell></row><row><cell>zaleplon_mpo</cell><cell cols="4">0.358 ± 0.062 0.394 ± 0.026 0.552 ± 0.033 0.569 ± 0.047</cell><cell>0.569 ± 0.020</cell><cell>0.608 ± 0.055</cell></row><row><cell>sum</cell><cell>14.196</cell><cell>15.002</cell><cell>16.213</cell><cell cols="3">17.170 ± 0.424 17.284 ± 0.284 17.534 ± 0.214</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head>Table 11 :</head><label>11</label><figDesc>Illustration of the results of ablation study on the fine-tuning step in the optimization algorithm. The values represent AUC Top-10 ↑ obtained from five independent runs.</figDesc><table><row><cell></cell><cell cols="2">Chemlactica-125M</cell><cell cols="2">Chemlactica-1.3B</cell><cell cols="2">Chemma-2B</cell></row><row><cell></cell><cell>fine-tuning</cell><cell>no fine-tuning</cell><cell>fine-tuning</cell><cell>no fine-tuning</cell><cell>fine-tuning</cell><cell>no fine-tuning</cell></row><row><cell>jnk3</cell><cell cols="6">0.881 ± 0.058 0.878 ± 0.040 0.866 ± 0.021 0.867 ± 0.036 0.891 ± 0.032 0.869 ± 0.033</cell></row><row><cell>median1</cell><cell cols="6">0.359 ± 0.060 0.371 ± 0.006 0.382 ± 0.047 0.395 ± 0.027 0.382 ± 0.022 0.380 ± 0.034</cell></row><row><cell>scaffold_hop</cell><cell cols="6">0.626 ± 0.016 0.648 ± 0.017 0.673 ± 0.080 0.721 ± 0.121 0.669 ± 0.110 0.700 ± 0.122</cell></row><row><cell cols="7">sitagliptin_mpo 0.649 ± 0.051 0.607 ± 0.051 0.586 ± 0.062 0.576 ± 0.082 0.613 ± 0.018 0.563 ± 0.059</cell></row><row><cell>sum</cell><cell cols="6">2.515 ± 0.119 2.504 ± 0.068 2.506 ± 0.155 2.559 ± 0.062 2.555 ± 0.099 2.512 ± 0.160</cell></row><row><cell cols="7">models, it may not provide a fair comparison with methods that don't have access to such property</cell></row><row><cell>information.</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="6">A.5 The Impact of Floating Point Precision on Molecular Optimization</cell></row><row><cell cols="7">Numerical Precision in Model Training Lower precision training, including mixed and half-</cell></row><row><cell cols="7">precision methods, is commonly used to increase training throughput. These techniques, employed</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_13"><head>Table 13 :</head><label>13</label><figDesc>The descriptions of tasks used in the prompts in the extended version of our optimization algorithm. The results are in Table12. See Section A.4 for details.</figDesc><table><row><cell></cell><cell>the syntax of additional properties added to the prompts</cell></row><row><cell>jnk3</cell><cell>(nothing added)</cell></row><row><cell>median1</cell><cell>[SIMILAR]camphor_smiles 0.55[/SIMILAR][SIMILAR]menthol_smiles 0.55[/SIMILAR]</cell></row><row><cell>scaffold_hop</cell><cell>[SIMILAR]pharmacophor_smiles 0.80[/SIMILAR]</cell></row><row><cell cols="2">sitagliptin_mpo [SIMILAR]sitagliptin_smiles 0.99[/SIMILAR][CLOGP]2.02[/CLOGP][TPSA]77.04[/TPSA]</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_14"><head>Table 14 :</head><label>14</label><figDesc>Impact of numerical precision on multi-property optimization with docking task.</figDesc><table><row><cell>Metric</cell><cell cols="3">Target Chemlactica-125M Chemlactica-125M</cell></row><row><cell></cell><cell></cell><cell>BF16 FP32</cell><cell></cell></row><row><cell>Generative Yield 0.7 ↑</cell><cell>DRD2</cell><cell>3501 ± 252</cell><cell>3733 ± 512</cell></row><row><cell></cell><cell>MK2</cell><cell>3000 ± 80</cell><cell>3772 ± 578</cell></row><row><cell></cell><cell>AChE</cell><cell>4337 ± 133</cell><cell>4108 ± 67</cell></row><row><cell></cell><cell>DRD2</cell><cell>2574 ± 103</cell><cell>2827 ± 510</cell></row><row><cell>Generative Yield 0.8 ↑</cell><cell>MK2</cell><cell>1223 ± 519</cell><cell>2569 ± 1156</cell></row><row><cell></cell><cell>AChE</cell><cell>3877 ± 272</cell><cell>3246 ± 168</cell></row><row><cell></cell><cell>DRD2</cell><cell>156 ± 100</cell><cell>20 ± 29</cell></row><row><cell>Oracle burden 0.8 (1) ↓</cell><cell>MK2</cell><cell>320 ± 83</cell><cell>345 ± 312</cell></row><row><cell></cell><cell>AChE</cell><cell>10 ± 8</cell><cell>22 ± 28</cell></row><row><cell></cell><cell>DRD2</cell><cell>283 ± 61</cell><cell>114 ± 08</cell></row><row><cell>Oracle burden 0.8 (10) ↓</cell><cell>MK2</cell><cell>631 ± 100</cell><cell>493 ± 418</cell></row><row><cell></cell><cell>AChE</cell><cell>123 ± 119</cell><cell>224 ± 17</cell></row><row><cell></cell><cell>DRD2</cell><cell>577 ± 71</cell><cell>364 ± 119</cell></row><row><cell>Oracle burden 0.8 (100) ↓</cell><cell>MK2</cell><cell>1134 ± 178</cell><cell>865 ± 533</cell></row><row><cell></cell><cell>AChE</cell><cell>350 ± 137</cell><cell>497 ± 58</cell></row></table></figure>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head n="8">Acknowledgements</head><p>We would like to thank <rs type="person">Garik Petrosyan</rs> and <rs type="person">Zaven Navoyan</rs> for insightful discussions. We appreciate Nebius.ai for granting us access to their GPU cloud and providing excellent support. <rs type="person">Philipp Guevorguian</rs>'s research is supported by the <rs type="funder">Yandex Armenia fellowship</rs>.</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0" />			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Constitutional ai: Harmlessness from ai feedback</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kadavath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kundu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kernion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Goldie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mirhoseini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Mckinnon</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2212.08073</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Flow network based generative models for non-iterative diverse candidate generation</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Bengio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Korablyov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Precup</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Bengio</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="27381" to="27394" />
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Reinvent 2.0: an ai tool for de novo drug design</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Blaschke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Arús-Pous</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Margreitter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Tyrchan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Engkvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Papadopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Patronov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of chemical information and modeling</title>
+		<imprint>
+			<biblScope unit="volume">60</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="5918" to="5922" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<monogr>
+		<title level="m" type="main">Language models are few-shot learners</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">B</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Ryder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Subbiah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Dhariwal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Neelakantan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Shyam</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Sastry</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Askell</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2005.14165</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Evoprompting: Language models for code-level neural architecture search</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Dohan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">R</forename><surname>So</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2302.14838</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:257232765" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Bartsmiles: Generative masked language models for molecular representations</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chilingaryan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Tamoyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tevosyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Babayan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Hambardzumyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Navoyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Aghajanyan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Khachatrian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Khondkaryan</surname></persName>
+		</author>
+		<idno type="DOI">10.1021/acs.jcim.4c00512</idno>
+		<ptr target="https://doi.org/10.1021/acs.jcim.4c00512" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Chemical Information and Modeling</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Flashattention-2: Faster attention with better parallelism and work partitioning</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dao</surname></persName>
+		</author>
+		<ptr target="https://openreview.net/forum?id=mZn2Xyh9Ec" />
+	</analytic>
+	<monogr>
+		<title level="m">The Twelfth International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Translation between molecules and natural language</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">N</forename><surname>Edwards</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Lai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Ros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Honke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Ji</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2204.11817</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:248376906" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Prospective validation of machine learning algorithms for absorption, distribution, metabolism, and excretion prediction: An industrial perspective</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Grater</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kapadnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Black</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Trapa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sciabola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Chemical Information and Modeling</title>
+		<imprint>
+			<biblScope unit="volume">63</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="3263" to="3274" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Prospective validation of machine learning algorithms for absorption, distribution, metabolism, and excretion prediction: An industrial perspective</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Fang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Grater</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kapadnis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Black</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Trapa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Sciabola</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Chemical Information and Modeling</title>
+		<imprint>
+			<biblScope unit="volume">63</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="3263" to="3274" />
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<title level="m" type="main">Sample efficiency matters: A benchmark for practical molecular optimization</title>
+		<author>
+			<persName><forename type="first">W</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">W</forename><surname>Coley</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2206.12411</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:250072218" />
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Augmented memory: Capitalizing on experience replay to accelerate de novo molecular design</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schwaller</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2305.16160</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title level="m" type="main">Beam enumeration: Probabilistic explainability for sample efficient selfconditioned molecular design</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Schwaller</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2309.13957</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Connecting large language models with evolutionary algorithms yields powerful prompt optimizers</title>
+		<author>
+			<persName><forename type="first">Q</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Tan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>University</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Research</surname></persName>
+		</author>
+		<idno>ArXiv, abs/2309.08532</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:262012566" />
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Chemformer: a pre-trained transformer for computational chemistry</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Irwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Dimitriadis</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">J</forename><surname>Bjerrum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Machine Learning: Science and Technology</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page">15022</biblScope>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>-Y. Chiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kirchenbauer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H.-M</forename><surname>Chu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Somepalli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">R</forename><surname>Bartoldson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Kailkhura</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Schwarzschild</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Saha</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2310.05914</idno>
+		<title level="m">Noisy embeddings improve instruction finetuning</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">A graph-based genetic algorithm and generative model/monte carlo tree search for the exploration of chemical space</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">H</forename><surname>Jensen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Chemical science</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="3567" to="3572" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<monogr>
+		<title level="m" type="main">Ctrl: A conditional transformer language model for controllable generation</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">S</forename><surname>Keskar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Mccann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">R</forename><surname>Varshney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Socher</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1909.05858</idno>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Genetic-guided gflownets: Advancing in practical molecular optimization benchmark</title>
+		<author>
+			<persName><forename type="first">H.-S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Park</surname></persName>
+		</author>
+		<idno>. abs/2402.05961</idno>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Pubchem substance and compound databases</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Thiessen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">E</forename><surname>Bolton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Fu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gindulyte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Han</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">A</forename><surname>Shoemaker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Yu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">H</forename><surname>Bryant</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID:9567253" />
+	</analytic>
+	<monogr>
+		<title level="j">Nucleic Acids Research</title>
+		<imprint>
+			<biblScope unit="volume">44</biblScope>
+			<biblScope unit="page" from="1202" to="D1213" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">A method for stochastic optimization</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ba</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Adam</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:1412.6980</idno>
+		<imprint>
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<monogr>
+		<title level="m" type="main">Auto-encoding variational bayes</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">P</forename><surname>Kingma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Welling</surname></persName>
+		</author>
+		<idno>CoRR, abs/1312.6114</idno>
+		<ptr target="https://api.semanticscholar.org/CorpusID:216078090" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Rdkit: A software suite for cheminformatics, computational chemistry, and predictive modeling</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Landrum</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Molecular de-novo design through deep reinforcement learning</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Olivecrona</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Blaschke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">O</forename><surname>Engkvist</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Chen</surname></persName>
+		</author>
+		<ptr target="https://api.semanticscholar.org/CorpusID:2978311.OpenAI.Gpt-4technicalreport" />
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Cheminformatics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<date type="published" when="2017">2017. 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Pytorch: An imperative style, high-performance deep learning library</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Paszke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gross</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Massa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Lerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Bradbury</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chanan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Killeen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Gimelshein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Antiga</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in neural information processing systems</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="8026" to="8037" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Galactica: A large language model for science</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kardas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Cucurull</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Scialom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Hartshorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Saravia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Poulton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Kerkez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Stojnic</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2211.09085</idno>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<author>
+			<persName><forename type="first">G</forename><surname>Team</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Mesnard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Hardin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Dadashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhupatiraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pathak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Sifre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rivière</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">S</forename><surname>Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Love</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2403.08295</idno>
+		<title level="m">Open models based on gemini research and technology</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><forename type="first">H</forename><surname>Touvron</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Martin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Stone</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Albert</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Almahairi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Babaei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Bashlykov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Batra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Bhargava</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Bhosale</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2307.09288</idno>
+		<title level="m">Llama 2: Open foundation and fine-tuned chat models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Retrieval-based controllable molecule generation</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Nie</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Qiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Xiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Baraniuk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Anandkumar</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">International Conference on Learning Representations</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Smiles, a chemical language and information system. 1. introduction to methodology and encoding rules</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Weininger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of chemical information and computer sciences</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="31" to="36" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Moleculenet: a benchmark for molecular machine learning</title>
+		<author>
+			<persName><forename type="first">Z</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ramsundar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">N</forename><surname>Feinberg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Gomes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Geniesse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Pappu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Leswing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><surname>Pande</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Chemical science</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="513" to="530" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Pytorch fsdp: Experiences on scaling fully sharded data parallel</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Zhao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Varma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C.-C</forename><surname>Huang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Wright</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Shojanazeri</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Ott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Shleifer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Desmaison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Balioglu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Damania</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Chauhan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Hao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mathews</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="DOI">10.14778/3611540.3611569</idno>
+		<ptr target="https://doi.org/10.14778/3611540.3611569" />
+	</analytic>
+	<monogr>
+		<title level="j">Proc. VLDB Endow</title>
+		<idno type="ISSN">2150-8097</idno>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="issue">12</biblScope>
+			<biblScope unit="page" from="3848" to="3860" />
+			<date type="published" when="2023-08">aug 2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">7 Generated Molecules in the Docking Experiments A</title>
+		<author>
+			<persName><forename type="first">A</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">DRD</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="issue">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">=C</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<monogr>
+		<title level="m" type="main">c2nnc(NC(=O)C</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Rh] Score: 0.0000 CC1CCCC(c2nnc(NC(=O) C3CCc4ncccc4C3)s2)C1 .C[O</title>
+	</analytic>
+	<monogr>
+		<title level="m">Na+] Score: 0.0000 O=C(Nc1nnc(C2CCCCCC2</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">C2CC1 Score: 0.3769 Cc1cccc(N2CCC3(CCC3C (=O)Nc3nnc(CC4CCCCC4 )s3)C2=O)n1 Score: 0.6945 COCC1C(C(=O)Nc2nnc(C 3CCCCC3)s2)CC(=O)N1c 1ccccn1 Score: 0.7572 O=C(Nc1nnc(C2</title>
+	</analytic>
+	<monogr>
+		<title level="j">C2CC=CC</title>
+		<imprint/>
+	</monogr>
+	<note>CH-</note>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<monogr>
+		<title level="m">CC2)s1</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">n2c(cccc2=O )C1 Score: 0.7820 O=C(Nc1nnc(C2</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">C[</forename><surname>Ch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">C</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title level="m" type="main">n2c(cccc 2=O)C1 Score: 0.7995 Cc1nccc(N2CCC(NC(=O) OCc3ccccc3)CC2)n1 Score</title>
+		<idno>: 0.8182 N</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">O)Nc2nnc</title>
+		<author>
+			<persName><forename type="first">C</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">C</title>
+		<imprint>
+			<biblScope unit="issue">3</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<title level="m" type="main">=C4 CC=CC=C43)s2)[CH]1 Score: 0.8371 O=C(Nc1nnc(CC2CCCCC2 )s1)C1CCc2c(ncccc2=O )C1 Score: 0.8523 O=C</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<monogr>
+		<title level="m" type="main">cccc2=O)C1)Nc1nnc</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">C</forename></persName>
+		</author>
+		<idno>: 0.8640</idno>
+	</analytic>
+	<monogr>
+		<title level="j">CC2) s</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+		</imprint>
+	</monogr>
+	<note>CH</note>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">nnc</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<pubPlace>NC(=O)C</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ch</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<monogr>
+		<title level="m" type="main">c4ccccc4C3)s2)Score: 0.8731 O=C(Nc1nnc(CC2C[CH+] CCC2)nH+]cccc2C1 Score</title>
+		<idno>: 0.8820</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">C</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">C</title>
+		<imprint>
+			<biblScope unit="issue">1</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<monogr>
+		<title level="m" type="main">c2nnc(N C(=O)C3CCc4[nH+]cccc 4C3)s2)C1</title>
+		<author>
+			<persName><surname>Chcc</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<monogr>
+		<title level="m" type="main">A.7.2 MK2 CO.Cc1ccc(C(=O)NCc2c cc3c(c2)OCO3)c2c1C=C (F)C(C)C2 Score: 0.0000 C</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+	</analytic>
+	<monogr>
+		<title level="m">OCC1C</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<title level="m" type="main">CH C1=C(F)Cc2c(CNC(=O) c3c#cc4c(c3)=CO</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<monogr>
+		<title level="m" type="main">C=4C)c#ccc2C1 Score: 0.0000 CCS1(CC)Cc2c(F)ccc(C (=O)NCc3ccc4c(c3)COC 4)c2C=C1F Score: 0.6335 CC1=C(F)CC2=C(C=CC=C 3CC=CC=C31)CNC(=O)c1 #cc3c(c1)=CO</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">C</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">C=C =3 Score</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<date>6904</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<title level="m" type="main">CC1=CC(C)(C)Cc2c(F)c cc(C(=O)NCc3ccc4c(c3 )OCO4)c21 Score: 0.7225 CC1=C(F)Cc2c(C)ccc(C (=O)NCC3Cc4cc5c(cc4O 3)COC5)c2C1 Score</title>
+		<idno>: 0.7333</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<monogr>
+		<title level="m" type="main">Cc1ccc(S(=O)(=O)NCc2 ccc3c(c2)CCO3)c2c1OC C2 Score: 0.7422 CC1=C(F)Cc2c(C(=O)NC c3ccc4ooc4c3F)ccc(F) c2C1 Score: 0.7669</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<monogr>
+		<title level="m" type="main">CC1=C(F)OCc2c(F)cc(C (=O)NCc3ccc4c(c3)OCO 4)c(C)c21 Score</title>
+		<imprint>
+			<biblScope unit="page">7714</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<monogr>
+		<title level="m" type="main">CC1=C(F)Cc2c(cccc2C( =O)NCc2c#cc3c(c2)COC 3=C=O)C1 Score: 0.7763 CC1=C(C)Cc2c(C(=O)NC c3ccc4c(c3C)OCO4)ccc (F)c2C1 Score: 0.7850 CC1=C(F)Cc2cccc(C(=O )NCC3=COCC=C3)c2C1 Score: 0</title>
+		<imprint>
+			<date>7941</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">=C</title>
+		<imprint>
+			<biblScope unit="issue">1</biblScope>
+		</imprint>
+	</monogr>
+	<note>C</note>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<monogr>
+		<title level="m" type="main">c2c#cc3c(c2)=CO</title>
+		<author>
+			<persName><forename type="first">F)c(c)=c(</forename><surname>Cn C</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">#CC1 Score: 0.8045 CC1=CCc2c(cccc2C(=O) NCc2ccc3c(c2)</title>
+	</analytic>
+	<monogr>
+		<title level="j">C=3C)C</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<monogr>
+		<title level="m" type="main">NC 3)C1 A.7.3 AChE CO.Cc1ccc(P(C)(C)=O) c(Nc2nc3ccccc3nc2NS( =O)(=O)c2cn(C)cn2)c1 .Cl Score: 0.0000 I.O=C1CC(NC(=O)CC2=C C=CC3c4ccccc4C=CC23) =NCN1 Score: 0.0000 COCc1c2ccc(C3OCCO3)c c2c(C)c2cc(S(=O)(=O) N3CCC4(CC3)OC(=O)NC4 C)ccc12 Score: 0.7190 Cc1cc(c2ccccc2)c2cc(S(=O)( =O)C3CCC4(CC3)NC(=O) OC4C)ccc2c1 Score</title>
+		<author>
+			<persName><forename type="first">C(</forename><surname>=o</surname></persName>
+		</author>
+		<idno>: 0.7635</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<monogr>
+		<title level="m" type="main">CCC1=CC=C2C(c3cc ccc3)=C3C(=CCc4ccccc 43)C2S1)NC1=NCCO1 Score: 0.7877 Cc1ccc2c(C)c(S(=O)</title>
+		<author>
+			<persName><surname>O=c</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<monogr>
+		<title level="m" type="main">C3CCC4(CC3)CC(=O)O CN4C)ccc2c1 Score: 0</title>
+		<imprint>
+			<date>7975</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b71">
+	<monogr>
+		<title level="m" type="main">Cc1ccc2cc(S(=O)(=O)C 3(O)CCC4(CC3)NC(=O)O C4C)ccc2c1 Score: 0.8045 C=C1NC(=O)CC12[CH]CC C=CC(S(=O)(=O)c3cc c4cc(C)ccc4c3C)=CC1)</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b72">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">C(=O)C</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page">8255</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b73">
+	<monogr>
+		<title level="m" type="main">Cc1ccc2c(C)c(S(=O)</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b74">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">O)C</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="issue">3</biblScope>
+		</imprint>
+	</monogr>
+	<note>CC</note>
+</biblStruct>
+
+<biblStruct xml:id="b75">
+	<monogr>
+		<title level="m" type="main">O)NC43NC3=O)ccc2c1 Score: 0.8295 CC1CN=C(NC(=O)C2CCc3 ccccc3C23c2ccccc2C3C )O1 Score</title>
+		<author>
+			<persName><forename type="first">N(c)c</forename></persName>
+		</author>
+		<idno>: 0.8338</idno>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b76">
+	<monogr>
+		<title level="m" type="main">Cc1ccc2cc(S(=O)(=O)C 3CCC4(CC3)NC(=O)OC43 C=C3)ccc2c1 Score: 0.8412 Cc1cc(N)c2cc(S(=O)(= O)C3=CCC4(C=C3)CC(=O )NC4C)ccc2c1 Score: 0.8488 CSC1=NC(NC(=O)Cc2ccc c(c3cccc4c3C3=CC=C4C3) c2)COC1 Score: 0.8572 Cc1ccc2c(C)c(S(=O)(= O)C3=CCC4(CC3)NC(=O) CC43C=C3)</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

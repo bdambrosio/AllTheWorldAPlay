@@ -82,8 +82,8 @@ while GENERATION_PROMPT == None:
 tokenizer = AutoTokenizer.from_pretrained(models_dir+model_name)
 model = AutoModelForCausalLM.from_pretrained(models_dir+model_name,
                                              device_map="auto",
-                                             attn_implementation = 'eager', # for gemma
-                                             torch_dtype=torch.bfloat16
+                                             #attn_implementation = 'eager', # for gemma
+                                             #torch_dtype=torch.bfloat16
                                              )
 
 app = FastAPI()
@@ -120,14 +120,22 @@ async def get_response(request: Request):
         print(f'\n received stop {message_j["stop"]}')
         stop_conditions = message_j['stop']
 
+    raw = False
+    if 'raw' in message_j.keys():
+        raw = message_j['raw']
+        formatted = message_j['prompt']
+    else:
+        messages = message_j['messages']
+        formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
+    print(f'\n****************Formatted prompt*******************\n')
+    print(formatted)
+    print(f'\n****************Formatted prompt*******************\n')
     # Define stopping criteria
     stopping_criteria = StoppingCriteriaList([StringStoppingCriteria(stop_conditions, tokenizer)])
     # Define the stopping criteria list
     #gconfig = GenerationConfig(stop_strings = stop_conditions, temperature=temp, top_p=top_p, max_new_tokens=max_tokens, do_sample=True)
 
-    messages = message_j['messages']
 
-    formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
     #print(formatted)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inputs = tokenizer(formatted, return_tensors="pt").to(device)

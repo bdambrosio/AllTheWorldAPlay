@@ -86,89 +86,98 @@ model = AutoModelForCausalLM.from_pretrained(models_dir+model_name,
                                              torch_dtype=torch.bfloat16
                                              )
 
-app = FastAPI()
-print(f"starting server")
-@app.post("/template")
-async def template(request: Request):
-    return {"context_size": context_size}
-    
-@app.post("/v1/chat/completions")
-async def get_response(request: Request):
-    global generator, settings, hf_tokenizer, exl_tokenizer
-    query = await request.json()
-    print(f'request: {query}')
-    message_j = query
-
-    gconfig = GenerationConfig()
-
-    if 'template_query' in message_j.keys():
-        template()
-    temp = 0.1
-    if 'temp' in message_j.keys():
-        temp = message_j['temp']
-    
-    top_p = 1.0
-    if 'top_p' in message_j.keys():
-        top_p = message_j['top_p']
-
-    max_tokens = 100
-    if 'max_tokens' in message_j.keys():
-        max_tokens = message_j['max_tokens']
-
-    stop_conditions = ['###','<|endoftext|>', "Reference(s):"]
-    if 'stop' in message_j.keys():
-        print(f'\n received stop {message_j["stop"]}')
-        stop_conditions = message_j['stop']
-
-    raw = False
-    if 'raw' in message_j.keys():
-        raw = message_j['raw']
-        formatted = message_j['prompt']
-    else:
-        messages = message_j['messages']
-        formatted = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=GENERATION_PROMPT)
-
-    # Define stopping criteria
-    stopping_criteria = StoppingCriteriaList([StringStoppingCriteria(stop_conditions, tokenizer)])
-    # Define the stopping criteria list
-    #gconfig = GenerationConfig(stop_strings = stop_conditions, temperature=temp, top_p=top_p, max_new_tokens=max_tokens, do_sample=True)
+# Function to generate text one token at a time
+model.eval()
 
 
-    #print(formatted)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    inputs = tokenizer(formatted, return_tensors="pt").to(device)
+# Define the stub function to select from logits
+def select_from_logits(logits):
+    # This is a stub. Replace it with your custom logic for selecting a token.
+    # For now, we'll just use argmax to select the most probable token.
+    return torch.argmax(logits, dim=-1)
 
-    input_ids = inputs["input_ids"]
-    attention_mask = inputs['attention_mask']
-    
-    response = model.generate(input_ids,
-                              do_sample=True,
-                              max_new_tokens=max_tokens,
-                              top_p=top_p,
-                              stopping_criteria=stopping_criteria,
-                              temperature=temp,
-                              num_return_sequences=1,
-                              attention_mask=attention_mask)
-    text_response = tokenizer.decode(response[0][len(input_ids[0]):], skip_special_tokens=True)
-    
-    print(f'\n****************\n{text_response}\n*******************\n')
-    return text_response
+# Define the function to display top 20 logits and allow manual selection
+# Define the function to display top 20 logits and allow manual selection
+def select_from_logits(logits):
+    # Get the top 20 logits
+    top_logits, top_indices = torch.topk(logits, 20, dim=-1)
 
-    #streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-    # Generate tokens with streaming
-    #generation_kwargs = dict(input_ids=inputs["input_ids"],
-    #                         attention_mask=inputs["attention_mask"],
-    #                         streamer=streamer,
-    #                         max_new_tokens=max_tokens,)
-    #                         #stop=stop_conditions,
-    #                         #temperature=temp,
-    #                         #top_p=top_p)
-    #print('calling generate')
-    #generation_task = model.generate(**generation_kwargs)
+    # Convert logits to probabilities
+    probabilities = torch.nn.functional.softmax(top_logits, dim=-1)
 
-    # Stream the output tokens
-    #async def generate():
-    #    async for output in generation_task:
-    #        yield output
-    # 
-    #return StreamingResponse(generate(), media_type="text/plain")
+    # Display the options
+    for i, (index, prob) in enumerate(zip(top_indices[0], probabilities[0])):
+        token = tokenizer.decode(index.item())
+        print(f"{i + 1}: {token} [{''.join(format(ord(c), '02X') for c in token)}](Probability: {prob.item()})")
+
+    # Allow manual selection
+    choice = -1
+    while choice < 0 or choice > 19:
+        try:
+            choice = int(input("Select the next token by entering the number (1-20): ")) - 1
+        except Exception as e:
+            pass
+    selected_token_id = top_indices[0, choice].unsqueeze(-1)
+    return selected_token_id
+
+def generate_text_one_token_at_a_time(prompt, max_length=50):
+    # Tokenize the prompt
+    input_ids = tokenizer.encode(prompt, return_tensors='pt')
+
+    # Initialize the output with the input prompt
+    output_ids = input_ids.clone()
+
+    # Generate tokens one by one
+    for _ in range(max_length):
+        # Get the model outputs (logits)
+        outputs = model(output_ids)
+        logits = outputs.logits
+
+        # Select the next token
+        next_token_id = select_from_logits(logits[:, -1, :])
+
+        # Append the next token to the output
+        output_ids = torch.cat([output_ids, next_token_id.unsqueeze(-1)], dim=-1)
+
+        # Stop if the end-of-sequence token is generated
+        if next_token_id == tokenizer.eos_token_id:
+            break
+        generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        print(f'\n{generated_text}\n')
+
+    # Decode the output ids to text
+    generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    return generated_text
+
+# Example usage
+prompt = """
+1. The Whispering Wind
+Once upon a time, in a village nestled between two mountains, there lived a girl named Lila who could hear the wind's secrets.
+Every evening, she would sit atop the highest hill and listen to the wind's whispers. 
+One day, the wind warned of a great storm approaching. 
+Lila rushed to alert the villagers, who at first didn't believe her. 
+But as dark clouds gathered, they heeded her warning and sought shelter. 
+The storm raged, but thanks to Lila's gift, not a single soul was harmed. 
+From that day on, the villagers always listened when Lila spoke of the wind's whispers, and their little village prospered under nature's guidance.
+
+2. The Clockwork Heart
+Once upon a time, in a kingdom of gears and steam, there lived a lonely inventor named Theo. 
+He crafted a mechanical heart for himself, hoping it would help him feel love. But no matter how intricate his creation, it remained cold and lifeless. 
+One day, a young apprentice named Mira arrived at his workshop, eager to learn. 
+As Theo taught her his craft, he felt a warmth he'd never experienced before. 
+To his surprise, his mechanical heart began to tick with life, powered not by gears, but by the joy of companionship. 
+Theo realized that true love couldn't be invented – it had to be found.
+
+3. The Starlight Paintbrush
+Once upon a time, in a world where the sky was always grey, there lived a young artist named Celeste. 
+She dreamed of colors she'd never seen, longing to paint the world bright. 
+One night, a shooting star streaked across the sky, leaving behind a magical paintbrush. 
+When Celeste picked it up, it glowed with starlight. With each stroke, she painted twinkling stars, a golden sun, and a silver moon onto the grey canvas of the sky. 
+As dawn broke, the world awakened to a symphony of colors never before seen. 
+From that day forward, Celeste continued to paint the sky, bringing joy and wonder to all who gazed upon her cosmic masterpiece.
+
+4. The Happy Girl
+Once upon a time, 
+"""
+generated_text = generate_text_one_token_at_a_time(prompt)
+print(generated_text)

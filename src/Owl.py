@@ -330,6 +330,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
    CURRENT_PROFILE_PROMPT_TEXT = ''
 
    def get_current_profile_prompt_text(self):
+      global CURRENT_PROFILE_PROMPT_TEXT
       return CURRENT_PROFILE_PROMPT_TEXT
 
 
