@@ -2,12 +2,40 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "cwd": "${fileDirname}",
-            "name": "Python: Debug with Virtual Environment",
+            "name": "sd3_server",
             "type": "debugpy",
             "request": "launch",
-            "program": "/home/bruce/Downloads/AllTheWorldAPlay/src/Owl.py", 
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",  // On Windows: venv\\Scripts\\python.exe
+            "module": "uvicorn",
+            "args": [
+                "sd3_server:app",
+                "--reload",
+                "--port",
+                "5008"
+           ],
+            "jinja": true
+        },
+        {
+            "name": "chat_search_service",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fastapi",
+            "args": [
+                "run",
+                "chat/chat_search_service.py",
+                "--port",
+                "5005"
+            ],
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python", // On Windows: venv\\Scripts\\python.exe
+            "console": "integratedTerminal",
+            "jinja": true
+        },
+        {
+            "cwd": "${fileDirname}",
+            "name": "Owl: Debug with Virtual Environment",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/bruce/Downloads/AllTheWorldAPlay/src/Owl.py",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python", // On Windows: venv\\Scripts\\python.exe
             "console": "integratedTerminal",
             "env": {
                 "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
