@@ -432,7 +432,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
        elif PREV_LEN < len(self.input_area.toPlainText())+2:
            selectedText = self.input_area.toPlainText()[PREV_LEN:]
            selectedText = selectedText.strip()
-       response = self.owlCoT.web(query=selectedText)
+       response = self.owlCoT.web(query=selectedText, widget=self)
        self.display_response('\n\n'+response)
     #
     ## Planner interface
