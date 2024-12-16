@@ -108,7 +108,7 @@ def process_urls(query_phrase, keywords, keyword_weights, urls, search_level, ti
     start_time = time.time()
     full_text = ''
     in_process = []
-    max_w = 6
+    max_w = 1
     #print(f' normal {NORMAL_SEARCH}, quick {QUICK_SEARCH}, level {search_level}')
     # Create a ThreadPoolExecutor with 5 worker threads
     print(f'process_urls timeout, max_chars: {timeout}, {max_chars}')

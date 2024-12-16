@@ -130,14 +130,14 @@ i. Answer: Respond to the task originating actor. 'Answer' should always be the 
 <Target>name of originating actor of task</Target>
 <Content>answer or response to target question or task</Content>
 
-ii. Library: shallow search the local library of computing and biomedicine papers. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'library' can be chosen when there is insufficient information to complete user task, and can only be chosen if there is no 'library action rejected' statement in the <MemoryStream>. 'Library' should be chosen before the 'Research' action on a same or similar Question, as 'Library' is less resource intensive. To use the 'Library' action, formulate a concise, Question for the specific information needed. It can be useful to significantly rephrase a previously used question, but never repeat a previous question verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. Respond in the following format:
+ii. Library: search the local library of computing and biomedicine papers. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'library' can be chosen when there is insufficient information to complete user task, and can only be chosen if there is no 'library action rejected' statement in the <MemoryStream>. 'Library' should be chosen before the 'Research' action on a same or similar Question, as 'Library' is less resource intensive. To use the 'Library' action, formulate a concise, Question for the specific information needed. It can be useful to significantly rephrase a previously used question, but never repeat a previous question verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. Respond in the following format:
 <Act>library</Act>
 <Target>library</Target>
 <Content>question on information needed</Content>
 
-iii. Research: A time and compute intensive deep search of the local library of computing and biomedicine papers. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'Research' can only be chosen if there is no 'library action rejected' statement in the <MemoryStream>. 'Research' can be chosen when the 'Library' action has failed to provide the information needed to complete user task. To use the 'Research' action, formulate a concise Question for the specific information or data needed. It can be useful to significantly rephrase a previously used question, but never repeat one verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. This action should not be chosen repeatedly with the same or closely similar content. Respond in the following format: 
-<Act>research</Act>
-<Target>library</Target>
+iii. Google: search the web for information. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'Google' can be chosen when there is insufficient information to complete user task, and can only be chosen if there is no 'google action rejected' statement in the <MemoryStream>. To use the 'Google' action, formulate a concise, Question for the specific information needed. It can be useful to significantly rephrase a previously used question, but never repeat a previous question verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. Respond in the following format:
+<Act>google</Act>
+<Target>google</Target>
 <Content>question on information needed</Content>
 
 iv. Review: Extract relevant information from the memory stream and previous knowledge-seeking acts for review. To review for specific data, formulate a concise, detailed Question specifying the information needed. This action should not be chosen repeatedly with the same or similar query. Respond in the following format:
@@ -500,8 +500,9 @@ Evaluation
                 self.remember(self.name+' orientation and thoughts:\n'+thought)
 
             #
-            ## Now choose action
+            ## Now choose action### but NOTE*** - above now includes action!
             #
+            """
             userMsg = input_text+'\n\n'+thought+'\n\n'+\
                       (respond_string if (respond_immediately and self.review) else act_prefix_string+act_string)
             prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek()) +userMsg)
@@ -519,7 +520,7 @@ Evaluation
             if proceed == 's': # show state
                 self.show_memories(short=False)
             step_count +=1
-            
+            """
             #
             ## now do it! parse action
             #
@@ -599,19 +600,32 @@ Target your response at about 1600 tokens""",
                     self.remember('library action rejected!')
                 self.prev_action='library'
                 
-            elif act.lower() == 'research':
-                # gather facts
-                self.review=True
-                valid, feedback = self.validate_library_question(content)
-                #print(f"\nResearch: {feedback}\n")
-                if valid:
-                    self.library_search(feedback, top_k=10, web=self.depth_stack.peek())
-                elif self.prev_action=='library':
-                    self.remember("Owl: choose 'Answer' action next!")
-                    #return self.name + ' says to ' + target+" sorry I couldn't help."
+            elif act.lower() == 'google':
+                self.review=False
+                data=None
+                try:
+                    print(f' searching google {content}')
+                    response = requests.get(f'http://127.0.0.1:5005/search/?query={content}')
+                    data = response.json()
+                except Exception as e:
+                    print(f"google search failure, {str(e)}")
+                if data is not None:
+                    story = data['result']
+                    #summary = self.cot.summarize(query=title,
+                    #                             response=story,
+                    #                             profile=f"""You are a skilled writer, writing for a knowledgeable audience.
+                    #Your goal is to provide an articulate, detailed summary of the Text content related to {title}
+                    #Target your response at about 600 tokens""",
+                    #                             max_tokens=800)
+                    summary = story
+                    self.remember(self.name+f': search {content} complete')
+                    self.remember(self.name+' says to '+target+" "+summary)
+                    self.task_stack.pop()
+                    self.analysis_stack.pop()
+                    self.depth_stack.pop()
+                    return self.name + ' says to ' + target+' '+summary.strip()
                 else:
-                    self.remember('library action rejected!')
-                self.prev_action='research'
+                   self.remember(f'article retrieval failure')
 
             elif act.lower() == 'review':
                 self.review=True

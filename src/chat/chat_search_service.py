@@ -66,7 +66,7 @@ End your response with:
 
 @app.get("/search/")
 #{self.query}&model={GPT4}&max_chars={max_tokens*4}')
-async def search(query: str, model:str = 'gpt-3.5-turbo', max_chars: int = 1200):
+async def search(query: str, model:str = 'gpt-4o-mini', max_chars: int = 1200):
     response_text = ''
     storeInteraction = True
     try:
