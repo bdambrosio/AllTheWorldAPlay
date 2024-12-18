@@ -1442,9 +1442,9 @@ class PaperSelect(QWidget):
         resources['dscp'] = self.dscp
         resources['template'] = cot.template
         resources['port'] = cot.port
-        with open('owl_data/discuss_resources.pkl', 'wb') as f:
+        with open('/home/bruce/.local/share/owl/discuss_resources.pkl', 'wb') as f:
             pickle.dump(resources, f)
-        rc = subprocess.run(['python3', 'paper_writer.py', '-discuss', 'owl_data/discuss_resources.pkl'])
+        rc = subprocess.run(['python3', 'paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
         
     def on_show_clicked(self):
         """ Handles the show button click event. """

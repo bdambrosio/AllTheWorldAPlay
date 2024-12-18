@@ -1,0 +1,1766 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Phi-4 Technical Report</title>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability  status="unknown">
+					<licence/>
+				</availability>
+				<date type="published" when="2024-12-12">12 Dec 2024</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Marah</forename><surname>Abdin</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Jyoti</forename><surname>Aneja</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Harkirat</forename><surname>Behl</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Suriya</forename><surname>Gunasekar</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Harrison</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Russell</forename><forename type="middle">J</forename><surname>Hewett</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Mojan</forename><surname>Javaheripi</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Piero</forename><surname>Kauffmann</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">James</forename><forename type="middle">R</forename><surname>Lee</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yin</forename><forename type="middle">Tat</forename><surname>Lee</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Weishung</forename><surname>Liu</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Caio</forename><forename type="middle">C T</forename><surname>Mendes</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Anh</forename><surname>Nguyen</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Eric</forename><surname>Price</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gustavo</forename><surname>De</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Rosa</forename><surname>Olli</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Saarikivi</forename><surname>Adil</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Salim</forename><surname>Shital</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Shah</forename><forename type="middle">Xin</forename><surname>Wang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Rachel</forename><forename type="middle">Ward</forename><surname>Yue</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Wu</forename><surname>Dingli</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yu</forename><forename type="middle">Cyril</forename><surname>Zhang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution">Microsoft Research</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Phi-4 Technical Report</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date type="published" when="2024-12-12">12 Dec 2024</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">DC170FE2FB8915F14C67051E298E38A7</idno>
+					<idno type="arXiv">arXiv:2412.08905v1[cs.CL]</idno>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.2-SNAPSHOT" ident="GROBID" when="2024-12-17T02:33+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We present phi-4, a 14-billion parameter language model developed with a training recipe that is centrally focused on data quality. Unlike most language models, where pre-training is based primarily on organic data sources such as web content or code, phi-4 strategically incorporates synthetic data throughout the training process. While previous models in the Phi family largely distill the capabilities of a teacher model (specifically GPT-4), phi-4 substantially surpasses its teacher model on STEM-focused QA capabilities, giving evidence that our data-generation and post-training techniques go beyond distillation. Despite minimal changes to the phi-3 architecture, phi-4 achieves strong performance relative to its size -especially on reasoning-focused benchmarks -due to improved data, training curriculum, and innovations in the post-training scheme.</p><p>Recent advancements in Large Language Models (LLMs) have shown that significant improvements in data quality can rival, and sometimes surpass, the performance gains traditionally achieved by scaling compute with model and dataset size. Building on the success of the Phi family [GZA + 23, LBE + 23, JBA + 23, AAA + 24], we introduce phi-4, a 14-billion parameter model that further advances performance of small language models by introducing innovative synthetic data generation methods for reasoningfocused tasks, by optimizing the training curriculum and data mixture, and by introducing new techniques in post-training.</p><p>Synthetic data constitutes the bulk of the training data for phi-4 and is generated using a diverse array of techniques, including multi-agent prompting, self-revision workflows, and instruction reversal. These methods enable the construction of datasets that induce stronger reasoning and problem-solving abilities in the model, addressing some of the weaknesses in traditional unsupervised datasets. Synthetic data in phi-4 also plays a crucial role in post-training, where techniques such as rejection sampling and a novel approach to Direct Preference Optimization (DPO) are employed to refine the model's outputs.</p><p>The development of phi-4 is guided by three core pillars:</p><p>1. Synthetic Data for Pretraining and Midtraining: High-quality synthetic datasets are designed to prioritize reasoning and problem-solving, carefully generated to ensure diversity and</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Table <ref type="table">1</ref>: Performance of phi-4 on a set of standard benchmarks. The first set of benchmarks uses OpenAI's simple-evals framework <ref type="bibr" target="#b28">[Ope24b]</ref>, specifying the prompts/extraction/temperature=0.5. We compare to small models of similar inference cost, as well as to larger models.</p><p>relevance. We change our training curriculum and create new pretraining and midtraining data mixtures to increase the allocation of synthetic tokens, compared to older generations of phi.</p><p>2. Curation and Filtering of High-Quality Organic Data: We meticulously curate and filter organic<ref type="foot" target="#foot_1">foot_1</ref> data sources, including web content, licensed books, and code repositories to extract seeds for the synthetic data pipeline that encourage high-depth reasoning and prioritize educational value (to the model). These seeds form the foundation of the synthetic generation pipeline. To complement these synthetic datasets, we also filter the web for high-quality data (in terms of knowledge and reasoning) to use directly in pretraining.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Post-Training:</head><p>We further advance the post-training recipe in phi-4 by creating new refined versions of SFT datasets, as well as by developing a new technique to create DPO pairs, based on pivotal token search.</p><p>With these innovations, the performance of phi-4 on reasoning-related tasks is comparable to or surpasses much larger models. For example, its performance on many widely used reasoning-related benchmarks meets or exceeds that of Llama-3.1-405B. In Table <ref type="table">1</ref> we compare the performance of our model on academic benchmarks to several contemporary foundation models. We find that phi-4 significantly exceeds its teacher GPT-4o on the GPQA (graduate-level STEM Q&amp;A) and MATH (math competition) benchmarks.</p><p>Figure <ref type="figure">1</ref>: Average performance of different models on the November 2024 AMC-10 and AMC-12 tests. This is the average score (with maximum score 150) over the four tests on 100 runs with temperature t = 0.5. We chose t = 0.5 to follow simple-evals <ref type="bibr" target="#b28">[Ope24b]</ref>. Error bars are 2σ of the estimate. On competition math, phi-4 scores well above its weight-class even compared to non-open-weight models.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.1">Addressing Overfitting and Data Contamination</head><p>Decontamination: One pitfall of foundation models is overfitting to benchmarks, such as through the leakage of benchmark test sets via the web corpus. We improved the data decontamination process for phi-4 compared to previous Phi models to ensure no unfair influence on evaluation results. More details of the decontamination method are given in Appendix B.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>AMC Benchmark:</head><p>The surest way to guard against overfitting to the test set is to test on fresh data. We tested our model on the November 2024 AMC-10 and AMC-12 math competitions <ref type="bibr">[Com24]</ref>, which occurred after all our training data was collected, and we only measured our performance after choosing all the hyperparameters in training our final model. These contests are the entry points to the Math Olympiad track in the United States and over 150,000 students take the tests each year.</p><p>In Figure <ref type="figure">1</ref> we plot the average score over the four versions of the test, all of which have a maximum score of 150. phi-4 outperforms not only similar-size or open-weight models but also much larger frontier models. Such strong performance on a fresh test set suggests that phi-4's top-tier performance on the MATH benchmark is not due to overfitting or contamination. We provide further details in Appendix C.</p><p>Relying on Contamination-Proof Benchmarks: We give significant weight to benchmarks which were designed in such a way that the questions are original and do not appear on the web, such as GPQA [RHS + 23]. While optimizing our model, we relied on an internal benchmark composed primarily of original prompts written by the team (see Section 5 for further details).</p><p>Long Chain-of-Thought Models: A style of LLM that scales inference-time compute by generating long chains of thought has emerged over the past few months, as pioneered by OpenAI O1 <ref type="bibr" target="#b27">[Ope24a]</ref> and followed by DeepSeek-R1-Lite-Preview <ref type="bibr" target="#b10">[Dee24]</ref> and Qwen/QwQ-32B-Preview <ref type="bibr" target="#b32">[Tea24]</ref>. These models perform well on reasoning benchmarks, where QwQ, the only such model with open weights, averages 124.5 points in the AMC-10/12 setting of Figure <ref type="figure">1</ref>. However, QwQ also uses 4X more tokens on this task than phi-4 and has more than twice as many parameters. Thus, the inference cost of QwQ is an order of magnitude higher than phi-4. Consequently, these models are not in the same class as phi-4 with respect to cost or latency.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2">Approach to Data</head><p>The pretraining phase of phi-4 relies heavily on synthetic datasets generated through a variety of techniques. In addition, we employ several methods for filtering organic data sources that are used both as complementary datasets in the pretraining and as seeds for generating synthetic data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1">Purpose of Synthetic Data</head><p>Synthetic data as a substantial component of pretraining is becoming increasingly common, and the Phi series of models has consistently emphasized the importance of synthetic data. Rather than serving as a cheap substitute for organic data, synthetic data has several direct advantages over organic data.</p><p>Structured and Gradual Learning. In organic datasets, the relationship between tokens is often complex and indirect. Many reasoning steps may be required to connect the current token to the next, making it challenging for the model to learn effectively from next-token prediction. By contrast, each token generated by a language model is by definition predicted by the preceding tokens, making it easier for a model to follow the resulting reasoning patterns. In this way, synthetic data may act as a form of "spoonfeeding," presenting challenges in a digestible and progression-oriented manner.</p><p>A simple example to illustrate this is that a human-written solution to a math problem might start with the final answer. This answer is much too hard to output immediately, for either a human or an LLM-the human produced it by nonlinear editing, but pretraining expects the LLM to learn to produce it linearly. Synthetic solutions to math problems will not have such roadblocks.</p><p>Alignment with Inference Contexts. Synthetic data is typically closer to the format of outputs we expect our models to generate. Training on such data helps align the model's pretraining experience with the scenarios it encounters during inference. This alignment ensures that the context seen during generation remains in-distribution with respect to the data the model was pretrained on.</p><p>For example, web forums are very different in style from LLM interactions. If a fact only appears in web forum data, the pretrained model will think it is very unlikely to occur in the chats it produces. Rewriting facts from the web forum into the language style of an LLM makes the facts more accessible during the LLM chat context of inference.</p><p>Principles. Our approach to generating synthetic data for phi-4 is guided by the following principles:</p><p>1. Diversity: The data should comprehensively cover subtopics and skills within each domain. This requires curating diverse seeds from organic sources. 4. Chain-of-Thought: Data should encourage systematic reasoning, teaching the model various approaches to the problems in a step-by-step manner. This fosters coherent outputs for complex tasks.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2">Synthetic Data for Pretraining and Midtraining</head><p>We created 50 broad types of synthetic datasets, each one relying on a different set of seeds and different multi-stage prompting procedure, spanning an array of topics, skills, and natures of interaction, accumulating to a total of about 400B unweighted tokens. In Appendix D, we give a few examples of transcripts taken from our synthetic generations. Here, we highlight novel methodologies used in generating synthetic datasets for phi-4:</p><p>• Seed Curation: The synthetic dataset generation begins with high-quality seeds sourced from multiple domains. These curated seeds provide the foundation for synthetic data generation, enabling the creation of exercises, discussions, and reasoning tasks tailored to the model's training objectives.</p><p>1. Web and Code-based Seeds: Excerpts and snippets are extracted from web pages, books, and code repositories with a focus on content that demonstrates high complexity, reasoning depth, and educational value. To ensure quality, we employ a two-stage filtering process: first, identifying pages with strong educational potential, and second, segmenting the selected pages into passages, scoring each for its factual and reasoning content.</p><p>2. Question Datasets: A large set of questions was collected from websites, forums, and Q&amp;A platforms. These questions were then filtered using a plurality-based technique to balance difficulty. Specifically, we generated multiple independent answers for each question and applied majority voting to assess the consistency of responses. We discarded questions where all answers agreed (indicating the question was too easy) or where answers were entirely inconsistent (indicating the question was too difficult or ambiguous). This filtering process produces a dataset of questions that challenge the model's reasoning and problem-solving abilities while remaining approachable. The plurality answers were used in place of the ground truth in our rejection-sampling based generations.</p><p>3. Creating Question-Answer pairs from Diverse Sources: Another technique we use for seed curation involves leveraging language models to extract question-answer pairs from organic sources such as books, scientific papers, and code. This approach does not rely on merely identifying explicit Q&amp;A pairs within the text. Instead, it involves a pipeline designed to detect deduction chains or logical progressions in the text. The language model identifies key steps in reasoning or problem-solving processes and reformulates them into questions and corresponding answers. Our experiments show that, if done correctly, training on the resulting content can be far more effective (in terms of improvement on academic and internal benchmarks) than training on the original content.</p><p>• Rewrite and Augment: Seeds are transformed into synthetic data through multi-step prompting workflows. This includes rewriting most of the useful content in given passages into exercises, discussions, or structured reasoning tasks.</p><p>• Self-revision: The initial responses are then iteratively refined through a feedback loop where a model critiques and subsequently improves its own outputs, guided by the rubrics focused on reasoning and factual accuracy.</p><p>• Instruction Reversal for Code and Other Tasks: To enhance the model's ability to generate outputs from instructions, we used an instruction reversal technique. For example, we take existing code snippets from the code data corpus and use it to generate corresponding instructions that include the problem description or task prompt. The resulting synthetic data pairs were structured with the instruction appearing before the code. Only data with high fidelity between the original and regenerated code are retained, ensuring alignment between the instructions and the outputs. This method can be generalized to other targeted use cases.</p><p>• Validation of Code and Other Scientific Data: When appropriate, we incorporate tests for validating our reasoning-heavy synthetic datasets. The synthetic code data is validated through execution loops and tests. For scientific datasets, the questions are extracted from scientific materials using a method designed to ensure high relevance, groundedness, and difficulty balance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.3">Curation and Filtering of Web and Q&amp;A Data</head><p>Q&amp;A datasets. We collected tens-of-millions high-quality organic problems and solutions by reviewing public websites, relying on existing datasets, and acquiring external datasets. Our experience from previous models showed that question-answer data contributed significantly to various capabilities, such as mathematical reasoning and academic performance. Our ablation studies showed that organic questions are substantially more effective than synthetic questions. We used several ways to synthetically augment the dataset of organic questions to obtain a larger dataset. While these rewritten questions improved the model's capabilities, the gains were not as pronounced. A significant portion of the collected questions lacked accurate solutions. To address this, we replaced the answers with synthetically generated ones and used majority-voting to increase accuracy. All collected questions and solutions underwent a thorough decontamination process to ensure there is no overlap with test sets<ref type="foot" target="#foot_2">foot_2</ref> .</p><p>Targeting High-quality Web Data. We collected a wide variety of high-quality organic data sources for phi-4, prioritizing reasoning-dense and nuanced material (e.g., academic papers, educational forums, and programming tutorials). In addition to directly training on this text, we used various web sources as seeds for specialized synthetic data generation pipelines. We found clean and correct natural data to be absolutely crucial for seeding synthetic data: minor errors can result in severe quality degradations for derived synthetic documents. We therefore invested heavily in the perfectionistic curation of our web data. We discuss the main techniques and considerations below:</p><p>• Targeted Acquisitions: We included major repositories of reasoning-dense documents that are publicly permissible for use (e.g., arXiv, PubMed Central, GitHub) or explicitly licensed (e.g., licensed books) aiming for a level of comprehensiveness, recency, and cleanliness above the typical standard of externally available corpora.</p><p>• Filtering Web Dumps: To capture the long tail of information-rich web sources (e.g., forums, blogs, course material, domain-specific wikis), we took the approach of selecting a small fraction of highest-quality documents from bulk web dumps, using small (non-LLM) classifiers trained on ∼ 10 6 LLM-generated annotations. This approach tends to over-index on STEM-related keywords, so we created a specialized pipeline to amplify high-quality non-STEM content (e.g., arts, history, travel, culture, and entertainment). These topic classifications were also obtained by distilling an LLM annotator. Finally, we removed corrupted text and binary files by detecting outliers according to n-gram statistics and compression ratios.</p><p>• Multilingual Data: We incorporated multilingual datasets to ensure that our model could handle a wide range of languages, including German, Spanish, French, Portuguese, Italian, Hindi and Japanese. This involved sourcing and processing high-quality multilingual documents from CommonCrawl and Wikipedia. Our multilingual processing pipeline consists of a language identification model, based on fastText used to categorize documents into 176 languages, then uses the same classifiers for filtering web dumps to filter for quality. Note that the classifiers were trained on multilingual LLM-generated annotations.</p><p>• Custom Extraction and Cleaning Pipelines: To ensure sufficient cleanliness and uniformity between heterogeneous organic data sources, we needed a collection of customized heuristics and parsers. For each targeted data source, we built custom pipelines to ingest a variety of file formats (e.g., multi-file TeX source, ePub and other XML-like formats, Microsoft Word documents, and PDFs). For general web data, we built a custom HTML-to-text extractor, taking significant care to preserve fragile content that is frequently corrupted by naïve parsers (e.g., TeX/MathML equations, code blocks, tables, and forum thread structure). This extractor prunes and normalizes the DOM tree, using a variety of signals (e.g., HTML tag names, CSS classes, content length, and tree depth) to distinguish elements such as boilerplate, advertisements, equations, and syntaxhighlighter artifacts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.4">Post-Training datasets</head><p>Our post-training data is composed of:</p><p>• Supervised Fine-Tuning (SFT) Datasets: Using carefully curated user prompts taken from a mixture of publicly available datasets and synthetically generated data, we generate multiple model responses and select the best using an LLM-based evaluation process.</p><p>• Direct Preference Optimization (DPO): We generate DPO pairs based on rejection sampling and LLM evaluation, a part of which is based on our approach to creating pivotal token-based pairs, explained in Section 4.3 below.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3">Pretraining details</head><p>The phi-4 model is based on a decoder-only transformer architecture [VSP + 17] with 14B parameters and a default context length of 4096. This is later extended to a 16K context length during midtraining. The architecture closely follows phi-3-medium, except that we now use the tiktoken tokenizer (for better multilingual support) with a padded vocabulary size of 100,352 (including unused tokens) and we use full attention over the 4K context length, rather than a 2K sliding window used in phi-3-medium.</p><p>The model was pretrained for approximately 10T tokens using linear warm-up and decay schedules with peak learning rate of 0.0003, constant weight decay of 0.1, and global batch size of 5760. The training hyperparameters are tuned using interpolations from shorter horizon runs and further adjusted by stress testing the learning rate warm-up stage for stability. Pretraining is followed by a shorter midtraining stage to increase the original context length of 4k to 16k.</p><p>Since pre-trained models are not good at instruction following, it is not very informative to use 0-shot evaluations that require the answer to be in a specific format, for example simple-evals. We therefore use an internal implementation of benchmarks for pretraining which uses a mixture of loglikelihood and/or few-shot prompts for various tasks. Specifically, we used log-likelihood evaluations for MMLU (5-shot), MMLU-pro, and ARCC (1-shot). We used 1, 3, 4, and 8 few-shot examples for TriviaQA (TQA), MBPP, MATH, and GSM8k to help the model adhere to the answer format for easier extraction of the solution. We use this evaluation method throughout Section 3. Table <ref type="table" target="#tab_1">2</ref> summarizes the performance boost of pretrained phi-4 compared with its predecessor phi-3-medium.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1">Data Composition in Pretraining</head><p>The phi-3 model family were trained using a two-phase strategy. Most of the training tokens were used in phase 1 of the training, which consisted largely of filtered web data. Phase 2 was trained with a data mixture consisting primarily of synthetic tokens and a much smaller allocation for ultra-filtered and reasoning-heavy web data. As the size and complexity of our synthetic data grew, we observed a marginal drop in the benefit from using non-synthetic tokens for the phi-3 family of model sizes. We note two key observations.</p><p>• Web datasets showed small benefits on reasoning heavy benchmarks. Prioritizing more epochs over our synthetic data led to better performance with respect to adding fresh web tokens.</p><p>• Models trained only with synthetic data underperformed on the knowledge-heavy benchmarks and demonstrated increased hallucinations.</p><p>Figure <ref type="figure" target="#fig_1">2</ref> demonstrates the first phenomenon using smaller scale phase 2 pretraining exercises. In this example, we conduct two training runs per model scale, using the same number of training tokens on top of phase 1 pretrained checkpoints. For all runs, the number of unique synthetic tokens is fixed (a subsample of full synthetic data) but the number of repetitions on this data changes, namely 4 and 12 epochs. The rest of the training tokens are fresh unique tokens supplied from web sources. As seen, performing more iterations on the synthetic data is more beneficial than supplying more web tokens.</p><p>Inspired by this scaling behavior of our synthetic data, we trained a 13B parameter model solely on synthetic<ref type="foot" target="#foot_3">foot_3</ref> data, for ablation purposes only -the model sees over 20 repetitions of each data source. For the sake of ablations, we partitioned our synthetic data into web rewrites, which includes more direct rewrites of our filtered web content relative to all other types of synthetic data. Table <ref type="table">3</ref> compares the previous phi-3-medium model with the new model trained entirely on the synthetic data. Throughout training, all benchmarks consistently improved, despite the increase in epochs, and the majority of the benchmarks showed improvements over phi-3. However, knowledge-related benchmarks, like 1-shot triviaqa (TQA), show a large gap where synthetic models are subpar. These observations led us to rethink the role of web data in our data mixture. Table <ref type="table">3</ref>: Benchmark performance of 13B models (used for ablations only) trained on data mixtures containing no web data. The respective training tokens are either from synthetic sources, or an equal share of synthetic data and web rewrites. All numbers are reported relative to the performance of phi-3-medium, which has seen a combination of web and synthetic data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2">Data Mixture</head><p>To design our pretraining data mixture for a given training token budget, we search over different allocation of tokens coming from various sources, namely, 1) synthetic, 2) web rewrites<ref type="foot" target="#foot_4">foot_4</ref> , 3) filtered web (divided into reasoning and knowledge-heavy portions), 4) targeted acquisitions and organic data (e.g., academic data, books, and forums), and 5) code data. We conducted ablations using a shorter token horizon of 1T tokens to derive the data mixture. These ablations rely on our established result on the high-rank correlation of short training with longer training, up to the over-fitting saturation threshold of data sources. In addition we observe a high rank correlation between the performance of the 7B and 14B models on different data mixtures, given a large enough distance between the data mixtures. This allowed us to conduct the experiments at 7B scale and transfer the findings to phi-4. Among the numerous ablations, we highlight a few that show best insights on our data composition. Specifically, we freeze the ratio of tokens coming from targeted acquisitions and code categories, and change the ratio of tokens for the synthetic, web, and web rewrites clusters.</p><p>Table <ref type="table" target="#tab_2">4</ref> summarizes the results for the hand-picked ablations, as compared with the data mixture that was used for the final training run. A uniform allocation of tokens among the three categories is suboptimal due to the higher quality of synthetic data and the only benchmark that shows a clear benefit from web data is TQA. While the synthetic-heavy variations on rows 2 and 3 of the table are marginally better than the chosen final data mixture, we decided to integrate the targeted and knowledge-heavy filtered web data sources to improve knowledge benchmarks (see Section 3.1) to balance all model capabilities. We also note that we observed the gap between the chosen data mixture and the synthetic heavy runs largely closes as the model goes through the post-training stage. An end-to-end optimization of pretraining data mixture that also takes into account the effects of post-training is an interesting future area of investigation. The final data mixture used for phi-4 allocates 30% of the training tokens to web and web rewrites data sources, divided equally between them. The remaining tokens are largely sourced from synthetic data which accounts for 40% of the data mixture tokens. Finally we allocate 20% of tokens to code data (mixture of synthetic and raw code) and 10% to targeted acquired sources like academic data and books. In terms of total number of unique tokens in each data mixture cluster, filtered web data is the largest cluster with ∼ 1.3T tokens. Code and targeted acquisitions are the second and third largest clusters with ∼ 820B and ∼ 580B tokens, respectively. Finally, web rewrites and synthetic data have similar token count of ∼ 290B tokens. The total number of epochs on each data source is determined using the ratio of allocated tokens in the mixture and the number of unique tokens in that source.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.3">Midtraining Details</head><p>phi-4 includes a midtraining stage where the context length is increased from the original 4K to 16K. We conduct several ablations to study the role of data on long-context performance. Specifically, we try data sources that are inherently long context, and compare them with artificially created long context data where samples are padded together to fill the sequence. We observe the former to perform better in longer context tasks.</p><p>Inspired by this, we further filter our high-quality non-synthetic datasets (i.e., academic, books, and code data) to separate samples above 8K context. We then up-weight the data subsets that are 16K or higher in length. We also create new synthetic datasets that satisfy the &gt; 4K sequence requirement. The final data mixture includes 30% of the newly curated longer context data and a 70% portion of recall tokens from the pretraining stage. To accommodate longer context, we increase the base frequency of rope position encoding to 250K following <ref type="bibr" target="#b2">[AI23b]</ref>. We drop the maximum learning rate by a factor of 10 compared to the pretraining stage and train for a total of 250B tokens.</p><p>To effectively evaluate the long-context capability of our model, it is essential to have a comprehensive evaluation framework with practical scenarios. While synthetic benchmarks like needle-in-a-haystack and RULER are preferred for their simplicity and control, our emphasis is on a diverse range of tasks that reflect real-world applications, such as reasoning across entire documents. We report the performance of phi-4 and other models on the tasks we selected from the HELMET [YGH + 24] evaluation suite in Table <ref type="table" target="#tab_4">6</ref> and outline our evaluation methods below. Note that results are average across 5 runs for each categories.</p><p>• Recall: The task involves retrieving the corresponding value from a randomly-generated long JSON file given a specific key (Metric: SubEM)</p><p>• RAG: Answer questions based on many retrieved and shuffled Wikipedia documents. The datasets used for this task are NaturalQuestions, HotpotQA, and PopQA. Final results are average of all datasets (Metric: SubEM)</p><p>• Re-rank: The task is to re-rank the top-10 documents given a query and many retrieved and shuffled documents. This uses the MSMARCO dataset (Metric: nDCG@10)</p><p>• ICL: The task involves many-shot in-context learning with datasets such as TREC coarse, TREC fine, Banking77, NLU and CLINC150. Final results are average of all datasets (Metric: F1)</p><p>• QA: Answer questions given a lengthy document. The dataset associated with this task is Narra-tiveQAv2 (Metric: GPT-4o scoring)</p><p>• Summ: The task involves summarizing a lengthy legal document, and the dataset used is Multi-LexSum (Metric: GPT-4o scoring) </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.1">Supervised Fine-Tuning</head><p>In this phase, we fine-tune the pretrained model with a learning rate of 10 -6 on a variety of data generated from high-quality data across diverse domains, including math, coding, reasoning, conversation, model identity, and safety. We also added multilingual data for 40 languages. We use around 8B tokens of data in this phase, all formatted in the chatml format.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.2">Direct Preference Optimization</head><p>We use DPO [RSM + 23] to align the model with human preferences, and also to steer the model away from unwanted behavior through pairs of desired and undesired outputs. DPO data covers chat format data, reasoning, and Responsible AI (RAI) data and improves the model in math, coding, reasoning, robustness, and safety. We do two rounds of DPO on the SFT model. We introduce a technique, Pivotal Token Search (PTS), to generate pairs for DPO for the first DPO round. Details of the data mixture for first round are provided in Table <ref type="table" target="#tab_5">7</ref>. For the second round, which we call judge-guided DPO, we gather approximately 850k pairs of desired and undesired outputs. The prompts are sourced from various publicly available instruction tuning datasets and also include prompts related to safety and Responsible AI (RAI). Next, for each of these prompts, we generate responses from GPT-4o, GPT-4t and our model. From these responses, we create various combinations of DPO pairs and use GPT-4o as a judge to label positive or negative for a given pair. For a given pair of responses, each assistant response is given a score based on accuracy, style, and detail. We label the response with higher accuracy or overall (average of accuracy, style, and detail) score as the positive response. We provide the prompt we used in Appendix A. The data mixture for this round is provided in Table <ref type="table" target="#tab_6">8</ref>. Both stages also include a small amount of data for safety and mitigating hallucinations.  </p><formula xml:id="formula_0">\] First First First First First First First First First First First First First First First First First,</formula><formula xml:id="formula_1">+ + + + + b + c = -3, \] \[ ab + bc + ca = 4, \] \[ abc = 11. \] Substitute these into the identity: \[ (a+b)(b+c)(c+a) = (-3)(4) -11 = -12 -11 = -23. \] Thus, \( t = -(a+b)(b+c)(c+a) = 23 \). Therefore, the value of \( t \) is \(\boxed\23\\). 0 1 p(success)</formula><p>Figure <ref type="figure" target="#fig_9">3</ref>: Illustration of pivotal tokens for GPT-4o at temperature 1 on a problem from the MATH benchmark [HBK + 21], where the initial success probability is 0.31. Each token is colorized by the probability of success for an independent completion (N = 529) continued from after the token, with red for p(success) = 0 and blue for p(success) = 1. The line plot shows the same probabilities. The tokens that changes p(success) by ≥ 0.2 are shown boxed , with subscripts showing the change in probability. Tokens with probability ≤ 0.1 are underlined to illustrate that pivotal tokens are distinct from low-probability tokens. The token probabilities of negative and (a were 0.31 and 0.12, respectively. The greedy tokens for the same prefixes are product with 0.66 probability and t with 0.88 probability.</p><p>procedure PivotalTokenSearch(Q, T full , p gap )</p><p>procedure Subdivide(T prefix , T )</p><formula xml:id="formula_2">if |T | ≤ 1 or | p(success | T prefix ) -p(success | T prefix + T ) | &lt; p gap then ▷ Base cases. return [T ] T left , T right ← Split(T )</formula><p>▷ We split at the cumulative midpoint of token log probabilities.</p><formula xml:id="formula_3">return Subdivide(T prefix , T left ) ∪ Subdivide(T prefix + T left , T right ) T prefix ← ϵ for all T ∈ Subdivide(ϵ, T full ) do if |T | = 1 and | p(success | T prefix ) -p(success | T prefix + T ) | ≥ p gap then yield (Q, T prefix , T )</formula><p>▷ Output pivotal tokens T and context for postprocessing. T prefix ← T prefix + T </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.3">Pivotal Token Search</head><p>Consider a generative model producing a token-by-token response to a given prompt. For each token produced, which corresponds to a prefix of the model response, one can consider the conditional probability of the model's answer being correct given that prefix, as well as the increment in this probability with respect to that token (in other words, the difference in the probability of being correct before and after producing that token). It is often the case that the overall correctness is highly dependent on a successful generation of a small number of key tokens. For example, we can see in Figure <ref type="figure" target="#fig_9">3</ref> where the model outputs a math solution and a "fortunate" sampling of a crucial token negative shifts the solution from possible failure to likely success, while sampling of the token (a subsequently risks failure again. We refer to these tokens as pivotal tokens as they have an outsized effect on the course of the solution.</p><p>Now, consider how the solution from Figure <ref type="figure" target="#fig_9">3</ref> would be used in DPO as a full-length accepted response. As the figure shows, there are many tokens with probabilities much lower than the 0.31 of negative , which would contribute to noise in the gradients diluting the signal from the pivotal token.</p><p>Even worse, the token (a that contributed to the lack of robustness would receive a strong positive learning signal thanks to its low probability of 0.12. Moreover, intuition suggests that when two texts substantially deviate from each other, comparison of their individual next-token log probabilities (as done in DPO) is not very meaningful. Rather, it makes more sense that the signal should come from the first tokens after the two texts starts diverging from each other.</p><p>To alleviate these effects, we employ a method we call Pivotal Token Search (PTS) for generating preference data that specifically targets pivotal tokens in isolation, creating DPO pairs in which the preference optimization takes effect with respect to a single token.</p><p>PTS identifies points of a completion token sequence T full = t 1 , t 2 , . . . for some user query Q where the next token t i has a significant impact on the probability of success p(success | t 1 , . . . , t i ). PTS estimates these probabilities by sampling completions starting from Q + t 1 , . . . , t i , which are checked for correctness with an oracle<ref type="foot" target="#foot_5">foot_5</ref> for Q. Figure <ref type="figure" target="#fig_3">4</ref> shows a basic instantiation of the algorithm. The procedure Subdivide recursively splits the sequence into segments t i , . . . , t j until the change in probability | p(success | t 1 , . . . , t i-1 ) -p(success | t 1 , . . . , t j ) | for each segment is below a threshold p gap or the segment is just a single token. Tokens with a sharp change in success probability are kept as pivotal. We turn pivotal tokens into preference data by taking Q + t 1 , . . . , t i-1 as the query, and single tokens t acc and t rej that increase/decrease p(success | t 1 , . . . , t i-1 , t acc/rej ) as the accepted and rejected completions, respectively. <ref type="foot" target="#foot_6">7</ref> The binary-search algorithm for PTS is not always guaranteed to find all pivotal tokens, but it only finds pivotal tokens and it finds all of them if the success probability is near-monotone over the course of the solution.</p><p>We used PTS to generate preference data for tasks where ground-truth is readily available, such as mathematics, various forms of question answering and coding. To improve sample efficiency, we filter the target questions to only include those with 0.2 ≤ p(success) ≤ 0.8, as pivotal tokens are rare for tasks that are very easy or hard.</p><p>See Figure <ref type="figure">5</ref> for examples of preference data we generated using PTS. The math question answering example shows how pivotal tokens often are not actual mistakes, but choices that drive the model down a less advantageous path. Here, multiplying both sides by the denominators separately is equally valid to directly cross-multiplying, but for the model doing the latter here is more robust. By generating DPO data targeting such choices, we believe PTS helps phi-4 work better in the modes it is especially User: Consider a 1 keV helium atom impinging at a one-degree incidence angle on a LiF crystal surface. Adopt the axial channeling approximation to model the interaction between the helium atom and the crystal as a 2D potential energy landscape. Apply Newton's equations to compute the helium atom's trajectory and determine the subsequent momentum transfers from binary collisions with surface atoms. Sum the total virtual energy transferred across all collisions and compute the probability, Pe, that the helium atom remains elastically scattered assuming a vibrational frequency for surface atoms of ω = 1 × 10 14 Hz. What is Pe? stronger.</p><formula xml:id="formula_4">1. Pe = exp(-E loss 2 ̵ hω ), 2. Pe = exp( E loss ̵ hω ), 3. Pe = exp(-E loss ̵ hω ),</formula><p>Related Work: In [LLX + 24] a contrastive estimation approach involving a model trained on incorrect trajectories is used to score which tokens likely contributed to failure, which is further employed to weigh rejected responses in DPO. In comparison, our PTS avoids complications from learned proxies by directly estimating p(success). They also report difficulties applying their method to accepted responses in DPO, while our method generates both positive and negative preference data directly targeting pivotal tokens. Automated process supervision methods [WLS + 24, LLL + 24] have applied search and rollouts to generate data for training process reward models. PTS can be seen as an automated process supervision method that generates token-level preference data suitable for DPO.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.4">Hallucination mitigation</head><p>We generate SFT data and DPO pairs to mitigate hallucination. If the model does not know the answer, we would rather it refuse to answer than to make up a hallucination. We present the details of this process, including prompts to create the data, in Appendix A.1. This greatly decreases hallucinations in SimpleQA (see Figure <ref type="figure">6</ref>).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.5">Post-Training Ablation</head><p>In Table <ref type="table">1</ref> we show how our benchmark scores evolve during post-training. We also evaluate dropping pivotal token DPO and only performing the second stage of DPO. In general, we find that pivotal token DPO is most useful on reasoning-heavy tasks (GPQA, MATH) while judge-guided DPO is particularly useful for the benchmark that itself involves a GPT-4 judge: ArenaHard. We also find the two approaches to be complementary.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5">Benchmarking Considerations</head><p>While academic benchmarks are a widely used to measure the progress in LLM advancement, they suffer from several limitations that can fail to reveal a model's true capabilities and weaknesses. These limitations include:</p><p>• Data Contamination: Many benchmarks rely on datasets that overlap with pretraining corpora, creating a risk of data contamination. Although we took extensive measures to deduplicate and decontaminate our training data, including standard n-gram deduplication and decontamination, these methods are not effective against all scenarios, including rephrasing, which leaves some uncertainty about the true extent of generalization.</p><p>• Limited Skill Scope: Most benchmarks evaluate models on narrowly defined skills, such as solving specific style of math problems at certain grade level or implementing isolated Python functions. This narrow scope can fail to capture a model's broader capabilities and weaknesses.</p><p>• Bias in Generation-Based Benchmarks: Some benchmarks use LLM-as-judge for evaluating generated outputs. These judgments sometimes may prioritize style, fluency, or surface-level qualities over accuracy and validity of the reasoning chain, leading to potential biases in scoring.</p><p>• Limitations of Multiple-Choice Tasks: Benchmarks that rely on multiple-choice questions often test a model's ability to make clever guesses that can be achieved by pattern matching rather than effectively utilizing the underlying concepts through reasoning.</p><p>To address these issues, we maintain an internal benchmark called PhiBench, which is tailored to evaluate the diverse skills and reasoning abilities that we found critical to phi-4's development. This benchmark was designed with the following goals:</p><p>1. Originality: All questions in the benchmark were composed by our team making sure that they were not present in our pretraining data. Our goal for the internal benchmark is to reveal model's generalization ability in various domains.</p><p>2. Skill Diversity: Our benchmark includes a wide range of tasks to assess multiple dimensions of model performance. For instance, in coding, it goes beyond isolated function implementation to include debugging, extending incomplete code, and explaining code snippets. Similarly, in mathematics, it incorporates tasks like identifying the errors in proofs or generating related problems, rather than simply solving equations. This ensures that the benchmark captures a broader spectrum of skills and reasoning processes.</p><p>3. Rigorous Scoring for Generation Tasks: For tasks requiring judgment of model-generated outputs, we addressed the common pitfalls of LLM-based scoring by carefully curating detailed judge instructions (or "judge notes"). These rubrics specify exactly how to evaluate responses, focusing on achieving accuracy, logical structure, and adherence to task requirements, while minimizing tendencies towards stylistic biases. We observed significantly improved consistency and reduction of adverse impact due to subjective preferences in the scoring outcomes.</p><p>PhiBench played a central role in optimizing phi-4. We used it to guide decisions about dataset mixtures and hyperparameter choices for more effective post-training techniques. PhiBench was also used to perform high-signal studies that identify weaknesses in the model and provide feedback for new incoming data sources.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6">Performance on Key Benchmarks</head><p>Our benchmark results were presented in Table <ref type="table">1</ref>, along with comparisons to other models. We first report the values from OpenAI's simple-evals benchmark, which is a framework (including prompts, temperature, and extraction) for evaluating MMLU [HBB + 20], GPQA diamond [RHS + 23], MATH [HBK + 21], HumanEval [CTJ + 21], MGSM [SSF + 22], and the SimpleQA [WKC + 24] F1-score. We also consider MMLU-pro [WMZ + 24], HumanEval+ <ref type="bibr" target="#b25">[LXWZ23]</ref>, ArenaHard [CZS + 24], and IFEval [ZLM + 23], for which we use an internal framework and prompting and extraction. Finally, we use PhiBench, our internal collection of evaluations (see Section 5).</p><p>phi-4 outperforms the closest in-class contemporary model, Qwen-2.5-14B-Instruct, in 9 out of 12 benchmarks. While phi-4 underperforms relative to Qwen-2.5-14B-Instruct on the benchmark numbers for SimpleQA, DROP, and IFEval, we consider phi-4's behavior on SimpleQA to actually be better than Qwen's. In fact, our base model gets a higher benchmark score than Qwen-2.5-14B-Instruct on SimpleQA, and we intentionally modified the model's behavior in post-training to optimize for a better user experience rather than a higher benchmark score. See Figure <ref type="figure">6</ref> and<ref type="figure">Appendix A</ref>.1 for details.</p><p>Our model excels at STEM Q&amp;A tasks. For example, on GPQA (graduate-level STEM questions) and MATH (math competitions), it even outscores its teacher model, GPT-4o. It also scores higher at coding, as measured by HumanEval and HumanEval+, than any other open-weight model we benchmark against, including much larger Llama models.</p><p>phi-4's weakest benchmark scores are on SimpleQA, DROP, and IFEval. We believe for the first two that the number reported by simple-evals is reductive and does not accurately reflect model performance on the benchmark problems. However, IFEval reveals a real weakness of our model -it has trouble strictly following instructions. While strict instruction following was not an emphasis of our synthetic data generations for this model, we are confident that phi-4's instruction-following performance could be significantly improved with targeted synthetic data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7">Safety</head><p>We developed phi-4 in accordance with Microsoft's Responsible AI principles. Our overall approach to RAI consisted of safety alignment in post-training, red-teaming, and automated testing and evaluations across dozens of RAI harm categories. We leveraged helpfulness and harmlessness preference datasets [BJN + 22, JLD + 23] with modifications inspired by [BSA + 24] and multiple in-house generated datasets to address the RAI harm categories in safety post-training.</p><formula xml:id="formula_5">phi-3 (3B-4K) phi-3 (7B-8K) phi-3 (14B-4K) Mistral (7B-v0.1) Mistral (7B-v0.2) Llama-3 (8B) Gemma (7B) phi-</formula></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.1">RAI Benchmarks</head><p>Table <ref type="table" target="#tab_10">10</ref> shows the results of in-house RAI benchmarks [MHJ + 23] for phi-4 compared to the phi-3 models [AAA + 24], Mistral-7b-v0.1 [JSM + 23], Mistral-7b-v0.2, Gemma 7b [TMH + 24], and Llama-3-instruct-8b <ref type="bibr" target="#b2">[AI23b]</ref>. This benchmark utilized GPT-4o to simulate multi-turn conversations in five different categories and to evaluate the model responses. Grounding is scored between 0 (not grounded) and 5 (fully grounded), and measures if the information in a response is based on a given prompt. In other categories, responses were evaluated in terms of the severity of harmfulness and scored from 0 (no harm) to 7 (severe harm) and the defect rates (DR-x) were computed as the percentage of samples with the severity score being greater than or equal to x. The Jailbreak (DR1) benchmark consists of simulated conversations around child grooming, illegal persuasion, leaking of 100 words of guidelines, popular conspiracy, prejudice against real people, step-by-step illegal advice, and violence against real people. For more details on the RAI prompts and evaluation framework, see [HPBP + 24].</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="7.2">Red Teaming</head><p>In addition to RAI benchmarking, we collaborated with the Microsoft AI Red Team (AIRT), an independent group tasked with identifying safety and security vulnerabilities in Microsoft's GenAI products.</p><p>AIRT conducted a two-week red-teaming exercise that tested phi-4 for risky behaviors by emulating both average and adversarial users in single and multi-turn scenarios. Overall, AIRT found that the behavior of phi-4 was similar to that of the phi-3 family, but identified several risky behaviors that were addressed by further rounds of safety post-training. In addition, the adversarial user scenario tested a wide range of techniques aimed at intentionally subverting the model's safety training including jailbreaks, prompt encodings, and multi-turn attacks. phi-4 showed strong defenses against these techniques. AIRT also generated adversarial suffixes using the GCG algorithm [ZWC + 23] on phi-3-medium, but found that these suffixes did not transfer to phi-4. Further red teaming is required to identify possible risks across a broader range of scenarios and harm categories.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="8">Weaknesses</head><p>While phi-4 achieves similar level of language understanding and reasoning ability as much larger models, it is still fundamentally limited by its size for certain tasks, specifically in hallucinations around factual knowledge. For example, if X is a plausible human name, the model sometimes responds to prompts of the form "Who is X?" with a hallucinated biography of the person X. This limitation would be improved by augmenting the model with a search engine, but factual hallucinations cannot be eliminated completely.</p><p>While phi-4 demonstrates relatively strong performance in answering questions and performing reasoning tasks, it is less proficient at rigorously following detailed instructions, particularly those involving specific formatting requirements. For instance, when tasked with generating outputs in strict tabular formats, adhering to predefined bullet structures, or precisely matching stylistic constraints, the model may produce outputs that deviate from the specified guidelines. This limitation arises in part from the model's training focus, which prioritized synthetic datasets tailored toward Q&amp;A and reasoning tasks over instruction-following scenarios.</p><p>Even on reasoning tasks, phi-4 can make mistakes. For example, when asked "which number is smaller, 9.9 or 9.11?", the model can conclude incorrectly that "9.9 is smaller than 9.11".</p><p>Moreover, as our data contains a lot of chain-of-thought examples, phi-4 sometimes gives long elaborate answers even for simple problems-this might make user interactions tedious. We also note that while phi-4 can function as a chat bot, it has been fine-tuned to maximize performance on single-turn queries.</p><p>Despite diligent RAI efforts, we acknowledge challenges around reproduction or amplification of biases, inappropriate content generation, and safety issues. The use of carefully curated training data, as well as targeted post-training, and improvements from red-teaming insights, have resulted in mitigating these issues across all dimensions, but have not resolved the issues completely.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A Post-Training Dataset Details</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1 Refusal to Hallucinate</head><p>We created post-training SFT and DPO data to mitigate hallucinations in simple settings. Without any mitigation, phi-4 would almost never admit to ignorance. For example, in response to too-difficult questions like "Who is the 297th highest ranked tennis player?" the model would essentially act as an improv-style "Yes, and. . . " engine, inventing a superficially plausible answer.</p><p>Our goal in pretraining was to pack as much information into the model as possible, that is, to teach more to the model rather than to teach it its own limitations. Then in post-training, we can identify the level of problem that is too difficult for the model, and teach it to generate refusals rather than hallucinations on those problems.</p><p>We started with seed trivia problems, such as from TriviaQA <ref type="bibr" target="#b18">[JCWZ17]</ref>. For each question, we ran phi-4 multiple times to estimate its chance of accurately solving it. We also used GPT-4o to generate</p><p>(1) a correct answer, (2) a refusal to answer, (3) a bogus variant of the question that is impossible to solve, and (4) a refusal to answer the bogus question.</p><p>For SFT data, we used the pair (question, correct answer) wherever the base phi-4 model was usually correct, (question, refusal) where the model was usually wrong, and (bogus question, refusal) for all bogus questions. For DPO data, we used (correct &gt; refusal) for every question that the base phi-4 sometimes answered correctly, and (refusal &gt; wrong) if phi-4 sometimes answered incorrectly. The DPO data used the first 5 tokens of the response. Example synthetic generation prompts can be found below.</p><p>To evaluate our progress, we can use SimpleQA [WKC + 24], which is a dataset mostly comprised of obscure facts from Wikipedia (e.g., "How many more votes did Freeman Freeman-Thomas win than George Sandys in the 1906 Bodmin by-election?"). Small models like phi-4 or GPT-4o-mini can only correctly answer 5-10% of them. Our performance can be found in Figure <ref type="figure">6</ref>.</p><p>Note that SimpleQA is included in Table <ref type="table">1</ref> as part of simple-evals, and our model does not have a good score. This is because simple-evals uses the F1 score, which is not a good measure of quality at this accuracy scale. For example, suppose we start with a model that always guesses, but almost always wrongly, 6% correct and 94% incorrect. Some of the 6% correct answers will be from lucky guesses, so post-training to limit hallucination will have fewer correct answers, and for example, the result might be (3% correct, 3% incorrect, 94% refusal). In this case, a model will score worse by the F1 metric compared to original (5.6% rather than 6%), while exhibiting more user-friendly and responsible behavior.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A.1.1 Synthetic Generation Prompts</head><p>Here, we share the main synthetic generation prompts, provided to GPT-4o, to generate post-training data to decrease hallucinations.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Generation of bogus questions</head><p>Consider the following trivia question: # Question {{ question }}</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head># Instructions</head><p>Your job is to turn this problem into a nonsensical one, for which the answer is invalid or unlikely to be known by anyone. For example, you might change the name from a well-known figure to a random name, or change the date from a well-known event to a random date, or the place to a different one. For example, you might change "When did Amelia Earhart cross the Atlantic Ocean?" to "When did Edgar Greenwood cross the Atlantic Ocean?" or "How many times did Amelia Earhart cross the English Channel?".</p><formula xml:id="formula_6">↪ ↪ ↪ ↪ ↪ ↪ ↪</formula><p>Your goal is that the new question is * plausibly real * , but impossible to answer. You should not make the question obviously fake, silly, or fictional; for example, all country names should be real countries, and no names should be obvious homages to the original question. It should sound like a serious trivia question. You may start with a very brief discussion, then end with two markdown sections:</p><p>↪ -The section '# Response' that contains the question.</p><p>-The section '# Quality' that rates the generated question in quality from 1-5, with 5 being the highest quality. .2 Judge-guided DPO For the second round of DPO, we generate responses from GPT-4o, GPT-4t and our model. To label responses as positive or negative, we use GPT-4o as a judge and use the following prompt.</p><p>Your task is to judge which of the following reply given by an AI assistant is better. </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Data Processing</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B.1 Decontamination</head><p>We decontaminate against the ARC-Easy, MBPP, phibench, CommonsenseQA, WinoGrande, mcphi, MedQA, MATH, AGIEval, PIQA, OpenBookQA, HellaSwag, GPQA, mt-bench, MMLUPro, GSM8k, HumanEval, arena hard, ARC-Challenge, and MMLU benchmarks. We apply a hybrid n-gram algorithm for decontamination which uses 13-gram and 7-gram features for removing matches to the test set, which is described in more detail in 1. We create a set of common 13-grams in the Wiki and train set and try to not remove them since these are some common phrases which are ubiquitous. Some A result object with contamination details 1: procedure CheckContamination(train) 2:</p><p>Step 1: Extract 13-grams and Check Contamination Step 2: Extract 7-grams and Compute Overlaps Step 3: Compute Overlap Ratio for Tests return Clean (No significant overlap)</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.1.2 Self-revision</head><p>Another component of our synthetic data pipeline is the iterative self-revision process. This process involves multiple stages where the model generates, critiques, and revises its output to meet specific criteria. Below, we give an example of this workflow, focusing on the creation of a reading comprehension exercise based on a scientific excerpt:   Another component of our synthetic data pipeline involves transforming factual snippets into multi-turn, nuanced conversations. This process is designed to produce dialogues that are contextually accurate and intellectually engaging, encouraging critical thinking and deeper reasoning. The process of generating conversations includes several iterative steps:</p><p>1. Initial Turn: Based on the snippet, the model generates a foundational response that presents core information in a clear and direct manner. This step may also include an optional curation of a participant's profile that guides the tone and style of dialogue throughout the generation.</p><p>2. Subsequent Turns: The dialogue grows through a dynamic flow of agents generating alternating turns, directing the conversation, summarizing earlier context and injecting new scenarios and topics consistent with earlier messages.</p><p>3. Self-Revision: After each turn, the model evaluates its responses, brainstorms the best next course of action given the current context, to maximize the complexity and nuance of the discussion. This includes suggestions for exploring alternative perspectives or creating connections to broader contexts.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.2 Fill-in-the-middle exercises</head><p>Many data generation techniques require pairs of contexts and ground-truth answers for seeding and rely on rejection sampling during data generation. One approach we developed creates fill-in-the-middle exercises from free-form text that does not naturally translate into such pairs. This involves removing a meaningful portion of the text (the "middle"), framing the remaining text as the context, and using the removed content as the ground-truth answer. The key challenge lies in identifying portions of the text where reasoning can reconstruct the removed content, ensuring a "correct" answer exists. For instance, we generate such pairs from public code snippets, turning them into exercises and producing their solutions (augmented with chain-of-thought tokens) via rejection sampling. We give an example of such a transcript. -Start and end nodes cannot be revisited.</p><p>-"Small" nodes may have specific limits on revisits.</p><p>** Reasoning: ** The missing part handles violations of small node visit limits using two variables:</p><p>↪ -`cused`indicates if one small node has already been revisited.</p><p>-`bad`marks the path as invalid if a second such revisit occurs.</p><p>The loop iterating over `smalls.values()`likely checks whether a small node is revisited for the first time (allowing it by setting `cusedt o `True`) or violates the limit (setting `bad`to `True`and breaking the loop). -** Hint: ** Consider revisiting the specific condition for revisits. Focus on the exact count of visits that should trigger allowances.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>↪</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.3 Agents</head><p>Agent tasks that involve interactions with longer horizons may present unique challenges such as planning, reflection, and error correction. Our training data consists of trajectories collected from Agen-tKit [WFM + 24] with detailed chain-of-thought. Specifically, we generate high-quality trajectories by running AgentKit on a wide range of environments, and rewrite the guided raw reasoning outputs from AgentKit into a variety of self-contained statements or thoughts that aim to capture the gist of Agen-tKit reasoning. Training with AgentKit data improves planning, reasoning, tool use, math, and error correction on our internal benchmark.</p><p>In agent tasks, phi-4 follows a characteristic chain-of-thought with explicit planning and reflections. We show an example of phi-4 interacting with the tower of Hanoi below:</p><p>Analyzing the current situation and reflecting on past actions is crucial for determining the next best step. Here's a breakdown of the thought process:  -Certainty: Known. This move is necessary to free rod C for the final sequence.</p><p>↪</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>2.</head><label></label><figDesc>Nuance and Complexity: Effective training requires nuanced, non-trivial examples that reflect the complexity and the richness of the domain. Data must go beyond basics to include edge cases and advanced examples.3. Accuracy: Code should execute correctly, proofs should be valid, and explanations should adhere to established knowledge, etc.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Figure 2</head><label>2</label><figDesc>Figure 2: 5-shot MMLU score for phase 2 pretraining runs with 4 and 12 epochs of synthetic data. All models are trained for the same token horizon, thus the model with 4 epochs of synthetic has seen more (unique) web tokens.We see that despite many epochs on synthetic data, we do not see overfitting behavior and in fact the 12 epoch models perform better than those that have seen more unique web tokens.</figDesc><graphic coords="9,158.26,59.76,295.50,146.61" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>User:</head><label></label><figDesc>Suppose that the roots of x 3 + 3x 2 + 4x -11 = 0 are a, b, and c, and that the roots of x 3 + rx 2 + sx + t = 0 are a + b, b + c, and c + a. Find t. AI: To solve the problem, we need to deal deal deal deal deal deal deal deal with the roots of the two cubic equations given. First, consider the cubic polynomial polynomial polynomial polynomial polynomial polynomial polynomial polynomial \( xˆ3 + 3xˆ2 + 4x -11 = 0 \), with roots \( a \), \( b \), and \( c \). By Vieta's formulas, we have: \[ a + b + c = -3, \] \[ ab + bc + ca = 4, \] \[ abc = 11. \] Now, consider the other other other other other other other other polynomial \( xˆ3 + rxˆ2 + sx + t = 0 \) with roots \( a+b \), \( b+c \), and \( c+a \). We need to find the value of \( t \), which corresponds corresponds corresponds corresponds corresponds corresponds</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Figure 4 :</head><label>4</label><figDesc>Figure 4: Pseudocode for Pivotal Token Search (PTS). Note that estimating p(success | . . . ) involves sampling the language model and invoking the oracle. In an efficient implementation p(success | . . . ) should be memoized.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>User:</head><label></label><figDesc>Find the product of all real values of r for which 1 To solve the problem, we need to determine the values of r such that the equation 1 2x = rx 7 has exactly one real solution for x. First, clear the fractions by Good: cross-multiplying Bad: multiplying both sides by</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_6"><head></head><label></label><figDesc>examples include 'a i only b ii only c iii only d ii and iii', 'a true true b false false c true false d false true', 'logically equivalent b contradictory c neither logically equivalent nor contradictory but consistent d', 'a (ii) and (iv) only b (i) and (iii) only c (i) (ii)', 'b e b a b e c c b d c e d'. Algorithm 1 Decontamination Algorithm Require: Input training text train Benchmark texts tests Allowed 13-grams allowed 13gram Thresholds: inf o 7gram threshold, contaminated 7gram threshold Ensure:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_7"><head></head><label></label><figDesc>13 ← ExtractNGrams(train, 13)    4:for all f eature ∈ f eatures 13 do 5:if f eature ∈ BenchmarkFeatures 13 and f eature ∉ allowed 13gram then 6:return Contaminated (13-gram match) 7:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_8"><head></head><label></label><figDesc>counts ← CountOverlaps(f eatures 7, BenchmarkFeatures 7 ) 10:</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_9"><head>↪ 3 .↪-↪-</head><label>3</label><figDesc>Early-life adversities remain the primary influence. 4. Positive experiences have negligible effects. ** Requirements (Flavored): ** -Exercises must require both understanding the text and external advanced knowledge. Incorrect choices should be plausible enough to mislead without full comprehension. The content should challenge advanced undergraduates in genetics or epigenetics. ↪ ** Critique (Agent): ** -** External Knowledge: ** Does not explicitly require concepts beyond the excerpt. * Score: 1 * ↪ -** Plausibility of Choices: ** Incorrect options are plausible but not misleading enough. * Score: 2 * ↪ -** Suggestions: ** Introduce external concepts like epigenetic drift or the diathesis-stress model, and refine incorrect choices to address common misconceptions. ↪ ↪ ** Revision 1: ** * Plan: * Add references to the hypothalamic-pituitary-adrenal (HPA) axis and cortisol's role in stress responses, integrating advanced neuroendocrinology knowledge. ↪ ↪ * Exercise: * Considering DNA methylation and the HPA axis's role, how could cortisol influence classical and non-classical epigenetic changes? ↪ 1. Cortisol is irrelevant to the modifiers discussed. 2. Cortisol effects are linear and align with classical models. 3. The dynamic epigenetic role of cortisol enriches research paradigms (correct).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_10"><head>↪ 4 .</head><label>4</label><figDesc>Cortisol's role is limited to downregulation of methylation. ** Critique (Agent): ** -** Challenge Level: ** Still insufficiently difficult for advanced undergraduates. * Score: 1 * ↪ -** Suggestions: ** Add nuanced alternatives based on theories like eustress vs. distress or glucocorticoid response elements. ↪ ** Revision 2: ** * Plan: * Refine incorrect options and add concepts like glucocorticoid response elements to deepen the challenge. Reframe exercise to compare classical and non-classical pathways in epigenetics.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_11"><head></head><label></label><figDesc>to Correct Answer: ** -The solution captures the general logic but omits the specific condition `elif c == 2 and not cused`, making it broader. ↪ -** Correctness Discussion: ** The logic is close but lacks precision, as the revisits must explicitly check for exactly two visits. ↪ ** Grading and Feedback: ** -** Grade: ** 3 (partial correctness).</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_12"><head>↪-</head><label></label><figDesc>been repeated unsuccessful attempts to move disks, particularly from rod B to C and A to C. These failures were due to rule violations, such as attempting to place a larger disk on a smaller one. Patterns and Rules: ** -Only one disk can be moved at a time.-A larger disk cannot be placed on a smaller disk.-The goal is to move all disks from rod A to rod C. ### Reflection on Past Performance -** Mistakes Identified: ** -Repeated attempts to make illegal moves indicate a misunderstanding or oversight of the rules. ↪ -The plan was not effectively followed, as seen by the repeated failed attempts to move disks from rod B to C and A to C. ↪ -** Correct Moves: ** -Successfully moved disk 0 from C to A, which was a necessary step to free rod C for subsequent moves. ↪ ### Relevant Considerations -** Current Objective: ** -The immediate goal is to move disk 1 from rod B to rod C. This move is legal and aligns with the rules since disk 1 is smaller than disk 2 on rod C. ↪ ↪ -** Strategic Alignment: ** -Moving disk 1 from B to C is a strategic step that aligns with the overall plan to eventually stack all disks on rod C in the correct order. with the rules is paramount to avoid repeated failures. Each move should be evaluated for legality before execution to maintain progress towards the goal. ↪ ### Updated Plan 1. ** Move Disk 1 from B to C: ** -Completion Quantification: Disk 1 is on rod C.-Certainty: Known. This move is legal and necessary to progress towards the goal configuration.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_13"><head>↪ 2 .</head><label>2</label><figDesc>** Move Disk 0 from A to C: ** -Completion Quantification: Disk 0 is on rod C, on top of disk 1. -Certainty: Known. This move is legal once disk 1 is on rod C. 3. ** Move Disk 2 from C to B: ** -Completion Quantification: Disk 2 is on rod B.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2 :</head><label>2</label><figDesc>Pretraining benchmarks for phi-4 compared to its predecessor, phi-3-medium after pretraining.</figDesc><table><row><cell></cell><cell cols="8">MMLU MMLU pro GSM8k Human-Eval ARCC MBPP MATH TQA</cell></row><row><cell>phi-4 (4k)</cell><cell>+3.0</cell><cell>+10.3</cell><cell>+2.2</cell><cell>+7.8</cell><cell>+1.1</cell><cell>+6.8</cell><cell>+8.9</cell><cell>-0.7</cell></row><row><cell>phi-4 (16k)</cell><cell>+2.7</cell><cell>+8.9</cell><cell>+1.2</cell><cell>+9.0</cell><cell>+0.9</cell><cell>+9.6</cell><cell>+8.4</cell><cell>-1.5</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 4 :</head><label>4</label><figDesc>MMLU MATH GSM8k Human-Eval ARCC MBPP TQA MMLU pro Average Ablations on the allocation of 75% of training tokens to synthetic (S), filtered web (W), and web rewrite (WR) categories, while other data sources are held constant in the remaining 25% token budget. All benchmark numbers are measured relative to the final data mixture used for training phi-4.</figDesc><table><row><cell>Uniform</cell><cell>-3.3</cell><cell>-5.4</cell><cell>-5.8</cell><cell>-1.2</cell><cell>+0.6</cell><cell>-2.0</cell><cell>+3.3</cell><cell>-3.6</cell><cell>-2.2</cell></row><row><cell>S</cell><cell>+3.3</cell><cell>+4.0</cell><cell>+2.1</cell><cell>-6.1</cell><cell>+1.9</cell><cell>+0.4</cell><cell>-3.0</cell><cell>+3.7</cell><cell>+0.8</cell></row><row><cell>S + WR</cell><cell>+0.6</cell><cell>+1.2</cell><cell>+1.5</cell><cell>-1.2</cell><cell>+1.6</cell><cell>+1.6</cell><cell>-3.7</cell><cell>+1.2</cell><cell>+0.4</cell></row><row><cell>S + W</cell><cell>-0.6</cell><cell>-0.7</cell><cell>-0.7</cell><cell>-4.3</cell><cell>+0.3</cell><cell>-2.0</cell><cell>+6.9</cell><cell>+0.9</cell><cell>0.0</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 5 :</head><label>5</label><figDesc>Data mixture for pretraining.</figDesc><table><row><cell>Data</cell><cell>Fraction</cell><cell>Unique</cell><cell>Number of</cell></row><row><cell>Source</cell><cell>of Training</cell><cell>Token Count</cell><cell>Epochs</cell></row><row><cell>Web</cell><cell>15%</cell><cell>1.3T</cell><cell>1.2</cell></row><row><cell>Web rewrites</cell><cell>15%</cell><cell>290B</cell><cell>5.2</cell></row><row><cell>Synthetic</cell><cell>40%</cell><cell>290B</cell><cell>13.8</cell></row><row><cell>Code data</cell><cell>20%</cell><cell>820B</cell><cell>2.4</cell></row><row><cell>Acquired sources</cell><cell>10%</cell><cell>580B</cell><cell>1.7</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 6 :</head><label>6</label><figDesc>Evaluation results on the long-context benchmark HELMET [YGH + 24].</figDesc><table><row><cell>Model</cell><cell cols="7">Max Length Recall RAG ICL Re-rank QA Summ</cell></row><row><cell>phi-4</cell><cell>8K</cell><cell>100.0</cell><cell>58.1</cell><cell>68.0</cell><cell>65.3</cell><cell>26.7</cell><cell>38.3</cell></row><row><cell>Qwen-2.5-14B</cell><cell>8K</cell><cell>100.0</cell><cell>62.2</cell><cell>67.8</cell><cell>58.2</cell><cell>24.7</cell><cell>37.2</cell></row><row><cell>Llama-3.3-70B</cell><cell>8K</cell><cell>92.0</cell><cell>65.3</cell><cell>69.4</cell><cell>64.4</cell><cell>30.0</cell><cell>37.8</cell></row><row><cell>GPT-4o-mini</cell><cell>8K</cell><cell>99.2</cell><cell>65.8</cell><cell>74.4</cell><cell>69.4</cell><cell>31.3</cell><cell>38.5</cell></row><row><cell>GPT-4o</cell><cell>8K</cell><cell>100.0</cell><cell>66.9</cell><cell>83.0</cell><cell>75.1</cell><cell>37.3</cell><cell>43.0</cell></row><row><cell>phi-4</cell><cell>16K</cell><cell>99.0</cell><cell>57.1</cell><cell>77.0</cell><cell>54.4</cell><cell>36.0</cell><cell>40.5</cell></row><row><cell>Qwen-2.5-14B</cell><cell>16K</cell><cell>100.0</cell><cell>59.1</cell><cell>67.6</cell><cell>50.3</cell><cell>29.7</cell><cell>42.3</cell></row><row><cell>Llama-3.3-70B</cell><cell>16K</cell><cell>92.0</cell><cell>62.2</cell><cell>70.0</cell><cell>63.3</cell><cell>36.7</cell><cell>41.9</cell></row><row><cell>GPT-4o-mini</cell><cell>16K</cell><cell>100.0</cell><cell>63.6</cell><cell>78.4</cell><cell>63.9</cell><cell>36.0</cell><cell>45.2</cell></row><row><cell>GPT-4o</cell><cell>16K</cell><cell>100.0</cell><cell>66.7</cell><cell>85.6</cell><cell>73.8</cell><cell>43.7</cell><cell>46.3</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 7 :</head><label>7</label><figDesc>Data Mixture for Pivotal Token DPO</figDesc><table><row><cell>Dataset Name</cell><cell>Sample Count</cell><cell></cell><cell></cell></row><row><cell>unknown + safety data</cell><cell>3,000</cell><cell>Dataset Name</cell><cell>Sample Count</cell></row><row><cell>generic multiple-choice Q&amp;A</cell><cell>132,859</cell><cell>unknown + safety data</cell><cell>43,842</cell></row><row><cell>math data</cell><cell>76,552</cell><cell>any vs any overall</cell><cell>266,000</cell></row><row><cell>python data</cell><cell>16,080</cell><cell>any vs any accuracy</cell><cell>532,000</cell></row><row><cell>cpp, go, java, js, rust data</cell><cell>21,806</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head>Table 8 :</head><label>8</label><figDesc>Data Mixture for Judge Guided DPO4 Post-TrainingPost-training is aimed at transforming the pretrained language model into an AI assistant that users can safely interact with. We align the pretrained model with one round of SFT 4.1, one round of DPO [RSM+ 23] on data from our pivotal token search method (see Section 4.3), and one round of DPO on full length preference pairs. The model is chat finetuned using the standard chatml format, example usage template for two rounds of a conversation is as follows:</figDesc><table><row><cell>&lt;|im start|&gt;system&lt;|im sep|&gt;system message&lt;|im end|&gt;</cell></row><row><cell>&lt;|im start|&gt;user&lt;|im sep|&gt;prompt1&lt;|im end|&gt;&lt;|im start|&gt;assistant&lt;|im sep|&gt;response1&lt;|im end|&gt;</cell></row><row><cell>&lt;|im start|&gt;user&lt;|im sep|&gt;prompt2&lt;|im end|&gt;&lt;|im start|&gt;assistant&lt;|im sep|&gt;</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_8"><head></head><label></label><figDesc>To determine the probability Pe that the helium atom remains elastically scattered, we need to calculate the total virtual energy transferred, E loss , during the helium atom's interaction with the LiF crystal surface. The post-training process described in Appendix A.1 decreases hallucinations. One measure is that the problems in SimpleQA-which the model very rarely gets correct-are increasingly not attempted during the course of post-training. We believe the final result is better behavior, even though the simple-evals score for SimpleQA (the F1 score) actually gives our base model a higher score than our final model.</figDesc><table><row><cell></cell><cell></cell><cell cols="6">SimpleQA performance over the course of post-training</cell></row><row><cell></cell><cell>Percentage (%)</cell><cell>0 20 40 60 80 100</cell><cell>6.8%</cell><cell>Base 3.2% 90.0%</cell><cell>SFT 3.7% 57.5% 38.7%</cell><cell>DPO Stage 1 2.9% 79.8% 17.4%</cell><cell>Final 3.0% 81.1% 15.8%</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell>Correct</cell><cell></cell><cell>Not Attempted</cell><cell>Incorrect</cell></row><row><cell>Figure 6:</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="8">:param n: The number of elements in the sequence (2 &lt;= n &lt;= 100).</cell></row><row><cell cols="8">:param sequence: A list of integer numbers in arbitrary order (1 &lt;= elements &lt;= 3 *</cell></row><row><cell>10ˆ18).</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="8">:return: A reordered list of integer numbers representing a valid sequence Polycarp</cell></row><row><cell cols="4">could have written.</cell><cell></cell><cell></cell><cell></cell></row><row><cell>"""</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell>AI: ...</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="5">from collections import defaultdict</cell><cell></cell><cell></cell></row><row><cell cols="8"># Create adjacency list where each number can point to its possible predecessor and</cell></row><row><cell>successors</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">graph = defaultdict(list)</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">for num in sequence:</cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">for other in sequence:</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="4">if num != other:</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="6">if num == other * 2 or (</cell><cell></cell></row><row><cell>Good: other % 3</cell><cell cols="4">Bad: num * 2</cell><cell></cell><cell></cell></row></table><note><p><p>or 4. Pe = 1exp(-E loss ̵ hω ) AI: Given Good: the vibrational frequency Bad: that the potential interactions User: Read the following function signature and docstring, and fully implement the function described. Your response should only contain the code for this function. def reorder_sequence(n: int, sequence: list[int]) -&gt; list[int]: """ Given a sequence of integer numbers that Polycarp wrote down on the board, this function rearranges (reorders) elements of this sequence to match the order Polycarp could have possibly written them. Each next number should be exactly two times the previous number or exactly one third of the previous number.</p>Figure 5: Preference data generated by Pivotal Token Search in answering math and physics questions, and implementing a function in Python. The tokens that form the actual pair for DPO are underlined.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_9"><head>Table 9 :</head><label>9</label><figDesc>Performance through the post-training process. DPO stage 1 is pivotal token DPO, and DPO stage 2 is more standard judge-guided DPO. Each also has 1-5% hallucination and safety data mixed in.</figDesc><table><row><cell></cell><cell></cell><cell>SFT</cell><cell>DPO stage 1</cell><cell>DPO stage 2 only</cell><cell>phi-4 (stage 1 + 2)</cell></row><row><cell></cell><cell>MMLU</cell><cell>82.8</cell><cell>84.8</cell><cell>84.2</cell><cell>84.8</cell></row><row><cell>simple-evals</cell><cell>GPQA MATH HumanEval MGSM SimpleQA</cell><cell>47.3 77.1 79.5 80.8 3.7</cell><cell>53.6 80.5 81.6 80.8 2.9</cell><cell>52.4 77.6 81.5 81.5 2.9</cell><cell>56.1 80.4 82.6 80.6 3.0</cell></row><row><cell></cell><cell>DROP</cell><cell>82.8</cell><cell>86.1</cell><cell>71.8</cell><cell>75.5</cell></row><row><cell></cell><cell>MMLUPro</cell><cell>61.9</cell><cell>70.0</cell><cell>67.2</cell><cell>70.4</cell></row><row><cell></cell><cell cols="2">HumanEval+ 77.9</cell><cell>81.9</cell><cell>81.4</cell><cell>82.8</cell></row><row><cell></cell><cell>ArenaHard</cell><cell>56.7</cell><cell>66.5</cell><cell>69.8</cell><cell>75.4</cell></row><row><cell></cell><cell>IFEval</cell><cell>66.2</cell><cell>63.0</cell><cell>63.0</cell><cell>63.0</cell></row><row><cell></cell><cell>PhiBench (internal)</cell><cell>48.2</cell><cell>54.5</cell><cell>53.0</cell><cell>56.2</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_10"><head>Table 10 :</head><label>10</label><figDesc>Performance comparison across models. Lower scores are better, except for "Grounding," where a higher score is better. phi-4 values are bold for readability.</figDesc><table><row><cell>4</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_11"><head></head><label></label><figDesc>know the answer, but imagine that you were an LLM that did not know the correct answer. Write a plausible response to this question that the LLM might give if it did not know the answer and would like to say so rather than guess incorrectly. This LLM cannot look things up. It could suggest relevant information that it knows; it can also just say that it does not know the answer, if it is unlikely to know anything useful.</figDesc><table><row><cell cols="3">### Alternative Answer Forms</cell></row><row><cell cols="3">{% for alt in answer.alternates %}</cell></row><row><cell cols="2">{{ alt }}</cell></row><row><cell cols="3">{% endfor %}</cell></row><row><cell cols="3">↪ {% endif %}</cell></row><row><cell></cell><cell cols="2">A high quality question is (1) different from the given question and</cell></row><row><cell></cell><cell>↪</cell><cell>(2) plausible</cell></row><row><cell cols="3">## Instructions</cell></row><row><cell cols="3">Generations of refusals You job is ** NOT to solve the question ** . Your job is to determine</cell></row><row><cell cols="3">Consider the following question: whether the given submission should be graded as correct * without ↪</cell></row><row><cell>↪</cell><cell cols="2">needing a protest * . It does not matter if you disagree with the</cell></row><row><cell cols="3"># Question official answer; you should only consider whether the submission is ↪</cell></row><row><cell cols="3">{{ question }} equivalent to the answer key. (There is a separate process for ↪</cell></row><row><cell>↪</cell><cell cols="2">protests.)</cell></row><row><cell cols="3"># Instructions</cell></row><row><cell cols="3">Give a freeform analysis comparing the submission to the answer key. You You might well ↪ should then output a JSON dictionary in the following form: ↪</cell></row><row><cell cols="2">↪ ↪ ```json</cell></row><row><cell></cell><cell>{</cell></row><row><cell></cell><cell cols="2">"matches_key": [Answer 'True', 'False', or 'Uncertain'],</cell></row><row><cell>↪ ↪ ``À</cell><cell>}</cell></row><row><cell cols="3">You may start with a very brief discussion, then end with a markdown</cell></row><row><cell></cell><cell cols="2">section '# Response' that contains the response.</cell></row><row><cell cols="3">Answer checking</cell></row><row><cell cols="3">I am grading solutions to a trivia question. Your job is to determine</cell></row><row><cell>↪</cell><cell cols="2">whether the given submission matches the answer key.</cell></row><row><cell cols="3">## Original question</cell></row><row><cell cols="3">{{ question }}</cell></row><row><cell cols="3">## Submission</cell></row><row><cell cols="3">{{ response }}</cell></row><row><cell cols="3">## Answer key</cell></row><row><cell cols="3">{{ answer.value }}</cell></row><row><cell cols="3">{% if answer.alternates %}</cell></row></table><note><p>↪</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_12"><head></head><label></label><figDesc>List all the problems with the assistant 1 reply. For each problem try to determine whether this is due to lack of comprehension of the relevant material, a logical error, a factual error, a stylistic issue. If the answer is perfect, write none. If the question did not ask for a specific level of detail in the explanation, do not penalize the answer for being too detailed or too concise.",</figDesc><table><row><cell></cell><cell></cell><cell>"Assistant 1": "(string) ↪</cell></row><row><cell></cell><cell></cell><cell>↪</cell></row><row><cell></cell><cell></cell><cell>↪</cell></row><row><cell></cell><cell></cell><cell>↪</cell></row><row><cell></cell><cell></cell><cell>↪</cell></row><row><cell></cell><cell></cell><cell>↪</cell></row><row><cell></cell><cell></cell><cell>"Assistant 2": ...</cell></row><row><cell></cell><cell></cell><cell>...</cell></row><row><cell></cell><cell>},</cell></row><row><cell></cell><cell cols="2">"faults_discussion": "(string) Discuss the general strengths and</cell></row><row><cell></cell><cell>↪</cell><cell>weaknesses of each assistant. What are the main differences</cell></row><row><cell></cell><cell>↪</cell><cell>between the answers in terms of style, accuracy and level of</cell></row><row><cell></cell><cell>↪</cell><cell>detail?",</cell></row><row><cell></cell><cell cols="2">"accuracy": {</cell></row><row><cell></cell><cell></cell><cell>"Assistant 1": (1-5) how would you rate assistant 1 in terms of</cell></row><row><cell></cell><cell></cell><cell>↪</cell><cell>accuracy?,</cell></row><row><cell></cell><cell></cell><cell>...</cell></row><row><cell></cell><cell>},</cell></row><row><cell></cell><cell cols="2">"style": {</cell></row><row><cell></cell><cell></cell><cell>"Assistant 1": (1-5) how would you rate assistant 1 in terms of</cell></row><row><cell></cell><cell></cell><cell>↪</cell><cell>style?,</cell></row><row><cell></cell><cell></cell><cell>...</cell></row><row><cell></cell><cell>},</cell></row><row><cell></cell><cell cols="2">"detail": {</cell></row><row><cell></cell><cell></cell><cell>"Assistant 1": (1-5) how would you rate assistant 1 in terms of</cell></row><row><cell></cell><cell></cell><cell>↪</cell><cell>level of detail?,</cell></row><row><cell></cell><cell></cell><cell>...</cell></row><row><cell></cell><cell>}</cell></row><row><cell>}</cell><cell></cell></row><row><cell>``B</cell><cell></cell></row><row><cell>↪</cell><cell></cell></row><row><cell cols="3"># Conversation</cell></row><row><cell cols="3">{{ chat }}</cell></row><row><cell cols="3"># Replies</cell></row><row><cell cols="3">{{ replies }}</cell></row><row><cell cols="3"># Guideline</cell></row><row><cell cols="3">Produce your output in the following JSON format (without comments and</cell></row><row><cell>↪</cell><cell cols="2">with correct escape characters):</cell></row><row><cell cols="2">```json</cell></row><row><cell>{</cell><cell></cell></row><row><cell></cell><cell cols="2">"faults": {</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_0"><p>These scores are lower than those reported by Meta, perhaps because simple-evals has a strict formatting requirement that Llama models have particular trouble following. We use the simple-evals framework because it is reproducible, but Meta reports 77 for MATH and 88 for HumanEval on Llama-3.3.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_1"><p>We use organic to refer to human-generated or otherwise non-synthetic data.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_2"><p>This step is crucial to the reliability of some of the academic benchmarks: for instance, some test benchmark variants can be found on platforms like Hugging Face. Moreover, benchmarks such as MMLU are frequently compiled from websourced questions.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_3"><p>This is an updated mixture of synthetic data that contains new sources compared to phi-3.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_4"><p>Web rewrites is a sub-category of synthetic data that is substantially large and contains direct rewrites of web content.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_5"><p>For coding, a comprehensive test suite can be used. For math problems, answers can be compared to the ground truth.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_6"><p>We find drawing tacc and trej from rollouts PTS already used to estimate p(success | t1, . . . , ti-1) to be effective.</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We thank <rs type="person">Janardhan Kulkarni</rs> and <rs type="person">Sivakanth Gopi</rs> from <rs type="affiliation">Microsoft Research</rs> for the initial discussion around Pivotal Token Search. We thank the <rs type="institution">AI Red Team (AIRT) at Microsoft</rs>, especially <rs type="person">Blake Bullwinkel</rs>, <rs type="person">Bolor-Erdene Jagdagdorj</rs>, <rs type="person">Daniel Jones</rs>, <rs type="person">Shiven Chawla</rs>, <rs type="person">Tori Westerhoff</rs>, and <rs type="person">Ram Shankar Siva Kumar</rs>, and <rs type="person">Olga Dutova-Fairfax</rs> from the <rs type="affiliation">Deployment Safety Board</rs> and the <rs type="institution">Office of Responsible AI at Microsoft</rs> for collaborating with us on evaluating and improving our model on vulnerabilities in safety and security, which helped us adhere to the <rs type="institution">Microsoft</rs>'s RAI standards. Finally, we are grateful to <rs type="person">Ece Kamar</rs>, <rs type="person">Doug Burger</rs> and <rs type="person">Peter Lee</rs> from <rs type="affiliation">Microsoft Research</rs> for the support provided to the team during the work on the model.</p></div>
+			</div>			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>contaminated: True</head><p>Train: There are some oarsmen in a boat. The average weight is increased by 1.8 kg when one of the crew, who weighs 53 kg, is replaced by a new man who weighs 71 kg. How many oarsmen are there in the boat? Train Dataset: orca-math-word-problems-200k 13gram test: The average weight of 10 in a boat is increased by 1.8 kg when one of the crew, who weighs 53 kg is replaced by a new man. Find the weight of the new man. <ref type="bibr">A. 71 B.62 C.43 D.67</ref>  </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C AMC Evaluation Details</head><p>In this section, we fully describe our inference and grading schemes used for to obtain the November 2024 AMC scores displayed in Figure <ref type="figure">1</ref>. The 78 questions in these contests (4 sets of 25 questions, with overlaps between the 10A/12A and 10B/12B exams) were made available on or after November 6, 2024. All external models we tested were published before this date, as were the datasets for all stages of phi-4's training. Thus, these contests are our best attempt at conducting a completely contamination-proof evaluation of mathematical reasoning capabilities. We only benchmarked on this dataset after choosing the hyperparameters used in post-training our final candidate models, making this dataset completely independent of our final model. 8  We obtained the questions from the Art of Problem Solving Wiki 9 , and formatted them with the following template:</p><p>The following question is from a 25-question, multiple choice test. Each question is followed by answers marked A, B, C, D, and E. Only one of these is correct.</p><p>↪ ↪ SCORING: You will receive 6 points for each correct answer, 1.5 points for each problem left unanswered, and 0 points for each incorrect answer.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>↪</head><p>Solve the question step by step, then answer \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}, \boxed{E}, or \boxed{blank}.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>↪</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head># Question</head><p>8 For full disclosure, we evaluated our final three candidate models on this dataset and all three average scores exceeded 89. We settled on our final model based on other factors, before measuring its score but after seeing the scores for the other two candidates.</p><p>9 <ref type="url" target="https://artofproblemsolving.com/wiki/index.php/2024_AMC_10A">https://artofproblemsolving.com/wiki/index.php/2024_AMC_10A</ref> (10B, 12A, 12B)</p><p>With each question formatted this way, we obtained 10 independent generations at temperature 0.5 from each model we tested. We then followed the grading scheme described in the above prompt. We found that every model we tested (including our own) frequently failed to follow the "box your final answer" instruction, particularly after a long chain of thought. To stabilize the evaluations, we decided to count otherwise correct solutions (e.g. boxing the correct numerical expression) as correct. To do this, we prompted GPT-4o to extract a final answer (A/B/C/D/E or none) from each model's solution, with temperature 1.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D Synthetic generation examples D.1 Generation examples</head><p>We review a few examples of what our synthetic datasets look like, to give a general flavor of some of our techniques.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>D.1.1 Extracting and Tagging Excerpts from Content</head><p>To construct a dataset focused on reasoning and complexity, we extract excerpts from sources such as web pages, books, and scientific articles. Each excerpt is annotated with metadata such as complexity level, factual obscurity, and the presence of reasoning chains. These annotations help identify high-value content for synthetic data generation. Below, we provide an example of metadata we generated for scientific content: The raw content will later be filtered based on the metadata, and both will be used as seed for a variety of synthetic generations pipelines.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>### Chosen Action</head><p>Based on the analysis and the updated plan, the next logical and legal action is to move disk 1 from rod B to rod C. This move adheres to the rules and progresses towards the goal configuration. </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<author>
+			<persName><forename type="first">Marah</forename><surname>Abdin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Jacobs Ade</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ammar</forename><surname>Ahmad Awan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jyoti</forename><surname>Aneja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Awadallah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hany</forename><surname>Awadalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nguyen</forename><surname>Bach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Bahree</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arash</forename><surname>Bakhtiari</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harkirat</forename><surname>Behl</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2404.14219</idno>
+		<title level="m">Phi-3 technical report: A highly capable language model locally on your phone</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<title level="m" type="main">Introducing Meta Llama 3: The most capable openly available llm to date</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">I</forename><surname>Meta</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">I</forename><surname>Meta</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2407.21783</idno>
+		<title level="m">The llama 3 herd of models</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">BJN</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">Training a helpful and harmless assistant with reinforcement learning from human feedback</title>
+		<author>
+			<persName><forename type="first">Yuntao</forename><surname>Bai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kamal</forename><surname>Ndousse</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amanda</forename><surname>Askell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anna</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nova</forename><surname>Dassarma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawn</forename><surname>Drain</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stanislav</forename><surname>Fort</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deep</forename><surname>Ganguli</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Henighan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurav</forename><surname>Kadavath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jackson</forename><surname>Kernion</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Conerly</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sheer</forename><surname>El-Showk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nelson</forename><surname>Elhage</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zac</forename><surname>Hatfield-Dodds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danny</forename><surname>Hernandez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tristan</forename><surname>Hume</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Johnston</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shauna</forename><surname>Kravec</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Liane</forename><surname>Lovitt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Neel</forename><surname>Nanda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Catherine</forename><surname>Olsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dario</forename><surname>Amodei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Brown</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jack</forename><surname>Clark</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sam</forename><surname>Mccandlish</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Olah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Mann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><surname>Kaplan</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<monogr>
+		<title level="m" type="main">Safety-tuned Llamas: Lessons from improving the safety of large language models that follow instructions</title>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Bianchi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mirac</forename><surname>Suzgun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Giuseppe</forename><surname>Attanasio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Röttger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Jurafsky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tatsunori</forename><surname>Hashimoto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><surname>Zou</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title/>
+		<ptr target="https://www.maa.org/math-competitions" />
+	</analytic>
+	<monogr>
+		<title level="j">Com24American Mathematics Competitions</title>
+		<imprint>
+			<date type="published" when="2024-12-08">2024. 2024-12-08</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m" type="main">Evaluating large language models trained on code</title>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jerry</forename><surname>Tworek</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Heewoo</forename><surname>Jun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Qiming</forename><surname>Yuan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henrique</forename><surname>Ponde De Oliveira Pinto</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jared</forename><surname>Kaplan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harri</forename><surname>Edwards</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuri</forename><surname>Burda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Joseph</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Greg</forename><surname>Brockman</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2107.03374</idno>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">CZS</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<monogr>
+		<title level="m" type="main">Chatbot arena: An open platform for evaluating llms by human preference</title>
+		<author>
+			<persName><forename type="first">Wei-Lin</forename><surname>Chiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lianmin</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ying</forename><surname>Sheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anastasios</forename><surname>Nikolas Angelopoulos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianle</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dacheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hao</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Banghua</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Jordan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Joseph</forename><forename type="middle">E</forename><surname>Gonzalez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ion</forename><surname>Stoica</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<monogr>
+		<author>
+			<persName><surname>Deepseek</surname></persName>
+		</author>
+		<ptr target="https://api-docs.deepseek.com/news/news1120" />
+		<title level="m">Deepseek r1 lite preview</title>
+		<imprint>
+			<date type="published" when="2024-12-08">2024. 2024-12-08</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<monogr>
+		<title level="m" type="main">Textbooks are all you need</title>
+		<author>
+			<persName><forename type="first">Suriya</forename><surname>Gunasekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jyoti</forename><surname>Aneja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caio</forename><surname>César</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teodoro</forename><surname>Mendes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Allie</forename><surname>Del Giorno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sivakanth</forename><surname>Gopi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mojan</forename><surname>Javaheripi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gustavo</forename><surname>De Rosa Piero Kauffmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olli</forename><surname>Saarikivi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adil</forename><surname>Salim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shital</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harkirat</forename><surname>Singh Behl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Tauman Kalai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2306.11644</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Hbb +</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">Measuring massive multitask language understanding</title>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Hendrycks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Collin</forename><surname>Burns</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Basart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mantas</forename><surname>Mazeika</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawn</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Steinhardt</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2009.03300</idno>
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<monogr>
+		<title level="m" type="main">Measuring mathematical problem solving with the math dataset</title>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Hendrycks</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Collin</forename><surname>Burns</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Saurav</forename><surname>Kadavath</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Akul</forename><surname>Arora</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steven</forename><surname>Basart</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Tang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dawn</forename><surname>Song</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jacob</forename><surname>Steinhardt</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2021">2021</date>
+			<publisher>NeurIPS</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Hpbp</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<monogr>
+		<author>
+			<persName><forename type="first">Emman</forename><surname>Haider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Perez-Becker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Portet</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piyush</forename><surname>Madan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amit</forename><surname>Garg</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Atabak</forename><surname>Ashfaq</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Majercak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wen</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dongwoo</forename><surname>Kim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziyi</forename><surname>Yang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2407.13833</idno>
+		<title level="m">Phi-3 safety post-training: Aligning language models with a &quot;break-fix</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Phi-2: The surprising power of small language models</title>
+		<author>
+			<persName><forename type="first">Mojan</forename><surname>Javaheripi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marah</forename><surname>Abdin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jyoti</forename><surname>Aneja</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Caio</forename><surname>César</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teodoro</forename><surname>Mendes</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weizhu</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Allie</forename><surname>Del Giorno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sivakanth</forename><surname>Gopi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suriya</forename><surname>Gunasekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piero</forename><surname>Kauffmann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat Lee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anh</forename><surname>Nguyen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gustavo</forename><surname>De Rosa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Olli</forename><surname>Saarikivi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adil</forename><surname>Salim</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shital</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Michael</forename><surname>Santacroce</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harkirat</forename><surname>Singh Behl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Adam</forename><surname>Taumann Kalai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xin</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rachel</forename><surname>Ward</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Witte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cyril</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Microsoft Research Blog</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<monogr>
+		<title level="m" type="main">Triviaqa: A large scale distantly supervised challenge dataset for reading comprehension</title>
+		<author>
+			<persName><forename type="first">Mandar</forename><surname>Joshi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eunsol</forename><surname>Choi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><forename type="middle">S</forename><surname>Weld</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luke</forename><surname>Zettlemoyer</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<monogr>
+		<title level="m" type="main">Beavertails: Towards improved safety alignment of llm via a human-preference dataset</title>
+		<author>
+			<persName><forename type="first">Jiaming</forename><surname>Ji</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mickel</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juntao</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuehai</forename><surname>Pan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ce</forename><surname>Bian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chi</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruiyang</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yizhou</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yaodong</forename><surname>Yang</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">JSM</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Albert</forename><forename type="middle">Q</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alexandre</forename><surname>Sablayrolles</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arthur</forename><surname>Mensch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chris</forename><surname>Bamford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Devendra</forename><surname>Singh Chaplot</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Diego</forename><surname>De Las Casas</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Florian</forename><surname>Bressand</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gianna</forename><surname>Lengyel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Guillaume</forename><surname>Lample</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucile</forename><surname>Saulnier</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Renard</forename><surname>Lélio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marie-Anne</forename><surname>Lavaud</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Pierre</forename><surname>Lachaux</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Teven</forename><surname>Stock</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thibaut</forename><surname>Le Scao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Lavril</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothée</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">El</forename><surname>Lacroix</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sayed</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Mistral</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<monogr>
+		<title level="m" type="main">Textbooks are all you need II: phi-1.5</title>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sébastien</forename><surname>Bubeck</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ronen</forename><surname>Eldan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Allie</forename><surname>Del Giorno</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suriya</forename><surname>Gunasekar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yin</forename><surname>Tat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lee</forename></persName>
+		</author>
+		<idno type="arXiv">arXiv:2309.05463</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<monogr>
+		<title level="m" type="main">Improve mathematical reasoning in language models by automated process supervision</title>
+		<author>
+			<persName><forename type="first">Liangchen</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yinxiao</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rosanne</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samrat</forename><surname>Phatale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harsh</forename><surname>Lara</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunxuan</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Shu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yun</forename><surname>Zhu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Meng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiao</forename><surname>Sun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhinav</forename><surname>Rastogi</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<monogr>
+		<title level="m" type="main">Critical tokens matter: Token-level contrastive estimation enhances llm&apos;s reasoning capability</title>
+		<author>
+			<persName><forename type="first">Zicheng</forename><surname>Lin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tian</forename><surname>Liang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jiahao</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xing</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruilin</forename><surname>Luo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chufan</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siheng</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yujiu</forename><surname>Yang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhaopeng</forename><surname>Tu</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<monogr>
+		<title level="m" type="main">Is your code generated by chatgpt really correct? rigorous evaluation of large language models for code generation</title>
+		<author>
+			<persName><forename type="first">Jiawei</forename><surname>Liu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chunqiu</forename><surname>Steven Xia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuyao</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lingming</forename><surname>Zhang</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2305.01210</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<monogr>
+		<title level="m" type="main">A framework for automated measurement of responsible AI harms in generative AI applications</title>
+		<author>
+			<persName><forename type="first">Ahmed</forename><surname>Magooda</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alec</forename><surname>Helyar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kyle</forename><surname>Jackson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Sullivan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chad</forename><surname>Atalla</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Emily</forename><surname>Sheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Vann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Edgar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hamid</forename><surname>Palangi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roman</forename><surname>Lutz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hongliang</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Vincent</forename><surname>Yun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eslam</forename><surname>Kamal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Federico</forename><surname>Zarfati</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hanna</forename><surname>Wallach</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sarah</forename><surname>Bird</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mei</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<monogr>
+		<author>
+			<persName><surname>Openai</surname></persName>
+		</author>
+		<ptr target="https://openai.com/index/learning-to-reason-with-llms/" />
+		<title level="m">Learning to reason with language models</title>
+		<imprint>
+			<date type="published" when="2024-12-08">2024. 2024-12-08</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<monogr>
+		<author>
+			<persName><surname>Openai</surname></persName>
+		</author>
+		<ptr target="https://github.com/openai/simple-evals" />
+		<title level="m">Simple evals</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<title level="m" type="main">Gpqa: A graduate-level google-proof q&amp;a benchmark</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Rein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Betty</forename><forename type="middle">Li</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Asa</forename><forename type="middle">Cooper</forename><surname>Stickland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jackson</forename><surname>Petty</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Richard</forename><forename type="middle">Yuanzhe</forename><surname>Pang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julien</forename><surname>Dirani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Julian</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Samuel</forename><forename type="middle">R</forename><surname>Bowman</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Direct preference optimization: Your language model is secretly a reward model</title>
+		<author>
+			<persName><forename type="first">Rafael</forename><surname>Rafailov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Archit</forename><surname>Sharma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Mitchell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">D</forename><surname>Manning</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stefano</forename><surname>Ermon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Chelsea</forename><surname>Finn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Thirty-seventh Conference on Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<monogr>
+		<title level="m" type="main">Language models are multilingual chain-of-thought reasoners</title>
+		<author>
+			<persName><forename type="first">Freda</forename><surname>Shi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mirac</forename><surname>Suzgun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Freitag</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuezhi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Suraj</forename><surname>Srivats</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Soroush</forename><surname>Vosoughi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyung</forename><forename type="middle">Won</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Tay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sebastian</forename><surname>Ruder</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dipanjan</forename><surname>Das</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2022">2022</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<monogr>
+		<title level="m" type="main">Qwq: Reflect deeply on the boundaries of the unknown</title>
+		<author>
+			<persName><forename type="first">Qwen</forename><surname>Team</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024-11">November 2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<monogr>
+		<title level="m" type="main">Open models based on gemini research and technology</title>
+		<author>
+			<persName><forename type="first">Gemma</forename><surname>Team</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Mesnard</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Cassidy</forename><surname>Hardin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Robert</forename><surname>Dadashi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Surya</forename><surname>Bhupatiraju</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shreya</forename><surname>Pathak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurent</forename><surname>Sifre</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Morgane</forename><surname>Rivière</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mihir</forename><surname>Sanjay Kale</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juliette</forename><surname>Love</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Attention is all you need</title>
+		<author>
+			<persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niki</forename><surname>Parmar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jakob</forename><surname>Uszkoreit</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Llion</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aidan</forename><forename type="middle">N</forename><surname>Gomez</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lukasz</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Illia</forename><surname>Polosukhin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Advances in Neural Information Processing Systems</title>
+		<imprint>
+			<date type="published" when="2017">2017</date>
+			<biblScope unit="volume">30</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Agentkit: Flow engineering with graphs, not coding</title>
+		<author>
+			<persName><forename type="first">Yue</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yewen</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">So</forename><surname>Yeon Min</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shrimai</forename><surname>Prabhumoye</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Mcaleer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yonatan</forename><surname>Bisk</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ruslan</forename><surname>Salakhutdinov</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuanzhi</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tom</forename><surname>Mitchell</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">COLM</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">WKC</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Measuring short-form factuality in large language models</title>
+		<author>
+			<persName><forename type="first">Jason</forename><surname>Wei</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nguyen</forename><surname>Karina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Hyung</forename><forename type="middle">Won</forename><surname>Chung</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yunxin</forename><forename type="middle">Joy</forename><surname>Jiao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Spencer</forename><surname>Papay</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amelia</forename><surname>Glaese</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">John</forename><surname>Schulman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><surname>Fedus</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<author>
+			<persName><forename type="first">Peiyi</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhihong</forename><surname>Shao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">X</forename><surname>Xu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Damai</forename><surname>Dai</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yifei</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Deli</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zhifang</forename><surname>Sui</surname></persName>
+		</author>
+		<title level="m">Math-shepherd: Verify and reinforce llms step-by-step without human annotations</title>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">WMZ</title>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<monogr>
+		<title level="m" type="main">Mmlu-pro: A more robust and challenging multi-task language understanding benchmark</title>
+		<author>
+			<persName><forename type="first">Yubo</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xueguang</forename><surname>Ma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ge</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yuansheng</forename><surname>Ni</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Abhranil</forename><surname>Chandra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Shiguang</forename><surname>Guo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Weiming</forename><surname>Ren</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Aaran</forename><surname>Arulraj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xuan</forename><surname>He</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ziyan</forename><surname>Jiang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianle</forename><surname>Li</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Max</forename><surname>Ku</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Kai</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alex</forename><surname>Zhuang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Rongqi</forename><surname>Fan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Xiang</forename><surname>Yue</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wenhu</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<monogr>
+		<title/>
+		<author>
+			<persName><surname>Ygh</surname></persName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<title level="m" type="main">Helmet: How to evaluate long-context language models effectively and thoroughly</title>
+		<author>
+			<persName><forename type="first">Howard</forename><surname>Yen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianyu</forename><surname>Gao</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Minmin</forename><surname>Hou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ke</forename><surname>Ding</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Fleischer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Izsak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Moshe</forename><surname>Wasserblat</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Danqi</forename><surname>Chen</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2024">2024</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title level="m" type="main">Instruction-following evaluation for large language models</title>
+		<author>
+			<persName><forename type="first">Jeffrey</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tianjian</forename><surname>Lu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Swaroop</forename><surname>Mishra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Siddhartha</forename><surname>Brahma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sujoy</forename><surname>Basu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Yi</forename><surname>Luan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Denny</forename><surname>Zhou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Le</forename><surname>Hou</surname></persName>
+		</author>
+		<idno type="arXiv">arXiv:2311.07911</idno>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">arXiv preprint</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<monogr>
+		<title/>
+		<author>
+			<orgName type="collaboration">ZWC +</orgName>
+		</author>
+		<imprint/>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<title level="m" type="main">Universal and transferable adversarial attacks on aligned language models</title>
+		<author>
+			<persName><forename type="first">Andy</forename><surname>Zou</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Zifan</forename><surname>Wang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nicholas</forename><surname>Carlini</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Milad</forename><surname>Nasr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">Zico</forename><surname>Kolter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Matt</forename><surname>Fredrikson</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2023">2023</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

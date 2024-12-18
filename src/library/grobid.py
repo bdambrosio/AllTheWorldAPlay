@@ -12,7 +12,7 @@ import chat.rewrite as rw
 #from sklearn.metrics.pairwise import cosine_similarity
 import requests, json
 from lxml import etree
-url = "http://192.168.1.160:8070/api/processFulltextDocument"
+url = "http://localhost:8070/api/processFulltextDocument"
 
 headers = {"Response-Type": "application/xml"}#, "Content-Type": "multipart/form-data"}
 # Define the namespace map to handle TEI namespaces
@@ -186,89 +186,3 @@ def mean_pooling(model_output, attention_mask):
     input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
     return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
-
-def index_paper(pdf_filepath):
-    # main path for papers from index_url and / or index_file, where we know nothing other than pdf
-    try:
-        paper_dict = {}
-        extract = parse_pdf(pdf_filepath)
-        if extract is None:
-            print('grobid extract is None')
-            return False
-        print(f'index_paper grobid keys {extract.keys()}')
-        title = extract['title']
-        paper_dict['title'] = extract['title']
-        paper_dict['authors'] = extract['authors']
-        paper_dict['summary'] = extract['abstract'] # will be overwritten by S2 abstract if we can get it
-        meta_data = get_title(title)
-        if meta_data is not None:
-            paper_dict["summary"] = str(meta_data['abstract'])
-            #paper_dict["year"] = meta_data['year'])
-            paper_dict["article_url"] = str(meta_data['url'])
-            paper_dict["summary"] = str(meta_data['abstract'])
-            paper_dict["citationCount"]= int(meta_data['citationCount'])
-            paper_dict["citationStyles"]= str(meta_data['citationStyles'])
-            paper_dict["inflCitations"] = int(meta_data['influentialCitationCount'])
-        abstract = extract['abstract']
-        
-    except Exception as e:
-        print(f'\ngrobid fail {str(e)}')
-        return False
-    print(f"grobid extract keys {extract.keys()}")
-    text_chunks = [abstract]+extract['sections']
-    print(f"Summarizing each chunk of text {len(text_chunks)}")
-
-    section_prompt = """Given this abstract of a paper:
-    
-<ABSTRACT>
-{{$abstract}}
-</ABSTRACT>
-
-and this list of important entities (key phrases, acronyms, and named-entities) mentioned in this section:
-
-<ENTITIES>
-{{$entities}}
-</ENTITIES>
-
-Generate a synposis of this section of text from the paper. The section synopsis should include the central argument of the section as it relates to the abstract and previous sections, together with all key points supporting that central argument. A key point might be any observation, statement, fact, inference, question, hypothesis, conclusion, or decision relevant to the central argument of the text. The section synopsis should be 'entity-dense', that is, it should include all relevant ENTITIES to the central argument of the text and the paper abstract.
-
-<TEXT>
-{{$text}}
-</TEXT>
-
-End your synopsis with:
-</SYNOPSIS>
-"""
-
-    section_synopses = []; section_ids = []
-    #text_chunks = combine_strings(text_chunks) # combine shorter chunks
-    rw_count = 0
-    for idx, text_chunk in enumerate(text_chunks):
-        if len(text_chunk) < 32:
-            continue
-        rw_count += 1
-        sentences = [text_chunk]
-        #tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-        #model = AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1', trust_remote_code=True)
-        #model.eval()
-        #encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt')
-        #with torch.no_grad():
-        #    model_output = model(**encoded_input)
-        #embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
-        #embeddings = F.normalize(embeddings, p=2, dim=1)
-        ### no more rewriting on ingest,
-        ###   worried it distorts content more than content uniformity of style aids downstream extract
-        
-        id = index_section_synopsis(paper_dict, text_chunk)
-        section_synopses.append(text_chunk)
-        section_ids.append(id)
-        
-if __name__ == '__main__':
-    import OwlCoT as CoT
-    template = None
-    cot = CoT.OwlInnerVoice(None)
-    rw.cot = cot
-    #extract = parse_pdf(pdf_filepath)
-    app = QApplication(sys.argv)
-    rewrite = index_paper(pdf_filepath)
-    #print(f'{json.dumps(extract, indent=2)}\n{len(json.dumps(extract, indent=2))}')
