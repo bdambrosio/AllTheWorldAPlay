@@ -2,6 +2,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python Debugger: FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "index_service:app",
+                "--reload"
+            ],
+            "jinja": true
+        },
+        {
             "name": "sd3_server",
             "type": "debugpy",
             "request": "launch",
@@ -11,7 +22,21 @@
                 "--reload",
                 "--port",
                 "5008"
-           ],
+            ],
+            "jinja": true
+        },
+        {
+            "cwd":"library",
+            "name": "index_server",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "index_service:app",
+                "--reload",
+                "--port",
+                "5006"
+            ],
             "jinja": true
         },
         {
@@ -39,7 +64,8 @@
             "console": "integratedTerminal",
             "env": {
                 "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins"
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "1"
             }
         }
     ]
