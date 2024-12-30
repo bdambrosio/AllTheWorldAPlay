@@ -1,8 +1,8 @@
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtGui import QFont, QKeySequence
-from PyQt5.QtCore import Qt, QTimer, QTextCodec, QRect
-from PyQt5.QtWidgets import QHBoxLayout, QComboBox, QLabel, QSpacerItem, QApplication
-from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton
+from PyQt5 import QtWidgets, QtGui # type: ignore
+from PyQt5.QtGui import QFont, QKeySequence # type: ignore
+from PyQt5.QtCore import Qt, QTimer, QTextCodec, QRect # type: ignore
+from PyQt5.QtWidgets import QHBoxLayout, QComboBox, QLabel, QSpacerItem, QApplication # type: ignore
+from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton # type: ignore
 import signal
 #from PyQt5 import QApplication
 import random

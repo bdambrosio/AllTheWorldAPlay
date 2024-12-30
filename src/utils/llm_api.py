@@ -10,7 +10,7 @@ from io import BytesIO
 import utils.ClaudeClient as anthropic_client
 import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
-
+import utils.DeepSeekClient as deepseek_client
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
@@ -24,7 +24,18 @@ try:
    openai_client = openai_client.OpenAIClient(openai_api)
 except openai.OpenAIError as e:
    print(e)
+deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+deepseekclient = OpenAI(api_key=deepseek_api_key, base_url="https://api.deepseek.com")
 
+response = deepseekclient.chat.completions.create(
+    model="deepseek-chat",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "user", "content": "Hello"},
+    ],
+    stream=False
+)
+print(f'deepseek test:\n {response}')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 def generate_image(description, size='512x512', filepath='test.png'):
@@ -61,7 +72,7 @@ class LLM():
     def __init__(self, llm='local'):
         self.llm = llm
         print(f'will use {self.llm} as llm')
-        if llm.startswith('GPT'):
+        if llm.startswith('GPT') or llm.startswith('deepseek'):
             self.context_size = 32000
         elif llm.startswith('mistral'):
             self.context_size = 32000  # I've read mistral uses sliding 8k window
