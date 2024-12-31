@@ -273,6 +273,7 @@ End your response with:
                                      "memory":self.memory,
                                      "character":self.character, "history": history},
                                     prompt, temp=0.3, stops=['<END>'], max_tokens=200)
+            print(f'****\n{type(response)}, {response}\n****')
             term = xml.find('<Term>', response)
             assessment = xml.find('<Assessment>', response)
             trigger=xml.find('<Trigger>', response)

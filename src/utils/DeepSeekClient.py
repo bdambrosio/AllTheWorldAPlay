@@ -7,13 +7,13 @@ from utils.Messages import AssistantMessage
 from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-class OpenAIClient():
-    DefaultEndpoint = 'https://api.deepseek.com/v1'
-    UserAgent = 'Owl'
+class DeepSeekClient():
+    DefaultEndpoint = 'https://api.deepseek.com/'
 
-    def __init__(self, client, api_key=None):
+
+    def __init__(self, api_key=None):
+        client = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
         self._session = requests.Session()
         self._client = client
         
@@ -27,11 +27,13 @@ class OpenAIClient():
             stops.append('}')
 
         try:
-            response = client.chat.completions.create(
+            print(f"****\ntrying deepseek client:\n {prompt}")
+            response = self._client.chat.completions.create(
                 model='deepseek-chat', messages=prompt,
                 max_tokens=options.max_tokens, temperature=options.temperature, top_p=options.top_p,
-                stop=options.stops, stream=False, response_format = { "type": "json_object" })
+                stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
             item = response.choices[0].message
+            print(f'****\nresponse:\n{item}')
             return item.content
             #return {"status":'success', "message":{"role":'assistant', "content":item.content}}
         except Exception as e:
