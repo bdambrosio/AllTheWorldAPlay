@@ -502,7 +502,7 @@ Evaluation
             #
             ## Now choose action### but NOTE*** - above now includes action!
             #
-            """
+            
             userMsg = input_text+'\n\n'+thought+'\n\n'+\
                       (respond_string if (respond_immediately and self.review) else act_prefix_string+act_string)
             prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek()) +userMsg)
@@ -520,7 +520,7 @@ Evaluation
             if proceed == 's': # show state
                 self.show_memories(short=False)
             step_count +=1
-            """
+            
             #
             ## now do it! parse action
             #
