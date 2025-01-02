@@ -888,7 +888,12 @@ End your response with:
         prompt = [UserMessage(content="""A CompletionCriterion is provided below. 
 Reason step-by-step to establish whether this CompletionCriterion has now been met as a result of recent Events,
 using the CompletionCriterion as a guide for this assessment.
-
+Consider these factors in determining task completion:
+- Sufficient progress towards goal for intended purpose
+- Diminishing returns on continued effort
+- Environmental or time constraints
+- "Good enough" vs perfect completion
+                    
 <History>
 {{$history}}
 </History>
@@ -903,6 +908,12 @@ using the CompletionCriterion as a guide for this assessment.
 
 Respond using this XML format:
 
+Respond with both completion status and progress indication:
+<Completion>
+  <Status>Complete|Partial|Insufficient</Status>
+  <Progress>0-100 percentage</Progress>
+  <Rationale>Why this assessment</Rationale>
+</Completion>
 <Complete> 
     <Level>value of task completion, True, Unknown, or False</Level>
     <Evidence>concise statement of evidence in events to support this level of task completion</Evidence>
@@ -1014,6 +1025,12 @@ Dialog guidance:
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 
+When describing an action:
+- Reference previous action if this is a continuation
+- Indicate progress toward goal (starting/continuing/nearly complete)
+- Note changes in context or action details
+- Describe progress toward goal
+                              
 Respond in XML:
 <Actionable>
   <Mode>'Think', 'Say', 'Move', or 'Do', corresponding to whether the act is a reasoning, speech, or physical act</Mode>
