@@ -2,10 +2,20 @@ import json
 import random
 import string
 import traceback
+import time
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 from utils.memoryStream import MemoryStream
 import utils.map
+from ActionRecord import (
+    ActionMemory, 
+    ActionRecord,
+    StateSnapshot,
+    Mode,
+    create_action_record
+)
+
+
 def find_first_digit(s):
     for char in s:
         if char.isdigit():
@@ -58,6 +68,7 @@ class Character():
         self.last_acts = {} # a set of priorities for which actions have been started, and their states.
         self.dialog_status = 'Waiting' # Waiting, Pending
         self.new_memory_cnt = 0 # number of memories since last consolidation
+        self.action_memory = ActionMemory()
 
     def other(self):
         for actor in self.context.actors:
@@ -283,6 +294,13 @@ End your response with:
         print(f'{self.name}initial state {self.state}')
 
     def test_state_termination(self, state, consequences, updates=''):
+        
+        task_name = xml.find('<Name>', state)
+        effectiveness = self.action_memory.get_task_effectiveness(task_name)
+        if effectiveness < 0.2:
+            # Task is ineffective, consider it "done" (failed)
+            return True
+
         """ generate a state to track, derived from basic drives """
         prompt = [UserMessage(content="""An instantiated state for a basic drive is provided below 
 Your task is to test whether the instantiated state for this Drive has been satisfied as a result of recent events.
@@ -648,6 +666,15 @@ End your response with:
         #
         ### speak to someone
         #
+        mode = Mode(act_name)  # Convert string to Mode enum
+        record = create_action_record(
+            agent=self,
+            mode=mode,
+            action_text=act_arg,
+            task_name=source if source else self.active_task.peek(),
+            target=target.name if target else None
+        )
+        
         self.reason = reason
         if act_name is None or act_arg is None or len(act_name) <= 0 or len(act_arg) <= 0:
             return
@@ -720,8 +747,31 @@ End your response with:
             # why don't we need this for 'Do?'
             # how does this fit with new model of choose over tasks? won't this be ignored?
             self.update_intentions_wrt_say_think(source, act_arg, reason)
+ 
+        # After action completes, update record with results
+        record.context_feedback = self.show  # Capture context response
+        
+        # Create after-action state snapshot
+        record.state_after = StateSnapshot(
+            values={term: info["state"] 
+                   for term, info in self.state.items()},
+            timestamp=time.time()
+        )
+        
+        # Update record with state changes
+        self.action_memory.update_record_states(record)
+        
+        # Store completed record
+        self.action_memory.add_record(record)
 
     def update_priorities(self):
+        for task_name in list(self.priorities):
+            effectiveness = self.action_memory.get_task_effectiveness(task_name)
+            if effectiveness < 0.2:  # Very ineffective
+                # Remove task and try something else
+                self.priorities.remove(task_name)
+                # Could trigger generation of alternative approach here
+
         self.active_task = Stack() #new scene, start over. Or maybe we shouldn't?
         print(f'\n{self.name} Updating priorities\n')
         prompt = [UserMessage(content=self.character+"""You are {{$character}}.
