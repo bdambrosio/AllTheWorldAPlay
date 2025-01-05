@@ -259,14 +259,16 @@ class CustomWidget(QWidget):
         self.ui.set_image(image_path)
 
     def start_sense(self):
-        self.background_task = BackgroundSense(self.entity)
-        agh_threads.append(self.background_task)
+        result = self.entity.senses(sense_data = '')
+        #self.background_task = BackgroundSense(self.entity)
+        agh_threads.append(self) # keep track of how many threads are running, even if serially
         #self.background_task.run()
         #self.handle_sense_completed()
-        self.background_task.taskCompleted.connect(self.handle_sense_completed)
-        self.background_task.start()
-        time.sleep(0.1) # ensure entities run in listed order
+        #self.background_task.taskCompleted.connect(self.handle_sense_completed)
+        #self.background_task.start()
+        #time.sleep(0.1) # ensure entities run in listed order
         print(f'{self.entity.name} started sense')
+        self.handle_sense_completed()   
 
     def format_intentions(self):
         return '<br>'.join(["<b>"+str(xml.find('<Mode>', intention))
@@ -277,17 +279,11 @@ class CustomWidget(QWidget):
             
     def format_tasks(self):
         return '<br>'.join(["<b>"+str(xml.find('<Name>', task))
-                          +':</b> '+str(xml.find('<Rationale>', task))
+                          +':</b> '+str(xml.find('<Reason>', task))
                           +'<br>'
                           for task in self.entity.priorities])
             
     def handle_sense_completed(self):
-        global agh_threads, UPDATE_LOCK
-        try:
-            if self.background_task in agh_threads:
-                agh_threads.remove(self.background_task)
-        except Exception as e:
-            traceback.print_exc()
         if self.entity.name != 'World':
             self.update_entity_state_display()
             self.update_actor_image()
@@ -309,9 +305,7 @@ class CustomWidget(QWidget):
             self.ui.display('\n')
 
         # initiate another cycle?
-        print(f'{self.entity.name} sense completed {len(agh_threads)}')
-        if len(agh_threads) == 0:
-            self.ui.step_completed()
+        print(f'{self.entity.name} sense completed')
         
             
     def set_image(self, image_path):
@@ -494,16 +488,18 @@ class MainWindow(QMainWindow):
         self.step()
 
     def step(self):
-        #print('Step')
         self.run_button.setEnabled(False)
         self.step_button.setEnabled(False)
         self.update_parameters()
-        #self.display(f"\nStep {self.internal_time}\n")
+        # Process events to keep UI responsive
+        QApplication.processEvents()
+        
 
     def step_completed(self):
         self.internal_time += 1
         self.run_button.setEnabled(True)
         self.step_button.setEnabled(True)
+        QApplication.processEvents()
         if RUN:
             self.step()
             
@@ -570,17 +566,18 @@ class MainWindow(QMainWindow):
             self.context.save(worlds_path, self.world_name)
 
     def update_parameters(self):
-        # Example: update custom widgets with internal_time
         for widget in self.custom_widgets:
-            #print(f'{widget.entity.name} sensing')
             if type(widget.entity) != context.Context:
                 widget.update_value(self.internal_time)
+                # Process events periodically to check for pause
+                QApplication.processEvents()
             else:
                 if self.internal_time % 5 == 4:
                     widget.update_value(self.internal_time)
                 else:
                     widget.thoughts.clear()
                     widget.thoughts.insertPlainText(str(widget.entity.current_state))
+        self.step_completed()
 
 def main(context, server='local', world_name=None):
     global APP, main_window, WORLDS_DIR

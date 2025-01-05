@@ -10,7 +10,7 @@ server = 'deepseek_chat'
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
 # I find it disorienting for characters to change ethnic characteristics every time they are rendered, so they are nailed down here.
 # I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
-lemon = agh.Agh("Lemonade", """I are a pale grey kitten. 
+lemon = agh.Agh("Lemonade", """I am a pale grey kitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
 My name is Lemonade, others often call me Lemon""", server=server)
