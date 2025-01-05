@@ -78,8 +78,9 @@ class HoverWidget(QWidget):
         if event.type() == QEvent.Enter:
             print(f' enter under mouse! {event}')
             self.text_widget.clear()
-            add_text_ns(self.text_widget, self.entity.memory)
-            #self.text_widget.insertPlainText(self.entity.memory)
+            recent_memories = self.entity.structured_memory.get_recent(5)
+            memory_text = '\n'.join(memory.text for memory in recent_memories)
+            add_text_ns(self.text_widget, memory_text)
             self.text_widget.setVisible(True)
         super().enterEvent(event)
 
@@ -594,9 +595,9 @@ def main(context, server='local', world_name=None):
     main_window = MainWindow(context, server=server, world_name=None)
 
     # Update server setting for characters
-    for char in context.characters:
-        if isinstance(char, agh.Agh):
-            char.llm = llm_api.LLM(server)
+    for actor in context.actors:
+        if isinstance(actor, agh.Agh):
+            actor.llm = llm_api.LLM(server)
             
     sys.exit(APP.exec_())
 
