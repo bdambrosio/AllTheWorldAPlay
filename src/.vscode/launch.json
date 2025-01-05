@@ -2,17 +2,84 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Lost",
+            "name": "Python Debugger: Memory Unittests",
             "type": "debugpy",
             "request": "launch",
-            "program": "lost.py",
+            "program": "sim/memory/unitTests.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+
+        },
+        {
+            "name": "Python Debugger: Cognitive Unittests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "sim/cognitive/unitTests.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+
+        },
+        {
+            "name": "Python Debugger: homeAlone",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "plays/homeAlone.py",
             "console": "integratedTerminal",
             "env": {
                 "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
                 "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
                 "CUDA_VISIBLE_DEVICES": "1"
             },
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",     
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+        },
+        {
+            "name": "Python Debugger: Kittens",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "plays/kittens.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+        },
+        {
+            "name": "Python Debugger: Team",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "plays/team.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
+        },
+        {
+            "name": "Python Debugger: Lost",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "plays/lost.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
         },
         {
             "name": "Python Debugger: FastAPI",

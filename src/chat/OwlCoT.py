@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 from scipy import spatial
 
 #sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import context, human
+import sim.context as context, sim.human as human
 #from chat.LLMScript import LLMScript
 #from chat.Interpreter import Interpreter
 import chat.react as react
@@ -67,7 +67,7 @@ class OwlInnerVoice():
         self.port = port
         self.city = city
         self.state = state
-        self.llm = llm_api.LLM(llm='Claude')
+        self.llm = llm_api.LLM(llm='local')
         #self.interpreter = Interpreter(self)
         self.script = LLMScript(self)
         self.max_tokens = 12000

@@ -1,5 +1,7 @@
-import worldsim
-import context, agh
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
 
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
@@ -74,6 +76,6 @@ W = context.Context([S, J],
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
-worldsim.main(W, server='Claude')
+worldsim.main(W, server='local')
 #worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
 #worldsim.main(W, server='llama.cpp')

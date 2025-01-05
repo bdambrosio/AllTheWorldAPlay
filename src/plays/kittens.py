@@ -1,6 +1,9 @@
-import worldsim
-import context, agh
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
 
+server = 'deepseek_chat'
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 # Create characters
@@ -10,7 +13,7 @@ import context, agh
 lemon = agh.Agh("Lemonade", """I are a pale grey kitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
-My name is Lemonade, others often call me Lemon""")
+My name is Lemonade, others often call me Lemon""", server=server)
 
 # Drives are what cause a character to create tasks.
 # Below is the default an agh inherits if you don't override, as we do below.
@@ -18,7 +21,7 @@ My name is Lemonade, others often call me Lemon""")
 # As usual, caveat, check agh.py for latest default!
 # - immediate physiological needs: survival, water, food, clothing, shelter, rest.  
 # - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
-# - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
+# - assurance of short-term futur physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
 # - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 
 #Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
@@ -38,7 +41,7 @@ lemon.drives = [
 meow = agh.Agh("Meow-Meow", """I am a grey full-grown tabby cat. 
 I love Lemonade, but sometimes need a break from her playfulness.
 I like to sleep, and occasionally hunt bugs and butterflys.
-My name is Meow-Meow""")
+My name is Meow-Meow""", server=server)
 
 meow.drives = [
     "keep watch over Lemonade and keep her safe.",
@@ -60,6 +63,4 @@ W = context.Context([lemon, meow],
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
-worldsim.main(W)
-#worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
-#worldsim.main(W, server='llama.cpp')
+worldsim.main(W, server=server)

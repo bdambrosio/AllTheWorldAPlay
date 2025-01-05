@@ -1,19 +1,27 @@
-import time, os, json
 from pathlib import Path
-import traceback
-import threading
-from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QPushButton, QScrollArea, QSizePolicy, QLineEdit, QDialog
-from PyQt5.QtCore import QSize
-import PyQt5.QtGui as QtGui
-from PyQt5.QtGui import QFont, QTextCursor
-import context, agh, human
-from utils import llm_api
-import utils.xml_utils as xml
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QTextEdit, QVBoxLayout
+import os
+import threading
+import time
+import random
+import traceback
+from datetime import datetime
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QLineEdit,QLabel,QPushButton,QScrollArea,QSizePolicy,QHBoxLayout
+from PyQt5.QtWidgets import QDialog
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt, QEvent
+import PyQt5.QtGui as QtGui
+from PyQt5.QtCore import Qt, QTimer, QEvent, QSize, QThread, pyqtSignal
+from PyQt5.QtGui import QTextCursor, QFont
+from utils.llm_api import LLM
+import sim.agh as agh
+import sim.context as context
+import xml.etree.ElementTree as xml
+import sim.human as human
+import utils.llm_api as llm_api
+import json
+import utils.xml_utils as xml
+
+
 
 IMAGEGENERATOR = 'tti_serve'
 UPDATE_LOCK = threading.Lock()
@@ -351,7 +359,6 @@ class MainWindow(QMainWindow):
         self.actors = context.actors
         self.init_ui()
         self.internal_time = 0
-        self.agh = agh
         self.server=server
         for actor in self.actors:
            actor.llm = self.llm
@@ -586,6 +593,11 @@ def main(context, server='local', world_name=None):
 
     main_window = MainWindow(context, server=server, world_name=None)
 
+    # Update server setting for characters
+    for char in context.characters:
+        if isinstance(char, agh.Agh):
+            char.llm = llm_api.LLM(server)
+            
     sys.exit(APP.exec_())
 
 if __name__ == '__main__':

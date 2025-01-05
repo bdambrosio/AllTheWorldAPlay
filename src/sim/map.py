@@ -1,4 +1,5 @@
 import random
+import time
 from enum import Enum, auto
 from collections import defaultdict
 import heapq
@@ -25,13 +26,91 @@ class Direction(Enum):
 
     @staticmethod
     def from_string(text):
-        if type(text) != str:
+        """
+        Convert text to Direction enum, with enhanced robustness
+        
+        Args:
+            text: String or Direction enum to convert
+            
+        Returns:
+            Direction enum or None if no valid direction found
+        """
+        # Return as-is if already a Direction
+        if isinstance(text, Direction):
             return text
-        text = text.lower()
-        for direction in Direction:
-            if direction.name.lower() in text:
+            
+        # Handle None/empty input
+        if not text:
+            return None
+            
+        # Convert to lowercase string for matching
+        if not isinstance(text, str):
+            return None
+            
+        text = text.lower().strip()
+        
+        # Handle common variations
+        direction_map = {
+            'n': Direction.NORTH,
+            'ne': Direction.NORTHEAST, 
+            'e': Direction.EAST,
+            'se': Direction.SOUTHEAST,
+            's': Direction.SOUTH, 
+            'sw': Direction.SOUTHWEST,
+            'w': Direction.WEST,
+            'nw': Direction.NORTHWEST,
+            'north': Direction.NORTH,
+            'northeast': Direction.NORTHEAST,
+            'east': Direction.EAST, 
+            'southeast': Direction.SOUTHEAST,
+            'south': Direction.SOUTH,
+            'southwest': Direction.SOUTHWEST,
+            'west': Direction.WEST,
+            'northwest': Direction.NORTHWEST
+        }
+        
+        # Try exact match first
+        if text in direction_map:
+            return direction_map[text]
+            
+        # Try matching parts of input against direction names
+        for name, direction in direction_map.items():
+            if name in text:
                 return direction
-        return None  # or raise ValueError("No matching direction found")
+                
+        return None
+
+def get_direction_offset(direction):
+    """
+    Get x,y offset for a direction
+    
+    Args:
+        direction: Direction enum or string
+        
+    Returns:
+        Tuple of (dx, dy) offsets or (0,0) if invalid
+    """
+    # Convert string to enum if needed
+    if isinstance(direction, str):
+        direction = Direction.from_string(direction)
+        
+    # Return no movement if invalid direction
+    if direction is None:
+        return (0, 0)
+        
+    offsets = {
+        Direction.NORTH: (0, -1),
+        Direction.NORTHEAST: (1, -1),
+        Direction.EAST: (1, 0),
+        Direction.SOUTHEAST: (1, 1),
+        Direction.SOUTH: (0, 1),
+        Direction.SOUTHWEST: (-1, 1),
+        Direction.WEST: (-1, 0),
+        Direction.NORTHWEST: (-1, -1),
+        Direction.CURRENT: (0, 0)
+    }
+    
+    return offsets[direction]
 
 
 
@@ -103,6 +182,8 @@ class WorldMap:
         self.set_terrain_heights()
         self.agents = []  # New list to store registered agents
         self.generate_water_features(num_sources=10, min_length=20)
+        self.agents = []  # List exists but isn't fully utilized
+
 
     def register_agent(self, agent):
         self.agents.append(agent)
@@ -331,7 +412,58 @@ class WorldMap:
                 if patch.has_water:
                     patch.height = 0  # Water level
 
+    def get_visibility_cached(self, x, y, observer_height):
+        """Optimized visibility calculation with caching"""
+        cache_key = (x, y, observer_height)
+        
+        # Check if we have a recent cache entry
+        current_time = time.time()
+        if hasattr(self, '_visibility_cache'):
+            cache_entry = self._visibility_cache.get(cache_key)
+            if cache_entry and (current_time - cache_entry['time'] < 1.0):  # 1 second cache
+                return cache_entry['visible_patches']
+        else:
+            self._visibility_cache = {}
+
+        # Calculate visibility using quadrants for better performance
+        visible_patches = []
+        
+        # Split into quadrants for better performance
+        quadrants = [
+            (range(x, min(x + 21, self.width)), range(y, min(y + 21, self.height))),    # NE
+            (range(x, max(x - 21, 0), -1), range(y, min(y + 21, self.height))),         # NW
+            (range(x, min(x + 21, self.width)), range(y, max(y - 21, 0), -1)),          # SE
+            (range(x, max(x - 21, 0), -1), range(y, max(y - 21, 0), -1))                # SW
+        ]
+        
+        for x_range, y_range in quadrants:
+            for curr_x in x_range:
+                for curr_y in y_range:
+                    if self.is_visible(x, y, curr_x, curr_y, observer_height):
+                        visible_patches.append(self.patches[curr_x][curr_y])
+        
+        # Cache the result
+        self._visibility_cache[cache_key] = {
+            'visible_patches': visible_patches,
+            'time': current_time
+        }
+        
+        return visible_patches
+
+    def get_visible_agents(self, x, y, observer_height):
+        """Get list of agents visible from given position"""
+        visible_patches = self.get_visibility_cached(x, y, observer_height)
+        visible_agents = []
+        
+        for agent in self.agents:
+            agent_patch = self.patches[agent.x][agent.y]
+            if agent_patch in visible_patches:
+                visible_agents.append(agent)
+                
+        return visible_agents
+    
     def get_visibility(self, x, y, observer_height):
+        """Get list of patches visible from given position"""
         visible_patches = []
         for dx in range(-20, 21):  # Observe up to 20 patches in each direction
             for dy in range(-20, 21):
@@ -342,6 +474,63 @@ class WorldMap:
         return visible_patches
 
     def is_visible(self, x1, y1, x2, y2, observer_height):
+        """Check if target position is visible from observer position
+        Uses Bresenham's line algorithm for more efficient line traversal"""
+        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        if distance == 0:
+            return True
+
+        # Use Bresenham's line algorithm for more efficient line traversal
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        x, y = x1, y1
+        sx = 1 if x1 < x2 else -1
+        sy = 1 if y1 < y2 else -1
+        err = dx - dy
+
+        observer_elevation = self.patches[x1][y1].elevation * 100 + observer_height
+        target_elevation = self.patches[x2][y2].elevation * 100 + self.patches[x2][y2].height
+
+        while True:
+            if x == x2 and y == y2:
+                break
+
+            check_patch = self.patches[x][y]
+            check_elevation = check_patch.elevation * 100 + check_patch.height
+
+            # Calculate elevation angle efficiently
+            dist_so_far = math.sqrt((x - x1) ** 2 + (y - y1) ** 2)
+            if dist_so_far > 0:  # Avoid division by zero
+                current_angle = math.atan2(check_elevation - observer_elevation, dist_so_far)
+                target_angle = math.atan2(target_elevation - observer_elevation, distance)
+            
+                if current_angle > target_angle:
+                    return False
+
+            e2 = 2 * err
+            if e2 > -dy:
+                err = err - dy
+                x = x + sx
+            if e2 < dx:
+                err = err + dx
+                y = y + sy
+
+            if not (0 <= x < self.width and 0 <= y < self.height):
+                return False
+
+        return True    
+
+    def get_visibility(self, x, y, observer_height):
+            visible_patches = []
+            for dx in range(-20, 21):  # Observe up to 20 patches in each direction
+                for dy in range(-20, 21):
+                    target_x, target_y = x + dx, y + dy
+                    if 0 <= target_x < self.width and 0 <= target_y < self.height:
+                        if self.is_visible(x, y, target_x, target_y, observer_height):
+                            visible_patches.append(self.patches[target_x][target_y])
+            return visible_patches
+
+    def is_visible_old(self, x1, y1, x2, y2, observer_height):
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         if distance == 0:
             return True  # The observer's own patch is always visible
@@ -367,6 +556,53 @@ class WorldMap:
             # If this angle is greater than the angle to the target, the target is not visible
             if elevation_angle > math.atan2(
                     self.patches[x2][y2].elevation * 100 + self.patches[x2][y2].height - observer_elevation, distance):
+                return False
+
+        return True
+
+    # 4. Optimized Line of Sight
+    def is_visible(self, x1, y1, x2, y2, observer_height):
+        """Optimized line of sight calculation using Bresenham's algorithm"""
+        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        if distance == 0:
+            return True
+
+        # Use Bresenham's line algorithm for more efficient line traversal
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        x, y = x1, y1
+        sx = 1 if x1 < x2 else -1
+        sy = 1 if y1 < y2 else -1
+        err = dx - dy
+
+        observer_elevation = self.patches[x1][y1].elevation * 100 + observer_height
+        target_elevation = self.patches[x2][y2].elevation * 100 + self.patches[x2][y2].height
+
+        while True:
+            if x == x2 and y == y2:
+                break
+
+            check_patch = self.patches[x][y]
+            check_elevation = check_patch.elevation * 100 + check_patch.height
+
+            # Calculate elevation angle efficiently
+            dist_so_far = math.sqrt((x - x1) ** 2 + (y - y1) ** 2)
+            if dist_so_far > 0:  # Avoid division by zero
+                current_angle = math.atan2(check_elevation - observer_elevation, dist_so_far)
+                target_angle = math.atan2(target_elevation - observer_elevation, distance)
+            
+                if current_angle > target_angle:
+                    return False
+
+            e2 = 2 * err
+            if e2 > -dy:
+                err = err - dy
+                x = x + sx
+            if e2 < dx:
+                err = err + dx
+                y = y + sy
+
+            if not (0 <= x < self.width and 0 <= y < self.height):
                 return False
 
         return True

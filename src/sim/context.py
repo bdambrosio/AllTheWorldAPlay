@@ -1,7 +1,8 @@
 import json
 import traceback
 import random
-from utils import llm_api, map
+from sim import map
+from utils import llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 

@@ -8,9 +8,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.Messages import SystemMessage, UserMessage
 from utils.workingMemory import WorkingMemory
 import utils.persistentStack as ps
-import utils.memoryStream as ms
+import sim.memoryStream as ms
 import utils.pyqt as pyqt
-import agh
+import sim.agh as agh
 import utils.xml_utils as xml
 
 cot = None # will be initialized in owlCoT.init_Owl_Doc and in __main__ below
@@ -214,8 +214,8 @@ End Example
 
 class Actor (agh.Agh):
 
-    def __init__(self, name, cot, character_description=None, personality='Agent is an intelligent, cooperative AI', always_respond=True):
-        super().__init__(name, character_description if character_description is not None else personality, always_respond=always_respond) # actors by default always respond when spoken to
+    def __init__(self, name, cot, character_description=None, server='local', personality='Agent is an intelligent, cooperative AI', always_respond=True):
+        super().__init__(name, character_description if character_description is not None else personality, server=server, always_respond=always_respond) # actors by default always respond when spoken to
         self.cot = cot
         self.name = name
         self.personality = personality

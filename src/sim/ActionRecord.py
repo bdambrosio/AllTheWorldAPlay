@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from enum import Enum
 import time
+from sim.memory.core import MemoryEntry
 
 class Mode(Enum):
     THINK = "Think"
@@ -37,6 +38,10 @@ class ActionRecord:
     # Effectiveness tracking
     helped_states: List[str]  # State terms that improved
     hindered_states: List[str]  # State terms that got worse
+
+    # Add memory tracking
+    related_memories: List[MemoryEntry] = field(default_factory=list)
+ 
     
     @property
     def effort_score(self) -> float:
@@ -49,6 +54,9 @@ class ActionRecord:
             Mode.DO: 3.0
         }
         return base_effort[self.mode] * self.energy_used
+    
+    def add_memory_reference(self, memory: MemoryEntry):
+        self.related_memories.append(memory)
 
 class ActionMemory:
     """Manages action history and analysis"""
