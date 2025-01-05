@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List
-from sim.memory.core import MemoryEntry, StructuredMemory, MemoryCategory
+from sim.memory.core import MemoryEntry, StructuredMemory
 from sim.agh import Character
 
 class Human(Character):
@@ -30,34 +30,12 @@ class Human(Character):
         # user has no task management!
         self.acts(to_actor, 'Say', message, '', source)
 
-    def add_to_history(self, message: str):
-        """Add message to structured memory"""
-        entry = MemoryEntry(
-            text=message,
-            category=self._determine_category(message),
-            importance=0.5,
-            timestamp=datetime.now(),
-            justification="User interaction",
-            related_drives=[],  # Humans don't use drives
-            emotional_valence=0.0,
-            confidence=1.0
-        )
-        self.structured_memory.add_entry(entry)
-        self.new_memory_cnt += 1
-
+ 
     def format_history(self, n=2):
         """Get n most recent memories"""
         recent_memories = self.structured_memory.get_recent(n)
         return '\n\n'.join(memory.text for memory in recent_memories)
 
-    def _determine_category(self, message: str) -> MemoryCategory:
-        """Simple categorization for human messages"""
-        message = message.lower()
-        if "hear" in message or "say" in message:
-            return MemoryCategory.SOCIAL
-        elif "see" in message or "observe" in message:
-            return MemoryCategory.ENVIRONMENTAL
-        return MemoryCategory.CORE
 
     def _find_related_drives(self, message: str) -> List[str]:
         """Humans don't use drives"""

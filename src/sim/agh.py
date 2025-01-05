@@ -40,17 +40,10 @@ def find_first_digit(s):
 
 
 class Stack:
-    def __init__(self, name, character_description, server='local', mapAgent=True, always_respond=False):
-        super().__init__()
-        
-        # Initialize LLM
-        self.llm = llm_api.LLM(server)
-        
-        # Initialize memory systems
-        self.memory_consolidator = MemoryConsolidator(self.llm)
-        self.memory_retrieval = MemoryRetrieval()
-        
-        # Rest of existing initialization...
+    def __init__(self):
+        """Simple stack implementation"""
+        self.stack = []
+        print("Stack initialized")  # Debug print
 
     def push(self, item):
         self.stack.append(item)
@@ -75,6 +68,7 @@ class Stack:
 # Character base class
 class Character:
     def __init__(self, name, character_description):
+        print(f"Initializing Character {name}")  # Debug print
         self.name = name
         self.character = character_description
         self.llm = None  # will be init by Worldsim
@@ -88,7 +82,11 @@ class Character:
         self.thought = ''  # thoughts - displayed in character thoughts window
         self.sense_input = ''
         self.widget = None
-        self.active_task = Stack(name, character_description)  # task character is actively pursuing
+        
+        # Initialize active_task stack
+        self.active_task = Stack()
+        print(f"Character {name} active_task initialized: {self.active_task}")  # Debug print
+        
         self.last_acts = {}  # priorities for which actions have been started, and their states
         self.dialog_status = 'Waiting'  # Waiting, Pending
         self.dialog_length = 0
@@ -324,15 +322,20 @@ streams is the water resources visible
             print(f' error restoring {self.name}, {str(e)}')
 
 class Agh(Character):
-    def __init__ (self, name, character_description, server='local', mapAgent=True, always_respond=False):
+    def __init__(self, name, character_description, server='local', mapAgent=True, always_respond=False):
+        print(f"Initializing Agh {name}")  # Debug print
         super().__init__(name, character_description)
+        print(f"After Character init, active_task is: {self.active_task}")  # Debug print
+        
         self.llm = llm_api.LLM(server)
+        
         # Initialize memory system
         self.structured_memory = StructuredMemory()
         self.memory_consolidator = MemoryConsolidator(self.llm)
         self.memory_retrieval = MemoryRetrieval()
-        self.new_memory_cnt = 0        # Initialize memory system
+        self.new_memory_cnt = 0
         
+        # Initialize drives
         self.drives = [
             "immediate physiological needs: survival, water, food, clothing, shelter, rest.",
             "safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events.",
@@ -343,37 +346,26 @@ class Agh(Character):
         # Initialize cognitive system
         self.state_system = StateSystem(self.llm, character_description)
         self.priority_system = PrioritySystem(self.llm, character_description)
-        self.memory=self.structured_memory,
-        self.state_assessments={},
-        self.active_priorities=[],
-        self.current_drives=self.drives,
-        self.current_time=datetime.now()
         
         # Initialize dialog management
         self.dialog_manager = DialogManager(self)
-
-        # World integration attributes 
+        self.dialog_status = 'Waiting'
+        self.dialog_length = 0
+        
+        # World integration attributes
         if mapAgent:
             self.mapAgent = None  # Will be set later
             self.world = None
             self.my_map = [[{} for i in range(100)] for i in range(100)]
             self.x = 50
             self.y = 50
-
+            
         self.always_respond = always_respond
- 
+        
         # Action tracking
         self.previous_action = ''
         self.act_result = ''
-        self.last_acts = {}
         self.action_memory = ActionMemory()
-        # Waiting - Waiting for input, InputPending, OutputPending - say intention pending
-        self.dialog_status = 'Waiting' # Waiting, Pending
-        self.dialog_length = 0 # stop dialogs in tell after a few turns
-
-        # These are the correct replacements we already added:
-        self.state_system = StateSystem(self.llm, character_description)
-        self.priority_system = PrioritySystem(self.llm, character_description)
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -404,12 +396,8 @@ class Agh(Character):
         """Add message to structured memory"""
         entry = MemoryEntry(
             text=message,
-            category=self._determine_category(message),
             importance=0.5,  # Default importance
             timestamp=datetime.now(),
-            justification="Basic memory",
-            related_drives=self._find_related_drives(message),
-            emotional_valence=0.0,
             confidence=1.0
         )
         self.structured_memory.add_entry(entry)
@@ -546,14 +534,7 @@ End response with:
 
 
     def test_state_termination(self, state, consequences, updates=''):
-        
-        task_name = xml.find('<Name>', state)
-        effectiveness = self.action_memory.get_task_effectiveness(task_name)
-        if effectiveness < 0.2:
-            # Task is ineffective, consider it "done" (failed)
-            return True
-
-        """ generate a state to track, derived from basic drives """
+        """Generate a state to track, derived from basic drives"""
         prompt = [UserMessage(content="""An instantiated state for a basic drive is provided below 
 Your task is to test whether the instantiated state for this Drive has been satisfied as a result of recent events.
 
@@ -568,6 +549,10 @@ Your task is to test whether the instantiated state for this Drive has been sati
 <Character>
 {{$character}}
 </Character>
+
+<RecentMemories>
+{{$memories}}
+</RecentMemories>
 
 <History>
 {{$history}}
@@ -587,19 +572,29 @@ Respond using this XML format:
     <Level>value of state satisfaction, True if termination test is met in Events or History</Level>
 </Termination>
 
-the 'Level' above should be True if the termination test is met in Events or recent History, and False otherwise.  
+The 'Level' above should be True if the termination test is met in Events or recent History, and False otherwise.  
 
-Respond ONLY with the above XML
-Do on include any introductory, explanatory, or discursive text.
+Respond ONLY with the above XML.
+Do not include any introductory, explanatory, or discursive text.
 End your response with:
 <END>
 """
                                   )]
 
-        response = self.llm.ask({"drive": state, "situation": self.context.current_state,
-                                "memory": self.memory,
-                                "character": self.character, "history": self.format_history()},
-                                prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(5)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        response = self.llm.ask({
+            "state": state,
+            "situation": self.context.current_state,
+            "memories": memory_text,  # Updated from 'memory'
+            "character": self.character,
+            "history": self.format_history(),
+            "events": consequences + '\n' + updates,
+            "termination_check": state
+        }, prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+
         satisfied = xml.find('<Level>', response)
         if satisfied or satisfied.lower().strip() == 'true':
             print(f'State {state} Satisfied!')
@@ -614,116 +609,6 @@ End your response with:
             mapped.append(f"- '{key}: {trigger}', State: '{value}'")
         return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
 
-    #deprecated, no longer used
-    def update_state(self):
-        """ update state """
-        prompt = [UserMessage(content=self.character+"""{{$character}}
-When last updated, your state was:
-
-<State>
-{{$state}}
-</State>
-
-Your task is to update your state.
-Your current situation is:
-
-<Situation>
-{{$situation}}
-</Situation>
-
-Your long-term memory includes:
-
-<Memory>
-{{$memory}}
-</Memory>
-
-Recent interactions not included in memory:
-
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Respond with an updated state, using this XML format, 
-
-The updated physical state should reflect updates from the previous state based on passage of time, recent events in Memory, and recent history
-
-<UpdatedState>
-{{$stateTemplate}}
-</UpdatedState>
-
-Respond ONLY with the updated state.
-Do not include any introductory or peripheral text.
-limit your response to 120 words at most.
-End your response with:
-<STOP>""")
-                  ]
-        mapped_state = self.map_state()
-        template = self.make_state_template()
-        response = self.llm.ask({'character': self.character, 'memory':self.memory,
-                                 'history': self.format_history(8),
-                                 "situation": self.context.current_state,
-                                 "state": mapped_state, "template": template
-                                },
-                               prompt, temp=0.2, stops=['<STOP>'], max_tokens=180)
-        state_xml = xml.find('<UpdatedState>', response)
-        print(f'\n{self.name} updating state')
-        for key, item in self.state.items():
-            update = xml.find(f'<{key}>', state_xml)
-            if update != None:
-                print(f'  setting {key} to {update}')
-                item["state"] = update
-
-    def make_state_template(self):
-        """ map state for llm input """
-        mapped = []
-        for key, item in self.state.items():
-            dscp = item['drive']
-            value = 'updated state assessment'
-            mapped.append(f'<{key}>{value}</{key}>')
-        return '\n'.join(mapped)
-  
-
-    def synonym_check(self, term, candidate):
-        """ except for new tasks, we'll always have correct task_name, and new tasks are presumably new"""
-        if term == candidate: return True
-        else: return False
-        instruction=[UserMessage(content="""Your task is to decide if Text1 and Text2 designate the same task.
-Reason step-by-step:
- - Does phrase Text2 have the same meaning as Text1? That is, does it designate essentially the same task, or is one a refinement of the other?
-
-===Examples===
-Text1: Communicate with Joe.
-Text2: Find water.
-Response: False
---- 
-Text1: Communicate with Joe.
-Text2: Tell Joe how much I appreciate having him around
-Response: True
----
-Text1: Check disposal noise
-Text2: Maintain supply stocks
-Response: False
----
-Text1: Maintain communication with Madam
-Text2: Check disposal noise
-Response: False
-===END Examples===
-
-Text1: {{$text1}}
-Text2: {{$text2}}
-
-Respond True or False. 
-Do not include your reasoning in your response.
-Do not include any introductory, discursive, or explanatory text.
-Simply respond 'True' or 'False'.
-End your response with:
-</END>
-""")]
-        response = self.llm.ask({"text1":term, "text2":candidate}, instruction, temp=0.3, stops=['</END>'], max_tokens=100)
-        if 'true' in response.lower():
-            return True
-        else:
-            return False
 
     def get_task_last_acts_key(self, term):
         """ checks for name in Last_acts!"""
@@ -792,7 +677,12 @@ End your response with:
         """ test if content duplicates last_act or entry in history """
         if last_act == None or len(last_act) < 10:
             return False
-        prompt=[UserMessage(content="""You are {{$name}}.
+
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(5)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        prompt = [UserMessage(content="""You are {{$name}}.
 Analyze the following NewText for duplicative content. 
 
 A text is considered repetitive if:
@@ -872,8 +762,13 @@ End your response with:
 """
                             )
                 ]
-        response = self.llm.ask({"text":text, "last_act":last_act, "history":history, 'name':self.name},
-                                prompt, temp=0.2, stops=['</END>'], max_tokens=12)
+        response = self.llm.ask({
+            "text": text, 
+            "last_act": last_act, 
+            "history": history, 
+            'name': self.name,
+            "memories": memory_text  # Updated from 'memory' to use structured memory
+        }, prompt, temp=0.2, stops=['</END>'], max_tokens=12)
         response = response.lower()
         idxt = response.find('true')
         idxf = response.find('false')
@@ -926,27 +821,6 @@ End your response with:
                 )
                 self.priorities = self.cognitive_state.active_priorities
 
-    def clear_task_if_satisfied_old(self, task_xml, consequences, world_updates):
-        termination_check = xml.find('<Termination_check>', task_xml) if task_xml != None else None
-        if termination_check is None:
-            return
-        satisfied = self.test_priority_termination(termination_check, consequences, world_updates)
-        if satisfied:
-            task_name = xml.find('<Name>', task_xml)
-            if task_name == self.active_task.peek():
-                self.active_task.pop()
-            try:
-                self.priorities.remove(task_xml)
-            except Exception as e:
-                # this can happen because we don't actually create a task for transient intents from Think or Say
-                print(str(e))
-            new_intentions = []
-            for intention in self.intentions:
-                if xml.find('<Source>', intention) != task_name:
-                    new_intentions.append(intention)
-            self.intentions = new_intentions
-            if self.active_task.peek() is None and len(self.priorities) == 0:
-                self.update_priorities()
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         """Execute an action and record results"""
@@ -1053,107 +927,6 @@ End your response with:
         # Store completed record
         self.action_memory.add_record(record)
         
-    def acts_old(self, target, act_name, act_arg='', reason='', source=''):
-    
-        ### speak to someone
-        #
-        mode = Mode(act_name)  # Convert string to Mode enum
-        record = create_action_record(
-            agent=self,
-            mode=mode,
-            action_text=act_arg,
-            task_name=source if source else self.active_task.peek(),
-            target=target.name if target else None
-        )
-        
-        self.reason = reason
-        if act_name is None or act_arg is None or len(act_name) <= 0 or len(act_arg) <= 0:
-            return
-        self_verb = 'hear' if act_name == 'Say' else 'see'
-        visible_arg = 'Thinking ...' if act_name == 'Think' else act_arg
-
-        # update main display
-        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
-        visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
-
-        if act_name != 'Do':
-            self.show += f"\n{intro} {visible_arg}"
-        self.add_to_history(f"\nYou {act_name}: {act_arg} \n  why: {reason}")
-
-        # update thought
-        if act_name == 'Think':
-            self.thought = act_arg + '\n ... ' + self.reason
-        else:
-            self.thought = act_arg[:64] + ' ...\n ... ' + self.reason
-
-        if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
-            if self.active_task.peek() != source:
-                self.active_task.push(source)  # dialog is peripheral to action, action task selection is sticky
-
-        # others see your act in the world
-        if act_name != 'Say':  # everyone sees it
-            for actor in self.context.actors:
-                if actor != self:
-                    actor.add_to_history(self.show)
-        else:
-            for actor in self.context.actors:
-                if actor != self:
-                    if source != 'watcher':  # when talking to watcher, others don't hear it.
-                        # create other actor response to say
-                        # note this assumes only two actors for now, otherwise need to add target
-                        if actor != target:
-                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        else:
-                            actor.hear(self, act_arg, source) # don't act immediately on receipt
-
-        # if you acted in the world, ask Context for consequences of act
-        # should others know about it?
-        if act_name == 'Do':
-            consequences, world_updates = self.context.do(self, act_arg)
-            if source == None:
-                source = self.active_task.peek()
-            task_xml = self.get_task_xml(source) if source != None else None
-            for task in self.priorities.copy():
-                self.clear_task_if_satisfied(task, consequences, world_updates)
-
-            self.show += '\n  ' + consequences.strip() + '\n' + world_updates.strip()  # main window
-            self.add_to_history(f"You observe {consequences}")
-            print(f'{self.name} setting act_result to {world_updates}')
-            self.act_result = world_updates
-            if target is not None:  # targets of Do are tbd
-                target.sense_input += '\n' + world_updates
-        elif act_name == 'Move':
-            moved = self.mapAgent.move(act_arg)
-            if moved:
-                dx, dy = self.mapAgent.get_direction_offset(act_arg)
-                self.x = self.x + dx
-                self.y = self.y + dy
-        elif act_name == 'Look':
-            self.look()
-
-        self.previous_action = act_name
-
-        if act_name == 'Think':
-            # make sure future intentions are consistent with what we just did
-            # why don't we need this for 'Do?'
-            # how does this fit with new model of choose over tasks? won't this be ignored?
-            self.update_intentions_wrt_say_think(source, act_arg, reason)
- 
-        # After action completes, update record with results
-        record.context_feedback = self.show  # Capture context response
-        
-        # Create after-action state snapshot
-        record.state_after = StateSnapshot(
-            values={term: info["state"] 
-                   for term, info in self.state.items()},
-            timestamp=time.time()
-        )
-        
-        # Update record with state changes
-        self.action_memory.update_record_states(record)
-        
-        # Store completed record
-        self.action_memory.add_record(record)
 
     def update_priorities(self):
         # First remove ineffective tasks
@@ -1164,7 +937,7 @@ End your response with:
                 self.priorities.remove(task_name)
                 # Could trigger generation of alternative approach here
 
-        self.active_task = None  # Reset active task for new scene
+        self.active_task = Stack()  # Reset active task for new scene
         print(f'\n{self.name} Updating priorities\n')
         
         prompt = [UserMessage(content="""You are {{$character}}.
@@ -1273,7 +1046,7 @@ End response with:
         #print(f'\n-----Done-----\n\n\n')
 
     def test_priority_termination(self, termination_check, consequences, updates=''):
-        """ test if consequences of recent acts (or world update) have satisfied priority """
+        """Test if consequences of recent acts (or world update) have satisfied priority"""
         prompt = [UserMessage(content="""A CompletionCriterion is provided below. 
 Reason step-by-step to establish whether this CompletionCriterion has now been met as a result of recent Events,
 using the CompletionCriterion as a guide for this assessment.
@@ -1290,6 +1063,10 @@ Consider these factors in determining task completion:
 <Events>
 {{$events}}
 </Events>
+
+<RecentMemories>
+{{$memories}}
+</RecentMemories>
 
 <Completion_criterion>
 {{$termination_check}}
@@ -1312,17 +1089,27 @@ the 'Level' above should be True if the termination check is met in Events or re
 Unknown if the Events do not support a definitive assessment, or False if Events provide little or no evidence for task completion.  
 
 Respond ONLY with the above XML
-Do on include any introductory, explanatory, or discursive text.
+Do not include any introductory, explanatory, or discursive text.
 End your response with:
 <END>
 """
                                   )]
 
         print(f'{self.name} testing priority termination_check: {termination_check}')
-        response = self.llm.ask({"termination_check": termination_check, "situation": self.context.current_state,
-                                    "memory": self.memory, "events": consequences+'\n'+updates,
-                                    "character": self.character, "history": self.format_history()},
-                                prompt, temp=0.3, stops=['<END>', '</Complete>'], max_tokens=120)
+
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(5)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        response = self.llm.ask({
+            "termination_check": termination_check,
+            "situation": self.context.current_state,
+            "memories": memory_text,  # Updated from 'memory'
+            "events": consequences + '\n' + updates,
+            "character": self.character,
+            "history": self.format_history()
+        }, prompt, temp=0.3, stops=['<END>', '</Complete>'], max_tokens=120)
+
         satisfied = xml.find('<Level>', response)
         if satisfied != None and satisfied.lower().strip() == 'true':
             print(f'Priority {termination_check} Satisfied!')
@@ -1354,11 +1141,11 @@ Your state is:
 {{$state}}
 </State>
 
-Your memories include:
+Your recent memories include:
 
-<Memory>
-{{$memory}}
-</Memory>
+<RecentMemories>
+{{$memories}}
+</RecentMemories>
 
 Recent history includes:
 <RecentHistory>
@@ -1496,47 +1283,60 @@ End your response with:
 <END>"""
                                         )]
         print(f'{self.name} act_result: {self.act_result}')
-        act= None; tries = 0
-        mapped_state=self.map_state()
+        act = None
+        tries = 0
+        mapped_state = self.map_state()
         duplicative_insert = ''
         temp = 0.6
+
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(6)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
         while act is None and tries < 2:
-            response = self.llm.ask({'character':self.character,
-                                     'memory':self.memory, 'duplicative':duplicative_insert,
-                                     'history':self.format_history(6), 'name':self.name,
-                                     "situation":self.context.current_state + '\n'+ self.format_look(),
-                                     "state": mapped_state, "task": task_xml, "reason": reason,
-                                     "lastAct": last_act, "lastActResult": self.act_result
-                                     },
-                                    prompt, temp=temp, top_p=1.0,
-                                    stops=['</Actionable>','<END>'], max_tokens=180)
+            response = self.llm.ask({
+                'character': self.character,
+                'memories': memory_text,  # Updated from 'memory'
+                'duplicative': duplicative_insert,
+                'history': self.format_history(6),
+                'name': self.name,
+                "situation": self.context.current_state + '\n' + self.format_look(),
+                "state": mapped_state,
+                "task": task_xml,
+                "reason": reason,
+                "lastAct": last_act,
+                "lastActResult": self.act_result
+            }, prompt, temp=temp, top_p=1.0, stops=['</Actionable>','<END>'], max_tokens=180)
+
+            # Rest of existing while loop...
             print(response)
             act = xml.find('<SpecificAct>', response)
             mode = xml.find('<Mode>', response)
 
-            if mode is None: mode = 'Do'
+            if mode is None: 
+                mode = 'Do'
 
             # test for dup act
-            if mode =='Say':
+            if mode == 'Say':
                 dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
-                    duplicative_insert =f"\nThe following Say is duplicative of previous dialog:\n'{act}'\nWhat else could you say or how else could you say it?"
+                    duplicative_insert = f"\nThe following Say is duplicative of previous dialog:\n'{act}'\nWhat else could you say or how else could you say it?"
                     if tries == 0:
-                        act = None # force redo
-                        temp +=.3
+                        act = None  # force redo
+                        temp += .3
                     else:
-                        act = None # skip task, nothing interesting to do
+                        act = None  # skip task, nothing interesting to do
                         pass
 
-            elif mode =='Do':
+            elif mode == 'Do':
                 dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert =f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
-                    if tries <1:
-                        act = None # force redo
-                        temp +=.3
+                    duplicative_insert = f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
+                    if tries < 1:
+                        act = None  # force redo
+                        temp += .3
                     else:
                         #act = None #skip task, nothing interesting to do
                         pass
@@ -1544,10 +1344,10 @@ End your response with:
                 act = None
                 temp += .3
             tries += 1
-            
+
         if act is not None:
-            print(f'actionable found: task_name {task_name}\n  {act}')  
-            print(f'adding intention {mode}, {task_name}')  
+            print(f'actionable found: task_name {task_name}\n  {act}')
+            print(f'adding intention {mode}, {task_name}')
             for candidate in self.intentions.copy():
                 candidate_source = xml.find('<Source>', candidate)
                 if candidate_source == task_name:
@@ -1559,7 +1359,6 @@ End your response with:
         else:
             print(f'No intention constructed, presumably duplicate')
             return None
-            #raise UserWarning('No intention constructed')
 
     def forward(self, step):
         """Execute cognitive update cycle"""
@@ -1582,64 +1381,7 @@ End your response with:
         self.generate_state()
         self.update_priorities()
 
-    def forward_old(self, step):
 
-        # roll conversation history forward.
-        ## update physical state
-        ## update long-term dialog memory
-        prompt = [UserMessage(content=self.character+"""Your name is {{$me}}.
-Your task is to update your long-term memory."""\
-#Your current situation is:
-#
-#<Situation>
-#{{$situation}}
-#</Situation>
-+"""
-Your previous long-term memory includes:
-<Memory>
-{{$memory}}
-</Memory>
-
-Recent interactions not included in memory:
-
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Respond with an complete, concise, accurate, updated memory. 
-The updated memory will replace the current long-term memory, and be a concise and accurate record.
-Memory should include two types of entries:
-1. Information, interactions, and events significant to one or more items in your Stance above.
-2. Factually significant information. Note that factual information can change, and should be updated when necessary. 
-  For example, a 'fact' about your location in Memory may no longer be valid if an action caused you to move since the last update.
-  
-Entries in the updated Memory should come from:
-1. Information from the previous memory that has not been invalidated by events in RecentHistory
-2. New information appearing in RecentHistory
-
-Limit your response to 360 words.
-Respond ONLY with the updated long-term memory.
-Do not include any introductory, explanatory, discursive, or peripheral text.
-
-End your response with:
-END""")
-                  ]
-
-        filtered_history = []
-        # thoughts are illusory,
-        #for item in [memory.text for memory in self.history.n_most_recent(16)]:
-        #    if 'Think' not in item:
-        #        filtered_history.append(item)
-        response = self.llm.ask({'me':self.name, 'memory':self.memory,
-                                'history': self.format_history(self.new_memory_cnt),
-                                "situation":self.context.current_state},
-                               prompt, temp=0.4, stops=['END'], max_tokens=500)
-        response = response.replace('<Memory>','')
-        self.memory = response
-        #self.history = self.history[-2:]
-        self.new_memory_cnt = 0
-        self.generate_state() # why isn't this update_state? Because update is very short term!
-        self.update_priorities()
         
     def update_intentions_wrt_say_think(self, source, text, reason):
         # determine if text implies an intention to act, and create a formatted intention if so
@@ -1764,192 +1506,7 @@ END
         
         self.acts(to_actor, 'Say', message, '', source)
         
-    def hear_old(self, from_actor, message, source='dialog', respond=True):
-        """Handle incoming messages with dialog context tracking"""
-        if source == 'dialog':
-            # Initialize or update dialog context
-            if not hasattr(self, 'dialog_manager'):
-                self.dialog_manager = DialogManager(self)
-            
-            if self.dialog_manager.current_dialog is None:
-                self.dialog_manager.start_dialog(from_actor, self, source)
-        
-            self.dialog_manager.add_turn()
-        
-            # Basic dialog length check - can be made more sophisticated later
-            if self.dialog_manager.current_dialog.turn_count > 1 and not self.always_respond:
-                self.dialog_manager.end_dialog()
-                return
-            
-        if self.name == 'Owl' and from_actor.name == 'Doc':
-            # doc is asking a question or assigning a task
-            new_task_name = self.random_string()
-            new_task = f"""<Plan><Name>{new_task_name}</Name>
-<Steps>
-  1. Respond to Doc's statement:
-  {message}
-</Steps>
-<Target>
-{from_actor.name}
-</Target>
-<Rationale>engaging with Doc: completing his assignments.</Rationale>
-<TerminationCheck>Responded</TerminationCheck>
-</Plan>"""
-            self.priorities.append(new_task)
-            self.active_task.push(new_task_name)
-            return
-        if self.active_task.peek() == 'dialog' and self.previous_action == 'Say':
-            # assuming this means this is a response to my previous action
-            source = self.active_task.peek()
-        elif source == 'dialog' and self.previous_action != 'Say' and self.active_task.peek() != 'dialog':
-            #not a response to my Say:
-            self.active_task.push('dialog')
-        elif source != 'dialog':
-            print(f' non dialog tell')
-        if source == 'dialog':
-            self.dialog_length += 1
-            if self.dialog_length > 1 and not self.always_respond:
-                # end a dialog after one turn
-                self.dialog_length = 0;
-                # clear all actor pending dialog tasks and intentions:
-                if self.active_task.peek() == 'dialog':
-                    self.active_task.pop()
-                for priority in self.priorities.copy():
-                    if xml.find('<Name>', priority) == 'dialog':
-                        print(f'{self.name} removing dialog task!')
-                        self.priorities.remove(priority)
-                for intention in self.intentions.copy():
-                    if xml.find('<Source>', intention) == 'dialog':
-                        print(f'{self.name} removing dialog intention')
-                        self.intentions.remove(intention)
-                if self.active_task.peek() is None:
-                    self.update_priorities()
-                #ignore this tell, dialog over
-                return
-            elif self.active_task.peek() != None and self.active_task.peek() != 'dialog':
-                self.active_task.push('dialog')
 
-        print(f'\n{self.name} tell received from {from_actor.name}, {message} {source}\n')
-        self.add_to_history(f'You hear {from_actor.name} say {message}')
-        if not respond:
-            return
-        #generate response intention
-        prompt=[UserMessage(content="""Respond to the input below as {{$name}}.
-
-{{$character}}.
-
-Your current situation is:
-
-<Situation>
-{{$situation}}
-</Situation>
-
-Your state is:
-
-<State>
-{{$state}}
-</State>
-
-Your memories include:
-
-<Memory>
-{{$memory}}
-</Memory>
-
-Recent conversation has been:
-<RecentHistory>
-{{$history}}
-</RecentHistory)>
-
-Use the following XML template in your response:
-<Answer>
-<Response>response to this statement</Response>
-<Reason>concise reason for this answer</Reason>
-<Unique>'True' if you have something new to say, 'False' if you have nothing worth saying or your response is a repeat or rephrase of previous responses</Unique>
-</Answer>
-
-Your last response was:
-<PreviousResponse>
-{{$last_act}}
-</PreviousResponse>
-
-{{$activity}}
-
-The statement you are responding to is:
-<Input>
-{{$statement}}
-</Input>>
-
-Reminders: 
-- Your task is to generate an response to the statement using the above XML format.
-- The response should be in keeping with your character's State.
-- The response can include body language or facial expressions as well as speech (e.g. 'Joe nods in agreement...')
-- The response is in the context of the Input, and can assume all Input information is implicitly present in the dialog.
-- Respond in a way that expresses an opinion on current options or proposes a next step to solving the central conflict in the dialog.
-- If the intent of the response is to agree, state agreement without repeating the feelings, opinions, motivations, or goals.
-- Speak in your own voice. Do not echo the speech style of the Input. 
-- Respond in the style of natural spoken dialog. Use short sentences, contractions, and casual language.
- 
-If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory or Input), then the referent should be omitted or use pronoun reference.
-===Example===
-RecentHistory:
-Samantha: Hi Joe. It's good to know that I'm not alone in feeling lost and confused. Maybe together we can find a way out of this forest and find out how we got here.
-
-Response:
-Yeah. I hope we can find our way out here. And yeah, good idea on shelter and water. this is so weird.
-
-===Example===
-Input:
-Samantha says Great! Let's stick together and look for clues or landmarks to where we are or how to get back. 
-I'm feeling disoriented, but having someone else here with me helps.
-
-Joe: Sounds like a plan. Let's stay within sight. Keep an eye out for any paths or trails or trail markers.
-===End Example===
-
-
-Respond only with the above XML
-Do not include any additional introductory, explanatory, or discursive text. 
-End your response with:
-END
-""")]
-        mapped_state=self.map_state()
-        last_act = ''
-        if source in self.last_acts: #this is 'from_source' task_name!
-            last_act=self.last_acts[source]
-        activity = ''
-        if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
-            activity = f'You are currently actively engaged in {self.get_task_xml(self.active_task.peek())}'
-        answer_xml = self.llm.ask({'character': self.character, 'statement': f'{from_actor.name} says {message}',
-                                   "situation": self.context.current_state,"name":self.name,
-                                   "state": mapped_state, "memory": self.memory, "activity": activity,
-                                   'history': self.format_history(6), 'last_act': str(last_act)
-                                   }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
-        response = xml.find('<response>', answer_xml)
-        if response is None:
-            return
-        unique = xml.find('<Unique>', answer_xml)
-        if unique is None or 'false' in unique.lower():
-            if self.active_task.peek() == 'dialog':
-                self.active_task.pop()
-            return 
-        reason = xml.find('<Reason>', answer_xml)
-        print(f' Queueing dialog response {response}')
-        if source != 'watcher': #Is this right? Does a say from another user always initiate a dialog?
-            response_source='dialog'
-        else:
-            response_source = 'watcher'
-        dup = self.repetitive(response, last_act, '')
-        if dup:
-            if self.active_task.peek() == 'dialog':
-                self.active_task.pop()
-            return # skip response, adds nothing
-        self.intentions.append(f'<Intent> <Mode>Say</Mode> <Act>{response}</Act> <Target>{from_actor.name}</Target><Reason>{str(reason)}</Reason> <Source>{response_source}</Source></Intent>')
-        return response+'\n '+reason
-        # Rest of existing hear() logic...
-        if respond:
-            response = self.generate_response(from_actor, message, source)
-            if response:
-                self.intentions.append(response)        # someone says something to you
  
     def hear(self, from_actor, message, source='dialog', respond=True):
         # Initialize dialog manager if needed
@@ -2058,16 +1615,21 @@ END
         if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
             activity = f'You are currently actively engaged in {self.get_task_xml(self.active_task.peek())}'
 
-        answer_xml = self.llm.ask({'character': self.character, 
-                              'statement': f'{from_actor.name} says {message}',
-                              "situation": self.context.current_state,
-                              "name": self.name,
-                              "state": mapped_state, 
-                              "memory": self.memory, 
-                              "activity": activity,
-                              'history': self.format_history(6), 
-                              'last_act': str(last_act)
-                             }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(6)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+        
+        answer_xml = self.llm.ask({
+            'character': self.character,
+            'statement': f'{from_actor.name} says {message}',
+            "situation": self.context.current_state,
+            "name": self.name,
+            "state": mapped_state,
+            "memories": memory_text,  # Updated from 'memory'
+            "activity": activity,
+            'history': self.format_history(6),
+            'last_act': str(last_act)
+        }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
 
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -2125,11 +1687,11 @@ Your state is:
 {{$state}}
 </State>
 
-Your memories include:
+Your recent memories include:
 
-<Memory>
-{{$memory}}
-</Memory>
+<RecentMemories>
+{{$memories}}
+</RecentMemories>
 
 Recent conversation has been:
 <RecentHistory>
@@ -2170,13 +1732,22 @@ END
 
         mapped_state = self.map_state()
         action_choices = [f'{n} - {action}' for n, action in enumerate(action_choices)]
+        
+        # Get recent memories from structured memory
+        recent_memories = self.structured_memory.get_recent(5)  # Get 5 most recent memories
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+        
         if len(action_choices) > 1:
-            response = self.llm.ask({'input': sense_data + self.sense_input, 'history': self.format_history(6),
-                                    "memory": self.memory, "situation": self.context.current_state,
-                                    "state": mapped_state, "drives": '\n'.join(self.drives),
-                                    "priorities": '\n'.join([str(xml.find('<Name>', task)) for task in self.priorities]),
-                                    "actions": '\n'.join(action_choices)
-                                    }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
+            response = self.llm.ask({
+                'input': sense_data + self.sense_input, 
+                'history': self.format_history(6),
+                "memories": memory_text,  # Use structured memory instead of old memory
+                "situation": self.context.current_state,
+                "state": mapped_state, 
+                "drives": '\n'.join(self.drives),
+                "priorities": '\n'.join([str(xml.find('<Name>', task)) for task in self.priorities]),
+                "actions": '\n'.join(action_choices)
+                }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
         # print(f'sense\n{response}\n')
         self.sense_input = ' '
         if 'END' in response:
@@ -2303,3 +1874,20 @@ END
         #        if refresh_task == task:
         #            print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
         #            self.actualize_task('refresh', refresh_task) # regenerate intention
+
+    # Add this method to the Agh class
+    def _determine_category(self, message: str) -> str:
+        """Determine the category of a memory message"""
+        # Simple rule-based categorization
+        message = message.lower()
+        
+        if any(word in message for word in ['say', 'hear', 'tell', 'ask', 'speak']):
+            return 'dialog'
+        elif any(word in message for word in ['see', 'look', 'observe', 'notice']):
+            return 'observation'
+        elif any(word in message for word in ['do', 'act', 'make', 'build', 'move']):
+            return 'action'
+        elif any(word in message for word in ['think', 'feel', 'believe', 'wonder']):
+            return 'thought'
+        else:
+            return 'general'
