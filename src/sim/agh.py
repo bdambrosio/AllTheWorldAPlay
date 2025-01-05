@@ -117,8 +117,8 @@ class Character:
         """Base method for finding related drives - must be implemented by derived classes"""
         raise NotImplementedError("Derived classes must implement _find_related_drives")
 
-    def forward(self, time_delta: str):
-        """Move character forward in time"""
+    def forward(self, step):
+        """Execute cognitive update cycle"""
         # Consolidate memories if we have drives
         if hasattr(self, 'drives'):
             self.memory_consolidator.consolidate(
@@ -126,7 +126,17 @@ class Character:
                 self.drives,
                 self.character
             )
-        # Rest of existing forward code...
+
+        # Get recent memory content from structured_memory
+        recent_memories = self.structured_memory.get_recent(self.new_memory_cnt)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        # Update state and priorities
+        self.generate_state()
+        self.update_priorities()
+
+        # Reset new memory counter
+        self.new_memory_cnt = 0
 
     # Task management methods
     def get_task_last_acts_key(self, term):
@@ -164,7 +174,7 @@ class Character:
         candidate = self.get_task_xml(task_name)
         if candidate is not None:
             return candidate
-        new_task = f'<Plan><Name>{task_name}</Name><Rationale>{reason}</Rationale></Plan>'
+        new_task = f'<Plan><Name>{task_name}</Name><Reason>{reason}</Reason></Plan>'
         self.priorities.append(new_task)
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
         return new_task
@@ -335,6 +345,11 @@ class Agh(Character):
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
         
+        # Initialize cognitive system
+        print(f"Initializing cognitive system for {name}")  # Debug print
+        self.state_system = StateSystem(self.llm, character_description)
+        self.priority_system = PrioritySystem(self.llm, character_description)
+        
         # Initialize drives
         self.drives = [
             "immediate physiological needs: survival, water, food, clothing, shelter, rest.",
@@ -343,10 +358,6 @@ class Agh(Character):
             "love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance."
         ]
 
-        # Initialize cognitive system
-        self.state_system = StateSystem(self.llm, character_description)
-        self.priority_system = PrioritySystem(self.llm, character_description)
-        
         # Initialize dialog management
         self.dialog_manager = DialogManager(self)
         self.dialog_status = 'Waiting'
@@ -668,7 +679,7 @@ End your response with:
         candidate = self.get_task_xml(task_name)
         if candidate != None:
             return candidate
-        new_task = f'<Plan><Name>{task_name}</Name><Rationale>{reason}</Rationale></Plan>'
+        new_task = f'<Plan><Name>{task_name}</Name><Reason>{reason}</Reason></Plan>'
         self.priorities.append(new_task)
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
         return new_task
@@ -940,7 +951,7 @@ End your response with:
         self.active_task = Stack()  # Reset active task for new scene
         print(f'\n{self.name} Updating priorities\n')
         
-        prompt = [UserMessage(content="""You are {{$character}}.
+        prompt = [UserMessage(content="""{{$character}}.
 
 Your basic drives in order of priority are:
 <Drives>
@@ -1078,7 +1089,7 @@ Respond with both completion status and progress indication:
 <Completion>
   <Status>Complete|Partial|Insufficient</Status>
   <Progress>0-100 percentage</Progress>
-  <Rationale>Why this assessment</Rationale>
+  <Reason>Why this assessment</Reason>
 </Completion>
 <Complete> 
     <Level>value of task completion, True, Unknown, or False</Level>
@@ -1120,7 +1131,7 @@ End your response with:
         if task_xml is None or task_name is None:
             raise ValueError(f'Invalid task {n}, {task_xml}')
         last_act = self.get_task_last_act(task_name)
-        reason = xml.find('<Rationale>', task_xml)
+        reason = xml.find('<Reason>', task_xml)
 
         prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the first step of the following task.
@@ -1360,29 +1371,6 @@ End your response with:
             print(f'No intention constructed, presumably duplicate')
             return None
 
-    def forward(self, step):
-        """Execute cognitive update cycle"""
-        # Get recent memory content from structured_memory
-        recent_memories = self.structured_memory.get_recent(self.new_memory_cnt)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-    
-        # Update memory through cognitive processor
-        self.cognitive_state = self.cognitive_processor.process_cognitive_update(
-            self.cognitive_state,
-            memory_text,
-            self.context.current_state if self.context else "",
-            step
-        )
-    
-        # Reset new memory counter
-        self.new_memory_cnt = 0
-        
-        # Update cognitive state
-        self.generate_state()
-        self.update_priorities()
-
-
-        
     def update_intentions_wrt_say_think(self, source, text, reason):
         # determine if text implies an intention to act, and create a formatted intention if so
         print(f'Update intentions from say or think\n {text}\n{reason}')
@@ -1525,7 +1513,7 @@ END
 <Target>
 {from_actor.name}
 </Target>
-<Rationale>engaging with Doc: completing his assignments.</Rationale>
+<Reason>engaging with Doc: completing his assignments.</Reason>
 <TerminationCheck>Responded</TerminationCheck>
 </Plan>"""
             self.priorities.append(new_task)
@@ -1563,9 +1551,9 @@ Your state is:
 
 Your memories include:
 
-<Memory>
-{{$memory}}
-</Memory>
+<Memories>
+{{$memories}}
+</Memories>
 
 Recent conversation has been:
 <RecentHistory>
@@ -1640,7 +1628,7 @@ END
         unique = xml.find('<Unique>', answer_xml)
         if unique is None or 'false' in unique.lower():
             if self.active_task.peek() == 'dialog':
-                self.dialog_manager.end_dialog()
+             self.dialog_manager.end_dialog()
             return 
 
         reason = xml.find('<Reason>', answer_xml)
@@ -1805,7 +1793,7 @@ END
         if intention is None:
             intention_choices = []
             for n, task in enumerate(self.priorities):
-                choice =  f"{n}. {xml.find('<Name>', task)}, because {xml.find('<Rationale>', task)}"
+                choice =  f"{n}. {xml.find('<Name>', task)}, because {xml.find('<Reason>', task)}"
                 intention_choices.append(choice)
                 print(f'{self.name} considering action option {choice}')
 

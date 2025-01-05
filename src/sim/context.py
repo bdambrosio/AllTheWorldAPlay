@@ -54,18 +54,16 @@ class Context():
             print(str(e))
 
     def history(self):
-        try:
-            if self.actors is None or self.actors[0] is None:
-                return ''
-            if self.actors[0].history is None:
-                return ''
-            history = self.actors[0].format_history(14)
-            hs = history.split('\n')
-            hs_renamed = [self.actors[0].name + s[3:] if s.startswith('You') else s for s in hs]
-            history = '\n'.join(hs_renamed)
-        except Exception as e:
-            traceback.print_exc()
-        return history
+        """Get combined history from all actors using structured memory"""
+        history = []
+        
+        for actor in self.actors:
+            # Get recent memories from structured memory
+            recent_memories = actor.structured_memory.get_recent(5)
+            for memory in recent_memories:
+                history.append(f"{actor.name}: {memory.text}")
+                
+        return '\n'.join(history) if history else ""
 
     def image(self, filepath, image_generator='tti_serve'):
         try:
@@ -181,9 +179,12 @@ End your response with:
         return consequences, world_updates
 
     def senses(self, sense_data='', ui_task_queue=None):
-        """ This is where the world advances the timeline in the scenario
-            Note actors must compute their own time advance effects in the forward call
-        """
+        """ This is where the world advances the timeline in the scenario """
+        # Debug prints
+        for actor in self.actors:
+            print(f"Actor {actor.name} type: {type(actor)}")
+            print(f"Actor {actor.name} has cognitive_processor: {hasattr(actor, 'cognitive_processor')}")
+
         # since at the moment there are only two chars, each with complete dialog, we can take it from either.
         # not really true, since each is ignorant of the others thoughts
         history = self.history()
