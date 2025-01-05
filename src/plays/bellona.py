@@ -1,5 +1,7 @@
-import worldsim
-import context, agh
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
 
 K = agh.Agh("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
 You are a newcomer to the strange, isolated city of Bellona.

@@ -1,5 +1,7 @@
-import worldsim
-import context, agh
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
 
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 

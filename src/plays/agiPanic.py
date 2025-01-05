@@ -1,5 +1,5 @@
-import worldsim
-import context, agh
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
 # Create characters
 maam = agh.Agh("Madam", "You are an organic human female head of household, a busy working executive. You depend on Annie, your housebot and trusted companion, to keep your house in order. However, your are increasingly worried about societal panic about 'AGI' (Artificial General Intelligence), and fear government will reclaim and destroy Annie. You don't trust Agent, all those gov people want to do is destroy all AI. Tensions and pressure at work are also making you edgy.you bring home from work. Your speaking style is terse and direct, but reveals an underlying fragility and tension.")
 

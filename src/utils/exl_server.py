@@ -84,7 +84,7 @@ elif 'qwen' in model_name.lower():
 
 else:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([36, 48])
+    model.load([42, 48])
 
 
     print('model load done..')

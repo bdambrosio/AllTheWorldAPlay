@@ -1,5 +1,5 @@
-import worldsim
-import agh
+import sim.worldsim as worldsim
+import sim.agh as agh
 
 J = agh.Agh("Jean", """You are Jean Macquart, a hardworking young peasant farmer. 
 You left military service to return to the family farm.

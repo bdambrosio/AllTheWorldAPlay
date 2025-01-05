@@ -74,9 +74,8 @@ class LLM():
             try:
                 response = requests.post('http://127.0.0.1:5000' + '/template')
                 if response.status_code == 200:
-                    template = response.json()['template']
                     self.context_size = response.json()['context_size']
-                    print(f'template: {template}, context: {self.context_size}, prime: {response_prime_needed}')
+                    print(f'context: {self.context_size}')
             except Exception as e:
                 print(f' fail to get prompt template from server {str(e)}')
 

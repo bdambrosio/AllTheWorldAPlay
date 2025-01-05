@@ -1,5 +1,5 @@
-import worldsim
-import agh
+import sim.worldsim as worldsim
+import sim.agh as agh
 # Create characters
 maam = agh.Agh("Madam", "You are a human female, a busy working executive. You depend on Jeff, your AI, to keep your house in order. However, your are increasingly frustrated with him performance, perhaps due to tensions you bring home from work.")
 maam.add_to_history('You think Jeff has been getting sloppy lately, I need to replace him.')

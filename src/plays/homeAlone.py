@@ -1,5 +1,8 @@
-import worldsim
-import context, agh, human
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import sim.worldsim as worldsim
+import sim.context as context, sim.agh as agh
+
 # Create characters
 
 jill = agh.Agh("Jill", "You are")
