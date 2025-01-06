@@ -4,8 +4,8 @@ from sim.memory.core import MemoryEntry, StructuredMemory
 from sim.agh import Character
 
 class Human(Character):
-    def __init__(self, name, ui):
-        super().__init__(name, "Human user representative")
+    def __init__(self, name, character_description, ui):
+        super().__init__(name, character_description)
         self.structured_memory = StructuredMemory()
         self.ui = ui
         self.priority_task = None
@@ -36,6 +36,10 @@ class Human(Character):
         recent_memories = self.structured_memory.get_recent(n)
         return '\n\n'.join(memory.text for memory in recent_memories)
 
+
+    def add_to_history(self, message):
+        """Add a message to the history"""
+        pass
 
     def _find_related_drives(self, message: str) -> List[str]:
         """Humans don't use drives"""
