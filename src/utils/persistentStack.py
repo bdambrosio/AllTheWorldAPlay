@@ -1,56 +1,51 @@
-import pickle
+import os
 from pathlib import Path
 
-
-STACK_DIR = Path.home() / '.local/share/AllTheWorld/pStacks/'
-STACK_DIR.mkdir(parents=True, exist_ok=True)
-
 class PersistentStack:
-    def __init__(self, filename):
-        self.filename = filename
+    def __init__(self, name):
+        # Set up base directory for persistent stacks
+        self.base_dir = Path.home() / '.local/share/AllTheWorld/pStacks'
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.name = name
+        self.stack_file = self.base_dir / name
         self.stack = []
-        self.load()
+        
+        # Load or create new stack
+        if self.stack_file.exists():
+            self.load()
+        else:
+            self.save()
+
+    def load(self):
+        """Load stack from text file"""
+        with open(self.stack_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            self.stack = [line.strip() for line in lines if line.strip()]
+
+    def save(self):
+        """Save stack in text format"""
+        with open(self.stack_file, 'w', encoding='utf-8') as f:
+            for item in self.stack:
+                f.write(f"{str(item)}\n")
 
     def push(self, item):
         self.stack.append(item)
         self.save()
 
     def pop(self):
-        if not self.is_empty():
+        if self.stack:
             item = self.stack.pop()
             self.save()
             return item
-        else:
-            raise IndexError("Stack is empty. Cannot perform pop operation.")
+        return None
 
     def peek(self):
-        if not self.is_empty():
+        if self.stack:
             return self.stack[-1]
-        else:
-            raise IndexError("Stack is empty. Cannot perform peek operation.")
-
-    def is_empty(self):
-        return len(self.stack) == 0
-
-    def size(self):
-        return len(self.stack)
+        return None
 
     def clear(self):
-        self.stack.clear()
+        self.stack = []
         self.save()
-
-    def save(self):
-        with open(STACK_DIR / self.filename, 'wb') as file:
-            pickle.dump(self.stack, file)
-
-    def load(self):
-        try:
-            with open(STACK_DIR / self.filename, 'rb') as file:
-                self.stack = pickle.load(file)
-        except Exception as e:
-            print(f'PersistentStack load error {str(e)}')
-            self.stack = []
-
-    def __str__(self):
-        return str(self.stack)
     

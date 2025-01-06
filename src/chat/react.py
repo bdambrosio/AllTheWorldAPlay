@@ -1,6 +1,7 @@
 import os, sys
 import time
 import requests
+from datetime import timedelta
 
 from PyQt5.QtWidgets import QApplication
 from pathlib import Path
@@ -151,8 +152,8 @@ You have the credentials needed for this action to succeed. Respond using the fo
 <Target>self</Target>
 <Content>name of article</Content>
 
-End your response with </End>
-
+End your response with:
+</End>
 *****
 Example:
 
@@ -214,31 +215,121 @@ End Example
 
 class Actor (agh.Agh):
 
-    def __init__(self, name, cot, character_description=None, server='local', personality='Agent is an intelligent, cooperative AI', always_respond=True):
-        super().__init__(name, character_description if character_description is not None else personality, server=server, always_respond=always_respond) # actors by default always respond when spoken to
+    def __init__(self, name, cot, character_description, personality=None, drives=None, always_respond=False):
+        # Initialize Agh first
+        super().__init__(name, character_description, server='local', mapAgent=False, always_respond=always_respond)
+        
+        # React-specific initialization
         self.cot = cot
-        self.name = name
-        self.personality = personality
-        # hack for now, just clear global memory for each new task.
-        # tbd - maybe keep a stack to allow recursive calls?
-        self.memory_stream = ms.MemoryStream(name=self.name, cot=cot)
-        self.wm = WorkingMemory(self.name)
-        self.library_questions = []
-        self.orientation = ''
-        self.thoughts = ''
+        self.personality = personality if personality else character_description
+        self.llm = cot.llm
+        
+        # Task management
         self.task_stack = ps.PersistentStack(name+'_tasks')
-        self.task_stack.clear() # for now, no persistance
         self.analysis_stack = ps.PersistentStack(name+'_analyses')
-        self.analysis_stack.clear()
-        self.depth_stack = ps.PersistentStack(name+'_depth')
-        self.depth_stack.clear()
-        self.prev_action = '' # need to know if actor just did an ask, in which case current input is answer
-        # each of these is a list of items
-        self.research_sections = [] # this could be persistent
-        self.research_facts = []
-        self.research_extracts = []
-        self.answer = False
-        self.review = False
+        self.library_questions = []
+        self.wm = WorkingMemory(name=f"{name}_wm")
+        
+        # Bridge old and new memory systems
+        self.memory_stream = ms.MemoryStream(name, cot)
+        
+        
+        # Initialize drives that will guide action selection
+        if drives is not None:
+            self.drives = drives
+        else:
+            self.drives = [
+            "engaging with others: maintaining meaningful dialogue",
+            "world-knowledge: gathering and integrating information",
+            "self-knowledge: understanding and using past experiences"
+        ]
+
+        # Actor's current state (separate from Agh's drive states)
+        self.current_state = self._generate_current_state()
+
+    def _generate_current_state(self):
+        """Generate Actor's current cognitive state"""
+        # Get Agh's drive states
+        self.generate_state()  # Updates self.state
+        
+        # Format drive states into current state description
+        state_desc = []
+        for term, info in self.state.items():
+            state_desc.append(f"{info['drive']}: {term} ({info['state']})")
+            if info['trigger']:
+                state_desc.append(f"  Triggered by: {info['trigger']}")
+                
+        return "\n".join(state_desc)
+
+    def task(self, sender, act, task_text, deep=False, respond_immediately=False):
+        """Main task handling using both Agh's cognitive systems and OTP"""
+        # Record the interaction and update states
+        full_msg = f"{sender.name} {act} {self.name} {task_text}"
+        self.add_to_history(full_msg)
+        self.current_state = self._generate_current_state()  # Update Actor's state
+        self.update_priorities()
+        
+        # Store task context
+        self.task_stack.push(task_text)
+        
+        # Build context for OTP using cognitive state
+        input_text = f"""
+<Task>
+{task_text}
+</Task>
+
+<CognitiveState>
+{self.current_state}
+</CognitiveState>
+
+<Priorities>
+{self.priorities}
+</Priorities>
+"""
+        
+        # Run OTP with cognitive awareness
+        prompt = [
+            UserMessage(content=self.personality + 
+                       self.selective_recall(task_text) +
+                       react_intro_string +
+                       input_text +
+                       orient_think_string)
+        ]
+        
+        # Get orientation and thoughts
+        otp_response = self.llm.ask({}, prompt, max_tokens=1000, stops=["</End>"])
+        orientation = self.extract_orientation(otp_response)
+        thoughts = self.extract_thought(otp_response)
+        
+        # Record in memory
+        self.remember(f"{self.name} orientation: {orientation}")
+        self.remember(f"{self.name} thoughts: {thoughts}")
+        
+        # Use orientation to determine strategy
+        if "All preconditions are satisfied" in orientation:
+            return self._handle_response_phase(task_text, sender)
+        elif "insufficient information" in orientation.lower():
+            # Use thoughts to guide research
+            self.analysis_stack.push(thoughts)
+            return self._handle_research_phase(task_text, sender)
+        else:
+            return self._handle_review_phase(task_text, sender)
+
+    def _determine_action_strategy(self):
+        """Use Agh's cognitive state to determine next action"""
+        # Check current state and priorities
+        state_text = str(self.current_state).lower()
+        priorities = [str(p).lower() for p in self.priorities]
+        
+        # Look for indicators in state/priorities
+        if any("insufficient information" in p for p in priorities) or \
+           "uncertainty" in state_text:
+            return 'research'
+        elif any("review knowledge" in p for p in priorities) or \
+             "recall relevant information" in state_text:
+            return 'review'
+        else:
+            return 'respond'
 
     def tell(self, to_actor, message, source=None, respond=True):
         self.show = ''
@@ -246,7 +337,15 @@ class Actor (agh.Agh):
 
 
     def remember(self, text):
-        self.memory_stream.remember(text)
+        """Bridge between memory systems"""
+        # Add to structured memory (Agh's system)
+        self.add_to_history(text)
+        
+        # Maintain compatibility with memory_stream for now
+        try:
+            self.memory_stream.remember(text)
+        except Exception as e:
+            print(f"Warning: memory_stream storage failed: {e}")
 
     def extract_orientation(self, response):
         if type(response) != str:
@@ -327,21 +426,77 @@ class Actor (agh.Agh):
 
     # should this shorten memories, or should that be done at remember time? And maybe worry about losing full mem there?
     def selective_recall(self, query, recent=12):
-          if len(self.memory_stream.memories) == 0:
-              return ''
-          else:
-              return '<Memory Stream>\n' +\
-                  '\n'.join([f'Memory ({m.age()} minutes ago): {m.text}' for m in self.memory_stream.recall(query, recent = recent)]) +\
-                  '\n</Memory Stream>\n'
+        """Bridge memory retrieval using Agh's memory systems"""
+        memories = []
+        
+        # Use Agh's memory retrieval system
+        try:
+            # Get recent relevant memories using existing retrieval system
+            structured_memories = self.memory_retrieval.get_recent_relevant(
+                memory=self.structured_memory,
+                query=query,
+                time_window=timedelta(hours=1),  # Adjust as needed
+                threshold=0.5,
+                max_memories=recent
+            )
+            
+            for mem in structured_memories:
+                memories.append(f"Memory: {mem.text}")
+        except Exception as e:
+            print(f"Warning: structured memory retrieval failed: {e}")
+        
+        # Fall back to memory stream if needed
+        try:
+            stream_memories = self.memory_stream.recall(query, recent=recent)
+            for mem in stream_memories:
+                if mem.text not in [m.split(": ")[1] for m in memories]:
+                    memories.append(f"Memory ({mem.age()} minutes ago): {mem.text}")
+        except Exception as e:
+            print(f"Warning: memory stream retrieval failed: {e}")
+            
+        if not memories:
+            return ''
+        
+        return '<Memory Stream>\n' + '\n'.join(memories) + '\n</Memory Stream>\n'
                 
             
     def research_analysis(self, query):
-        analysis = self.cot.script.sufficient_response(query,
-                                                         personality = self.personality,
-                                                         context=self.selective_recall(query))
+        """Analyze research needs using Agh's cognitive state"""
+        # First use Agh's state to determine knowledge gaps
+        self.generate_state()
+        state_text = str(self.current_state).lower()
+        
+        # Then use script for detailed analysis
+        analysis = self.cot.script.sufficient_response(
+            query,
+            personality=self.personality,
+            context=f"""
+Current cognitive state indicates:
+{state_text}
+
+Recent relevant memories:
+{self.selective_recall(query)}
+"""
+        )
+        
+        # Extract subqueries but filter based on state priorities
         subqueries = analysis.strip().split('\n')[1:6]
-        #print(f'research_analysis subqueries for {query}\n{subqueries}')
+        subqueries = [q for q in subqueries if self._query_matches_priorities(q)]
+        
         return analysis, subqueries
+
+    def _query_matches_priorities(self, query):
+        """Check if query aligns with current priorities"""
+        query = query.lower()
+        priorities = [str(p).lower() for p in self.priorities]
+        
+        # Check if query relates to any current priorities
+        return any(
+            priority_term in query 
+            for priority in priorities
+            for priority_term in priority.split()
+            if len(priority_term) > 4  # Skip short words
+        )
 
     def known_facts(self, query, sentences=1):
         facts = self.cot.script.process1(arg1=query,
@@ -393,7 +548,8 @@ class Actor (agh.Agh):
 {{$measures}}
 </Measures>
 
-"""),
+End your response with:
+</End>"""),
                   UserMessage(content="""
 <Proposal>
 {{$proposal}}
@@ -406,7 +562,7 @@ class Actor (agh.Agh):
                                      "measurers": '\n\n'.join(measures), "proposal":draft},
                                     prompt,
                                     temp=0.01,
-                                    max_tokens=600)
+                                    max_tokens=600, stops=["</End>"])
         print(f"""\n**** Evaluation ****
 ***
 
@@ -443,237 +599,123 @@ Evaluation
         intention = f'<Intent> <Mode>Say</Mode> <Act>{response}</Act><Target>{target}</Target> <Reason>{task_rationale}</Reason> <Source>{task_name}</Source><Intent>'
         return intention
 
-    def task(self, sender, act, task_text, deep=False, respond_immediately=False):
-        """sender says/asks/ [to] self ... content sentence ..."""
+    def _handle_research_phase(self, task_text, sender):
+        """Handle information gathering using react's research capabilities"""
+        # Store task context
+        self.task_stack.push(task_text)
         
-        self.conversant = sender; self.conversant_action=act; self.conversant_content=task_text
-        #print(f'\n**********\n{self.conversant.name}/{self.conversant_action}/{self.conversant_content}\n**********\n')
-        full_msg = f'{self.conversant.name} {self.conversant_action} {self.name} {self.conversant_content}'
-        self.remember(full_msg)
-        self.depth_stack.push(deep)
-        self.wm.clear() # for now always clear memory on start of new task
+        # Use Agh's state to determine research strategy
+        state_text = str(self.current_state).lower()
         
-        if not self.prev_action.startswith('ask'): 
-            # how much of this should we skip if we asked an agent to do something, and it asks for info?
-            # ie, two agents are still engaged in same task.
-            # or, maybe that IS the def of a subtask, so we <should> push stack?
-            # but then we lose question context!
-            self.task_stack.push(task_text) # this is important, since full text won't be saved in memoryStream
-            #taskMsg = UserMessage(content='Task: '+self.conversant_content)
-            observation = ''
-            self.library_questions=[] # clear asked questions list
-            analysis = ''
-            if deep:
-                analysis, subqueries = self.research_analysis(self.task_stack.peek())
-                self.remember(f"{self.name} thinks about request:\n{analysis}")
-                # do preliminary search
-                self.remember(self.name + 'performing preliminary library lookup on deep task')
-                self.library_search(task_text,top_k=7)
-                for subgoal in subqueries[1:3]:
-                    subquery = self.cot.script.process1(arg1=subgoal,
-                                                       instruction="""Rewrite Text1 as a terse, NER heavy, search phrase""",
-                                                       dest='$search_phrase',
-                                                       max_tokens=25)
-                    print(f'Subquery: {subquery}')
-                    #subgoal = self.cot.confirmation_popup("research subgoal?", subgoal)
-                    if not subgoal:
-                        continue
-                    self.library_search(subquery, top_k=4)
-
-            self.analysis_stack.push(analysis)
-        else:
-            self.analysis_stack.push(self.analysis_stack.peek())
-
-        proceed = 'y'
-        step_count = 0
-        while (proceed !='n'):
-            input_text = f"<Task>\n{self.task_stack.peek()}\n</Task>\n<OriginatingActor>\n{self.conversant.name}\n</OriginatingActor>\n"
-            task_analysis_text = f"<Task_Analysis>\n{self.analysis_stack.peek()}\n</Task_Analysis>"
-            #
-            ## orient
-            #
-            userMsg = input_text+(task_analysis_text if len(self.analysis_stack.peek())>0 else '')+act_string+orient_think_string
-            prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek())+userMsg)]
-            response = self.cot.llm.ask({}, prompt, stop_on_json=True, temp=0.01, stops=['</End>'], max_tokens=1000)
-            thought = self.orientation_and_thought(response)
-            if thought and len(thought)>0:
-                self.remember(self.name+' orientation and thoughts:\n'+thought)
-
-            #
-            ## Now choose action### but NOTE*** - above now includes action!
-            #
-            
-            userMsg = input_text+'\n\n'+thought+'\n\n'+\
-                      (respond_string if (respond_immediately and self.review) else act_prefix_string+act_string)
-            prompt = [UserMessage(content=self.personality+'\n'+self.selective_recall(self.task_stack.peek()) +userMsg)
-                      ]
-            response = self.cot.llm.ask({},prompt, temp=0.01, stops=['</End>'], max_tokens=2000)
-            #print(f'Status:\n{response}')
-            if step_count > 9:
-                self.task_stack.pop()
-                self.analysis_stack.pop()
-                self.depth_stack.pop()
-                response = response.replace("```json", '').strip()
-                if response.startswith('['):
-                    response = response.replace("[", '').strip()
-                return response
-            if proceed == 's': # show state
-                self.show_memories(short=False)
-            step_count +=1
-            
-            #
-            ## now do it! parse action
-            #
-            try:
-                act = self.find('<Act>', response)
-                #print(f'act {act}')
-                target = self.find('<Target>', response)
-                #print(f'target {target}')
-                content = self.find('<Content>', response)
-                #print(f'content {content}')
-            except Exception as e:
-                print(f'ask validation fail {str(e)}')
+        # Analyze research needs
+        analysis, subqueries = self.research_analysis(task_text)
+        self.analysis_stack.push(analysis)
+        self.remember(f"{self.name} research analysis:\n{analysis}")
+        
+        # Choose research method based on state/priorities
+        if "academic knowledge needed" in state_text:
+            # Use library search
+            for query in subqueries[:2]:  # Limit to top 2 most relevant queries
+                if self.validate_library_question(query)[0]:
+                    self.library_search(query, top_k=3)
                 
-            if act is None or target is None or content is None:
-                if act is not None and content is not None:
-                    print(f'Target is None, treating as a thought')
-                    target="thought"
-                else:
-                    print(f'Response: {response}\nAct: {act}, target: {target}\n  content: {content}')
-                self.task_stack.pop()
-                self.analysis_stack.pop()
-                self.depth_stack.pop()
-                raise Exception(f"react loop fail, no action in response {response}")
+        elif "current information needed" in state_text:
+            # Use web search
+            try:
+                response = requests.get(f'http://127.0.0.1:5005/search/?query={task_text}')
+                data = response.json()
+                if data and 'result' in data:
+                    self.remember(f"{self.name} found web information: {data['result'][:200]}...")
+            except Exception as e:
+                print(f"Web search failed: {str(e)}")
+            
+        # After gathering information, move to review phase
+        return self._handle_review_phase(task_text, sender)
 
-            # decode action - simple if tests for now
-            if act.lower() == 'answer':
-                self.review=False
-                if self.depth_stack.peek():
-                    research = '\n'.join(self.research_facts) + '\n'.join(self.research_sections)
-                    print(f'total research available {len(research)} chars')
-                    research = research [:self.cot.llm.context_size*3]
-                    # change this to call to paper_writer write_report_aux
-                    content = self.cot.summarize(query=self.task_stack.peek(),
-                                                 response=research,
-                                                 profile=f"""You are a skilled professional technical writer, writing for a knowledgeable audience, writing a detailed technical report, based on known fact, reasoning, and the information provided below. 
-The technical report must address the challenges in providing a solution to:
+    def _handle_review_phase(self, task_text, sender):
+        """Review and integrate gathered information"""
+        # Get relevant memories including research results
+        relevant_info = self.selective_recall(task_text, recent=12)
+        
+        # Update cognitive state with new information
+        self.add_to_history(f"Reviewing information: {task_text}")
+        self.generate_state()
+        
+        # Check if we have sufficient information
+        if "insufficient information" not in str(self.current_state).lower():
+            return self._handle_response_phase(task_text, sender)
+        else:
+            # Need more research
+            return self._handle_research_phase(task_text, sender)
+
+    def _handle_response_phase(self, task_text, sender):
+        """Formulate and send response using react's action system"""
+        # Get relevant context
+        relevant_info = self.selective_recall(task_text)
+        
+        # Use OTP thoughts to guide action selection
+        prompt = [
+            UserMessage(content=f"""
+{self.personality}
 
 <Task>
-{self.task_stack.peek()}
+{task_text}
 </Task>
 
-These challenges include:
+<Context>
+{relevant_info}
+</Context>
 
-<Challenges>
-{self.analysis_stack.peek()}
-</Challenges>
+<CurrentState>
+{self.current_state}
+</CurrentState>
 
-Your goal is to provide specific instances of examples solutions, where possible, to all challenges listed. 
-If such instances are unavailable, provide promising research or development opportunities for developing these.
-Target your response at about 1600 tokens""",
-                                                 max_tokens=2000)
+{act_prefix_string}
+{act_string}
+""")
+        ]
+        
+        # Get action selection in XML format
+        action_response = self.llm.ask({}, prompt, max_tokens=1000, stops=["</End>"])
+        
+        # Extract action components
+        act = xml.find('<Act>', action_response)
+        target = xml.find('<Target>', action_response)
+        content = xml.find('<Content>', action_response)
+        
+        if act and target and content:
+            if act.lower() == 'answer':
+                return f"{self.name} says to {target} {content}"
+            elif act.lower() in ['library', 'google', 'article', 'review']:
+                # Handle information gathering actions
+                self.remember(f"{self.name} {act}: {content}")
+                return self._execute_action(act.lower(), content, target)
+        
+        # Fallback response
+        return self.tell(sender, "I'm not sure how to respond to that.")
 
-                    #self.evaluate_draft(self.name + response_action + target+' '+content.strip())
-                self.remember(self.name+' says to '+target+" "+content)
-                #print(f"\n*****************\n{self.name} Answers: {content}\n*****************\n")
-                if self.conversant_action.startswith('ask'):
-                    response_action=' answers '
-                else:
-                    response_action=' says to '
-                    self.prev_action = response_action
-                self.task_stack.pop()
-                self.analysis_stack.pop()
-                self.depth_stack.pop()
-                return self.name + response_action + target+' '+content.strip()
-
-            elif act.lower() == 'library':
-                # gather facts
-                self.review=True
-                valid, feedback = self.validate_library_question(content)
-                #print(f"\nLibrary: {feedback}\n")
-                if valid:
-                    self.library_search(feedback, top_k=3, web=False)
-                elif self.prev_action=='library':
-                    self.remember("Owl: says choose 'Answer' action next!")
-                    #return self.name + ' says to ' + target+" sorry I couldn't help."
-                else:
-                    self.remember('library action rejected!')
-                self.prev_action='library'
-                
-            elif act.lower() == 'google':
-                self.review=False
-                data=None
-                try:
-                    print(f' searching google {content}')
-                    response = requests.get(f'http://127.0.0.1:5005/search/?query={content}')
-                    data = response.json()
-                except Exception as e:
-                    print(f"google search failure, {str(e)}")
-                if data is not None:
-                    story = data['result']
-                    #summary = self.cot.summarize(query=title,
-                    #                             response=story,
-                    #                             profile=f"""You are a skilled writer, writing for a knowledgeable audience.
-                    #Your goal is to provide an articulate, detailed summary of the Text content related to {title}
-                    #Target your response at about 600 tokens""",
-                    #                             max_tokens=800)
-                    summary = story
-                    self.remember(self.name+f': search {content} complete')
-                    self.remember(self.name+' says to '+target+" "+summary)
-                    self.task_stack.pop()
-                    self.analysis_stack.pop()
-                    self.depth_stack.pop()
-                    return self.name + ' says to ' + target+' '+summary.strip()
-                else:
-                   self.remember(f'article retrieval failure')
-
-            elif act.lower() == 'review':
-                self.review=True
-                self.remember(self.name+' performing review ...')
-                result = self.selective_recall(content, recent=0)# only relevant
-                result = result.replace('<MemoryStream>','')
-                result = result.replace('</MemoryStream>','')
-                result += '\n\n'+self.wm.select(content)
-                
-            elif act.lower() == 'ask':
-                #print(f"\n*****************\nAsk: {target}: {content}\n*****************\n")
-                question = self.name+' asks '+target +' '+content
-                self.remember(question)
-                self.prev_action='ask'
-                return question
-
-            elif act.lower() == 'article':
-                self.review=False
-                title = content
-                self.remember(self.name+' performing article')
-                data=None
-                try:
-                    article = cot.search_titles(title)
-                    title = article["title"]
-                    uri = article["uri"]
-                    print(f' requesting url from server {title} {uri}')
-                    response = requests.get(f'http://127.0.0.1:5005/retrieve/?title={title}&url={uri}', timeout=20)
-                    data = response.json()
-                except Exception as e:
-                    print(f"article retrieval failure, {str(e)}")
-                if data is not None:
-                    story = data['result']
-                    summary = self.cot.summarize(query=title,
-                                                 response=story,
-                                                 profile=f"""You are a skilled writer, writing for a knowledgeable audience.
-Your goal is to provide an articulate, detailed summary of the Text content related to {title}
-Target your response at about 600 tokens""",
-                                                 max_tokens=800)
-                    self.remember(self.name+f': article title {content} retrieval complete')
-                    self.remember(self.name+' says to '+target+" "+summary)
-                    self.task_stack.pop()
-                    self.analysis_stack.pop()
-                    self.depth_stack.pop()
-                    return self.name + ' says to ' + target+' '+summary.strip()
-                else:
-                   self.remember(f'article retrieval failure')
-    
-    
+    def _execute_action(self, action_type, content, target):
+        """Execute react's action types"""
+        if action_type == 'library':
+            if self.validate_library_question(content)[0]:
+                self.library_search(content)
+                return self._handle_review_phase(self.task_stack.peek(), target)
+            
+        elif action_type == 'google':
+            try:
+                response = requests.get(f'http://127.0.0.1:5005/search/?query={content}')
+                data = response.json()
+                if data and 'result' in data:
+                    self.remember(f"Found: {data['result'][:200]}...")
+                    return f"{self.name} says to {target} {data['result']}"
+            except Exception as e:
+                print(f"Web search failed: {str(e)}")
+            
+        elif action_type == 'article':
+            # Handle article retrieval
+            return self._handle_article_action(content, target)
+            
+        return self._handle_review_phase(self.task_stack.peek(), target)
 
 def parse_message(message, actors):
     parse = message.strip().split(' ')

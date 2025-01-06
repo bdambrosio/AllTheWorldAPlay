@@ -29,9 +29,9 @@ Your name is Samanatha""")
 
 #Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
 S.drives = [
-    "evaluation of Joe. Can I trust him?",
-    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
-    "finding a way out of the forest.",
+    #"evaluation of Joe. Can I trust him?",
+    #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
+    #"finding a way out of the forest.",
     "solving the mystery of how they ended up in the forest with no memory.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
@@ -54,10 +54,10 @@ Your name is Joe.""")
 
 J.drives = [
     "communication and coordination with Samantha, gaining Samantha's trust.",
-    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
-    "finding a way out of the forest.",
+    #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
+    #"finding a way out of the forest.",
     "solving the mystery of how they ended up in the forest with no memory.",
-    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    #"love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ]
 
@@ -76,6 +76,6 @@ W = context.Context([S, J],
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
-worldsim.main(W, server='local')
+worldsim.main(W, server='deepseek-chat')
 #worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
 #worldsim.main(W, server='llama.cpp')

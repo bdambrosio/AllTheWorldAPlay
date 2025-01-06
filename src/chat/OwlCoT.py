@@ -136,22 +136,19 @@ To access full articles, use the action 'article'.
 
         self.personality_chipmunk ="""Your name is Chipmunk. (you are actually a human boy, chipmunk is nickname.)"""
 
-        self.owl = react.Actor(name='Owl', cot=self, character_description=owl_character, personality=self.personality_owl, always_respond=True)
-        self.owl.drives = [
+        self.owl_drives = [
             "engaging with Doc: completing his assignments.",
             "world-knowledge: learning more about this place I find myself in.",
             #"self-knowledge: understanding who/what I am."
         ]
-
+        self.owl = react.Actor(name='Owl', cot=self, character_description=owl_character, drives=self.owl_drives, personality=self.personality_owl, always_respond=True)
         self.owl.llm = self.llm
-        self.doc = human.Human(name='Doc', character_description=self.personality_doc)
+
+        self.doc = human.Human(name='Doc', character_description=self.personality_doc, ui=self.ui)
         self.doc.llm = self.llm
-        self.doc.drives = [
-            "Helping Owl become more complete and alive"
-        ]
         self.context = context.Context([self.owl, self.doc], f'a starry background', step='0', mapContext=False)
         self.context.llm = self.llm
-        self.owl.generate_state()
+        #self.owl.generate_state() # Actors do this in init
         self.owl.update_priorities()
         #self.worldsim = worldsim.MainWindow(self.context, server='local', world_name=None)
         #self.worldsim.show()
@@ -455,8 +452,18 @@ End your response with: </END>
           return wiki_lookup_summary
 
     def memory_stream_recall(self, selected_text):
-        memories = self.owl.memory_stream.recall(selected_text, recent=0)
-        return self.extract_relevant(selected_text, '\n'.join([memory.text for memory in memories]), self.owl.character, max_tokens=400)
+        # Get more memories since we're searching for relevance
+        memories = self.owl.structured_memory.get_recent(10)
+        
+        # Filter for relevance to selected_text using the extract_relevant function
+        memory_text = '\n'.join(memory.text for memory in memories)
+        relevant_memories = self.extract_relevant(
+            selected_text,  # Use selected_text as query
+            memory_text,    # Search through recent memories
+            self.owl.character,
+            max_tokens=400
+        )
+        return relevant_memories
 
     def library_search_basic(self, query, max_tokens=None, search_char_limit=sys.maxsize):
         if max_tokens is None and self.ui is not None and hasattr(self.ui, 'max_tokens_combo'):

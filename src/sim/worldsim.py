@@ -511,7 +511,7 @@ class MainWindow(QMainWindow):
     def inject(self):
         global APP, WATCHER, main_window
         if WATCHER is None:
-            WATCHER = human.Human('Watcher', main_window)
+            WATCHER = human.Human('Watcher', "Human user representative", main_window)
             WATCHER.context=self.context
         input_widget = InputWidget("Character name, message:")
         if input_widget.exec_() == QDialog.Accepted:
