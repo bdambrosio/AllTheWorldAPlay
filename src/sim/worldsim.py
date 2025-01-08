@@ -242,12 +242,14 @@ class CustomWidget(QWidget):
                 context = ''
                 i = 0
                 candidates = self.entity.context.current_state.split('.')
-                while len(context) < 128 and i < len(candidates):
+                while len(context) < 48 and i < len(candidates):
                     context += candidates[i]+'. '
                     i +=1
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:3])[8:] +', '+\
-                    self.entity.show.replace(self.entity.name, '')[-72:].strip() + 'is n '+context
-                prompt = "photorealistic style. "+description
+                context = context[:48]
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
+                    self.entity.show.replace(self.entity.name, '')[-72:].strip()
+                description = description[:70-min(len(context), 24)] + '. '+context
+                prompt = "photo: "+description
                 print(f' actor image prompt len {len(prompt)}')
                 image_path = llm_api.generate_image(prompt, size='192x192', filepath=self.entity.name + '.png')
                 self.set_image(str(image_path))
@@ -566,9 +568,13 @@ class MainWindow(QMainWindow):
             self.context.save(worlds_path, self.world_name)
 
     def update_parameters(self):
+        # Advance simulation time
+        new_time = self.context.advance_time()
+        
         for widget in self.custom_widgets:
             if type(widget.entity) != context.Context:
-                widget.update_value(self.internal_time)
+                # Pass simulation time to forward
+                widget.update_value(new_time)
                 # Process events periodically to check for pause
                 QApplication.processEvents()
             else:

@@ -5,6 +5,7 @@ from sim import map
 from utils import llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
+from datetime import datetime, timedelta
 
 
 class Context():
@@ -21,10 +22,16 @@ class Context():
             for actor in self.actors:
                 if actor.mapAgent != None:
                     actor.look() # provide initial local view
+            # Initialize relationships with valid character names
+            if hasattr(actor, 'narrative'):
+                valid_names = [a.name for a in self.actors if a != actor]
+                actor.narrative.initialize_relationships(valid_names)
         self.step = step  # amount of time to step per scene update
         self.name = 'World'
         self.llm = None
-
+        self.simulation_time = datetime.now()  # Starting time
+        self.time_step = step  # Amount to advance each step
+        
     def load(self, dir):
         try:
             with open(dir / 'scenario.json', 'r') as s:
@@ -327,3 +334,14 @@ END""")]
             actor.add_to_history(f"you notice {updates}\n")
             actor.forward(self.step)  # forward three hours and update history, etc
         return response
+
+    def advance_time(self):
+        """Advance simulation clock by time_step"""
+        if isinstance(self.time_step, str):
+            # Parse "4 hours" etc
+            amount, unit = self.time_step.split()
+            delta = timedelta(**{unit: int(amount)})
+        else:
+            delta = self.time_step
+        self.simulation_time += delta
+        return self.simulation_time

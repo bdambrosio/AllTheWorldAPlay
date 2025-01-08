@@ -426,33 +426,36 @@ class Actor (agh.Agh):
 
     # should this shorten memories, or should that be done at remember time? And maybe worry about losing full mem there?
     def selective_recall(self, query, recent=12):
-        """Bridge memory retrieval using Agh's memory systems"""
+        """Bridge memory retrieval using both concrete and abstract memories"""
         memories = []
         
-        # Use Agh's memory retrieval system
+        # Get concrete recent memories
         try:
-            # Get recent relevant memories using existing retrieval system
             structured_memories = self.memory_retrieval.get_recent_relevant(
                 memory=self.structured_memory,
                 query=query,
-                time_window=timedelta(hours=1),  # Adjust as needed
+                time_window=timedelta(hours=1),
                 threshold=0.5,
                 max_memories=recent
             )
             
             for mem in structured_memories:
-                memories.append(f"Memory: {mem.text}")
+                memories.append(f"Recent Memory: {mem.text}")
         except Exception as e:
-            print(f"Warning: structured memory retrieval failed: {e}")
+            print(f"Warning: concrete memory retrieval failed: {e}")
         
-        # Fall back to memory stream if needed
+        # Get abstract memories/patterns
         try:
-            stream_memories = self.memory_stream.recall(query, recent=recent)
-            for mem in stream_memories:
-                if mem.text not in [m.split(": ")[1] for m in memories]:
-                    memories.append(f"Memory ({mem.age()} minutes ago): {mem.text}")
+            abstract_memories = self.memory_consolidator.get_abstractions(
+                memory=self.structured_memory,
+                query=query,
+                threshold=0.5
+            )
+            
+            for mem in abstract_memories:
+                memories.append(f"Life Experience: {mem.text}")
         except Exception as e:
-            print(f"Warning: memory stream retrieval failed: {e}")
+            print(f"Warning: abstract memory retrieval failed: {e}")
             
         if not memories:
             return ''
