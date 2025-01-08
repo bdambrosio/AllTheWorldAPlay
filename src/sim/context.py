@@ -113,19 +113,19 @@ Your response should be concise, and only include only statements about changes 
 Do NOT repeat elements of the existing Environment, respond only with significant changes.
 Do NOT repeat as an update items already present at the end of the Environment statement.
 Your updates should be dispassionate. 
-
+Use the following XML format:
 <Updates>
-concise statement of significant changes to Environment, if any.
+concise statement(s) of significant changes to Environment, if any, one per line.
 </Updates>
 
 Include ONLY the concise updated state description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
-<END>""")
+</End>""")
                   ]
 
         response = self.llm.ask({"consequences": consequences, "state": self.current_state},
-                                prompt, temp=0.5, stops=['<END>'], max_tokens=60)
+                                prompt, temp=0.5, stops=['</End>'], max_tokens=60)
         updates = xml.find('<Updates>', response)
         if updates is not None:
             self.current_state += '\n' + updates

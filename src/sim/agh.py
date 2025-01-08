@@ -946,6 +946,7 @@ End your response with:
                 dx, dy = self.mapAgent.get_direction_offset(act_arg)
                 self.x = self.x + dx
                 self.y = self.y + dy
+                self.look()
         elif act_name == 'Look':
             self.look()
 
