@@ -1,185 +1,305 @@
 # memory/consolidation.py
-from typing import List, Dict, Tuple
-from datetime import datetime
+from typing import List, Dict, Optional
+from datetime import datetime, timedelta
 from utils.Messages import UserMessage
-import utils.xml_utils as xml_utils
-from .core import StructuredMemory, MemoryEntry
-from .retrieval import MemoryRetrieval
+from .core import StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
 import numpy as np
-import utils.xml_utils as xml
 
 class MemoryConsolidator:
-    """Handles memory consolidation, abstraction, and organization"""
-    
     def __init__(self, llm):
         self.llm = llm
-        self.retrieval = MemoryRetrieval()
+
+    def consolidate(self, memory: StructuredMemory):
+        """Periodic memory maintenance and optimization"""
+        # Enhance summaries of mature abstract memories
+        self._enhance_summaries(memory)
         
-    def consolidate(self, 
-                   memory: StructuredMemory,
-                   drives: List[str],
-                   character: str) -> None:
-        """Consolidate recent memories and update memory structure"""
+        # Check for and merge related abstractions
+        self._merge_related_abstractions(memory)
         
-        # Skip if no new memories to consolidate
-        if not memory.memory_buffer:
+        # Clean up concrete memories that are now part of inactive abstractions
+        self._cleanup_concrete_memories(memory)
+        
+        # Clean up old/unimportant memories
+        self._cleanup_abstractions(memory)
+        
+        # Future: Pattern detection
+        self._detect_patterns(memory)
+
+    def _enhance_summaries(self, memory: StructuredMemory):
+        """Improve summaries of abstract memories using LLM"""
+        for abstract in memory.get_recent_abstractions():
+            if len(abstract.instances) >= 5:  # Enough instances for better summary
+                concrete_instances = [
+                    memory.get_by_id(mid).text 
+                    for mid in abstract.instances 
+                    if memory.get_by_id(mid)
+                ]
+                
+                prompt = [UserMessage(content=f"""
+Summarize this sequence of related events into a concise description of the activity:
+
+Events:
+{chr(10).join(concrete_instances)}
+
+Respond with just the summary, no additional text.
+End your response with:
+</End>
+""")]
+                
+                summary = self.llm.ask({}, prompt, stops=["</End>"])
+                if summary:
+                    abstract.summary = summary.strip()
+
+    def _merge_related_abstractions(self, memory: StructuredMemory):
+        """Merge abstract memories that represent the same ongoing activity"""
+        recent = memory.get_recent_abstractions()
+        for i, abs1 in enumerate(recent):
+            if not abs1.is_active:  # Only merge completed abstractions
+                for abs2 in recent[i+1:]:
+                    if not abs2.is_active:
+                        if self._should_merge(abs1, abs2):
+                            self._merge_abstractions(memory, abs1, abs2)
+
+    def _should_merge(self, abs1: AbstractMemory, abs2: AbstractMemory) -> bool:
+        """Check if two abstract memories should be merged"""
+        # Time proximity
+        time_gap = abs2.start_time - abs1.end_time
+        if time_gap > timedelta(hours=1):
+            return False
+            
+        # Content similarity
+        if abs1.embedding is not None and abs2.embedding is not None:
+            similarity = np.dot(abs1.embedding, abs2.embedding) / (
+                np.linalg.norm(abs1.embedding) * np.linalg.norm(abs2.embedding)
+            )
+            return similarity > 0.7
+            
+        return False
+
+    def _merge_abstractions(self, memory: StructuredMemory, abs1: AbstractMemory, abs2: AbstractMemory):
+        """Merge two abstract memories"""
+        merged = AbstractMemory(
+            summary=self._merge_summaries(abs1, abs2),
+            start_time=min(abs1.start_time, abs2.start_time),
+            end_time=max(abs1.end_time, abs2.end_time),
+            instances=abs1.instances + abs2.instances,
+            drive=abs1.drive,  # Keep drive from first abstraction
+            is_active=False
+        )
+        
+        # Remove old abstractions and add merged one
+        memory.abstract_memories.remove(abs1)
+        memory.abstract_memories.remove(abs2)
+        memory.abstract_memories.append(merged)
+
+    def _cleanup_abstractions(self, memory: StructuredMemory):
+        """Remove or archive old/unimportant abstract memories"""
+        cutoff = datetime.now() - timedelta(days=7)  # Keep week of abstractions
+        memory.abstract_memories = [
+            mem for mem in memory.abstract_memories
+            if mem.end_time > cutoff or mem.is_active
+        ]
+
+    def _cleanup_concrete_memories(self, memory: StructuredMemory):
+        """Remove concrete memories that have been abstracted"""
+        if not memory.pending_cleanup:
             return
             
-        # Get memories to consolidate 
-        memories_text = self._format_memories_for_llm(memory.memory_buffer)
+        # Keep very recent memories regardless
+        recent_cutoff = datetime.now() - timedelta(hours=1)
         
-        # For each drive, analyze relevant memories
-        for drive in drives:
-            # Get memories relevant to this drive's phrases
-            drive_memories = self.retrieval.get_by_drive(memory, drive)
-            if not drive_memories:
-                continue
-                
-            # Generate consolidation analysis for this drive
-            analysis = self._analyze_memories_for_drive(
-                memories_text,
-                drive,
-                character
-            )
-            
-            # Apply consolidation updates
-            self._apply_consolidation(memory, analysis, drive_memories)
-            
-        # Clear buffer after consolidation
-        memory.memory_buffer.clear()
+        # Remove concrete memories that are:
+        # 1. In pending_cleanup
+        # 2. Not from the last hour
+        # 3. Not highly important (keep significant memories)
+        memory.concrete_memories = [
+            mem for mem in memory.concrete_memories
+            if (mem.memory_id not in memory.pending_cleanup or
+                mem.timestamp > recent_cutoff or
+                mem.importance > 0.8)
+        ]
         
-    def _analyze_memories_for_drive(self, 
-                                  memories_text: str,
-                                  drive: str,
-                                  character: str) -> str:
-        """Generate consolidation analysis for memories related to a drive"""
+        # Clear pending cleanup
+        memory.pending_cleanup = []
+
+    # Future pattern learning stubs
+    def _detect_patterns(self, memory: StructuredMemory):
+        """Detect behavioral/event patterns across abstract memories"""
+        pass
+
+    def update_narrative(self, memory: StructuredMemory, narrative: NarrativeSummary, 
+                        current_time: datetime, character_desc: str) -> None:
+        """Update narrative summary based on recent memories and abstractions"""
         
-        prompt = [UserMessage(content="""Analyze these recent memories in the context of the drive: "{drive}"
+        if not narrative.needs_update(current_time):
+            return
+        
+        # Update background narrative
+        prompt = [UserMessage(content=f"""Given a character's previous background and recent significant experiences, 
+create an updated background summary that captures their key characteristics and important past events.
 
-<Memories>
-{{$memories}}
-</Memories>
+Character Description:
+{character_desc}
 
-<Character>
-{{$character}}
-</Character>
+Previous Background:
+{narrative.background if narrative.background else "No previous background"}
 
-Analyze these memories and suggest consolidation actions in XML format:
+Recent Abstract Activities:
+{chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(5))}
 
-<Analysis>
-  <Abstractions>
-    <!-- Groups of memories that can be combined into higher-level memories -->
-    <Group>
-      <Timestamps>time1,time2,...</Timestamps>
-      <Abstract>summarized higher-level memory</Abstract>
-    </Group>
-    ...
-  </Abstractions>
-  
-  <Links>
-    <!-- Pairs of related memories that should be linked -->
-    <Link>time1,time2</Link>
-    ...
-  </Links>
-  
-  <ImportanceUpdates>
-    <!-- Memories whose importance should be adjusted -->
-    <Update>
-      <Timestamp>time</Timestamp>
-      <Adjustment>increase/decrease</Adjustment>
-      <Reason>why importance should change</Reason>
-    </Update>
-    ...
-  </ImportanceUpdates>
-</Analysis>
+Important Recent Memories:
+{chr(10).join(f"- {mem.text}" for mem in memory.get_all() if mem.importance > 0.8)}
+
+Create a concise background summary (about 200 words) that:
+1. Maintains key character-defining events
+2. Incorporates significant new experiences
+3. Explains current personality/behavior patterns
+4. Preserves essential relationships
+
+Respond with just the background summary, no additional text.
+End with:
+</End>
 """)]
 
-        return self.llm.ask({
-            "memories": memories_text,
-            "character": character
-        }, prompt)
-
-    def _apply_consolidation(self, 
-                           memory: StructuredMemory,
-                           analysis: str,
-                           drive_memories: List[MemoryEntry]) -> None:
-        """Apply consolidation updates from analysis"""
-                   
-        # Handle abstractions
-        for group in xml.findall('<Group>', analysis):
-            timestamps = xml.find('<Timestamps>', group)
-            abstract = xml.find('<Abstract>', group)
-            
-            if abstract:
-                # Find all memories that match these timestamps
-                candidate_memories = []
-                for ts in timestamps.split(","):
-                    for mem in drive_memories:
-                        if str(mem.timestamp) == ts.strip():
-                            candidate_memories.append(mem)
-                
-                if candidate_memories:
-                    # Create new abstract memory
-                    new_memory = MemoryEntry(
-                        text=abstract,
-                        timestamp=datetime.now(),
-                        importance=0.8,  # Abstract memories start important
-                        confidence=1.0
-                    )
-                    memory_id = memory.add_entry(new_memory)
-                    
-                    # Find best similarity match for each candidate
-                    for mem in candidate_memories:
-                        best_sim = 0.0
-                        best_id = None
-                        
-                        # Compare with all existing abstractions
-                        for existing_mem in memory.get_all():
-                            if existing_mem.embedding is None:
-                                continue
-                            sim = np.dot(mem.embedding, existing_mem.embedding) / (
-                                np.linalg.norm(mem.embedding) * np.linalg.norm(existing_mem.embedding)
-                            )
-                            if sim > best_sim:
-                                best_sim = sim
-                                best_id = existing_mem.memory_id
-                        
-                        # Link to best match if above threshold
-                        if best_sim >= 0.5:  # Lower threshold for finding matches
-                            if best_id == memory_id or best_sim > 0.7:  # Prefer new abstract if similarity very high
-                                memory.link_memories(memory_id, mem.memory_id)
-                            elif best_id is not None:
-                                memory.link_memories(best_id, mem.memory_id)
+        new_background = self.llm.ask({}, prompt, stops=["</End>"])
+        if new_background:
+            narrative.background = new_background.strip()
         
-        # Handle importance updates
-        for update in xml.findall('<Update>', analysis):
-            ts = xml.find('<Timestamp>', update)
-            adjustment = xml.find('<Adjustment>', update)
-            
-            for mem in drive_memories:
-                if str(mem.timestamp) == ts.strip():
-                    if adjustment == "increase":
-                        mem.importance = min(1.0, mem.importance * 1.2)
-                    else:
-                        mem.importance = max(0.1, mem.importance * 0.8)
-                        
-        # Handle memory linking
-        for link in xml.findall('<Link>', analysis):
-            if link:  # xml_utils returns None if not found
-                times = link.split(",")
-                if len(times) == 2:
-                    mem1 = mem2 = None
-                    for mem in drive_memories:
-                        if str(mem.timestamp) == times[0].strip():
-                            mem1 = mem
-                        elif str(mem.timestamp) == times[1].strip():
-                            mem2 = mem
-                    if mem1 and mem2:
-                        memory.link_memories(mem1.memory_id, mem2.memory_id)
+        # Update ongoing activities
+        active_abstract = memory.get_active_abstraction()
+        prompt = [UserMessage(content=f"""Given a character's current state, summarize their ongoing activities and immediate goals.
 
-    def _format_memories_for_llm(self, memories: List[MemoryEntry]) -> str:
-        """Format memories for LLM prompt"""
-        return "\n".join([
-            f"[{mem.timestamp}] (importance: {mem.importance:.1f}): {mem.text}"
-            for mem in memories
-        ])
+Character Description:
+{character_desc}
+
+Current Drives:
+{chr(10).join(f"- {drive}" for drive in narrative.active_drives)}
+
+Active Activity:
+{active_abstract.summary if active_abstract else "No current activity"}
+
+Recent Abstractions:
+{chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(3))}
+
+Recent Concrete Memories:
+{chr(10).join(f"- {mem.text}" for mem in memory.get_recent(5))}
+
+Create a concise summary (about 100 words) that describes:
+1. What the character is currently doing
+2. Their immediate goals and intentions
+3. How this relates to their drives
+4. Any ongoing social interactions
+
+Focus on active pursuits and immediate intentions.
+Respond with just the activity summary, no additional text.
+End with:
+</End>
+""")]
+
+        new_activities = self.llm.ask({}, prompt, stops=["</End>"])
+        if new_activities:
+            narrative.ongoing_activities = new_activities.strip()
+        
+        # Update recent events
+        recent_window = current_time - timedelta(hours=4)  # Last 4 hours
+        recent_abstracts = [abs for abs in memory.get_recent_abstractions(5)
+                           if abs.start_time >= recent_window]
+        recent_concretes = [mem for mem in memory.get_recent(10)
+                           if mem.timestamp >= recent_window]
+        
+        prompt = [UserMessage(content=f"""Create a detailed narrative of recent events (last 4 hours) for this character.
+
+Character Description:
+{character_desc}
+
+Current Activity:
+{active_abstract.summary if active_abstract else "No current activity"}
+
+Recent Event Sequence:
+{chr(10).join(f"- {mem.text}" for mem in sorted(recent_concretes, key=lambda x: x.timestamp))}
+
+Recent Activity Patterns:
+{chr(10).join(f"- {abs.summary}" for abs in recent_abstracts)}
+
+Create a flowing narrative (about 150 words) that:
+1. Describes events in chronological order
+2. Maintains causal relationships between events
+3. Includes character's reactions and decisions
+4. Shows how events connect to current situation
+
+Write in past tense, focus on specific details and immediate consequences.
+Respond with just the event narrative, no additional text.
+End with:
+</End>
+""")]
+
+        new_events = self.llm.ask({}, prompt, stops=["</End>"])
+        if new_events:
+            narrative.recent_events = new_events.strip()
+        
+        # Update key relationships
+        valid_chars = [a.name for a in memory.owner.context.actors 
+                      if a.name != memory.owner.name]
+        
+        # Extract character names from memory text
+        all_abstracts = memory.get_recent_abstractions(10)
+        recent_window = current_time - timedelta(days=1)  # Look back 24 hours
+        recent_memories = [mem for mem in memory.get_recent(20) 
+                          if mem.timestamp >= recent_window]
+        all_texts = [mem.text for mem in recent_memories] + [abs.summary for abs in all_abstracts]
+        
+        # Find character names in recent texts (simple approach)
+        # Look for capitalized words that aren't at start of sentence
+        potential_chars = set()
+        for text in all_texts:
+            words = text.split()
+            for i, word in enumerate(words):
+                if (word[0].isupper() and  # Capitalized
+                    len(word) > 1 and      # Not single letter
+                    i > 0 and              # Not start of sentence
+                    word.lower() not in {'i', 'me', 'my', 'mine'}):  # Not pronouns
+                    potential_chars.add(word)
+        
+        # Only use valid characters from potential and existing chars
+        all_chars = set(valid_chars) & (set(narrative.key_relationships.keys()) | potential_chars)
+        
+        # Analyze each character relationship
+        for char_name in all_chars:
+            char_memories = [text for text in all_texts if char_name.lower() in text.lower()]
+            if char_memories:
+                prompt = [UserMessage(content=f"""Analyze the relationship between these characters based on recent interactions.
+
+Character: {character_desc}
+Other Character: {char_name}
+
+Previous Relationship Status:
+{narrative.key_relationships.get(char_name, "No previous relationship data")}
+
+Recent Interactions:
+{chr(10).join(f"- {text}" for text in char_memories)}
+
+Describe their current relationship in a brief statement that captures:
+1. The nature of their connection
+2. Current emotional state
+3. Any recent changes
+4. Ongoing dynamics
+
+Respond with just the relationship description, no additional text.
+End with:
+</End>
+""")]
+
+                new_relation = self.llm.ask({}, prompt, stops=["</End>"])
+                if new_relation:
+                    narrative.key_relationships[char_name] = new_relation.strip()
+        
+        narrative.last_update = current_time
+
+    class Pattern:
+        """Future: Represent learned patterns"""
+        def __init__(self):
+            self.description: str
+            self.supporting_abstractions: List[int]  # Abstract memory IDs
+            self.confidence: float
+            self.last_validated: datetime

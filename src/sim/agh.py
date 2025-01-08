@@ -6,7 +6,7 @@ import traceback
 import time
 from typing import List, Dict, Optional
 from sim.memory.consolidation import MemoryConsolidator
-from sim.memory.core import MemoryEntry, StructuredMemory
+from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.retrieval import MemoryRetrieval
 from sim.cognitive.state import StateSystem
 from sim.cognitive.priority import PrioritySystem
@@ -103,14 +103,46 @@ class Character:
         self.x = 50
         self.y = 50
 
+        # Initialize narrative
+        self.narrative = NarrativeSummary(
+            recent_events="",
+            ongoing_activities="",
+            background="",
+            last_update=datetime.now(),  # Will be updated to simulation time
+            key_relationships={},
+            active_drives=[]
+        )
+
     # Required memory system methods that must be implemented by derived classes
     def add_to_history(self, message: str):
         """Base method for adding memories - must be implemented by derived classes"""
         raise NotImplementedError("Derived classes must implement add_to_history")
 
     def format_history(self, n=2):
-        """Base method for formatting history - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement format_history")
+        """Get memory context including both concrete and abstract memories"""
+        # Get recent concrete memories
+        recent_memories = self.structured_memory.get_recent(n)
+        memory_text = []
+        
+        if recent_memories:
+            concrete_text = '\n'.join(f"- {memory.text}" for memory in recent_memories)
+            memory_text.append("Recent Events:\n" + concrete_text)
+        
+        # Get current activity if any
+        current = self.structured_memory.get_active_abstraction()
+        if current:
+            memory_text.append("Current Activity:\n" + current.summary)
+        
+        # Get recent completed activities
+        recent_abstracts = self.structured_memory.get_recent_abstractions(2)
+        if recent_abstracts:
+            # Filter out current activity and format others
+            completed = [mem for mem in recent_abstracts if not mem.is_active]
+            if completed:
+                abstract_text = '\n'.join(f"- {mem.summary}" for mem in completed)
+                memory_text.append("Recent Activities:\n" + abstract_text)
+        
+        return '\n\n'.join(memory_text) if memory_text else ""
 
 
     def _find_related_drives(self, message: str):
@@ -118,13 +150,18 @@ class Character:
         raise NotImplementedError("Derived classes must implement _find_related_drives")
 
     def forward(self, step):
-        """Execute cognitive update cycle"""
+        """Move time forward, update state"""
         # Consolidate memories if we have drives
         if hasattr(self, 'drives'):
-            self.memory_consolidator.consolidate(
-                self.structured_memory,
-                self.drives,
-                self.character
+            self.memory_consolidator.consolidate(self.structured_memory)
+
+        # Add narrative update
+        if hasattr(self, 'narrative'):
+            self.memory_consolidator.update_narrative(
+                memory=self.structured_memory,
+                narrative=self.narrative,
+                current_time=self.context.simulation_time,
+                character_desc=self.character
             )
 
         # Get recent memory content from structured_memory
@@ -231,7 +268,7 @@ End your response with:
 """)]
         response = self.llm.ask({
             'character': self.character,
-            'history': self.format_history(),
+            'history': self.narrative.get_summary('medium'),
             'actors': '\n'.join([actor.name for actor in self.context.actors]),
             "message": text
         }, prompt, temp=0.2, stops=['END'], max_tokens=180)
@@ -255,10 +292,12 @@ End your response with:
         return self.my_map
 
     def format_look(self):
-        """Format look results for display"""
+        """Format the agent's current map view"""
         obs = self.my_map[self.x][self.y]
-        if obs is None:
-            return 'have never looked around from this location'
+        # Fix empty map check
+        if obs is None or not obs or all(not v for v in obs.values()):
+            return "You see nothing special."
+        
         return f"""A look at the current location and in each of 8 compass points. 
 terrain is the environment type perceived.
 slope is the ground slope in the given direction
@@ -340,7 +379,7 @@ class Agh(Character):
         self.llm = llm_api.LLM(server)
         
         # Initialize memory system
-        self.structured_memory = StructuredMemory()
+        self.structured_memory = StructuredMemory(owner=self)
         self.memory_consolidator = MemoryConsolidator(self.llm)
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
@@ -378,6 +417,9 @@ class Agh(Character):
         self.act_result = ''
         self.action_memory = ActionMemory()
 
+        # Update narrative with drives (drives are strings)
+        self.narrative.active_drives = self.drives  # Direct assignment, no name attribute needed
+
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
         filtered_data = {}
@@ -405,6 +447,8 @@ class Agh(Character):
 
     def add_to_history(self, message: str):
         """Add message to structured memory"""
+        if message is None or message == '':
+            return
         entry = MemoryEntry(
             text=message,
             importance=0.5,  # Default importance
@@ -490,10 +534,9 @@ End response with:
             print(f'{self.name} generating state for drive: {drive}')
             
             # Get relevant memories
-            drive_memories = self.memory_retrieval.get_by_drive(
-                self.structured_memory,
+            drive_memories = self.structured_memory.get_by_drive(
                 drive,
-                max_memories=10
+                limit=10
             )
             
             # Get recent memories regardless of drive
@@ -837,12 +880,13 @@ End your response with:
         """Execute an action and record results"""
         # Create action record with state before action
         mode = Mode(act_name)
+        self.act_result = ''
         record = create_action_record(
-        agent=self,
-        mode=mode,
-        action_text=act_arg,
-        task_name=source if source else self.active_task.peek(),
-        target=target.name if target else None
+            agent=self,
+            mode=mode,
+            action_text=act_arg,
+            task_name=source if source else self.active_task.peek(),
+            target=target.name if target else None
         )
     
         # Store current state and reason
@@ -873,19 +917,6 @@ End your response with:
             if self.active_task.peek() != source:
                 self.active_task.push(source)
 
-        # Notify other actors of action
-        if act_name != 'Say':  # everyone sees it
-            for actor in self.context.actors:
-                if actor != self:
-                    actor.add_to_history(self.show)
-        else:
-            for actor in self.context.actors:
-                if actor != self:
-                    if source != 'watcher':  # when talking to watcher, others don't hear it
-                        if actor != target:
-                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
-                        else:
-                            actor.hear(self, act_arg, source)
 
         # Handle world interaction
         if act_name == 'Do':
@@ -925,6 +956,20 @@ End your response with:
             self.update_intentions_wrt_say_think(source, act_arg, reason)
  
         # After action completes, update record with results
+        # Notify other actors of action
+        if act_name != 'Say':  # everyone sees it
+            for actor in self.context.actors:
+                if actor != self:
+                    actor.add_to_history(self.show)
+        else:
+            for actor in self.context.actors:
+                if actor != self:
+                    if source != 'watcher':  # when talking to watcher, others don't hear it
+                        if actor != target:
+                            actor.add_to_history(f'You hear {self.name} say: {act_arg}')
+                        else:
+                            actor.hear(self, act_arg, source)
+
         record.context_feedback = self.show
         record.state_after = StateSnapshot(
             values={term: info["state"] 
@@ -999,10 +1044,9 @@ End response with:
         # Get relevant memories for each drive
         drive_memories = {}
         for drive in self.drives:
-            memories = self.memory_retrieval.get_by_drive(
-                self.structured_memory,
+            memories = self.structured_memory.get_by_drive(
                 drive,
-                max_memories=5
+                limit=5
             )
             drive_memories[drive] = memories
         
@@ -1309,7 +1353,7 @@ End your response with:
                 'character': self.character,
                 'memories': memory_text,  # Updated from 'memory'
                 'duplicative': duplicative_insert,
-                'history': self.format_history(6),
+                'history': self.narrative.get_summary('medium'),
                 'name': self.name,
                 "situation": self.context.current_state + '\n' + self.format_look(),
                 "state": mapped_state,
@@ -1558,7 +1602,7 @@ Your memories include:
 Recent conversation has been:
 <RecentHistory>
 {{$history}}
-</RecentHistory)>
+</RecentHistory>
 
 Use the following XML template in your response:
 <Answer>
@@ -1615,8 +1659,8 @@ END
             "state": mapped_state,
             "memories": memory_text,  # Updated from 'memory'
             "activity": activity,
-            'history': self.format_history(6),
-            'last_act': str(last_act)
+            "last_act": self.last_acts,
+            'history': self.narrative.get_summary('medium'),
         }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
 
         response = xml.find('<response>', answer_xml)
@@ -1684,7 +1728,7 @@ Your recent memories include:
 Recent conversation has been:
 <RecentHistory>
 {{$history}}
-</RecentHistory)>
+</RecentHistory>
 
 Your current priorities include:
 <Priorities>
@@ -1728,7 +1772,7 @@ END
         if len(action_choices) > 1:
             response = self.llm.ask({
                 'input': sense_data + self.sense_input, 
-                'history': self.format_history(6),
+                'history': self.narrative.get_summary('medium'),
                 "memories": memory_text,  # Use structured memory instead of old memory
                 "situation": self.context.current_state,
                 "state": mapped_state, 
