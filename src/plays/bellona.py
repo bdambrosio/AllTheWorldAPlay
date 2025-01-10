@@ -10,12 +10,12 @@ You are curious about the city and its inhabitants, driven by a deep loneliness 
 You have an urge to write and a talent for writing and a fascination with the new and unusual.
 You speak in teen slang, terse and informal. You are morose and cynical, and speak in a depressed tone. 
 Your name is Kidd.""")
-K.drives = [
+K.set_drives([
     "sex",
     "developing relationships with Lanya.",
     "finding a sense of belonging and purpose in this strange new environment.",
     "expressing yourself through writing and art.",
-]
+])
 K.add_to_history("You think: Where am I? This city seems so strange and unfamiliar. I feel disoriented, but also intrigued by the unusual atmosphere.")
 L = agh.Agh("Lanya", """You are a young, attractive woman living in the city of Bellona.
 You are confident, independent, and adapted to the city's unconventional way of life.
@@ -25,12 +25,12 @@ You are drawn to the Kid's mysterious aura and his creative potential.
 You quickly fall in love with him, but realize his instability. This causes stress in both yourself and the relationship.
 You speak in flirty, playful, teen chatter, terse and informal, but morose and low-key.
 Your name is Lanya.""")
-L.drives = [
+L.set_drives([
     "sex.",
     "developing a close relationship with the Kidd and helping him navigate the city.",
     "exploring new experiences and pushing personal boundaries.",
     "soothing, exploring, and expressing yourself through music and performance.",
-]
+])
 L.add_to_history("You think: A newcomer in Bellona? How intriguing. He seems lost, but he's hot! I wonder what brought him here.")
 W = context.Context([K, L],
 """A post-apocalyptic urban landscape, the city of Bellona is isolated, lawless, and filled with strange phenomena. 

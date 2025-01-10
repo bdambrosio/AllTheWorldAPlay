@@ -3,7 +3,7 @@ import torch
 from diffusers import StableDiffusion3Pipeline # type: ignore
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16
+    "stabilityai/stable-diffusion-3.5-large-turbo", torch_dtype=torch.bfloat16
 ).to("cuda")
 
 #pipe = StableDiffusion3Pipeline.from_pretrained(
@@ -46,9 +46,9 @@ def extract_key_elements(prompt: str, max_length: int = 77) -> str:
 
 @app.get("/generate_image")
 async def generate_image(prompt: str, size: str = "256X192"):
-    processed_prompt = extract_key_elements(prompt)
+    #processed_prompt = extract_key_elements(prompt)
     print(f"Original prompt: {prompt}")
-    print(f"Processed prompt: {prompt}")
+    #print(f"Processed prompt: {processedprompt}")
     image = pipe(prompt=prompt, 
                  num_inference_steps=40,
                  height=512,

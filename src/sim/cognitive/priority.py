@@ -1,8 +1,9 @@
 # sim/cognitive/priority.py
 from typing import Dict, List
 from utils.Messages import UserMessage
-from sim.memory.core import MemoryEntry, StructuredMemory
+from sim.memory.core import MemoryEntry, StructuredMemory, Drive
 import utils.xml_utils as xml
+from datetime import datetime, timedelta
 
 class PrioritySystem:
     """Handles task priorities and updates"""
@@ -11,30 +12,36 @@ class PrioritySystem:
         self.llm = llm
         self.character = character
         
-    def update_priorities(self,
-                         drives: List[str],
-                         state: Dict[str, Dict[str, str]],
-                         memory: StructuredMemory,
-                         situation: str) -> List[str]:
-        """Update task priorities based on current state"""        
-        # Map state for LLM input
-        mapped_state = self._map_state(state)
-        
-        # Get memories relevant to current drives
-        relevant_memories = []
-        for drive in drives:
-            relevant_memories.extend(memory.get_by_drive(drive, limit=2))
-        formatted_memories = self._format_memories(relevant_memories)
-        
-        # Generate new priorities through LLM
-        new_priorities = self._generate_priority_tasks(
-            drives,
-            mapped_state,
-            formatted_memories,
-            situation
+    def _get_drive_memories(self, memory: StructuredMemory, drive: Drive) -> List[MemoryEntry]:
+        """Get memories relevant to a drive for priority assessment"""
+        return memory.owner.memory_retrieval.get_by_drive(
+            memory=memory,
+            drive=drive,
+            threshold=0.1,
+            max_results=5  # Limit to most relevant for priority decisions
         )
+
+    def update_priorities(self, memory: StructuredMemory, current_state: Dict) -> List[str]:
+        """Update task priorities based on state and memory"""
+        drive_memories = {}
         
-        return new_priorities
+        # Get relevant memories for each drive
+        for drive in memory.owner.drives:
+            memories = self._get_drive_memories(memory, drive)
+            if memories:
+                drive_memories[drive] = memories
+                
+        # Generate tasks based on drive memories
+        tasks = []
+        for drive, memories in drive_memories.items():
+            drive_tasks = self._generate_tasks(
+                drive=drive,
+                memories=memories,
+                current_state=current_state
+            )
+            tasks.extend(drive_tasks)
+            
+        return tasks
 
     def _map_state(self, state: Dict) -> str:
         """Map state dict to string format for LLM"""
@@ -95,7 +102,10 @@ Respond using this XML format:
 
 Respond ONLY with your three highest priority plans using the above XML format.
 Plans should be as specific as possible.
-Rationale statements must be concise and limited to a few keywords or at most two terse sentences.""")]
+Rationale statements must be concise and limited to a few keywords or at most two terse sentences.
+
+End your response with:
+</End>""")]
 
         variables = {
             "character": self.character,
@@ -105,7 +115,7 @@ Rationale statements must be concise and limited to a few keywords or at most tw
             "memories": memories
         }
 
-        response = self.llm.ask(variables, prompt, temp=0.6)
+        response = self.llm.ask(variables, prompt, temp=0.6, stops=['</End>'])
         
         # Extract all <Plan> sections
         tasks = []

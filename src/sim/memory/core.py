@@ -1,9 +1,32 @@
 # memory/core.py
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
+# At module level
+_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+@dataclass(frozen=True)
+class Drive:
+    """Represents a character drive with semantic embedding"""
+    text: str
+    embedding: Optional[np.ndarray] = None
+    
+    def __post_init__(self):
+        if self.embedding is None:
+            # Use object.__setattr__ to set field of frozen instance
+            object.__setattr__(self, 'embedding', 
+                _embedding_model.encode(self.text))
+    
+    def __hash__(self):
+        return hash(self.text)
+    
+    def __eq__(self, other):
+        if not isinstance(other, Drive):
+            return False
+        return self.text == other.text
 
 @dataclass
 class MemoryEntry:
@@ -80,20 +103,6 @@ class StructuredMemory:
             return True
         return False
     
-    def get_by_drive(self, drive: str, limit: int = None) -> List[MemoryEntry]:
-        """Get memories related to a specific drive"""
-        # For now, simple text matching - could be enhanced with embeddings
-        drive_memories = []
-        for memory in self.get_all():
-            if drive.lower() in memory.text.lower():
-                drive_memories.append(memory)
-                
-        # Sort by importance and recency
-        drive_memories.sort(key=lambda x: (x.importance, x.timestamp), reverse=True)
-        
-        if limit:
-            return drive_memories[:limit]
-        return drive_memories
     
     def get_abstractions(self, count=None):
         """Get abstract pattern memories"""
@@ -215,6 +224,65 @@ class StructuredMemory:
         # This would need access to the agent's drives
         # For now, return empty list - will need to be connected to agent's drives
         return []
+
+class MemoryRetrieval:
+    """Handles semantic memory retrieval across concrete and abstract memories"""
+    
+    def __init__(self):
+        self.embedding_model = _embedding_model  # Use shared model
+    
+    def get_by_drive(self, 
+                    memory: StructuredMemory, 
+                    drive: Drive, 
+                    threshold: float = 0.1,
+                    max_results: int = 3) -> List[MemoryEntry]:
+        """Get memories related to drive using embeddings"""
+        if drive.embedding is None:
+            drive.embedding = self.embedding_model.encode(drive.text)
+            
+        related_memories = []
+        current_time = memory.owner.context.simulation_time
+        
+        for mem in memory.get_all():
+            if mem.embedding is None:
+                mem.embedding = self.embedding_model.encode(mem.text)
+                
+            similarity = self._compute_similarity(drive.embedding, mem.embedding)
+            if similarity >= threshold:
+                age_hours = (current_time - mem.timestamp).total_seconds() / 3600
+                age_factor = max(0.5, 1.0 - (age_hours / 24))
+                score = similarity * mem.importance * age_factor
+                related_memories.append((mem, score))
+                
+        sorted_memories = sorted(related_memories, key=lambda x: x[1], reverse=True)
+        return [mem for mem, _ in sorted_memories[:max_results]]
+
+    def find_related_abstractions(self,
+                                memory: StructuredMemory,
+                                concrete_memory: MemoryEntry,
+                                threshold: float = 0.387) -> List[AbstractMemory]:
+        """Find abstract memories related to a concrete memory"""
+        if concrete_memory.embedding is None:
+            concrete_memory.embedding = self.embedding_model.encode(concrete_memory.text)
+            
+        related = []
+        abstractions = memory.get_recent_abstractions() + \
+                      ([memory.get_active_abstraction()] if memory.get_active_abstraction() else [])
+        
+        for abstract in abstractions:
+            if abstract.embedding is None:
+                abstract.embedding = self.embedding_model.encode(abstract.summary)
+            similarity = self._compute_similarity(concrete_memory.embedding, abstract.embedding)
+            if similarity >= threshold:
+                related.append(abstract)
+                
+        return related
+        
+    def _compute_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """Compute cosine similarity between embeddings"""
+        return np.dot(embedding1, embedding2) / (
+            np.linalg.norm(embedding1) * np.linalg.norm(embedding2)
+        )
 
 @dataclass
 class NarrativeSummary:

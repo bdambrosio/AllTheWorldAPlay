@@ -242,16 +242,16 @@ class CustomWidget(QWidget):
                 context = ''
                 i = 0
                 candidates = self.entity.context.current_state.split('.')
-                while len(context) < 48 and i < len(candidates):
+                while len(context) < 84 and i < len(candidates):
                     context += candidates[i]+'. '
                     i +=1
-                context = context[:48]
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
-                    self.entity.show.replace(self.entity.name, '')[-72:].strip()
-                description = description[:70-min(len(context), 24)] + '. '+context
-                prompt = "photo: "+description
+                context = context[:96]
+                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[6:] +', '+\
+                    self.entity.show.replace(self.entity.name, '')[-128:].strip()
+                description = description[:192-min(len(context), 48)] + '. '+context
+                prompt = description
                 print(f' actor image prompt len {len(prompt)}')
-                image_path = llm_api.generate_image(prompt, size='192x192', filepath=self.entity.name + '.png')
+                image_path = llm_api.generate_image(self.entity.llm, prompt, size='192x192', filepath=self.entity.name + '.png')
                 self.set_image(str(image_path))
         except Exception as e:
             traceback.print_exc()

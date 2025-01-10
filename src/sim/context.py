@@ -80,9 +80,9 @@ class Context():
             prompt = state + characters
             # print(f'calling generate_dalle_image\n{prompt}')
             if image_generator == 'tti_serve':
-                filepath = llm_api.generate_image(f"""wide-view photorealistic. {prompt}""", size='512x512', filepath=filepath)
+                filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
             else:
-                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic. {prompt}""", size='512x512',
+                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic style. {prompt}""", size='512x512',
                                              filepath=filepath)
         except Exception as e:
             traceback.print_exc()

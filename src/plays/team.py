@@ -26,29 +26,29 @@ You're concerned about the project timeline but don't want to create additional 
 You prefer finding diplomatic solutions to conflicts.""")
 
 # Set individual drives that influence behavior
-Sarah.drives = [
+Sarah.set_drives([
     "maintaining high technical standards and code quality",
     "pushing for architectural improvements you believe are necessary",
     "completing assigned tasks efficiently",
     "being recognized for technical expertise",
     "avoiding what you see as unnecessary meetings or process overhead"
-]
+])
 
-Mike.drives = [
+Mike.set_drives([
     "proving your capabilities to the team",
     "hiding your struggles with the current task",
     "managing increasing stress and fatigue",
     "learning from more experienced team members",
     "meeting project deadlines despite obstacles"
-]
+])
 
-Lisa.drives = [
+Lisa.set_drives([
     "fostering positive team dynamics",
     "helping mediate conflicts between team members",
     "ensuring clear communication across the team",
     "meeting project deliverables",
     "supporting team members who are struggling"
-]
+])
 
 # Initialize the context
 W = context.Context([Sarah, Mike, Lisa, Lead], 

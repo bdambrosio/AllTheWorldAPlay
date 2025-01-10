@@ -1,21 +1,35 @@
 import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+from sim.agh import Agh
+from sim.context import Context
+
 import unittest
 from datetime import datetime, timedelta
 import numpy as np
 from utils.llm_api import LLM
 from sim.memory.core import MemoryEntry, AbstractMemory, StructuredMemory
 from sim.memory.consolidation import MemoryConsolidator
-from sim.memory.retrieval import MemoryRetrieval
+from sim.memory.core import MemoryRetrieval
 from sim.memory.core import NarrativeSummary
+from sim.memory.core import Drive
 
 class TestMemorySystem(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test"""
         self.memory = StructuredMemory()
+        self.memory.owner = Agh('TestChar','I am a test character',server='local')
+        meow_meow = Agh('Meow-Meow','I am a cat',server='local')
+        self.memory.owner.context = Context([self.memory.owner, meow_meow], situation='test', step='1 hour')
         self.llm = LLM('local')
         self.consolidator = MemoryConsolidator(self.llm)
+        
+        # Create test drives
+        self.test_drives = [
+            Drive("find food and water"),
+            Drive("stay safe from threats"),
+            Drive("explore the environment")
+        ]
         
         # Create test memories about a coherent activity using simulation time
         base_time = datetime(2024, 1, 1, 12, 0)  # Fixed simulation start time
@@ -293,6 +307,30 @@ class TestMemorySystem(unittest.TestCase):
         # Should update
         self.assertNotEqual(narrative.recent_events, "Original events",
                            "Should update after interval")
+
+    def test_drive_memory_retrieval(self):
+        """Test retrieving memories related to drives"""
+        # Now uses memory_retrieval directly
+        retrieval = self.memory.owner.memory_retrieval
+        
+        food_memories = retrieval.get_by_drive(
+            memory=self.memory,
+            drive=self.test_drives[0],
+            threshold=0.1
+        )
+        
+        # Should find mouse-related memories
+        self.assertTrue(any("mouse" in mem.text.lower() for mem in food_memories))
+        
+        # Test age weighting
+        newest_first = retrieval.get_by_drive(
+            memory=self.memory,
+            drive=self.test_drives[0],
+            threshold=0.1
+        )
+        
+        # More recent memories should have higher scores
+        self.assertEqual(newest_first[0].text, "The mouse is eating some crumbs")
 
 if __name__ == '__main__':
     unittest.main()

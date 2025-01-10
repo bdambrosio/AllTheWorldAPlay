@@ -1,8 +1,11 @@
+from matplotlib.hatch import Stars
 import os, sys, re, traceback, requests, json
 import random
 import socket
 import time
 from pathlib import Path
+
+from sympy import Ordinal
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
@@ -29,10 +32,31 @@ deepseek_client = DeepSeekClient.DeepSeekClient()
 
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
-def generate_image(description, size='512x512', filepath='test.png'):
+
+def generate_image(llm, description, size='512x512', filepath='test.png'):
+
+    prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
+Your task is to compress detailed scene descriptions into optimal prompts for Stable Diffusion 3.5-large-turbo, which has a 128 token limit.
+<SceneDescription>
+{{$input}}
+</SceneDescription>
+Rules:
+The input is either a character description or a scene description. If the former, then the first word is the character name.
+Preserve key visual elements and artistic direction
+Prioritize descriptive adjectives and specific nouns
+Maintain the core mood/atmosphere
+Remove narrative elements that don't affect the visual
+Use commas instead of conjunctions where possible
+Start with the most important visual elements
+Output only the compressed prompt, no explanations
+
+End your response with:
+</End>
+""")]
+    compressed_prompt = llm.ask({"input":description}, prompt, stops=['</End>'])
     cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'
-    response =  requests.get(url, params={"prompt":description, "size":size})
+    response =  requests.get(url, params={"prompt":"phtorealistic style: "+compressed_prompt, "size":size})
     if response.status_code == 200:
         image_content = response.content
     # Save the image to a file

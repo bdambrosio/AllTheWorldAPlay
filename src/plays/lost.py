@@ -28,14 +28,14 @@ Your name is Samanatha""")
 # - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 
 #Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
-S.drives = [
+S.set_drives([
     #"evaluation of Joe. Can I trust him?",
     #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     #"finding a way out of the forest.",
     "solving the mystery of how they ended up in the forest with no memory.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
-]
+])
 # Rows are in priority order, most important first. Have fun.
 # note this is NOT NECESSARY to specify if you don't want to change anything.
 S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
@@ -52,14 +52,14 @@ You are socially awkward, especially around strangers.
 You speak in informal teen style.
 Your name is Joe.""")
 
-J.drives = [
+J.set_drives([
     "communication and coordination with Samantha, gaining Samantha's trust.",
     #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     #"finding a way out of the forest.",
     "solving the mystery of how they ended up in the forest with no memory.",
     #"love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
-]
+])
 
 J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
 # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
