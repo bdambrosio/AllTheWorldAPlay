@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Response
 import torch
-from diffusers import IFPipeline, IFSuperResolutionPipeline
+from diffusers import IFPipeline, IFSuperResolutionPipeline # type: ignore
 from PIL import Image
 from io import BytesIO
 
@@ -16,7 +16,6 @@ pipe = IFPipeline.from_pretrained(
 # Load super-resolution model
 pipe_super = IFSuperResolutionPipeline.from_pretrained(
     "DeepFloyd/IF-II-L-v1.0",
-    text_encoder=None,
     variant="fp16",
     torch_dtype=torch.float16
 ).to("cuda")
@@ -25,19 +24,24 @@ pipe_super = IFSuperResolutionPipeline.from_pretrained(
 async def generate_image(prompt: str, size: str = "512x512"):
     print(f"Generating image for prompt: {prompt}")
     
-    # Generate initial image
+    # Generate initial image with text embeddings
+    prompt_embeds, negative_embeds = pipe.encode_prompt(prompt)
+    
+    # Stage 1
     image = pipe(
-        prompt=prompt,
-        num_inference_steps=50,
-        height=256,  # Base resolution
+        prompt_embeds=prompt_embeds,
+        negative_prompt_embeds=negative_embeds,
+        num_inference_steps=25,
+        height=256,
         width=256
     ).images[0]
     
-    # Upscale the image
+    # Stage 2 - Upscale
     image = pipe_super(
         image=image,
-        prompt=prompt,
-        num_inference_steps=50,
+        prompt_embeds=prompt_embeds,
+        negative_prompt_embeds=negative_embeds,
+        num_inference_steps=25,
         height=512,
         width=512
     ).images[0]

@@ -2,7 +2,7 @@
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from utils.Messages import UserMessage
-from .core import StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
+from .core import Drive, StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
 import numpy as np
 
 class MemoryConsolidator:
@@ -11,20 +11,22 @@ class MemoryConsolidator:
 
     def consolidate(self, memory: StructuredMemory):
         """Periodic memory maintenance and optimization"""
-        # Enhance summaries of mature abstract memories
-        self._enhance_summaries(memory)
+        # Get memories by drive using retrieval system
+        drive_memories = {}
+        for drive in memory.owner.drives:  # Now using Drive objects
+            memories = memory.owner.memory_retrieval.get_by_drive(
+                memory=memory,
+                drive=drive,
+                threshold=0.1,
+                max_results=5  # Limit to most relevant memories
+            )
+            if memories:
+                drive_memories[drive] = memories
         
-        # Check for and merge related abstractions
-        self._merge_related_abstractions(memory)
-        
-        # Clean up concrete memories that are now part of inactive abstractions
-        self._cleanup_concrete_memories(memory)
-        
-        # Clean up old/unimportant memories
-        self._cleanup_abstractions(memory)
-        
-        # Future: Pattern detection
-        self._detect_patterns(memory)
+        # Create abstractions from drive-related memories
+        for drive, memories in drive_memories.items():
+            if len(memories) >= 2:  # Need at least 2 memories to form pattern
+                self._create_abstraction(memory, memories, drive)
 
     def _enhance_summaries(self, memory: StructuredMemory):
         """Improve summaries of abstract memories using LLM"""
@@ -295,6 +297,27 @@ End with:
                     narrative.key_relationships[char_name] = new_relation.strip()
         
         narrative.last_update = current_time
+
+    def _create_abstraction(self, memory: StructuredMemory, memories: List[MemoryEntry], drive: Drive) -> None:
+        """Create a new abstract memory from related concrete memories"""
+        # Get average importance
+        avg_importance = sum(m.importance for m in memories) / len(memories)
+        
+        # Create summary using first memory as template
+        summary = f"Activity related to {drive.text}: {memories[0].text}"
+        
+        # Create new abstraction
+        abstraction = AbstractMemory(
+            summary=summary,
+            start_time=min(m.timestamp for m in memories),
+            end_time=max(m.timestamp for m in memories),
+            instances=[m.memory_id for m in memories],
+            drive=drive.text,
+            is_active=False
+        )
+        
+        # Add to memory
+        memory.abstract_memories.append(abstraction)
 
     class Pattern:
         """Future: Represent learned patterns"""

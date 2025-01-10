@@ -6,10 +6,8 @@ import traceback
 import time
 from typing import List, Dict, Optional
 from sim.memory.consolidation import MemoryConsolidator
-from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
-from sim.memory.retrieval import MemoryRetrieval
-from sim.cognitive.state import StateSystem
-from sim.cognitive.priority import PrioritySystem
+from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory, Drive
+from sim.memory.core import MemoryRetrieval
 from utils import llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -28,8 +26,7 @@ from sim.ActionRecord import (
 from sim.DialogManagement import DialogManager
 from collections import defaultdict
 from dataclasses import dataclass, field
-from sim.cognitive.state import StateSystem
-from sim.cognitive.priority import PrioritySystem
+import numpy as np
 
 
 def find_first_digit(s):
@@ -91,10 +88,11 @@ class Character:
         self.dialog_status = 'Waiting'  # Waiting, Pending
         self.dialog_length = 0
         self.act_result = ''
-
+        self.wakeup = True
         # Memory system initialization - will be set up by derived classes
-        self.structured_memory = None
-        self.new_memory_cnt = 0
+        self.structured_memory = StructuredMemory(owner=self)
+        self.memory_consolidator = MemoryConsolidator(self.llm)
+        self.memory_retrieval = MemoryRetrieval()
 
         # Map integration
         self.mapAgent = None
@@ -112,6 +110,8 @@ class Character:
             key_relationships={},
             active_drives=[]
         )
+
+        self.drives: List[Drive] = []  # Initialize empty drive list
 
     # Required memory system methods that must be implemented by derived classes
     def add_to_history(self, message: str):
@@ -145,9 +145,30 @@ class Character:
         return '\n\n'.join(memory_text) if memory_text else ""
 
 
-    def _find_related_drives(self, message: str):
-        """Base method for finding related drives - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement _find_related_drives")
+    def _find_related_drives(self, message: str) -> List[Drive]:
+        """Find drives related to a memory message"""
+        related_drives = []
+        
+        # Create temporary memory entry to compare against drives
+        temp_memory = MemoryEntry(
+            text=message,
+            timestamp=self.context.simulation_time,
+            importance=0.5,
+            confidence=1.0
+        )
+        temp_memory.embedding = self.memory_retrieval.embedding_model.encode(message)
+        
+        # Check each drive for relevance
+        for drive in self.drives:
+            similarity = self.memory_retrieval._compute_similarity(
+                temp_memory.embedding,
+                drive.embedding if drive.embedding is not None 
+                else self.memory_retrieval.embedding_model.encode(drive.text)
+            )
+            if similarity >= 0.1:  # Use same threshold as retrieval
+                related_drives.append(drive)
+                
+        return related_drives
 
     def forward(self, step):
         """Move time forward, update state"""
@@ -264,14 +285,14 @@ Respond using the following XML format:
 </Target>
 
 End your response with:
-</END>
+</End>
 """)]
         response = self.llm.ask({
             'character': self.character,
             'history': self.narrative.get_summary('medium'),
             'actors': '\n'.join([actor.name for actor in self.context.actors]),
             "message": text
-        }, prompt, temp=0.2, stops=['END'], max_tokens=180)
+        }, prompt, temp=0.2, stops=['</End>'], max_tokens=180)
 
         return xml.find('<Name>', response)
 
@@ -322,11 +343,21 @@ streams is the water resources visible
     # Initialization and persistence
     def initialize(self):
         """Called from worldsim once everything is set up"""
-        if self.structured_memory is not None:
-            self.generate_state()
-            self.update_priorities()
         if hasattr(self, 'mapAgent'):
             self.look()
+        """Initialize agent state"""
+        # Set up initial drives
+        if self.drives is None or len(self.drives) == 0:
+            self.drives = [
+            Drive("find food and water"),
+            Drive("stay safe from threats"),
+            Drive("explore the environment"),
+            Drive("maintain social bonds")
+        ]
+        
+        # Initialize narrative with drives
+        self.narrative.active_drives = [d.text for d in self.drives]
+
 
     def greet(self):
         """Initial greeting behavior"""
@@ -370,25 +401,20 @@ streams is the water resources visible
         except Exception as e:
             print(f' error restoring {self.name}, {str(e)}')
 
+    def set_drives(self, drive_texts: List[str]) -> None:
+        """Initialize character drives with embeddings"""
+        self.drives = [Drive(text) for text in drive_texts]
+
+    def get_drive_texts(self) -> List[str]:
+        """Get drive texts for backward compatibility"""
+        return [drive.text for drive in self.drives]
+
 class Agh(Character):
     def __init__(self, name, character_description, server='local', mapAgent=True, always_respond=False):
         print(f"Initializing Agh {name}")  # Debug print
         super().__init__(name, character_description)
-        print(f"After Character init, active_task is: {self.active_task}")  # Debug print
-        
         self.llm = llm_api.LLM(server)
-        
-        # Initialize memory system
-        self.structured_memory = StructuredMemory(owner=self)
-        self.memory_consolidator = MemoryConsolidator(self.llm)
-        self.memory_retrieval = MemoryRetrieval()
-        self.new_memory_cnt = 0
-        
-        # Initialize cognitive system
-        print(f"Initializing cognitive system for {name}")  # Debug print
-        self.state_system = StateSystem(self.llm, character_description)
-        self.priority_system = PrioritySystem(self.llm, character_description)
-        
+                
         # Initialize drives
         self.drives = [
             "immediate physiological needs: survival, water, food, clothing, shelter, rest.",
@@ -419,6 +445,12 @@ class Agh(Character):
 
         # Update narrative with drives (drives are strings)
         self.narrative.active_drives = self.drives  # Direct assignment, no name attribute needed
+        
+        # Initialize memory systems
+        self.structured_memory = StructuredMemory(owner=self)
+        self.memory_consolidator = MemoryConsolidator(self.llm)
+        self.memory_retrieval = MemoryRetrieval()
+        self.new_memory_cnt = 0
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -458,9 +490,30 @@ class Agh(Character):
         self.structured_memory.add_entry(entry)
         self.new_memory_cnt += 1
    
-    def _find_related_drives(self, message: str) -> List[str]:
-        """Find drives mentioned in message"""
-        return [d for d in self.drives if d.lower() in message.lower()]
+    def _find_related_drives(self, message: str) -> List[Drive]:
+        """Find drives related to a memory message"""
+        related_drives = []
+        
+        # Create temporary memory entry to compare against drives
+        temp_memory = MemoryEntry(
+            text=message,
+            timestamp=self.context.simulation_time,
+            importance=0.5,
+            confidence=1.0
+        )
+        temp_memory.embedding = self.memory_retrieval.embedding_model.encode(message)
+        
+        # Check each drive for relevance
+        for drive in self.drives:
+            similarity = self.memory_retrieval._compute_similarity(
+                temp_memory.embedding,
+                drive.embedding if drive.embedding is not None 
+                else self.memory_retrieval.embedding_model.encode(drive.text)
+            )
+            if similarity >= 0.1:  # Use same threshold as retrieval
+                related_drives.append(drive)
+                
+        return related_drives
 
     def format_history(self, n=2):
         """Get n most recent memories"""
@@ -526,17 +579,19 @@ Respond using this XML format:
 
 Respond ONLY with the above XML.
 End response with:
-<END>
+</End>
 """)]
 
         # Process each drive in priority order
         for drive in self.drives:
-            print(f'{self.name} generating state for drive: {drive}')
+            print(f'{self.name} generating state for drive: {drive.text}')
             
             # Get relevant memories
-            drive_memories = self.structured_memory.get_by_drive(
-                drive,
-                limit=10
+            drive_memories = self.memory_retrieval.get_by_drive(
+                memory=self.structured_memory,
+                drive=drive,
+                threshold=0.1,
+                max_results=5
             )
             
             # Get recent memories regardless of drive
@@ -555,12 +610,12 @@ End response with:
             
             # Generate state assessment
             response = self.llm.ask({
-                "drive": drive,
+                "drive": drive.text,
                 "recent_memories": recent_memories_text,
                 "drive_memories": drive_memories_text,
                 "situation": self.context.current_state if self.context else "",
                 "character": self.character
-            }, prompt, temp=0.3, stops=['<END>'])
+            }, prompt, temp=0.3, stops=['</End>'])
             
             # Parse response
             try:
@@ -577,13 +632,13 @@ End response with:
                         "termination": termination if termination else ""
                     }
                 else:
-                    print(f"Warning: Invalid state generation response for {drive}")
+                    print(f"Warning: Invalid state generation response for {drive.text}")
                     
             except Exception as e:
                 print(f"Error parsing state generation response: {e}")
                 traceback.print_exc()
                 
-        print(f'{self.name} generated states: {self.state}')
+        print(f'{self.name} generated states: ' + str({k: {**v, 'drive': v['drive'].text} for k,v in self.state.items()}))
         return self.state
 
 
@@ -631,7 +686,7 @@ The 'Level' above should be True if the termination test is met in Events or rec
 Respond ONLY with the above XML.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-<END>
+</End>
 """
                                   )]
 
@@ -647,7 +702,7 @@ End your response with:
             "history": self.format_history(),
             "events": consequences + '\n' + updates,
             "termination_check": state
-        }, prompt, temp=0.3, stops=['<END>', '</Termination>'], max_tokens=60)
+        }, prompt, temp=0.3, stops=['</End>'], max_tokens=60)
 
         satisfied = xml.find('<Level>', response)
         if satisfied or satisfied.lower().strip() == 'true':
@@ -658,7 +713,7 @@ End your response with:
         """ map state for llm input """
         mapped = []
         for key, item in self.state.items():
-            trigger = item['drive']
+            trigger = item['drive'].text
             value = item['state']
             mapped.append(f"- '{key}: {trigger}', State: '{value}'")
         return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
@@ -705,9 +760,9 @@ Respond only with your task-name using the above XML
 Do not include your reasoning in your response.
 Do not include any introductory, discursive, or explanatory text.
 End your response with:
-</END>
+</End>
 """)]
-        response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</END>'], max_tokens=12)
+        response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</End>'], max_tokens=12)
         return xml.find('<Motivation', response)
                     
     def get_task_xml(self, task_name):
@@ -812,7 +867,7 @@ Respond 'True' if NewText is duplicative, 'False' if it is not.
 Respond ONLY with 'False' or 'True'.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-</END>
+</End>
 """
                             )
                 ]
@@ -822,7 +877,7 @@ End your response with:
             "history": history, 
             'name': self.name,
             "memories": memory_text  # Updated from 'memory' to use structured memory
-        }, prompt, temp=0.2, stops=['</END>'], max_tokens=12)
+        }, prompt, temp=0.2, stops=['</End>'], max_tokens=12)
         response = response.lower()
         idxt = response.find('true')
         idxf = response.find('false')
@@ -986,120 +1041,59 @@ End your response with:
         
 
     def update_priorities(self):
-        # First remove ineffective tasks
-        for task_name in list(self.priorities):
-            effectiveness = self.action_memory.get_task_effectiveness(task_name)
-            if effectiveness < 0.2:  # Very ineffective
-                # Remove task and try something else
-                self.priorities.remove(task_name)
-                # Could trigger generation of alternative approach here
+        """Update task priorities based on current state and drives"""
+        prompt = [UserMessage(content="""Given your character, current state assessments, and recent memories, create a prioritized set of plans.
 
-        self.active_task = Stack()  # Reset active task for new scene
-        print(f'\n{self.name} Updating priorities\n')
-        
-        prompt = [UserMessage(content="""{{$character}}.
+<Character>
+{{$character}}
+</Character>
 
-Your basic drives in order of priority are:
-<Drives>
-{{$drives}}
-</Drives>
-
-Your current situation and state assessments:
-<Situation>
-{{$situation}}
-</Situation>
-
-<StateAssessments>
+<State>
 {{$state}}
-</StateAssessments>
+</State>
 
-Recent relevant memories:
 <RecentMemories>
 {{$memories}}
 </RecentMemories>
 
-Create a prioritized set of three specific, actionable plans that address your most pressing drives and current situation.
+Create three specific, actionable plans that address your current needs and situation.
 Consider:
-1. The priority order of your drives
-2. Your current state assessments
-3. Recent relevant memories
-4. The effectiveness of past actions
+1. Your current state assessments
+2. Recent memories and events
+3. Your basic drives and needs
 
-Respond in this XML format:
-<Plans>
+Respond using this XML format:
 <Plan>
   <Name>brief action name</Name>
   <Description>detailed plan description</Description>
-  <Drive>which drive this addresses</Drive>
   <Reason>why this is important now</Reason>
+  <TerminationCheck>condition that would satisfy this need</TerminationCheck>
 </Plan>
-<!-- Two more plans -->
-</Plans>
 
+Respond ONLY with three plans using the above XML format.
 Order plans from highest to lowest priority.
-Plans must be specific and actionable.
 End response with:
-<STOP>
+</End>
 """)]
 
-        # Get relevant memories for each drive
-        drive_memories = {}
-        for drive in self.drives:
-            memories = self.structured_memory.get_by_drive(
-                drive,
-                limit=5
-            )
-            drive_memories[drive] = memories
-        
-        # Format memories for LLM
-        recent_memories_text = []
-        for drive in self.drives:
-            if drive_memories[drive]:
-                recent_memories_text.append(f"\nRegarding {drive}:")
-                for mem in drive_memories[drive]:
-                    recent_memories_text.append(
-                        f"[{mem.timestamp}] (importance: {mem.importance:.1f}): {mem.text}"
-                    )
-        
-        # Format state assessments
-        state_text = []
-        for term, details in self.state.items():
-            state_text.append(
-                f"{term}: {details['state']} (triggered by: {details['trigger']})"
-            )
-        
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(5)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        # Format state for LLM
+        state_text = self.map_state()
+
         response = self.llm.ask({
             'character': self.character,
-            'drives': '\n'.join(self.drives),
-            'memories': '\n'.join(recent_memories_text),
-            'situation': self.context.current_state if self.context else "",
-            'state': '\n'.join(state_text)
-        }, prompt, temp=0.6, stops=['<STOP>'])
-        
-        try:
-            plans = xml.findall('<Plan>', response)
-            self.priorities = []
-            
-            # Clear non-watcher intentions
-            for intention in self.intentions.copy():
-                intention_source = xml.find('<Source>', intention)
-                if intention_source != 'watcher':
-                    self.intentions.remove(intention)
-            
-            # Process plans in reverse (they come in lowest to highest priority)
-            for plan in reversed(plans):
-                plan_name = xml.find('<Name>', plan)
-                if plan_name and str(plan_name) != 'None':
-                    self.priorities.append(plan)
-                else:
-                    raise ValueError(f'Invalid plan name in: {plan}')
-                    
-        except Exception as e:
-            print(f"Error processing priorities: {e}")
-            traceback.print_exc()
-        
-        return self.priorities
-        #print(f'\n-----Done-----\n\n\n')
+            'state': state_text,
+            'memories': memory_text
+        }, prompt, temp=0.7, stops=['</End>'])
+
+        # Extract plans from response
+        self.priorities = []
+        for plan in xml.findall('<Plan>', response):
+            if xml.find('<Name>', plan):
+                self.priorities.append(plan)
 
     def test_priority_termination(self, termination_check, consequences, updates=''):
         """Test if consequences of recent acts (or world update) have satisfied priority"""
@@ -1147,7 +1141,7 @@ Unknown if the Events do not support a definitive assessment, or False if Events
 Respond ONLY with the above XML
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-<END>
+</End>
 """
                                   )]
 
@@ -1164,7 +1158,7 @@ End your response with:
             "events": consequences + '\n' + updates,
             "character": self.character,
             "history": self.format_history()
-        }, prompt, temp=0.3, stops=['<END>', '</Complete>'], max_tokens=120)
+        }, prompt, temp=0.3, stops=['</End>'], max_tokens=120)
 
         satisfied = xml.find('<Level>', response)
         if satisfied != None and satisfied.lower().strip() == 'true':
@@ -1336,8 +1330,8 @@ Again, the task to translate into an Actionable is:
 
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-<END>"""
-                                        )]
+</End>
+""")]
         print(f'{self.name} act_result: {self.act_result}')
         act = None
         tries = 0
@@ -1362,7 +1356,7 @@ End your response with:
                 "reason": reason,
                 "lastAct": last_act,
                 "lastActResult": self.act_result
-            }, prompt, temp=temp, top_p=1.0, stops=['</Actionable>','<END>'], max_tokens=180)
+            }, prompt, temp=temp, top_p=1.0, stops=['</End>'], max_tokens=180)
 
             # Rest of existing while loop...
             print(response)
@@ -1487,9 +1481,9 @@ Response:
 Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the intention analysis in XML as shown above.
 End your response with:
-END
+</End>
 """)]
-        response = self.llm.ask({"text":text}, prompt, temp=0.1, stops=['END', '</Analysis>'], max_tokens=100)
+        response = self.llm.ask({"text":text}, prompt, temp=0.1, stops=['</End>'], max_tokens=100)
         act = xml.find('<Act>', response)
         if act is None or act.strip() != 'True':
             print(f'no intention in say or think')
@@ -1637,7 +1631,7 @@ Reminders:
 Respond only with the above XML
 Do not include any additional text. 
 End your response with:
-END
+</End>
 """)]
 
         mapped_state = self.map_state()
@@ -1662,7 +1656,7 @@ END
             "activity": activity,
             "last_act": self.last_acts,
             'history': self.narrative.get_summary('medium'),
-        }, prompt, temp=0.8, stops=['END', '</Answer>'], max_tokens=180)
+        }, prompt, temp=0.8, stops=['</End>'], max_tokens=180)
 
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -1759,7 +1753,7 @@ index-number of chosen action
 Respond with the above XML, instantiated with the selected action number from the Action list. 
 Do not include any introductory, explanatory, or discursive text, 
 End your response with:
-END
+</End>
 """
                               )]
 
@@ -1774,13 +1768,13 @@ END
             response = self.llm.ask({
                 'input': sense_data + self.sense_input, 
                 'history': self.narrative.get_summary('medium'),
-                "memories": memory_text,  # Use structured memory instead of old memory
+                "memories": memory_text,
                 "situation": self.context.current_state,
                 "state": mapped_state, 
-                "drives": '\n'.join(self.drives),
+                "drives": '\n'.join(drive.text for drive in self.drives),
                 "priorities": '\n'.join([str(xml.find('<Name>', task)) for task in self.priorities]),
                 "actions": '\n'.join(action_choices)
-                }, prompt, temp=0.7, stops=['END', '</Action>'], max_tokens=300)
+            }, prompt, temp=0.7, stops=['</End>'], max_tokens=300)
         # print(f'sense\n{response}\n')
         self.sense_input = ' '
         if 'END' in response:
@@ -1821,7 +1815,11 @@ END
 <Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><terse reason for bringing this up for discussion></Reason> </Action>
 """}
 
-        # do after we have all relevant updates from context and other actors
+        if self.wakeup:
+            self.wakeup = False
+            self.generate_state()
+            self.update_priorities()
+ 
         dialog_active = False
         my_active_task = self.active_task.peek()
         intention = None
@@ -1832,8 +1830,11 @@ END
 
         if intention is None and my_active_task != None and my_active_task != 'dialog' and my_active_task != 'watcher':
             full_task = self.get_task_xml(my_active_task)
-            intention = self.actualize_task(0, full_task)
-            print(f'Found active_task {my_active_task}')
+            if full_task is not None:
+                intention = self.actualize_task(0, full_task)
+                print(f'Found active_task {my_active_task}')
+            else:
+                print(f'Active_task gone! {my_active_task}')
 
         if intention is None:
             intention_choices = []
@@ -1924,3 +1925,4 @@ END
             return 'thought'
         else:
             return 'general'
+

@@ -9,19 +9,21 @@ class CognitiveProcessor:
         self.state_system = StateSystem(llm, character_description)
         self.priority_system = PrioritySystem(llm, character_description)
 
-    def process_cognitive_update(self, cognitive_state, recent_memories, current_situation, step):
+    def process_cognitive_update(self, cognitive_state, memory, current_situation, step):
         """Process cognitive updates including state and priority changes"""
         # Update state based on new memories and situation
         new_state = self.state_system.generate_state(
-            recent_memories,
-            current_situation
+            drives=cognitive_state.active_priorities,  # Use existing priorities as drives
+            situation=current_situation,
+            memory=memory
         )
         
         # Update priorities based on new state
         new_priorities = self.priority_system.update_priorities(
-            new_state,
-            recent_memories,
-            current_situation
+            drives=cognitive_state.active_priorities,
+            state=new_state,
+            memory=memory,
+            situation=current_situation
         )
         
         return CognitiveState(

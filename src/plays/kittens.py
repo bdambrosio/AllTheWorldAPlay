@@ -25,11 +25,11 @@ My name is Lemonade, others often call me Lemon""", server=server)
 # - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
 
 #Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
-lemon.drives = [
+lemon.set_drives([
     "wrestling with Meow-Meow. Hunting bugs. Exploring",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
-]
+])
 # Rows are in priority order, most important first. Have fun.
 # note this is NOT NECESSARY to specify if you don't want to change anything.
 #lemon.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
@@ -42,13 +42,12 @@ meow = agh.Agh("Meow-Meow", """I am a grey full-grown tabby cat.
 I love Lemonade, but sometimes need a break from her playfulness.
 I like to sleep, and occasionally hunt bugs and butterflys.
 My name is Meow-Meow""", server=server)
-
-meow.drives = [
+meow.set_drives([
     "keep watch over Lemonade and keep her safe.",
     "play with Lemonade and share in her adventures.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
-]
+])
 
 meow.add_to_history("Where did that Lemon go this time?")
 

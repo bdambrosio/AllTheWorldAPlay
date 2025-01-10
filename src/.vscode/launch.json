@@ -30,6 +30,19 @@
 
         },
         {
+            "name": "Python Debugger: Bellona",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "plays/bellona.py",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+        },
+        {
             "name": "Python Debugger: homeAlone",
             "type": "debugpy",
             "request": "launch",
