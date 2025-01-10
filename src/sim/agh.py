@@ -715,7 +715,7 @@ End your response with:
         for key, item in self.state.items():
             trigger = item['drive'].text
             value = item['state']
-            mapped.append(f"- '{key}: {trigger}', State: '{value}'")
+            mapped.append(f"- Drive: {trigger}; Immediate Goal: {key}; State: '{value}'")
         return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
 
 
@@ -1042,7 +1042,7 @@ End your response with:
 
     def update_priorities(self):
         """Update task priorities based on current state and drives"""
-        prompt = [UserMessage(content="""Given your character, current state assessments, and recent memories, create a prioritized set of plans.
+        prompt = [UserMessage(content="""Given your character, drives and current state assessments, and recent memories, create a prioritized set of plans.
 
 <Character>
 {{$character}}
@@ -1082,7 +1082,6 @@ End response with:
 
         # Format state for LLM
         state_text = self.map_state()
-
         response = self.llm.ask({
             'character': self.character,
             'state': state_text,

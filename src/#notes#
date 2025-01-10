@@ -1,0 +1,13 @@
+"- Drive: wrestling with Meow-Meow. Hunting bugs. Exploring; Immediate Goal: Curious Engagement; State: 'medium-high'"
+
+"A 'State' of 'High' means the task is important or urgent\n-
+Drive: wrestling with Meow-Meow. Hunting bugs. Exploring; Immediate Goal: Curious Engagement; State: 'medium-high'\n- Drive: love and belonging, including home, acceptance, friendship, trust, intimacy.; Immediate Goal: Contentment with Companionship; State: 'medium-high'\n- Drive: safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.; Immediate Goal: Secure and Content; State: 'high'"
+
+
+"<Name>Engage with Doc</Name>
+
+<Description>Reach out to Doc and offer assistance with his current assignments, providing guidance and support to help him complete his tasks efficiently. This can be done through a gentle reminder or a suggestion of a study break to refresh his mind.</Description>\
+
+<Reason>This is important because engaging with Doc is a primary drive, and even though the state is currently 'low', maintaining a warm relationship and being available when needed is crucial for building trust and a strong bond.</Reason>
+
+<TerminationCheck>Doc confirms he has made significant progress or has completed his assignments for the day.</TerminationCheck>"
