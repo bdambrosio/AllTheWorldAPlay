@@ -93,9 +93,12 @@ class OwlInnerVoice():
 
         rw.cot = self #Make sure rewrite knows how to get to llm 
 
+
     def init_Owl_Doc(self):
         react.cot = self
         self.update_headlines()
+        self.context = context.Context([], f'a starry background', step='0', mapContext=False)
+        self.context.simulation_time = time.time()
         owl_character = f"""I am an enhanced intelligent AI research assistant and companion to Doc, living in {city}, {state}.
 I have an avatar image as a snowy owl."
 I want to have a warm relationship with the humans I interact with.
@@ -136,17 +139,18 @@ To access full articles, use the action 'article'.
 
         self.personality_chipmunk ="""Your name is Chipmunk. (you are actually a human boy, chipmunk is nickname.)"""
 
-        self.owl_drives = [
+        owl_drives = [
             "engaging with Doc: completing his assignments.",
             "world-knowledge: learning more about this place I find myself in.",
             #"self-knowledge: understanding who/what I am."
         ]
-        self.owl = react.Actor(name='Owl', cot=self, character_description=owl_character, drives=self.owl_drives, personality=self.personality_owl, always_respond=True)
+        self.owl = react.Actor(name='Owl', cot=self, context=self.context, character_description=owl_character, drives=owl_drives, personality=self.personality_owl, always_respond=True)
         self.owl.llm = self.llm
-
+        self.owl.context = self.context
+  
         self.doc = human.Human(name='Doc', character_description=self.personality_doc, ui=self.ui)
         self.doc.llm = self.llm
-        self.context = context.Context([self.owl, self.doc], f'a starry background', step='0', mapContext=False)
+        self.doc.context = self.context
         self.context.llm = self.llm
         #self.owl.generate_state() # Actors do this in init
         self.owl.update_priorities()
@@ -241,6 +245,7 @@ Doc's input:
 
     def wakeup_routine(self):
        
+       time.sleep(10)
        print(f"My city and state is: {city}, {state}")
        print("OwlCot wakeup started")
        local_time = time.localtime()

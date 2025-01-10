@@ -215,12 +215,13 @@ End Example
 
 class Actor (agh.Agh):
 
-    def __init__(self, name, cot, character_description, personality=None, drives=None, always_respond=False):
+    def __init__(self, name, cot, context, character_description, personality=None, drives=None, always_respond=False):
         # Initialize Agh first
         super().__init__(name, character_description, server='local', mapAgent=False, always_respond=always_respond)
         
         # React-specific initialization
         self.cot = cot
+        self.context = context
         self.personality = personality if personality else character_description
         self.llm = cot.llm
         
@@ -236,9 +237,9 @@ class Actor (agh.Agh):
         
         # Initialize drives that will guide action selection
         if drives is not None:
-            self.drives = drives
+            self.set_drives(drives)
         else:
-            self.drives = [
+            self.set_drives = [
             "engaging with others: maintaining meaningful dialogue",
             "world-knowledge: gathering and integrating information",
             "self-knowledge: understanding and using past experiences"
@@ -589,17 +590,13 @@ Evaluation
         return response
 
     def actualize_task(self, n, task_xml):
-        task_name = xml.find('<Name>', task_xml)
-        task_rationale = xml.find('<Rationale>', task_xml)
-        if task_xml is None or task_name is None:
-            raise ValueError(f'Invalid task {n}, {task_xml}')
-        last_act = self.get_task_last_act(task_name)
-        target = xml.find('<Target>', task_xml)
-        doc_say = xml.find('<steps>', task_xml).split('\n')[2:]
-        doc_say = '\n'.join(doc_say)
-        doc_say = xml.find('<steps>', task_xml).strip()
-        response = self.task(self.other(), 'say', doc_say, deep=False, respond_immediately=False)
-        intention = f'<Intent> <Mode>Say</Mode> <Act>{response}</Act><Target>{target}</Target> <Reason>{task_rationale}</Reason> <Source>{task_name}</Source><Intent>'
+        # Call parent implementation to get the intention
+        intention = super().actualize_task(n, task_xml)
+        
+        if intention is None:
+            return None
+            
+        # Return the intention directly since parent already formats it correctly
         return intention
 
     def _handle_research_phase(self, task_text, sender):
