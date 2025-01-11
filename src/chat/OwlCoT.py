@@ -21,7 +21,7 @@ from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 import utils.pyqt as pyqt
 from utils.LLMScript import LLMScript
 import utils.llm_api as llm_api
-import chat.rewrite as rw
+import library.rewrite as rw
 import library.semanticScholar3 as s2 # 2 for the 2 's' in se...Sch...
 
 today = date.today().strftime("%b-%d-%Y")

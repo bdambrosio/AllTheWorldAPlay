@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QComboBox, QLabel, QSpacer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import webbrowser
-import chat.rewrite as rw
+import library.rewrite as rw
 #import grobid
 # used for title matching
 #from sklearn.feature_extraction.text import TfidfVectorizer

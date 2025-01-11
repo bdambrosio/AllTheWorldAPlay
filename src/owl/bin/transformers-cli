@@ -1,4 +1,4 @@
-#!/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python3
+#!/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
