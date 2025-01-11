@@ -1499,7 +1499,7 @@ End your response with:
             if candidate_source != source:
                 new_intentions.append(candidate)
         self.intentions = new_intentions
-        self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source><Intent>')
+        self.intentions.append(f'<Intent> <Mode>{mode}</Mode> <Act>{intention}</Act> <Reason>{reason}</Reason> <Source>{source}</Source></Intent>')
         if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
             self.active_task.push(source)
@@ -1805,14 +1805,14 @@ End your response with:
 
     def senses(self, sense_data='', ui_queue=None):
         print(f'\n*********senses***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
-        all_actions={"Act": """Act as follows: '{action}'\n  because: '{reason}'""",
-                     "Move": """Move in direction: '{direction}'\n because: '{reason}'""",
-                     "Answer": """ Answer the following question: '{question}'""",
-                     "Say": """Say: '{text}',\n  because: '{reason}'""",
-                     "Think": """Think: '{text}\n  because" '{reason}'""",
-                     "Discuss": """Reason step-by-step about discussion based on current situation, your state, priorities, and RecentHistory. Respond using this template to report the discussionItem and your reasoning:
-<Action> <Name>Say</Name> <Arg> ..your Priorities or Memory, or based on your observations resulting from previous Do actions.></Arg> <Reason><terse reason for bringing this up for discussion></Reason> </Action>
-"""}
+        all_actions={
+            "Act": """Act as follows: '{action}'\n  because: '{reason}'""",
+            "Move": """Move in direction: '{direction}'\n because: '{reason}'""",
+            "Answer": """ Answer the following question: '{question}'""",
+            "Say": """Say: '{text}',\n  because: '{reason}'""",
+            "Think": """Think: '{text}\n  because" '{reason}'""",
+            "Listen": """Listen attentively to others,\n  because: '{reason}'"""  # Removed Discuss, kept Listen
+        }
 
         if self.wakeup:
             self.wakeup = False

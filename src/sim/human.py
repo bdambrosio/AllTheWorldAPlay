@@ -1,21 +1,22 @@
 from datetime import datetime
 from typing import List
 from sim.memory.core import MemoryEntry, StructuredMemory
-from sim.agh import Character
+from sim.agh import Character, Stack
 
 class Human(Character):
-    def __init__(self, name, character_description, ui):
+    def __init__(self, name, character_description, ui=None):
         super().__init__(name, character_description)
         self.structured_memory = StructuredMemory()
         self.ui = ui
         self.priority_task = None
-        self.active_task = None
+        self.active_task = Stack()
 
     def hear(self, from_actor, message, source='dialog', respond=True):
         if from_actor.name != 'Watcher':
             # Don't display messages the user types!
             self.add_to_history(f"You hear {from_actor.name} say: {message}")
-            self.ui.display(f"\n{from_actor.name}: {message}\n")
+            if self.ui is not None:
+                self.ui.display(f"\n{from_actor.name}: {message}\n")
         if respond:
             response = self.generate_response(from_actor, message, source)
             if response:

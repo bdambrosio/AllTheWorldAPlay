@@ -1,4 +1,8 @@
 import os, sys, logging, glob, time
+import os, sys, glob, time
+print(os.path.dirname(__file__))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+print(sys.path)
 import pandas as pd
 import arxiv
 from arxiv import Client, Search, SortCriterion, SortOrder
@@ -20,15 +24,10 @@ import urllib.request
 import numpy as np
 import faiss
 from scipy import spatial
-from tenacity import retry, wait_random_exponential, stop_after_attempt
-import tiktoken
 from tqdm import tqdm
-from termcolor import colored
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
-from utils.DefaultResponseValidator import DefaultResponseValidator
-from utils.JSONResponseValidator import JSONResponseValidator
-from pyexts import utilityV2 as ut
+from utils import utilityV2 as ut
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtGui import QFont, QKeySequence
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QTextCodec, QRect
@@ -39,8 +38,8 @@ from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton
 from PyQt5.QtWidgets import QMainWindow, QMessageBox, QWidget, QListWidget, QListWidgetItem
 from PyQt5.QtCore import pyqtSignal
 import signal
-import OwlCoT as oiv
-from pyqt_utils import ListDialog, generate_faiss_id
+import chat.OwlCoT as oiv
+from utils.pyqt import ListDialog, generate_faiss_id
 import semanticScholar3 as s2
 import wordfreq as wf
 from wordfreq import tokenize as wf_tokenize
@@ -51,12 +50,13 @@ import jsonEditWidget as ew
 
 # startup AI resources
 
-# load embedding model and tokenizer
-embedding_tokenizer = AutoTokenizer.from_pretrained('/home/bruce/Downloads/models/Specter-2-base')
-from adapters import AutoAdapterModel
 
-embedding_model = AutoAdapterModel.from_pretrained("allenai/specter2_aug2023refresh_base")
-embedding_adapter_name = embedding_model.load_adapter("allenai/specter2_aug2023refresh", source="hf", set_active=True)
+#from adapters import AutoAdapterModel
+#embedding_model = AutoAdapterModel.from_pretrained("/home/bruce/Downloads/models/Specter-2-base")
+#embedding_adapter_name = embedding_model.load_adapter("/home/bruce/Downloads/models/Specter-2", set_active=True)
+embedding_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+embedding_model = AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1', trust_remote_code=True)
+embedding_model.eval()
 
 
 class PWUI(QWidget):
@@ -139,14 +139,6 @@ def get_template(row, config):
     if row in config:
         if 'model' in config[row]:
             model = config[row]['model']
-            if model == 'gpt3':
-                return OPENAI_MODEL3
-            if model == 'gpt4':
-                return OPENAI_MODEL4
-            if model == 'mistral-small':
-                return 'mistral-small'
-            if model == 'mistral-medium':
-                return 'mistral-medium'
             if model == 'llm':
                 return cot.template
         else:
@@ -260,7 +252,7 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
     messages = [SystemMessage(content=prompt),
                 AssistantMessage(content='')
                 ]
-    queries = cot.llm.ask({"outline":json.dumps(outline, indent=2), "target_section":json.dumps(section_outline, indent=2)}, messages, stop_on_json=True, template=template, max_tokens=150, validator=JSONResponseValidator())
+    queries = cot.llm.ask({"outline":json.dumps(outline, indent=2), "target_section":json.dumps(section_outline, indent=2)}, messages, stop_on_json=True, template=template, max_tokens=150)
     if type(queries) is dict:
         print(f'\nquery forsection:\n{section_outline}\nqueries:\n{json.dumps(queries, indent=2)}')
     else:
@@ -288,7 +280,7 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
     messages = [SystemMessage(content=prompt),
                 AssistantMessage(content='')
                 ]
-    queries = cot.llm.ask({"query":query, "needs":information_requirements}, messages, stop_on_json=True, max_tokens=300, validator=JSONResponseValidator())
+    queries = cot.llm.ask({"query":query, "needs":information_requirements}, messages, stop_on_json=True, max_tokens=300)
     if type(queries) is dict:
         print(f'\nquery: {query}\ns2 queries:\n{json.dumps(queries, indent=2)}')
     else:

@@ -1,5 +1,8 @@
 import os, sys, glob, time
+print(os.path.dirname(__file__))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+print(sys.path)
+sys.stdout.flush()
 import argparse
 import requests
 import urllib.request
@@ -28,14 +31,14 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 import webbrowser
-import chat.rewrite as rw
+import library.rewrite as rw
 import bibtexparser
 import library.grobid as grobid
 
 # used for title matching
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
+arxiv_id=os.getenv('ARXIV_ID')
 print(f'loading S2')
 ui = None # will be set by UI if available
 cot = None  # will be set by importer
@@ -760,7 +763,7 @@ def get_articles(query, next_offset=0, library_file=papers_library_filepath, top
     result_list = []
     #library_df = pd.read_parquet(library_file).reset_index()
     if confirm:
-        query = pyqt_utils.confirmation_popup("Search SemanticScholar using this query?", query )
+        query = pyqt.confirmation_popup("Search SemanticScholar using this query?", query )
     if not query:
         #print(f'confirmation: No!')
         return [],0,0
@@ -958,7 +961,7 @@ def index_paper(paper_dict):
         dups = paper_library_df[paper_library_df['title'] == paper_dict['title']]
         if len(dups) > 0 :
             print(f' already indexed {title}')
-            return dup.iloc[0]['faiss_id']
+            return dups.iloc[0]['faiss_id']
 
     # call grobid server to parse pdf
     try:
@@ -1111,7 +1114,7 @@ Respond using this JSON template. Return only JSON without any Markdown or code 
 """),
               AssistantMessage(content='Response:')
               ]
-    response = cot.llm.ask({'text':text, 'query':query, 'background':background}, prompt, max_tokens=100, temp=0.1, stop_on_json=True, validator=JSONResponseValidator())
+    response = cot.llm.ask({'text':text, 'query':query, 'background':background}, prompt, max_tokens=100, temp=0.1, stop_on_json=True)
     #print(f"relevant {response['relevant']}\n")
     if type(response) == dict:
         if 'relevant' in response and 'yes' in str(response['relevant']).lower():
@@ -1444,7 +1447,7 @@ class PaperSelect(QWidget):
         resources['port'] = cot.port
         with open('/home/bruce/.local/share/owl/discuss_resources.pkl', 'wb') as f:
             pickle.dump(resources, f)
-        rc = subprocess.run(['python3', 'paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
+        rc = subprocess.run(['python3', 'library/paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
         
     def on_show_clicked(self):
         """ Handles the show button click event. """
@@ -1583,7 +1586,7 @@ def browse(query=None, app=None, template=None):
     ex.show()
 
 if __name__ == '__main__':
-    import OwlCoT as cot
+    import chat.OwlCoT as cot
     args = parse_arguments()
     template = None
     if hasattr(args, 'template') and args.template is not None:

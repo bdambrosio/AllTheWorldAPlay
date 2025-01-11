@@ -2,7 +2,7 @@ import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.Messages import SystemMessage, UserMessage
 import library.semanticScholar3 as s2
-import chat.rewrite as rw
+import library.rewrite as rw
 import numpy as np
 #from umap.umap_ import UMAP
 import matplotlib.pyplot as plt
