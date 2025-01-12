@@ -147,9 +147,16 @@ import os;
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 class Interpreter():    
-    def __init__(self, ui=None, llm=None):
+    def __init__(self, llm=None, reload_memory=False):
+        """Initialize interpreter with option to reload or start clean
+        Args:
+            owlCoT: OwlCoT instance
+            reload_memory: If True, reload persistent memory, else start clean
+        """
         self.wm = WorkingMemory('interpreter')
-        self.ui = ui
+        if reload_memory:   
+            self.wm.load('interpreter')
+        self.ui = None
         if llm is not None:
             self.llm = llm
         else:
@@ -239,7 +246,7 @@ Your conversation style is warm, gentle, humble, and engaging."""
             return self.do_wiki(dict_item)
         else:
             self.display_msg(f"action not yet implemented {item['action']}")
-            raise ValueError(f"action not yet implemented {item['action']}")
+            #raise ValueError(f"action not yet implemented {item['action']}")
         return
    
 
@@ -390,7 +397,9 @@ Respond only with the chosen item. Include the entire item in your response.""")
             raise InvalidAction(f'argument for first must be list {arguments}')       
         list = self.resolve_arg(arguments)
         prompt = [SystemMessage(content="""The following is a list. Please select and respond with only the first entry. 
-Include the entire first entry in your response."""),
+Include the entire first entry in your response.
+End your response with:
+</End>"""),
                 UserMessage(content=f"""List:
 {list}
 
@@ -409,11 +418,11 @@ End your response with:
         #print(f'gpt {action}')
         action, arguments, result = self.parse_as_action(action)
         if type(arguments) is not str:
-            raise InvalidAction(f'argument for llm must be a literal or name: {str(arguments)}')       
+            raise InvalidAction(f'argument for library must be a literal or name: {str(arguments)}')       
         prompt_text = self.resolve_arg(arguments)
-        substituted_prompt_text = self.substitute(prompt_text)
+        substituted_prompt_text = self.substitute(prompt_text+'\nEnd your response with: </End>')
         prompt = [SystemMessage(content=prompt_text)]
-        response = self.llm.ask("", prompt)
+        response = self.llm.ask("", prompt, stops=['</End>'])
         #self.display_response(response)
         if result is not None:
            self.wm.assign(result, response)
@@ -425,9 +434,9 @@ End your response with:
         if type(arguments) is not str:
             raise InvalidAction(f'argument for llm must be a literal or name: {str(arguments)}')       
         prompt_text = self.resolve_arg(arguments)
-        substituted_prompt_text = self.substitute(prompt_text)
-        prompt = [SystemMessage(content=prompt_text)]
-        response = self.llm.ask("", prompt)
+        substituted_prompt_text = self.substitute(prompt_text+'\nBe Concise. End your response with: </End>')
+        prompt = [SystemMessage(content=substituted_prompt_text)]
+        response = self.llm.ask("", prompt, stops=['</End>'])
         #self.display_response(response)
         if result is not None:
            self.wm.assign(result, response)
@@ -458,6 +467,7 @@ End your response with:
         if type(arguments) is not str:
             raise InvalidAction(f'argument for tell must be a literal or name: {str(arguments)}')       
         value = self.resolve_arg(arguments)
+        value = self.substitute(value)
         self.display_response(f'\nTell: {value}\n')
 
     def test_form(self, form):
@@ -590,3 +600,12 @@ End your response with:
                     # now modify IP- push then on stack.
          
           
+
+    def persist_memory(self):
+        """Force memory to persist to storage"""
+        self.wm.save('interpreter')  # Assuming WorkingMemory has a save method
+
+    def close(self):
+        """Clean shutdown of interpreter"""
+        self.wm.save('interpreter')
+        # Any other cleanup needed

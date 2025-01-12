@@ -48,13 +48,13 @@ class WorkingMemory:
         #print(f'assign {name}, {type}, {str(item)[:32]}')
         if type not in [str, int, dict, list, 'action', 'plan']:
             print (f'unknown type for wm item {type}')
-            raise TypeException(f'bad wm type {type}')
+            raise BaseException(f'bad wm type {type}')
         elif ((type(item) in [str, int] and type(item) != type)
               or (type(item) is dict and type not in [dict, 'plan', 'action'])
               or (type in [dict, 'action'] and type(item) is not dict)
               or (type is list and type(item) is not list)):
             print (f'type mismatch, declared: {type}, actual: {type(item)}')
-            raise TypeException(f'bad wm type {type}')
+            raise BaseException(f'bad wm type {type}')
 
         # add entry to Working memory
         #print(f'{self.filename} creating new wm item with name {name}')
