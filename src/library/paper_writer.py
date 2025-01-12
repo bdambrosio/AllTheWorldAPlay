@@ -46,8 +46,8 @@ from wordfreq import tokenize as wf_tokenize
 from transformers import AutoTokenizer, AutoModel
 import webbrowser
 import rewrite as rw
-#import jsonEditWidget as ew
-
+import utils.jsonEditor as ew
+from planner import Planner
 # startup AI resources
 
 
@@ -553,7 +553,7 @@ End your response with:
                 paper = s2.paper_from_section_id(section_ids[0])
                 if paper is not None:
                     ppr_ids.add(paper['faiss_id'])
-                texts.append(section_from_id['section_id'])
+                texts.append(s2.section_from_id['section_id'])
                 # tbd - what to do if search returns more than will fit in context?
                 # for now assume with report section dscp context will hold most important
                 # although note we aren't enumerating in order by search rating.
@@ -696,7 +696,7 @@ class DisplayApp(QtWidgets.QWidget):
         self.input_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
         self.input_area.repaint()
 
-    def display_msg(self, r):
+    def display_msg(self, r, clear=False):
         if clear:
             self.display_area.clear()
         self.display_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text

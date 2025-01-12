@@ -86,7 +86,6 @@ class OwlInnerVoice():
         self.topic_names = {"Miscellaneous": 'Any topic that doesnt fit neatly into the categories above',
                        "News & Events": 'Current affairs, updates on technology, and global happenings.',
                        "Philosophical Exploration": 'Dialogues focused on wisdom, spirituality, and the nature of existence.',
-
                        "Computing": 'Topics involving AI, programming, coding, and troubleshooting issues.',
                        "BioMed": 'BioMedical topics, including -onomics.',
                        }
