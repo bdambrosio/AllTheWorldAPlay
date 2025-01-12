@@ -1,3 +1,4 @@
+from operator import delitem
 import os, json, math, time, requests, sys, re
 
 from utils import llm_api
@@ -334,7 +335,6 @@ Respond only with the chosen item. Include the entire item in your response.""")
 
    
     def do_difference(self, action):
-        #convert to llm.ask
         action, arguments, result = self.parse_as_action(action)
         if type(arguments) is list: # 
             arg0 = arguments[0]
@@ -343,13 +343,15 @@ Respond only with the chosen item. Include the entire item in your response.""")
             self.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
         if type(arg0) is not str or type(arg1) is not str:
             raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')       
-        criteron = self.resolve_arg(arg0)
-        input_list = self.resolve_arg(arg1)
+        content = self.resolve_arg(arg0)
+        subset = self.resolve_arg(arg1)
         # untested
         prompt = [
-            SystemMessage(content="""Following is a Context and a List. Select one Item from List that best aligns with Context. 
-Use the following JSON format for your response:\n{"choice":Item}. Include the entire Item in your response. End your response with:</End>"""),
-            UserMessage(content=f'Context:\n{context}\nList:\n{choices}')
+            SystemMessage(content="""Following is a Content and a second Text. 
+    Respond with the information in the Content that is not in the second Text. Do not provide any introductory, discursive, or explanatory text. 
+    Respond ONLY with the information in the Content that is not in the second Text. End your response with:
+    </End>"""),
+            UserMessage(content=f'Content:\n{content}\nSubset:\n{subset}')
         ]
        
         options = LLMRequestOptions(completion_type='chat', model=self.template, temperature = 0.1, max_tokens=400, stops=['</End>'])
@@ -361,34 +363,26 @@ Use the following JSON format for your response:\n{"choice":Item}. Include the e
         else: return 'unknown'
 
     def do_extract(self, action):
+        """Extract information from text based on a query"""
         action, arguments, result = self.parse_as_action(action)
-        if type(arguments) is list: # 
-            arg0 = arguments[0]
-            arg1 = arguments[1]
-        else:
-            self.cot.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
-        if type(arg0) is not str or type(arg1) is not str:
-            raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')       
-        criterion = self.resolve_arg(arg0)
-        text = self.resolve_arg(arg1)
-        #print(f'extract from\n{text}\n')
+        if not isinstance(arguments, tuple) or len(arguments) != 2:
+            raise InvalidAction(f'extract requires (query, text) arguments: {str(arguments)}')
+        if result is None:
+            raise InvalidAction(f'extract requires a result variable: {str(arguments)}')
+        query = self.resolve_arg(arguments[0])
+        text = self.resolve_arg(arguments[1])
+        
+        # Use LLM to extract the information
         prompt = [
-            UserMessage(content=f"""Following is a topic and a text. Extract information relevant to topic from the text. 
-Be aware that the text may be partly or completely irrelevant.
-Topic:\n{criterion}\nText:\n{text}
-
-End your response with:
-</End>""")
+            SystemMessage(content="Extract the specific information requested from the given text. Be concise. End your response with </End>"),
+            UserMessage(content=f"Query: {query}\nText: {text}\nExtracted information:")
         ]
-        response = self.llm.ask('', prompt, template = self.template, temp=.1, max_tokens=400, stops=['</End>'])
-        if response is not None and result is not None:
-            self.create_awm(response, name=result, confirm=False)
-            self.display_msg(f'{action}:\n{response}')
-            return 
-        elif result is not None: 
-            self.create_awm('', name=result, confirm=False)
-            self.display_msg(f'{action}:\nNo Text Extracted')
-            return 'extract lookup and summary failure'
+        response = self.llm.ask('', prompt, temp=.1, max_tokens=400, stops=['</End>'])
+        if response is None:
+            raise InvalidAction(f'extract returned None')
+        self.wm.assign(result, response)
+        self.display_msg(f'{action}:\n{response}')
+        return response
         
     def do_first(self, action):
         action, arguments, result = self.parse_as_action(action)
@@ -573,12 +567,13 @@ End your response with:
             counter, actions = IP.pop()
             action = actions[counter]
             # default is execute next instruction, push next inst onto IP stack
-            if counter < len(actions)-2: 
-                counter += 1
-                IP.append((counter, actions))
             if not self.is_controlFlow(action):
-               #print(f'executing {action}')
-               self.do_item(action)
+                #print(f'executing {action}')
+                self.do_item(action)
+                if counter < len(actions)-1:
+                    counter += 1
+                    # push next instruction onto IP stack
+                    IP.insert(0,(counter, actions))
             else:
                 # only if, rest tbd
                 action, arguments, result = self.parse_as_action(action)
@@ -590,8 +585,8 @@ End your response with:
                     raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')
                 tr = self.test_form(test)
                 if tr:
-                    do_item(body)
-                    self.wm.assign(result, test_result)
+                    delitem(body)
+                    self.wm.assign(result, tr)
                     # now modify IP- push then on stack.
          
           
