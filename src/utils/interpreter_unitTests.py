@@ -7,8 +7,8 @@ from chat.OwlCoT import OwlInnerVoice
 
 class TestInterpreter(unittest.TestCase):
     def setUp(self):
-        self.cot = OwlInnerVoice()
-        self.interpreter = Interpreter(self.cot)
+        #self.cot = OwlInnerVoice()
+        self.interpreter = Interpreter()
 
     def test_basic_assign(self):
         """Test basic variable assignment"""
@@ -69,12 +69,18 @@ class TestInterpreter(unittest.TestCase):
     def test_extract(self):
         """Test content extraction"""
         steps = [
-            {"label": "assign1", "action": "assign", 
+            {"label": "assign1", 
+             "action": "assign", 
              "arguments": "The sky is blue and grass is green", 
              "result": "$text"},
-            {"label": "extract1", "action": "extract", 
+            {"label": "extract1", 
+             "action": "extract", 
              "arguments": ("color of sky", "$text"), 
-             "result": "$sky_color"}
+             "result": "$sky_color"},
+            {"label": "tell1", 
+             "action": "tell", 
+             "arguments": ("$sky_color"), 
+             "result": "$text"}
         ]
         self.interpreter.interpret(steps)
         self.assertTrue(self.interpreter.wm.has("$sky_color"))
