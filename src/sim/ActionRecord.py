@@ -10,6 +10,7 @@ class Mode(Enum):
     DO = "Do" 
     MOVE = "Move"
     LOOK = "Look"
+    LISTEN = "Listen"
 
 @dataclass
 class StateSnapshot:

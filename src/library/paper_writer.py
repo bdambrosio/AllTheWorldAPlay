@@ -46,7 +46,7 @@ from wordfreq import tokenize as wf_tokenize
 from transformers import AutoTokenizer, AutoModel
 import webbrowser
 import rewrite as rw
-import jsonEditWidget as ew
+#import jsonEditWidget as ew
 
 # startup AI resources
 
@@ -763,7 +763,7 @@ End your response with:
     display.display_msg(paper_ids)
     return report
     
-from Planner import Planner
+f#rom Planner import Planner
 
 if __name__ == '__main__':
     def parse_arguments():

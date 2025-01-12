@@ -1,3 +1,5 @@
+import os, sys, glob, time
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 import openai
 import requests
 import re
@@ -22,12 +24,9 @@ import traceback
 import json
 import os
 from typing import Any, Dict, List, Tuple
-import OwlCot as owlCot
+#import chat.OwlCot as owlCot
 from utils.Messages import LLMMessage, UserMessage, AssistantMessage, asdicts
-from utils.DefaultResponseValidator import DefaultResponseValidator
-from utils.JSONResponseValidator import JSONResponseValidator
-from utils.TOMLResponseValidator import TOMLResponseValidator
-import pyexts.conversation as cv 
+#import utils.pyexts.conversation as cv 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 google_key = os.getenv("GOOGLE_KEY")
 google_cx = os.getenv("GOOGLE_CX")
