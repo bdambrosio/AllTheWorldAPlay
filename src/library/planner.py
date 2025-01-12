@@ -1,28 +1,20 @@
 import os, json, math, time, requests, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import traceback
 import requests
-import nyt
-import ipinfo
 import random
-import socket
 import time
 import numpy as np
 import faiss
-import pickle
-import hashlib
-#import readline
-import nltk
 from datetime import datetime, date, timedelta
-import openai
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils import utilityV2 as ut
-from library.openBook import Openbook as op
+from utils.openBook import OpenBook as op
 from utils.OpenAIClient import OpenAIClient
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtGui import QFont, QKeySequence
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QTextCodec
-import concurrent.futures
 from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QComboBox, QLabel, QSpacerItem, QApplication
 from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QDialog
 from PyQt5.QtWidgets import QMainWindow, QMessageBox, QWidget, QListWidget, QListWidgetItem
@@ -31,7 +23,7 @@ import signal
 from sentence_transformers import SentenceTransformer
 from scipy import spatial
 from chat.OwlCoT import ListDialog, LLM, GPT4, TextEditDialog, OPENAI_MODEL3, OPENAI_MODEL4
-from interpreter import Interpreter, action_primitive_names, action_primitive_descriptions
+from utils.interpreter import Interpreter, action_primitive_names, action_primitive_descriptions
 
 import os;
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
@@ -303,7 +295,7 @@ Your conversation style is warm, gentle, humble, and engaging. """
 Respond only with the above JSON, without any commentary or explanatory text
 """))
          if step != 'observations':
-            user_prompt = self.llm.ask('', messages, template=model, temp = 0.05, max_tokens=100, stop_on_json=True, validator=JSONResponseValidator())
+            user_prompt = self.llm.ask('', messages, template=model, temp = 0.05, max_tokens=100, stop_on_json=True, stops=['</End>'])
             if user_prompt is not None and type(user_prompt) is dict and 'question' in user_prompt:
                user_prompt = user_prompt['question']
             print(f"\nAI : {step}, {user_prompt}")
@@ -414,7 +406,7 @@ Reason step by step to analyze and improve the above outline with respect to the
             print(f'adding revision prompt')
             messages.append(UserMessage(content=revision_prompt))
          #print(f'******* task state prompt:\n {gpt_message}')
-         prior_outline = self.llm.ask({'outline':prior_outline, 'critique':user_critique}, messages, template=outline_model, max_tokens=500, temp=0.1, validator=JSONResponseValidator())
+         prior_outline = self.llm.ask({'outline':prior_outline, 'critique':user_critique}, messages, template=outline_model, max_tokens=500, temp=0.1, stops=['</End>'])
          first_time = False
 
       return plan
@@ -475,99 +467,3 @@ The plan must be a JSON list of action instantiations, using this JSON format:
        plan['steps'] = steps
        return plan
     
-import OwlCoT
-if __name__ == '__main__':
-    class DisplayApp(QtWidgets.QWidget):
-        def __init__(self):
-            super().__init__()
-            #parent.__init__()
-            self.windowCloseEvent = self.closeEvent
-            self.setAutoFillBackground(True)
-            palette = self.palette()
-            palette.setColor(self.backgroundRole(), QtGui.QColor("#202020"))  # Use any hex color code
-            self.setPalette(palette)
-            self.codec = QTextCodec.codecForName("UTF-8")
-            self.widgetFont = QFont(); self.widgetFont.setPointSize(14)
-
-            self.cot = OwlCoT.OwlInnerVoice(self)
-            self.planner = Planner(self, self.cot)
-
-
-            # Main Layout
-            main_layout = QHBoxLayout()
-            # Text Area
-            text_layout = QVBoxLayout()
-            main_layout.addLayout(text_layout)
-            
-            class MyTextEdit(QTextEdit):
-               def __init__(self, app):
-                    super().__init__()
-                    self.app = app
-                    self.textChanged.connect(self.on_text_changed)
-                
-               def on_text_changed(self):
-                  #legacy from Owl, but who knows
-                  pass
-            
-               def keyPressEvent(self, event):
-                  #legacy from Owl, but who knows
-                  if event.matches(QKeySequence.Paste):
-                     clipboard = QApplication.clipboard()
-                     self.insertPlainText(clipboard.text())
-                  else:
-                     super().keyPressEvent(event)
-            
-            self.display_area = MyTextEdit(self)
-            self.display_area.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-      
-            self.mainFont = QFont("Noto Color Emoji", 14)
-            self.display_area.setFont(self.widgetFont)
-            self.display_area.setStyleSheet("QTextEdit { background-color: #101820; color: #FAEBD7; }")
-            text_layout.addWidget(self.display_area)
-            # Control Panel
-            control_layout = QVBoxLayout()
-            
-            # Buttons and Comboboxes
-            #self.discuss_button = QPushButton("discuss")
-            #self.discuss_button.setFont(self.widgetFont)
-            #self.discuss_button.setStyleSheet("QPushButton { background-color: #101820; color: #FAEBD7; }")
-            #self.discuss_button.clicked.connect(self.discuss)
-            #control_layout.addWidget(self.discuss_button)
-            
-            main_layout.addLayout(control_layout)
-            self.setLayout(main_layout)
-            self.show()
-            self.planner.generate()
-            
-        def display_msg(self, r):
-            # just use display_response for now
-            self.display_response('\n**'+r+'**\n')
-            
-        def display_response(self, r):
-            self.display_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-            r = str(r)
-            # presumably helps handle extended chars
-            encoded = self.codec.fromUnicode(r)
-            decoded = encoded.data().decode('utf-8')+'\n'
-            self.display_area.insertPlainText(decoded)  # Insert the text at the cursor position
-            self.display_area.moveCursor(QtGui.QTextCursor.End)  # Move the cursor to the end of the text
-            self.display_area.repaint()
-            
-    ui = QApplication(sys.argv)
-    window = DisplayApp()
-    window.planner = pl
-    ui.exec()
-
-    steps = """[
-    {"action": "request", "arguments": ["https://arxiv.org/abs/2311.05584"], "result": "$paper_content"},
-    {"action": "gpt4", "arguments": ["$paper_content", "extract key points"], "result": "$paper_key_points"},
-    {"action": "tell", "arguments": ["$paper_key_points"]},
-    {"action": "question", "arguments": ["Do you want to know more about Q-Learning or other methods?"], "result": "$user_choice"},
-    {"action": "web", "arguments": ["$user_choice in large language models"], "result": "$chosen_method_info"},
-    {"action": "tell", "arguments": ["$chosen_method_info"]},
-    {"action": "question", "arguments": ["Do you have any other questions?"], "result": "$user_question"},
-    {"action": "gpt4", "arguments": ["$user_question", "answer"], "result": "$user_question_answer"},
-    {"action": "tell", "arguments": ["$user_question_answer"]},
-    {"action": "none", "arguments": ["None"], "result": "$Trash"}
-    ]"""
-    json.loads(steps)

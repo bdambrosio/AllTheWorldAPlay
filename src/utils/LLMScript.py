@@ -6,7 +6,7 @@ import library.rewrite as rw
 import numpy as np
 #from umap.umap_ import UMAP
 import matplotlib.pyplot as plt
-from utils.Interpreter import Interpreter
+from utils.interpreter import Interpreter
 
 
 class LLMScript:
