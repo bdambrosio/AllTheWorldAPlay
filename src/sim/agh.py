@@ -341,8 +341,9 @@ streams is the water resources visible
         return term == candidate
 
     # Initialization and persistence
-    def initialize(self):
+    def initialize(self, ui=None):
         """Called from worldsim once everything is set up"""
+        self.ui = ui
         if hasattr(self, 'mapAgent'):
             self.look()
         """Initialize agent state"""
@@ -950,11 +951,12 @@ End your response with:
             return
 
         # Determine visibility of action
-        self_verb = 'hear' if act_name == 'Say' else 'see'
+        self_verb = 'hear' if act_name == 'Say' or act_name == 'Listen' else 'see'
         visible_arg = 'Thinking ...' if act_name == 'Think' else act_arg
+        if act_name == 'Listen': visible_arg = 'Listening ...'
 
         # Update main display
-        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think') else ''
+        intro = f'{self.name}:' if (act_name == 'Say' or act_name == 'Think' or act_name == 'Listen') else f'{self.name}'
         visible_arg = f"'{visible_arg}'" if act_name == 'Say' else visible_arg
 
         if act_name != 'Do':

@@ -80,7 +80,7 @@ Victoria.set_drives([
 ])
 
 # Initialize the context
-Cafe = context.Context([Sage, Luna, Emma, Daria, Victoria, Player],
+Cafe = context.Context([Player, Emma, Sage, Luna, Daria, Victoria],
 """A cozy café after school hours. The atmosphere is warm and inviting, with the gentle hum of 
 coffee machines and quiet conversations creating a comfortable backdrop. The group has claimed 
 their usual corner with comfortable chairs arranged in a circle. Afternoon sunlight filters 
@@ -88,7 +88,7 @@ through large windows, and the smell of coffee and baked goods fills the air.
 
 Luna is sketching in her notebook while listening. Emma is focused intently on whoever's speaking.
 Daria has an arched eyebrow and slight smirk, while Victoria is checking her planner between 
-comments. Sage is relaxed but attentive, occasionally sipping their tea.""")
+comments. Sage is relaxed but attentive, occasionally sipping her tea.""")
 
 worldsim.main(Cafe, server='local')
 

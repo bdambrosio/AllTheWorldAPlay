@@ -361,7 +361,7 @@ class MainWindow(QMainWindow):
            actor.llm = self.llm
         for actor in self.actors:
            print(f'calling {actor.name} initialize')
-           actor.initialize()
+           actor.initialize(self)
         for actor in self.actors:
             print(f'calling {actor.name} greet')
             #actor.greet()

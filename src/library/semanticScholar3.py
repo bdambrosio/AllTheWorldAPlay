@@ -84,8 +84,8 @@ papers_by_section_id = {"dummy":None}
 def get_semantic_scholar_meta(s2_id):
     #url = f"https://api.semanticscholar.org/v1/paper/doi:{doi}"
     url = f"https://api.semanticscholar.org/v1/paper/{s2_id}?fields=url,title,year,abstract,authors,citationStyles,citationCount,influentialCitationCount,isOpenAccess,openAccessPdf,publisher,citationStyles"
-    headers = {'x-api-key':ssKey}
-    response = requests.get(url, headers=headers)
+    #headers =  {'x-api-key':ssKey}
+    response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
         return data
@@ -133,49 +133,52 @@ def validate_paper(paper_dict):
 
     return True
         
-# s2FieldsOfStudy
-s2FieldsOfStudy=["Computer Science","Medicine","Chemistry","Biology","Materials Science","Physics",
-                 "Geology","Psychology","Art","History","Geography","Sociology","Business","Political Science",
-                 "Economics","Philosophy","Mathematics","Engineering","Environmental Science","Agricultural and Food Sciences",
-                 "Education","Law","Linguistics"]
-if not os.path.exists(papers_library_filepath):
-    # Generate a blank dataframe where we can store downloaded files
-    paper_library_df = pd.DataFrame(columns=paper_library_columns)
-    paper_library_df.to_parquet(papers_library_filepath)
-    print('paper_library_df.to_parquet initialization complete')
-else:
-    paper_library_df = pd.read_parquet(papers_library_filepath)
-    paper_library_df_fixup()
-    print('loaded paper_library_df')
+def load_indecies():
+    global paper_library_df, paper_indexIDMap, section_indexIDMap, section_library_df  
+    s2FieldsOfStudy=["Computer Science","Medicine","Chemistry","Biology","Materials Science","Physics",
+                    "Geology","Psychology","Art","History","Geography","Sociology","Business","Political Science",
+                    "Economics","Philosophy","Mathematics","Engineering","Environmental Science","Agricultural and Food Sciences",
+                    "Education","Law","Linguistics"]
+    if not os.path.exists(papers_library_filepath):
+        # Generate a blank dataframe where we can store downloaded files
+        paper_library_df = pd.DataFrame(columns=paper_library_columns)
+        paper_library_df.to_parquet(papers_library_filepath)
+        print('paper_library_df.to_parquet initialization complete')
+    else:
+        paper_library_df = pd.read_parquet(papers_library_filepath)
+        paper_library_df_fixup()
+        print('loaded paper_library_df')
     
-if not os.path.exists(paper_index_filepath):
-    paper_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
-    faiss.write_index(paper_indexIDMap, paper_index_filepath)
-    print(f"created '{paper_index_filepath}'")
-else:
-    paper_indexIDMap = faiss.read_index(paper_index_filepath)
-    print(f"loaded '{paper_index_filepath}'")
+    if not os.path.exists(paper_index_filepath):
+        paper_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
+        faiss.write_index(paper_indexIDMap, paper_index_filepath)
+        print(f"created '{paper_index_filepath}'")
+    else:
+        paper_indexIDMap = faiss.read_index(paper_index_filepath)
+        print(f"loaded '{paper_index_filepath}'")
     
-if not os.path.exists(section_index_filepath):
-    section_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
-    faiss.write_index(section_indexIDMap, section_index_filepath)
-    print(f"created '{section_index_filepath}'")
-else:
-    section_indexIDMap = faiss.read_index(section_index_filepath)
-    print(f"loaded '{section_index_filepath}'")
+    if not os.path.exists(section_index_filepath):
+        section_indexIDMap = faiss.IndexIDMap(faiss.IndexFlatL2(768))
+        faiss.write_index(section_indexIDMap, section_index_filepath)
+        print(f"created '{section_index_filepath}'")
+    else:
+        section_indexIDMap = faiss.read_index(section_index_filepath)
+        print(f"loaded '{section_index_filepath}'")
     
-if not os.path.exists(section_library_filepath):
-    # Generate a blank dataframe where we can store downloaded files
-    section_library_df =\
-        pd.DataFrame(columns=["faiss_id", "paper_id", "ners", "ner_faiss_id", "synopsis"])
-    section_library_df.to_parquet(section_library_filepath)
-    print(f"created '{section_library_filepath}'")
-else:
-    section_library_df = pd.read_parquet(section_library_filepath)
-    print(f"loaded '{section_library_filepath}'\n  keys: {section_library_df.keys()}")
+    if not os.path.exists(section_library_filepath):
+        # Generate a blank dataframe where we can store downloaded files
+        section_library_df =\
+            pd.DataFrame(columns=["faiss_id", "paper_id", "ners", "ner_faiss_id", "synopsis"])
+        section_library_df.to_parquet(section_library_filepath)
+        print(f"created '{section_library_filepath}'")
+    else:
+        section_library_df = pd.read_parquet(section_library_filepath)
+        print(f"loaded '{section_library_filepath}'\n  keys: {section_library_df.keys()}")
 
-print(f'S2 all libraries and faiss loaded')
+    print(f'S2 all libraries and faiss loaded')
 
+
+load_indecies()
 def save_synopsis_data():
     paper_library_df.to_parquet(papers_library_filepath)
     faiss.write_index(paper_indexIDMap, paper_index_filepath)
@@ -689,9 +692,11 @@ def get_paper_sections(paper_id):
 def get_title(title):
     title = title.strip()
     try:
-        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={title}&fields=url,title,year,abstract,authors,citationStyles,citationCount,influentialCitationCount,isOpenAccess,openAccessPdf"
-        headers = {'x-api-key':ssKey, }
-        response = requests.get(url, headers = headers)
+        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={title}&fields=url,title,year,abstract,authors,citationStyles,citationCount,influentialCitationCount,openAccessPdf"
+        #headers = {'x-api-key':ssKey, }
+        #response = requests.get(url, headers = headers)
+        response = requests.get(url)
+
         if response.status_code != 200:
             arxiv_meta = get_arxiv_preprint_meta(title)
             if arxiv_meta is not None:
@@ -750,8 +755,6 @@ def verify_paper_library():
                 save_paper_df()
     save_paper_df()
 
-
-
 #get_title("Can Large Language Models Understand Context")
 
 def get_articles(query, next_offset=0, library_file=papers_library_filepath, top_k=10, confirm=True):
@@ -773,10 +776,11 @@ def get_articles(query, next_offset=0, library_file=papers_library_filepath, top
     try:
         # Set up your search query
         #query='Direct Preference Optimization for large language model fine tuning'
-        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query}&offset={next_offset}&fields=url,title,year,abstract,authors,citationStyles,citationCount,influentialCitationCount,isOpenAccess,openAccessPdf,s2FieldsOfStudy,tldr"
+        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query}&offset={next_offset}&fields=url,title,year,abstract,authors,citationStyles,citationCount,influentialCitationCount,openAccessPdf,publicationVenue,s2FieldsOfStudy,tldr"
         headers = {'x-api-key':ssKey, }
         
-        response = requests.get(url, headers = headers)
+        #response = requests.get(url, headers = headers)
+        response = requests.get(url)   
         if response.status_code != 200:
             print(f'SemanticsSearch fail code {response.status_code}')
             return [],0,0
@@ -800,11 +804,12 @@ def get_articles(query, next_offset=0, library_file=papers_library_filepath, top
                     print(f'*** {title} already indexed')
                     continue
             url = paper['url']
-            isOpenAccess = paper['isOpenAccess']
+            openAccessPdf = paper['openAccessPdf']
             influentialCitationCount = int(paper['influentialCitationCount'])
-            if isOpenAccess and 'openAccessPdf' in paper and type(paper['openAccessPdf']) is dict :
-                openAccessPdf = paper['openAccessPdf']['url']
-            else: openAccessPdf = None
+            # Check if open access PDF is available
+            if openAccessPdf is not None and openAccessPdf.get('url'):
+                paper_url = openAccessPdf['url']
+            else: paper_url = None
             year=0
             try:
                 year = int(paper['year'])
@@ -840,12 +845,9 @@ def get_articles(query, next_offset=0, library_file=papers_library_filepath, top
             result_dict["citationStyles"]= str(citationStyles)
             result_dict["inflCitations"] = int(influentialCitationCount)
             result_dict["evaluation"] = ''
-            result_dict["pdf_url"] = openAccessPdf
-            #print(f' url: {openAccessPdf}')
+            result_dict["pdf_url"] = paper_url
+            print(f' url: {paper_url}')
             pdf_filepath = None
-            if openAccessPdf is not None:
-                pdf_filepath= download_pdf(openAccessPdf, title)
-            result_dict["pdf_filepath"]= pdf_filepath
             
             #print(f"indexing new article: {title}\n   pdf file: {type(result_dict['pdf_filepath'])}")
             result_dict['synopsis'] = ""
@@ -856,12 +858,10 @@ def get_articles(query, next_offset=0, library_file=papers_library_filepath, top
             paper_index = len(paper_library_df)
             paper_library_df.loc[paper_index] = result_dict
             # section and index paper
-            if not isOpenAccess:
-                if (not influentialCitationCount > 0 and not confirm and
-                    ((citationCount < 20 and year < 2020) or (citationCount <2 and year < 2021))):
-                    continue
-                if not confirm or not pyqt.confirmation_popup("try retrieving preprint?", query ):
-                    continue
+            if openAccessPdf is not None:
+                result_dict['pdf_url'] = openAccessPdf['url']
+                result_dict['pdf_filepath'] = download_pdf(openAccessPdf['url'], title)
+            else:
                 arxiv_meta = get_arxiv_preprint_meta(title)
                 if arxiv_meta is None:
                     continue
@@ -1149,6 +1149,7 @@ def online_search (query):
     ### Doesn't need to return anything!
     ## call get_articles in semanticScholar2 to query semanticScholar for each topic
     #
+    load_indecies()
     queries = generate_extended_search_queries(query)
     for keyword_set in queries:
         print(f'keyword set: {keyword_set}')
@@ -1447,7 +1448,7 @@ class PaperSelect(QWidget):
         resources['port'] = cot.port
         with open('/home/bruce/.local/share/owl/discuss_resources.pkl', 'wb') as f:
             pickle.dump(resources, f)
-        rc = subprocess.run(['python3', 'library/paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
+        rc = subprocess.run([sys.executable, 'library/paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
         
     def on_show_clicked(self):
         """ Handles the show button click event. """

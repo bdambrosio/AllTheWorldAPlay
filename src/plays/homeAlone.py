@@ -14,6 +14,6 @@ jill.add_to_history('Nothing except the awareness that I perceive nothing.')
 
 doc = human.Human('Doc', 'A self-contained computer scientist')
 context = context.Context([jill],
-            "A soft glow", step='static')
+            "A soft glow")
 
-worldsim.main(context, server='deepseek-chat')
+worldsim.main(context, server='local')

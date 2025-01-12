@@ -3,6 +3,7 @@ from typing import List
 from sim.memory.core import MemoryEntry, StructuredMemory
 from sim.agh import Character, Stack
 
+from PyQt5.QtWidgets import QDialog
 class Human(Character):
     def __init__(self, name, character_description, ui=None):
         super().__init__(name, character_description)
@@ -22,6 +23,9 @@ class Human(Character):
             if response:
                 self.intentions.append(response)
 
+    def generate_response(self, from_actor, message, source):
+        self.senses(message)
+    
     def tell(self, to_actor, message, source='inject', respond=True):
         if source == "init":
             # special case, reset context
@@ -63,11 +67,19 @@ class Human(Character):
             if target:
                 target.hear(self, act_arg, source)
                     
+    def senses(self, sense_data = None):
+        """Humans don't use senses"""
+        from sim.worldsim import InputWidget       
+        input_widget = InputWidget("Character-name, message:")
+        if input_widget.exec_() == QDialog.Accepted:
+            user_input = input_widget.get_user_input()
+            self.inject(user_input)
+    
     def inject(self, input_text):
         """Process user input from UI"""
         # Parse "Character name, message" format
         parts = input_text.split(',')
-        if len(parts) != 2:
+        if len(parts) < 2:
             print("Input must be in format: Character name, message")
             return
             
