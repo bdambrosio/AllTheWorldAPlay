@@ -1,3 +1,4 @@
+import sys
 from PyQt5 import QtWidgets, QtGui # type: ignore
 from PyQt5.QtGui import QFont, QKeySequence # type: ignore
 from PyQt5.QtCore import Qt, QTimer, QTextCodec, QRect # type: ignore
@@ -557,7 +558,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       elif PREV_LEN < len(self.input_area.toPlainText())+2:
          selectedText = self.input_area.toPlainText()[PREV_LEN:]
          selectedText = selectedText.strip()
-      rr = subprocess.Popen(['python3', 'paper_writer.py', '-report', selectedText])
+      rr = subprocess.Popen([sys.executable, 'paper_writer.py', '-report', selectedText])
       self.display_msg("report writer spawned.")
          
    def workingMem(self): # lauching working memory editor

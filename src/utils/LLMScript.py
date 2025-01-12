@@ -387,7 +387,7 @@ Response:
 
 ====End Example
 
-Response ONLY with your list of items to cover. Do not include any introductory, discursive, or explanatory text.
+Respond ONLY with your list of items to cover. Do not include any introductory, discursive, or explanatory text.
 End your response with:
 </END>
 """,
