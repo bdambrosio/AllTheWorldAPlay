@@ -87,5 +87,36 @@ class TestInterpreter(unittest.TestCase):
         result = self.interpreter.wm.get("$sky_color")["item"].lower()
         self.assertIn("blue", result)
 
+    def test_memory_persistence(self):
+        """Test that working memory persists between operations"""
+        # First operation with clean memory
+        interpreter1 = Interpreter(reload_memory=False)
+        step1 = {
+            "label": "store1",
+            "action": "assign",
+            "arguments": "test data",
+            "result": "$persistent"
+        }
+        interpreter1.do_item(step1)
+        
+        # Verify immediate storage
+        self.assertTrue(interpreter1.wm.has("$persistent"))
+        initial_value = interpreter1.wm.get("$persistent")["item"]
+        self.assertEqual(initial_value, "test data")
+        
+        # Force persistence and close
+        interpreter1.persist_memory()
+        interpreter1.close()
+        
+        # Create new interpreter instance with reload
+        interpreter2 = Interpreter(reload_memory=True)
+        
+        # Verify data persisted
+        self.assertTrue(interpreter2.wm.has("$persistent"))
+        loaded_value = interpreter2.wm.get("$persistent")["item"]
+        self.assertEqual(loaded_value, "test data")
+        
+        interpreter2.close()
+
 if __name__ == '__main__':
     unittest.main()
