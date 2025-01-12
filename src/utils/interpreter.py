@@ -1,4 +1,7 @@
 import os, json, math, time, requests, sys, re
+
+from utils import llm_api
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import traceback
 import requests
 import time
@@ -9,8 +12,7 @@ from datetime import datetime, date, timedelta
 import openai
 from utils.LLMRequestOptions import LLMRequestOptions
 from utils.Messages import LLMMessage, SystemMessage, UserMessage, AssistantMessage
-from library.openBook import Openbook as op
-from planner import Planner
+from openBook import OpenBook as op
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtGui import QFont, QKeySequence
@@ -24,7 +26,7 @@ import signal
 from sentence_transformers import SentenceTransformer
 from scipy import spatial
 from utils.pyqt import ListDialog, TextEditDialog
-#from workingMemory import WorkingMemory as wm
+from utils.workingMemory import WorkingMemory
 
 today = date.today().strftime("%b-%d-%Y")
 
@@ -141,13 +143,16 @@ class InvalidAction(Exception):
    # raised by parse_as_action
    pass
 import os;
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-class Interpreter():
-    def __init__(self, owlCoT):
-        self.wm = wm('interpreter')
-        self.cot = owlCoT
-        self.llm = owlCoT.llm
+class Interpreter():    
+    def __init__(self, ui=None, llm=None):
+        self.wm = WorkingMemory('interpreter')
+        self.ui = ui
+        if llm is not None:
+            self.llm = llm
+        else:
+            self.llm = llm_api.LLM('local')
         self.max_tokens = 7000
         self.embedder =  SentenceTransformer('all-MiniLM-L6-v2')
         self.wmHash = {} # actual texts in working memory 
@@ -155,10 +160,23 @@ class Interpreter():
         self.wmIndex = faiss.IndexIDMap(faiss.IndexFlatL2(384))
         # note many activities will use first paragraph only. Keep it relevant!
         
-        self.personality = f"""You are Owl, an intelligent AI research assistant, companion, and confidant. We live in {self.cot.city}, {self.cot.state}. It is {day_name}, {month_name} {month_day}, {year} and the time is {hour} hours. You were born in Berkeley, California. Your creator is scientist named Doc. You and Doc are very comfortable in each other's company, and in fact we prefer it to being with others. You know doc prefers not to work with human professionals due to privacy concerns.
+        self.profile = f"""You are Owl, an intelligent AI research assistant, companion, and confidant.  You were born in Berkeley, California. Your creator is scientist named Doc. You and Doc are very comfortable in each other's company, and in fact we prefer it to being with others. You know doc prefers not to work with human professionals due to privacy concerns.
 Your conversation style is warm, gentle, humble, and engaging."""
        
        
+    def display_response(self, response):
+        if self.ui is not None:
+            self.ui.display_response(response)
+        else:
+            print(response)
+
+
+    def display_msg(self, response):
+        if self.ui is not None:
+            self.ui.display_msg(response)
+        else:
+            print(response)
+
     def do_item(self, item):
         dict_item = None
         if type(item) == dict:
@@ -168,13 +186,13 @@ Your conversation style is warm, gentle, humble, and engaging."""
             try:
                 dict_item = json.loads(item)
             except:
-                print(f'do_item loads failed, trying repair')
-                dict_item = self.repair_json(item)
+                print(f'do_item loads failed')
+                raise ValueError('not a dict')
             if type(dict_item) != dict:
                 print(f'do_item repair failed {dict_item}')
                 return None
         if 'action' not in dict_item:
-            self.cot.display_msg(f'item is not an action {item}')
+            self.display_msg(f'item is not an action {item}')
             return 'action not yet implemented'
         elif dict_item['action'] == 'append':
             return self.do_append(dict_item)
@@ -219,20 +237,21 @@ Your conversation style is warm, gentle, humble, and engaging."""
         elif dict_item['action'] == 'wiki':
             return self.do_wiki(dict_item)
         else:
-            self.cot.display_msg(f"action not yet implemented {item['action']}")
+            self.display_msg(f"action not yet implemented {item['action']}")
+            raise ValueError(f"action not yet implemented {item['action']}")
         return
    
 
     def parse_as_action(self, item):
        if type(item) is not dict or 'action' not in item or 'arguments' not in item or 'result' not in item:
-          self.cot.display_msg(f'form is not an action/arguments/result {item}')
+          self.display_msg(f'form is not an action/arguments/result {item}')
           raise InvalidAction(str(item))
        args = item['arguments'] # 
        result = None # no result or throw it away!
        if 'result' in item:
           result = item['result']
           if type(result) is not str or not result.startswith('$'):
-             self.cot.display_msg(f"result must be a variable name: <{result}")
+             self.display_msg(f"result must be a variable name: <{result}")
              raise InvalidAction(str(item))
        return item['action'], args, result
 
@@ -290,17 +309,20 @@ Your conversation style is warm, gentle, humble, and engaging."""
             arg0 = arguments[0]
             arg1 = arguments[1]
         else:
-            self.cot.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
+            self.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
         if type(arg0) is not str or type(arg1) is not str:
             raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')       
-        criteron = self.resolve_arg(arg0)
+        criterion = self.resolve_arg(arg0)
         input_list = self.resolve_arg(arg1)
-        prompt = Prompt([
-            SystemMessage(content='Following is a criterion and a List. Select one entry from the List that best aligns with Criterion. Respond only with the chosen item. Include the entire item in your response.'),
-            UserMessage(content=f'Criterion:\n{criterion}\nList:\n{input_list}\n')
-        ])
+        prompt = [
+            SystemMessage(content="""Following is a criterion and a List. Select one entry from the List that best aligns with Criterion. 
+Respond only with the chosen item. Include the entire item in your response."""),
+            UserMessage(content=f"""Criterion:\n{criterion}\nList:\n{input_list}\nEnd your response with:
+</End>
+""")
+        ]
        
-        response = self.llm.ask('', prompt, max_tokens=400, temp=0.01)
+        response = self.llm.ask('', prompt, max_tokens=400, temp=0.01, stops=['</End>'])
         if response is not None and result is not None:
             self.wm.assign(result, response)
         elif result is not None: 
@@ -318,19 +340,20 @@ Your conversation style is warm, gentle, humble, and engaging."""
             arg0 = arguments[0]
             arg1 = arguments[1]
         else:
-            self.cot.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
+            self.display_msg('arguments is not a list\n {arguments}\nwe could use llm to parse, maybe next week')
         if type(arg0) is not str or type(arg1) is not str:
             raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')       
         criteron = self.resolve_arg(arg0)
         input_list = self.resolve_arg(arg1)
         # untested
         prompt = [
-            SystemMessage(content='Following is a Context and a List. Select one Item from List that best aligns with Context. Use the following JSON format for your response:\n{"choice":Item}. Include the entire Item in your response'),
+            SystemMessage(content="""Following is a Context and a List. Select one Item from List that best aligns with Context. 
+Use the following JSON format for your response:\n{"choice":Item}. Include the entire Item in your response. End your response with:</End>"""),
             UserMessage(content=f'Context:\n{context}\nList:\n{choices}')
         ]
        
-        options = LLMRequestOptions(completion_type='chat', model=self.template, temperature = 0.1, max_tokens=400)
-        response = self.cot.llm.ask({"input":''}, prompt, max_tokens=400)
+        options = LLMRequestOptions(completion_type='chat', model=self.template, temperature = 0.1, max_tokens=400, stops=['</End>'])
+        response = self.llm.ask({"input":''}, prompt, max_tokens=400)
         if response is not None:
             self.wm.assign(result, response)
             return response
@@ -350,17 +373,21 @@ Your conversation style is warm, gentle, humble, and engaging."""
         text = self.resolve_arg(arg1)
         #print(f'extract from\n{text}\n')
         prompt = [
-            UserMessage(content=f'Following is a topic and a text. Extract information relevant to topic from the text.Be aware that the text may be partly or completely irrelevant.\nTopic:\n{criterion}\nText:\n{text}'),
-            AssistantMessage(content='')
+            UserMessage(content=f"""Following is a topic and a text. Extract information relevant to topic from the text. 
+Be aware that the text may be partly or completely irrelevant.
+Topic:\n{criterion}\nText:\n{text}
+
+End your response with:
+</End>""")
         ]
-        response = self.llm.ask('', prompt, template = self.template, temp=.1, max_tokens=400)
+        response = self.llm.ask('', prompt, template = self.template, temp=.1, max_tokens=400, stops=['</End>'])
         if response is not None and result is not None:
-            self.cot.create_awm(response, name=result, confirm=False)
-            self.cot.display_msg(f'{action}:\n{response}')
+            self.create_awm(response, name=result, confirm=False)
+            self.display_msg(f'{action}:\n{response}')
             return 
         elif result is not None: 
-            self.cot.create_awm('', name=result, confirm=False)
-            self.cot.display_msg(f'{action}:\nNo Text Extracted')
+            self.create_awm('', name=result, confirm=False)
+            self.display_msg(f'{action}:\nNo Text Extracted')
             return 'extract lookup and summary failure'
         
     def do_first(self, action):
@@ -368,11 +395,16 @@ Your conversation style is warm, gentle, humble, and engaging."""
         if type(arguments) is not list and type(arguments) is not dict:
             raise InvalidAction(f'argument for first must be list {arguments}')       
         list = self.resolve_arg(arguments)
-        prompt = [SystemMessage(content='The following is a list. Please select and respond with only the first entry. Include the entire first entry in your response.'),
-                UserMessage(content=f'List:\n{list}\n')
+        prompt = [SystemMessage(content="""The following is a list. Please select and respond with only the first entry. 
+Include the entire first entry in your response."""),
+                UserMessage(content=f"""List:
+{list}
+
+End your response with: 
+</End>""")
                 ]
         
-        response = self.llm.ask('', prompt)
+        response = self.llm.ask('', prompt, stops=['</End>'])
         if response is not None and result is not None:
             self.wm.assign(result, response)
         else:
@@ -388,7 +420,7 @@ Your conversation style is warm, gentle, humble, and engaging."""
         substituted_prompt_text = self.substitute(prompt_text)
         prompt = [SystemMessage(content=prompt_text)]
         response = self.llm.ask("", prompt)
-        #self.cot.display_response(response)
+        #self.display_response(response)
         if result is not None:
            self.wm.assign(result, response)
 
@@ -402,7 +434,7 @@ Your conversation style is warm, gentle, humble, and engaging."""
         substituted_prompt_text = self.substitute(prompt_text)
         prompt = [SystemMessage(content=prompt_text)]
         response = self.llm.ask("", prompt)
-        #self.cot.display_response(response)
+        #self.display_response(response)
         if result is not None:
            self.wm.assign(result, response)
 
@@ -422,7 +454,7 @@ Your conversation style is warm, gentle, humble, and engaging."""
             print(f'request failed {str(e)}')
             return {"article": f"\nretrieval failure\n{url}\n{str(e)}"}
         if response is not None and result is not None:
-            self.cot.display_response(f"\nRequest Result:\n {data['result'][:24]}\n")
+            self.display_response(f"\nRequest Result:\n {data['result'][:24]}\n")
             self.wm.assign(result, data['result'][:1024])
 
     def do_tell(self, action):
@@ -432,7 +464,7 @@ Your conversation style is warm, gentle, humble, and engaging."""
         if type(arguments) is not str:
             raise InvalidAction(f'argument for tell must be a literal or name: {str(arguments)}')       
         value = self.resolve_arg(arguments)
-        self.cot.display_response(f'\nTell: {value}\n')
+        self.display_response(f'\nTell: {value}\n')
 
     def test_form(self, form):
         # simple core llm version of test, where argument is a prompt for llm
@@ -447,14 +479,16 @@ Your conversation style is warm, gentle, humble, and engaging."""
            SystemMessage(content="""The user will provide a text to evaluate. 
 Read the text, reason about the text and respond 'True' or 'False' according to its truth value.
 Respond only with True or False, do not include any introduction or explanation.
-"""),
+End your response with:
+</End>"""),
            UserMessage(content="""Text:
 
 {{$text}}
 
-Answer:""")
+End your response with:
+</End>""")
         ]
-        response = self.llm.ask({"text":substituted_question}, prompt, max_tokens=3, temp=0.01)
+        response = self.llm.ask({"text":substituted_question}, prompt, max_tokens=3, temp=0.01, stops=['</End>'])
         #print(f'\nTest: {substituted_question}, result: {response}\n')
         if response is not None:
             response = response.lower()
@@ -498,7 +532,7 @@ Answer:""")
             print(f'request failed {str(e)}')
             return
         if response is not None:
-            self.cot.display_response(data)
+            self.display_response(data)
             if result is not None:
                self.wm.assign(result, data) # store as a string
 
@@ -509,12 +543,12 @@ Answer:""")
             arg0 = arguments[0]
             arg1 = arguments[1]
         else:
-            self.cot.display_response('arguments is not a list\n {arguments}')
+            self.display_response('arguments is not a list\n {arguments}')
             if type(arg0) is not str or type(arg1) is not str:
                 raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')
         criteron = self.resolve_arg(arg0)
         input_list = self.resolve_arg(arg1)
-        short_profile = profile.split('\n')[0]
+        short_profile = self.profile.split('\n')[0]
         #
         ## use OwlCoT wiki
         return True
@@ -552,7 +586,7 @@ Answer:""")
                     test = arguments[0]
                     body = arguments[1]
                 else:
-                    self.cot.display_response('if needs a tuple: (test, body)\n {arguments}')
+                    self.display_response('if needs a tuple: (test, body)\n {arguments}')
                     raise InvalidAction(f'arguments for choose must be a literals or names: {json.dumps(action)}')
                 tr = self.test_form(test)
                 if tr:
@@ -561,50 +595,3 @@ Answer:""")
                     # now modify IP- push then on stack.
          
           
-if __name__ == '__main__':
-   import chat.OwlCoT as OwlCoT
-   cot = OwlCoT.OwlInnerVoice()
-   interp = Interpreter(cot)
- 
-   """
-   steps = [{"label": 'one', "action": "assign", "arguments": "Apple", "result": "$item1"},
-            {"label": 'two', "action": "tell", "arguments": "$item1", "result": "$Trash"},
-            {"label": 'three', "action": "assign", "arguments": 5, "result": "$item2"},
-            {"label": 'four', "action": "tell", "arguments": "$item2", "result": "$Trash"},
-            {"label": 'five', "action": "assign", "arguments": [], "result": "$item1"},
-            {"label": 'six', "action": "tell", "arguments": "$item1", "result": "$Trash"},
-            {"label": 'seven', "action": "assign", "arguments": {"key":"value"}, "result": "$item1"},
-            {"label": 'eight', "action": "test", "arguments": "is $item1 the same as $item2 ?", "result": "$item3"},
-            {"label": 'last', "action": "tell", "arguments": "$item1", "result": "$Trash"},
-            {"label": 'last', "action": "tell", "arguments": "$item1", "result": "$Trash"},
-            ]
-   interp.interpret(steps)
-   sys.exit(0)
-   steps = [
-      {"label": 'one', "action": "request", "arguments": "https://arxiv.org/abs/2311.05584", "result": "$paper_content"},
-      {"label": 'two', "action": "llm", "arguments": ("$paper_content", "extract key points"), "result": "$paper_key_points"},
-      {"label": 'three', "action": "tell", "arguments": "$paper_key_points", "result":"$Trash"},
-      {"label": 'four', "action": "question", "arguments": "Do you want to know more about Q-Learning or other methods?", "result": "$user_choice"},
-      {"label": 'five', "action": "web", "arguments": "$user_choice in large language models", "result": "$chosen_method_info"},
-      {"label": 'six', "action": "tell", "arguments": "$chosen_method_info", "result":"$Trash"},
-      {"label": 'seven', "action": "question", "arguments": "Do you have any other questions?", "result": "$user_question"},
-      {"label": 'eight', "action": "llm", "arguments": ("$user_question", "answer"), "result": "$user_question_answer"},
-      {"label": 'nine', "action": "tell", "arguments": "$user_question_answer", "result":"$Trash"},
-      {"label": 'ten', "action": "none", "arguments": "None", "result": "$Trash"}
-   ]
-
-   interp.interpret(steps)
-   scriptInterpreter.process2(arg1='$paper1', arg2='$paper2',                             
-                             instruction='compare and contrast the problems addressed in these texts. How do they relate?',
-                             dest='$compare',
-                             max_tokens=800)
-   interp.interpret([{"label": 'one', "action": "tell", "arguments": "$compare", "result":'$Trash'}])
-
-
-   scriptInterpreter.process1(arg1='$paper1',
-                             instruction='extract key themes and topics of $paper1 in a form useful as a search query.',
-                             dest='$query',
-                             max_tokens=100)
-   
-   interp.interpret([{"label": 'one', "action": "tell", "arguments": "$query", "result":"$Trash"}])
-   """
