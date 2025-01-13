@@ -1,1 +1,1 @@
-{}
+{"test_plan": {"name": "test_plan", "dscp": "test description", "task": "test task", "outline": {"title": "Test Paper", "dscp": "A test description", "length": 400, "rewrites": 1, "sections": [{"title": "Section 1", "dscp": "First section", "length": 200}, {"title": "Section 2", "dscp": "Second section", "length": 200}]}}}

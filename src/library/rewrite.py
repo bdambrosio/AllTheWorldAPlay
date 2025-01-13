@@ -1,17 +1,19 @@
+import os, sys, glob, time
+print(os.path.dirname(__file__))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json, os, sys
 import wordfreq as wf
 import re
 from utils.Messages import SystemMessage
 from utils.Messages import UserMessage
 from utils.Messages import AssistantMessage
-#from utils.OSClient import OSClient
-#from utils.OpenAIClient import OpenAIClient
-#from utils.DefaultResponseValidator import DefaultResponseValidator
-#from utils.JSONResponseValidator import JSONResponseValidator
 import library.semanticScholar3 as s2
 import spacy
+from utils.LLMRequestOptions import LLMRequestOptions
+from utils.llm_api import LLM
 
 cot=None
+llm = LLM('local')
 spacy_ner = spacy.load("en_core_web_sm")
 """#KEGG_SYMBOLS = {}
 #kegg_symbols_filepath = 'owl_data/kegg_symbols.pkl'
@@ -79,7 +81,7 @@ def section_ners(id, text):
             json.dump(NER_CACHE, pf)
     return NER_CACHE[int_id]
 
-def paper_ners(paper_title, paper_outline, paper_summaries, ids,template):
+def paper_ners(paper_title, paper_outline, paper_summaries, ids):
     global NER_CACHE
     items = set()
     total=len(ids); cached=0
@@ -96,8 +98,7 @@ def paper_ners(paper_title, paper_outline, paper_summaries, ids,template):
                 pass
             text_items = extract_ners(paper_title+'\n'+text[1],
                                          title=paper_title,
-                                         outline=paper_outline,
-                                         template=template)
+                                         outline=paper_outline)
             NER_CACHE[int_id]=list(set(text_items))
         items.update(NER_CACHE[int_id])
     print(f'ners total {total}, in cache: {cached}')
@@ -129,7 +130,7 @@ def find_kegg_symbols(text):
             symbols_found.add(candidate)
     return symbols_found
 
-def extract_ners(text, title=None, paper_topic=None, outline=None, template=None):
+def extract_ners(text, title=None, paper_topic=None, outline=None):
     global spacy_ner
     topic = ''
     if title is not None:
@@ -156,7 +157,7 @@ NER2
                   #AssistantMessage(content="<NERs>\n")
               ]
     
-    response = cot.llm.ask({"topic":topic, "text":text}, kwd_messages, template=template, max_tokens=300, temp=0.1, stops=['</NERs>'])
+    response = llm.ask({"topic":topic, "text":text}, kwd_messages, max_tokens=300, temp=0.1, stops=['</NERs>'])
     # remove all more common things
     keywords = []; response_ners = []
     if response is not None:
@@ -292,7 +293,7 @@ Note that your task at this time is analysis / information extraction:
     prompt = [prompt_prefix, 
               #AssistantMessage(content="""Extract:\n""")
               ]
-    extract = cot.llm.ask({"draft": draft, "instruction":instruction, "ners":ners, "tokens":int(tokens), "text":text},
+    extract = llm.ask({"draft": draft, "instruction":instruction, "ners":ners, "tokens":int(tokens), "text":text},
                           prompt, max_tokens=tokens, stops=['</END>'])
     return extract
 
@@ -330,18 +331,19 @@ Your task at this time is to respond with known fact and information extraction 
 1. Do NOT include any introductory, discursive, or explantory phrases or text.
 2. Focus on identifying and responding with the information/data specifically on: {{$extract_topic}}
 3. Include the actual names of any NERs needed as answers to {{$extract_topic}}.
-4. Limit your response to {{$tokens}} words. End your response with </Answer>"""
+4. Limit your response to {{$tokens}} words. End your response with:
+</Answer>"""
 
     prompt = [UserMessage(content=prompt_text),
               #AssistantMessage(content="""""")
               ]
-    extract = cot.llm.ask({"section_draft": section_draft, "extract_topic":extract_topic, "tokens":int(tokens*.67), "text":text},
+    extract = llm.ask({"section_draft": section_draft, "extract_topic":extract_topic, "tokens":int(tokens*.67), "text":text},
                           prompt, max_tokens=tokens, stops=['</Answer>'])
     return extract
 
 
 def write(paper_title, paper_outline, section_title, draft, paper_summaries, ners, section_topic, section_token_length,
-          parent_section_title, heading_1_title, heading_1_draft, template):
+          parent_section_title, heading_1_title, heading_1_draft):
     #
     ### Write initial content
     #
@@ -389,7 +391,7 @@ End the section as follows:
 """),
               #AssistantMessage(content="")
               ]
-    response = cot.llm.ask('', messages, template=template, max_tokens=int(section_token_length), temp=0.1, stops=['</DRAFT>'])
+    response = llm.ask('', messages, max_tokens=int(section_token_length), temp=0.1, stops=['</DRAFT>'])
     if response is None:
         print(f'\n*** REWRITE.py write llm response None!\n')
         return ''
@@ -400,7 +402,7 @@ End the section as follows:
     return draft
 
 def rewrite(paper_title, paper_outline, section_title, draft, paper_summaries, ners, section_topic, section_token_length, parent_section_title,
-            heading_1, heading_1_draft, template):
+            heading_1, heading_1_draft):
     missing_ners = literal_missing_ners(ners, draft)
     sysMessage = f"""You are a skilled researcher and technical writer writing for an audience of research scientists knowledgable in the field. You write in a professional, objective tone.
 You are writing a paper titled:
@@ -451,12 +453,12 @@ missing_ner 3
 
 Respond only with the above list. Do not include any commentary or explanatory material.
 End your response with:
-</END>
+</End>
 """
 
     messages=[UserMessage(content=sysMessage+'\n'+MESelectMessage)]
-    response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)},
-                           messages, template=template, max_tokens=200, temp=0.1, stops=['</END>'])
+    response = llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)},
+                           messages, max_tokens=200, temp=0.1, stops=['</End>'])
     if response is None or len(response) == 0:
         return draft
     end_idx = response.rfind('</ME>')
@@ -505,8 +507,8 @@ end your response with:
     messages=[sysMessage,
               UserMessage(content=rewrite_prompt),
               ]
-    response = cot.llm.ask({"draft":draft, "paper_summaries":research_texts, "missing_ners": add_ners},
-                           messages, template=template, max_tokens=int(1.5*section_token_length), temp=0.1, stops=['</END>'])
+    response = llm.ask({"draft":draft, "paper_summaries":research_texts, "missing_ners": add_ners},
+                           messages, max_tokens=int(1.5*section_token_length), temp=0.1, stops=['</END>'])
     if response is None or len(response) == 0:
         print(f'rewrite returning draft, no llm response')
         return draft
@@ -607,7 +609,7 @@ end the rewrite as follows:
 """
 
     messages=[UserMessage(content=sysMessage+MESelectMessage)]
-    response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)}, messages, max_tokens=200, temp=0.1, stops=['</ME>'])
+    response = llm.ask({"draft":draft, "paper_summaries":paper_summaries, "missing_ners": ners_to_str(missing_ners)}, messages, max_tokens=200, temp=0.1, stops=['</ME>'])
     if response is None or len(response) == 0:
         return draft
     end_idx = response.rfind('</ME>')
@@ -627,7 +629,7 @@ end the rewrite as follows:
               UserMessage(content=rewrite_prompt),
               #AssistantMessage(content="<REWRITE>\n")
               ]
-    response = cot.llm.ask({"draft":draft, "paper_summaries":research_texts, "missing_ners": add_ners}, messages, max_tokens=int(1.5*section_token_length), temp=0.1, stops=['</REWRITE>'])
+    response = llm.ask({"draft":draft, "paper_summaries":research_texts, "missing_ners": add_ners}, messages, max_tokens=int(1.5*section_token_length), temp=0.1, stops=['</REWRITE>'])
     if response is None or len(response) == 0:
         return draft
     rewrite = response
@@ -720,7 +722,7 @@ end the rewrite as follows:
     #ners from research summaries mentioned in current draft
     included_ners = literal_included_ners(ners, draft)
     #select ners to expand
-    response = cot.llm.ask({"draft":draft, "paper_summaries":paper_summaries, "ners": ners_to_str(included_ners)},
+    response = llm.ask({"draft":draft, "paper_summaries":paper_summaries, "ners": ners_to_str(included_ners)},
                            messages,
                            max_tokens=200, temp=0.1, stops=['</AE>'])
     if response is None or len(response) == 0:
@@ -746,7 +748,7 @@ end the rewrite as follows:
               UserMessage(content=rewrite_prompt),
               #AssistantMessage(content="<REWRITE>\n")
               ]
-    response = cot.llm.ask({"draft":draft, "paper_summaries":research_texts, "ners": add_ners}, messages,
+    response = llm.ask({"draft":draft, "paper_summaries":research_texts, "ners": add_ners}, messages,
                            max_tokens=int(1.5*section_token_length), temp=0.1, stops=['</REWRITE>'])
     if response is None or len(response) == 0:
         return draft
@@ -780,7 +782,7 @@ def shorten(resources, focus='', sections=default_sections, max_tokens=80*len(de
     print(resources)
     resource = '\n'.join(resources)
     input_length = len(resource)
-    context_size = cot.llm.context_size
+    context_size = llm.context_size
     print(f'rw.shorten total in: {input_length} chars, limit: {max_tokens} tokens')
     if input_length < max_tokens*3: # context is in tokens, len is chars
         print(f'rw.shorten returning full text: {len(resource)} chars')
