@@ -34,7 +34,8 @@ import webbrowser
 import library.rewrite as rw
 import bibtexparser
 import library.grobid as grobid
-
+from utils.llm_api import LLM
+llm = LLM('local')  
 # used for title matching
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -1084,7 +1085,7 @@ def hyde(query):
 End your sentence with: 
 </Response>"""
     prompt = [UserMessage(content=hyde_prompt)]
-    response = cot.llm.ask({"query":query},
+    response = llm.ask({"query":query},
                            prompt,
                            max_tokens=50,
                            temp=0.2,
@@ -1114,7 +1115,7 @@ Respond using this JSON template. Return only JSON without any Markdown or code 
 """),
               AssistantMessage(content='Response:')
               ]
-    response = cot.llm.ask({'text':text, 'query':query, 'background':background}, prompt, max_tokens=100, temp=0.1, stop_on_json=True)
+    response = llm.ask({'text':text, 'query':query, 'background':background}, prompt, max_tokens=100, temp=0.1, stop_on_json=True)
     #print(f"relevant {response['relevant']}\n")
     if type(response) == dict:
         if 'relevant' in response and 'yes' in str(response['relevant']).lower():
@@ -1444,11 +1445,10 @@ class PaperSelect(QWidget):
         resources = {}
         resources['papers'] = self.collect_checked_resources()
         resources['dscp'] = self.dscp
-        resources['template'] = cot.template
-        resources['port'] = cot.port
+        #resources['port'] = port
         with open('/home/bruce/.local/share/owl/discuss_resources.pkl', 'wb') as f:
             pickle.dump(resources, f)
-        rc = subprocess.run([sys.executable, 'library/paper_writer.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
+        rc = subprocess.run([sys.executable, 'library/paperWriter.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
         
     def on_show_clicked(self):
         """ Handles the show button click event. """
@@ -1593,8 +1593,8 @@ if __name__ == '__main__':
     if hasattr(args, 'template') and args.template is not None:
         template = args.template
         print(f' S2 using template {template}')
-    cot = cot.OwlInnerVoice(None, template=template)
-    rw.cot = cot
+    #cot = cot.OwlInnerVoice(None, template=template)
+    #rw.cot = cot
     app = QApplication(sys.argv)
     generate_extended_search_queries('llm-based ontology construction')
     #search('llm-based ontology construction', '',interactive=True)

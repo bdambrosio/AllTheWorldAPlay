@@ -547,7 +547,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
             selectedText = self.input_area.toPlainText()[PREV_LEN:]
             selectedText = selectedText.strip()
         s2.browse(selectedText)
-        #rr = subprocess.Popen(['python3', 'semanticScholar3.py', '-browse', selectedText, '-template', f"{self.owlCoT.llm.template}"])
+        #rr = subprocess.Popen([sys.executable, 'semanticScholar3.py', '-browse', selectedText, '-template', f"{self.owlCoT.llm.template}"])
          
    def generate_report(self): # index a url in S2 faiss
       global PREV_LEN, op#, vmem, vmem_clock
@@ -558,7 +558,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       elif PREV_LEN < len(self.input_area.toPlainText())+2:
          selectedText = self.input_area.toPlainText()[PREV_LEN:]
          selectedText = selectedText.strip()
-      rr = subprocess.Popen([sys.executable, 'paper_writer.py', '-report', selectedText])
+      rr = subprocess.Popen([sys.executable, 'paperWriter.py', '-report', selectedText])
       self.display_msg("report writer spawned.")
          
    def workingMem(self): # lauching working memory editor

@@ -1,4 +1,6 @@
 import os, json, math, time, requests, sys
+
+from utils.llm_api import LLM
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import traceback
 import requests
@@ -22,7 +24,7 @@ import signal
 # Encode titles to vectors using SentenceTransformers 
 from sentence_transformers import SentenceTransformer
 from scipy import spatial
-from chat.OwlCoT import ListDialog, LLM, GPT4, TextEditDialog, OPENAI_MODEL3, OPENAI_MODEL4
+from utils.pyqt import ListDialog, TextEditDialog
 from utils.interpreter import Interpreter, action_primitive_names, action_primitive_descriptions
 
 import os;
@@ -158,8 +160,7 @@ class Planner():
        self.template = template
        self.ui = ui
        self.cot = cot
-       self.client = OSClient(api_key=None)
-       self.openAIClient = OpenAIClient(apiKey=openai_api_key, logRequests=True)
+       self.client = LLM('local')
        self.llm = cot.llm # use same model?
        self.max_tokens = 4000
        self.embedder =  SentenceTransformer('all-MiniLM-L6-v2')
@@ -333,19 +334,6 @@ Respond only with the above JSON, without any commentary or explanatory text
 
       number_top_sections = max(3, int(length/2000 + 0.5))
       depth = max(1, int(math.log(length/2)-6))
-
-      outline_model = self.llm.template
-      if 'model' in config:
-         outline_model = config['model']
-         if outline_model == 'llm':
-            outline_model = self.llm.template
-         elif outline_model == 'gpt3':
-            outline_model = OPENAI_MODEL3
-         elif outline_model == 'gpt4':
-            outline_model = OPENAI_MODEL4
-            print('setting outline model to gpt4')
-         else:
-            self.cot.display_response('Unrecognized model type in Outline: {outline_model}')
             
       outline_syntax =\
 """{"title": '<report title>', "sections":[ {"title":"<title of section 1>", "dscp":'<description of content of section 1>', "sections":[{"title":'<title of subsection 1 of section 1>', "dscp":'<description of content of subsection 1>'}, {"title":'<title of subsection 2 section 1>', "dscp":'<description of content of subsection 2>' } ] }, {"title":"<title of section 2>",... }

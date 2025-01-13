@@ -190,6 +190,21 @@
                 "CUDA_VISIBLE_DEVICES": "0"
             },
             "purpose": ["debug-test"]
+        },
+        {
+            "name": "PaperWriter Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "library/paperWriter_unitTests.py",
+            "console": "integratedTerminal",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python", // On Windows: venv\\Scripts\\python.exe
+            "justMyCode": true,
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "purpose": ["debug-test"]
         }
     ]
 }

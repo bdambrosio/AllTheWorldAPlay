@@ -1,8 +1,11 @@
-from operator import delitem
-import os, json, math, time, requests, sys, re
-
-from utils import llm_api
+import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import re
+
+from operator import delitem
+import json
+from utils.llm_api import LLM
 import traceback
 import requests
 import time
@@ -13,7 +16,7 @@ from datetime import datetime, date, timedelta
 import openai
 from utils.LLMRequestOptions import LLMRequestOptions
 from utils.Messages import LLMMessage, SystemMessage, UserMessage, AssistantMessage
-from openBook import OpenBook as op
+from utils.openBook import OpenBook as op
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtGui import QFont, QKeySequence
@@ -160,7 +163,7 @@ class Interpreter():
         if llm is not None:
             self.llm = llm
         else:
-            self.llm = llm_api.LLM('local')
+            self.llm = LLM('local')
         self.max_tokens = 7000
         self.embedder =  SentenceTransformer('all-MiniLM-L6-v2')
         self.wmHash = {} # actual texts in working memory 

@@ -18,6 +18,7 @@ import pickle
 import openai
 import traceback
 from lxml import etree
+from utils.pyqt import confirmation_popup
 from PyPDF2 import PdfReader
 import requests
 import urllib.request
@@ -48,6 +49,8 @@ import webbrowser
 import rewrite as rw
 import utils.jsonEditor as ew
 from planner import Planner
+from utils.llm_api import LLM
+import utils.LLMScript as script    
 # startup AI resources
 
 
@@ -57,7 +60,7 @@ from planner import Planner
 embedding_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 embedding_model = AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1', trust_remote_code=True)
 embedding_model.eval()
-
+llm = LLM('local')
 
 class PWUI(QWidget):
     def __init__(self, rows, config_json):
@@ -132,19 +135,7 @@ class PWUI(QWidget):
         else:
             return None
 
-import re
-
-def get_template(row, config):
-    global cot
-    if row in config:
-        if 'model' in config[row]:
-            model = config[row]['model']
-            if model == 'llm':
-                return cot.template
-        else:
-            return cot.template
-    print(f'get_template fail {row}\n{json.dumps(config, indent=2)}')
-        
+import re       
 
 def count_keyphrase_occurrences(texts, keyphrases):
     """
@@ -235,7 +226,7 @@ def plan_search():
         return
     return plan
 
-def make_search_queries(outline, section_outline, sbar, template):
+def make_search_queries(outline, section_outline, sbar):
     prompt = """
 Following is an outline for a research paper, in JSON format: 
 
@@ -252,7 +243,7 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
     messages = [SystemMessage(content=prompt),
                 AssistantMessage(content='')
                 ]
-    queries = cot.llm.ask({"outline":json.dumps(outline, indent=2), "target_section":json.dumps(section_outline, indent=2)}, messages, stop_on_json=True, template=template, max_tokens=150)
+    queries = llm.ask({"outline":json.dumps(outline, indent=2), "target_section":json.dumps(section_outline, indent=2)}, messages, stop_on_json=True, max_tokens=150)
     if type(queries) is dict:
         print(f'\nquery forsection:\n{section_outline}\nqueries:\n{json.dumps(queries, indent=2)}')
     else:
@@ -260,7 +251,7 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
     return queries
 
 def generate_s2_search_queries(query):
-    information_requirements = cot.script.sufficient_response(query)
+    information_requirements = script.sufficient_response(query)
     prompt = """
 Generate a set of short Semantic Scholar (s2) search queries, in JSON format, given the following set of information requirements withing the overall topic of:
 
@@ -280,7 +271,7 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
     messages = [SystemMessage(content=prompt),
                 AssistantMessage(content='')
                 ]
-    queries = cot.llm.ask({"query":query, "needs":information_requirements}, messages, stop_on_json=True, max_tokens=300)
+    queries = llm.ask({"query":query, "needs":information_requirements}, messages, stop_on_json=True, max_tokens=300)
     if type(queries) is dict:
         print(f'\nquery: {query}\ns2 queries:\n{json.dumps(queries, indent=2)}')
     else:
@@ -294,14 +285,13 @@ def s2_search (config, outline, section_outline, sbar=None):
     ## we can get 0 results if too specific, so probabilistically relax query as needed
     #
     #print(f'paper_writer entered s2_search with {section_outline}')
-    template = get_template('Search', config)
     #print(f' paper_writer s2_search template: {template}')
     # llms sometimes add an empty 'sections' key on leaf sections.
     if 'sections' in section_outline and len(section_outline['sections']) > 0: 
         for subsection in section_outline['sections']:
             s2_search(config, outline, subsection, sbar, interactive=True)
     else:
-        queries = make_search_queries(outline, section_outline, sbar, template)
+        queries = make_search_queries(outline, section_outline, sbar)
         bads = ['(',')',"'",' AND', ' OR'] #tulu sometimes tries to make fancy queries, S2 doesn't like them
         if type(queries) is not dict:
             print(f's2_search query construction failure')
@@ -314,7 +304,7 @@ def s2_search (config, outline, section_outline, sbar=None):
                 query = query.replace(bad, '')
             result_list, total_papers, next_offset = s2.get_articles(query, confirm=True)
             print(f's2_search found {len(result_list)} new papers')
-            while next_offset < total_papers and cot.confirmation_popup('Continue?', query):
+            while next_offset < total_papers and confirmation_popup('Continue?', query):
                 result_list, total_papers, next_offset = s2.get_articles(query, next_offset, confirm=True)
                 
 # global passed into jsonEditor widget
@@ -356,7 +346,7 @@ def write_report(app, topic):
     query_config = config['Query']
     query = ""
     if query_config['exec'] == 'Yes' or 'task' not in plan.keys():
-        query = cot.confirmation_popup('Question to report on?', '')
+        query = confirmation_popup('Question to report on?', '')
     if 'task' not in plan.keys():
         plan['task']=query
     save_plans()
@@ -366,7 +356,7 @@ def write_report(app, topic):
         # pass in query to sbar!
         #print(f'sbar input plan\n{plan}')
         if 'sbar' in plan and type(plan['sbar']) is dict:
-            if cot.confirmation_popup('Edit existing sbar?', json.dumps(plan['sbar'], indent=2)):
+            if confirmation_popup('Edit existing sbar?', json.dumps(plan['sbar'], indent=2)):
                 # we already have an sbar, edit it
                 app = QApplication(sys.argv)
                 editor = ew.JsonEditor(plan['sbar'])
@@ -384,7 +374,7 @@ def write_report(app, topic):
     outline_config = config['Outline']
     if outline_config['exec'] == 'Yes':
         if 'outline' in plan and type(plan['outline']) is dict\
-           and cot.confirmation_popup('Edit existing outline?', json.dumps(plan['outline'], indent=2)) is not None:
+           and confirmation_popup('Edit existing outline?', json.dumps(plan['outline'], indent=2)) is not None:
             # we already have an outline, edit it
             app = QApplication(sys.argv)
             editor = ew.JsonEditor(plan['outline'])
@@ -429,7 +419,6 @@ def write_report_aux(config, paper_outline=None, section_outline=None, texts=Non
     ## need to mod this to handle 'resources' longer than available context
     ## resources OR texts, not both! - if both, assume texts is unpacked from resources
     #
-    paper_template = get_template('Write',config)
     if depth == 0: 
         n = 0; paper_ids=[] #set section number initially to 0
     if len(paper_title) == 0 and depth == 0 and 'title' in paper_outline:
@@ -453,18 +442,18 @@ def write_report_aux(config, paper_outline=None, section_outline=None, texts=Non
         # do this only once
         # remember, synopsis is the only text field in section and actually contains the original text
         texts = [s2.section_from_id(id)['synopsis'] for id in resources[1][0]]
-        print(f'write_report_aux depth 0 len {sum(len(text) for text in texts)}, limit {cot.llm.context_size*2} chars')
-        if sum(len(text) for text in texts) >  cot.llm.context_size*2: # context is in tokens, len is chars
+        print(f'write_report_aux depth 0 len {sum(len(text) for text in texts)}, limit {llm.context_size*2} chars')
+        if sum(len(text) for text in texts) >  llm.context_size*2: # context is in tokens, len is chars
             # texts are too long for context, do query-specific extract first
-            words = int(cot.llm.context_size*2 * ((cot.llm.context_size*2)/sum(len(text) for text in texts)))
+            words = int(llm.context_size*2 * ((llm.context_size*2)/sum(len(text) for text in texts)))
             summary_texts = []
             summary_text = ''
             for text in texts:
-                if len(summary_text) + len(text) <  (cot.llm.context_size*2):
+                if len(summary_text) + len(text) <  (llm.context_size*2):
                     summary_text += '\n'+text
                     continue
                 else:
-                    summary_text = cot.script.process2(arg1=topic,
+                    summary_text = script.process2(arg1=topic,
                                                    arg2=summary_text,
                                                    instruction=f"""You are a skilled technical writer. 
 Compress the content of Text2, retaining all the information relevant to Text1 and as much other technical content as possible. 
@@ -547,25 +536,26 @@ End your response with:
             # do local search, texts to use not provided
             texts = []
             print(f'** write_report_aux Doing local search ! **')
-            papers = s2.search(query, subsection_dscp, char_limit=cot.llm.context_size*2)
+            papers = s2.search(query, subsection_dscp, char_limit=llm.context_size*2)
             ppr_ids = set()
-            for section_ids in papers.keys():
-                paper = s2.paper_from_section_id(section_ids[0])
+            for title in papers.keys(): # title is the paper title
+                paper = s2.paper_from_title(title)
                 if paper is not None:
                     ppr_ids.add(paper['faiss_id'])
-                texts.append(s2.section_from_id['section_id'])
-                # tbd - what to do if search returns more than will fit in context?
-                # for now assume with report section dscp context will hold most important
-                # although note we aren't enumerating in order by search rating.
-                # maybe should prune more in search? Make it an option?
-                if sum(len(text) for text in texts) > cot.llm.context_size*2:
-                    break
+                for section_id in papers[title]:
+                    texts.append(s2.section_from_id(section_id)['synopsis'])
+                    # tbd - what to do if search returns more than will fit in context?
+                    # for now assume with report section dscp context will hold most important
+                    # although note we aren't enumerating in order by search rating.
+                    # maybe should prune more in search? Make it an option?
+                    if sum(len(text) for text in texts) > llm.context_size*2:
+                        break
         else:
             ppr_ids = set(resources[0])
         subsection_token_length = max(400,length) # no less than a paragraph
         print(f"\nWriting: {section_outline['title']} length {length}")
         draft = rw.write(paper_title, paper_outline, section_outline['title'], '', texts, '', subsection_topic,
-                         int(subsection_token_length), parent_section_title, heading_1_title, heading_1_draft, paper_template)
+                         int(subsection_token_length), parent_section_title, heading_1_title, heading_1_draft)
         print(f'\nFirst Draft:\n{draft}\n')
         if num_rewrites < 1:
             return draft, ppr_ids
@@ -575,21 +565,17 @@ End your response with:
         #
         ### first collect entities
         #
-        keywds = rw.paper_ners(paper_title, paper_outline, texts, resources[1][0], paper_template)
+        keywds = rw.paper_ners(paper_title, paper_outline, texts, resources[1][0])
         missing_entities = rw.literal_missing_ners(keywds, draft)
         print(f'\n missing entities in initial draft {len(missing_entities)}\n')
 
         for i in range(num_rewrites):
             if i < num_rewrites-1:
-                paper_template = get_template('Write', config)
-            else:
-                paper_template = get_template('ReWrite', config)
-            if i < num_rewrites-1:
                 #add new entities
-                draft = rw.add_pp_rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, int((1.3**(i+1))*subsection_token_length), parent_section_title, heading_1_title, heading_1_draft, paper_template)
+                draft = rw.add_pp_rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, int((1.3**(i+1))*subsection_token_length), parent_section_title, heading_1_title, heading_1_draft)
             else:
                 # refine in final rewrite
-                draft = rw.rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, 2*subsection_token_length, parent_section_title, heading_1_title, heading_1_draft, paper_template)
+                draft = rw.rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, 2*subsection_token_length, parent_section_title, heading_1_title, heading_1_draft)
             missing_entities = rw.literal_missing_ners(keywds, draft)
             print(f'\n missing entities after rewrite {len(missing_entities)} \n')
 
@@ -743,13 +729,13 @@ def discuss_resources(display, query, paper_id, sections, dscp='', template=None
 
 Respond only with the instruction with no additional introductory, explanatory, or discursive text.
 End your response with:
-</END>
+</End>
 """
     messages = [SystemMessage(content='You are a skilled prompt constructor.'),
                 UserMessage(content=instruction_prompt),
                 ]
-    instruction = cot.llm.ask({"dscp":dscp, "query":query, "dscp": dscp},
-                              messages,  max_tokens=120, eos='</END>') 
+    instruction = llm.ask({"dscp":dscp, "query":query, "dscp": dscp},
+                              messages,  max_tokens=120, stops=['</End>']) 
 
     outline = {"title": query, "rewrites": 1, "length": length, "dscp": str(instruction),
                "task": str(instruction)}
