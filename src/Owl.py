@@ -558,7 +558,9 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       elif PREV_LEN < len(self.input_area.toPlainText())+2:
          selectedText = self.input_area.toPlainText()[PREV_LEN:]
          selectedText = selectedText.strip()
-      rr = subprocess.Popen([sys.executable, 'paperWriter.py', '-report', selectedText])
+      pw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'library', 'paperWriter.py'))
+      print(f'pw_path {pw_path}')
+      rr = subprocess.Popen([sys.executable, pw_path,  '-report', selectedText])
       self.display_msg("report writer spawned.")
          
    def workingMem(self): # lauching working memory editor

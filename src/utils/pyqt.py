@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QComboBox, QLabel, QSpacer
 from PyQt5.QtWidgets import QVBoxLayout, QTextEdit, QPushButton, QDialog, QListWidget, QDialogButtonBox
 from PyQt5.QtWidgets import QMainWindow, QMessageBox, QWidget, QListWidget, QListWidgetItem
 import signal
+import json
 
 def generate_faiss_id(allocated_p):
     faiss_id = random.randint(1, 333333333)
@@ -15,7 +16,16 @@ def generate_faiss_id(allocated_p):
     return faiss_id
 
 def confirmation_popup(action, argument, modal=True):
-    dialog = TextEditDialog(action, argument, modal=modal)
+    if type(action) is str:
+        action = action.strip()
+        actions = action
+        if action.startswith('{'):
+            try:
+                action = json.loads(action)
+                actions = json.dumps(action, indent=4)
+            except:
+                pass
+    dialog = TextEditDialog(actions, argument, modal=modal)
     result = dialog.exec_()
     if result == QDialog.Accepted:
         return dialog.text_edit.toPlainText()
