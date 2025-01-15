@@ -153,14 +153,14 @@ class LLM():
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
-            text = response.content.decode('utf-8')
+            text = response.content.decode('utf-8').strip()
             if text.startswith('{'):
                 try:
-                    jsonr = json.loads(response.content.decode('utf-8'))
+                    jsonr = json.loads(text)
                 except Exception as e:
                     traceback.print_exc()
                     return response.content.decode('utf-8')
-                return jsonr['choices'][0]['message']['content']
+                return jsonr
             return response.content.decode('utf-8')
             # assume tabby or other open-ai like return
         else:

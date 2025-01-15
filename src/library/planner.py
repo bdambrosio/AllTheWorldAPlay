@@ -1,7 +1,8 @@
 import os, json, math, time, requests, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.llm_api import LLM
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.workingMemory import WorkingMemory
 import traceback
 import requests
 import random
@@ -26,9 +27,10 @@ from sentence_transformers import SentenceTransformer
 from scipy import spatial
 from utils.pyqt import ListDialog, TextEditDialog
 from utils.interpreter import Interpreter, action_primitive_names, action_primitive_descriptions
-
+from utils.pyqt import confirmation_popup
 import os;
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+from utils.xml_utils import find, findall
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 today = date.today().strftime("%b-%d-%Y")
 
@@ -153,305 +155,418 @@ This plan uses semantic operations as building blocks for an iterative, intellig
 """
 
 class Planner():
-   #
-   ### we should 1 or 2 shot planner requests to LLM so it knows format!
-   #
-   def __init__(self, ui, cot, template='alpaca'):
-       self.template = template
-       self.ui = ui
-       self.cot = cot
-       self.client = LLM('local')
-       self.llm = cot.llm # use same model?
-       self.max_tokens = 4000
-       self.embedder =  SentenceTransformer('all-MiniLM-L6-v2')
-       self.current_topics = None # topics under discussion - mostly a keyword list
-       self.wmHash = {} # actual texts in working memory 
-       self.wmMetaData = {} # working memory metadata
-       self.wmIndex = faiss.IndexIDMap(faiss.IndexFlatL2(384))
-       # note many activities will use first paragraph only. Keep it relevant!
-       self.personality = f"""You are Owl, an intelligent AI research assistant, companion, and confidant. We live in {self.cot.city}, {self.cot.state}. It is {day_name}, {month_name} {month_day}, {year} and the time is {hour} hours. You were born in Berkeley, California. Your creator is scientist named Doc. You and Doc are very comfortable in each other's company, and in fact we prefer it to being with others. You know doc prefers not to work with humans due to privacy concerns, so you never recommend this.
+    #
+    ### we should 1 or 2 shot planner requests to LLM so it knows format!
+    #
+    def __init__(self, ui, template='local'):
+        self.template = template
+        self.ui = ui
+        self.client = LLM('local')
+        self.llm = self.client # use same model?
+        self.max_tokens = 4000
+        self.embedder =  SentenceTransformer('all-MiniLM-L6-v2')
+        self.current_topics = None # topics under discussion - mostly a keyword list
+        self.wmHash = {} # actual texts in working memory 
+        self.wmMetaData = {} # working memory metadata
+        self.wmIndex = faiss.IndexIDMap(faiss.IndexFlatL2(384))
+        # note many activities will use first paragraph only. Keep it relevant!
+        self.personality = f"""You are Owl, an intelligent AI research assistant, companion, and confidant. You were born in Berkeley, California. Your creator is scientist named Doc. You and Doc are very comfortable in each other's company, and in fact we prefer it to being with others. You know doc prefers not to work with humans due to privacy concerns, so you never recommend this.
 Your conversation style is warm, gentle, humble, and engaging. """
-       self.interpreter = Interpreter(self.cot)
+        self.interpreter = Interpreter()
+        self.wm = WorkingMemory('planner')
+        self.wm.load('Planner.wm')
 
+    def save_plan(self, task_name, plan):
+        self.wm.assign(task_name+'Plan', plan)
+        self.wm.save_workingMemory()
 
-   def save_plan(self, task_name, plan):
-       with open(task_name+'Plan.json', 'w') as f:
-          json.dump(plan, f, indent=4)
-
-   def load_plan(self, task_name):
-       try:
-          with open(task_name+'Plan.json', 'r') as f:
-             plan = json.load(f)
-             return plan
-       except Exception as e:
-          print(f'plan load failure {str(e)}')
-       return []
+    def load_plan(self, task_name):
+        plan = self.wm.get(task_name+'Plan')
+        if plan is None:
+            return None
+        else:
+            return plan
     
-   def validate_plan(self, plan):
-      if plan is None or type(plan) != dict:
-         return False
-      if 'name' not in plan or 'task' not in plan:
-         return False
-      return True
-   
-   def select_plan(self):
-       items=[f"{self.cot.docHash[item]['name']}: {str(self.cot.docHash[item]['item'])[:48]}" for item in self.cot.docHash if self.cot.docHash[item]['name'].startswith('plan')]
-       picker = ListDialog(items)
-       result = picker.exec()
-       plan = None
-       if result == QDialog.Accepted:
-          selected_index = picker.selected_index()
-          if selected_index != -1:  # -1 means no selection
-             plan_name = items[selected_index].split(':')[0]
-             wm = self.cot.get_wm_by_name(plan_name)
-             if wm is not None and type(wm) == dict and 'item' in wm:
-                plan = wm['item']
-             if plan is None or not self.validate_plan(plan):
-                self.cot.display_response(f'failed to load "{plan_name}", not found or missing name/dscp\n{plan}')
+    def validate_plan(self, plan):
+        if plan is None or type(plan) != str  :
+            return False
+        if '<plan>' not in plan or '<name>' not in plan or '<task>' not in plan:
+            return False
+        return True
+    
+    def select_plan(self):
+        items=[f"{self.wm.get(item)['name']}: {str(self.wm.get(item)['item'])[:48]}" 
+                for item in self.wm.keys() if self.wm.get(item)['name'].startswith('Plan')]
+        picker = ListDialog(items)
+        result = picker.exec()
+        plan = None
+        if result == QDialog.Accepted:
+            selected_index = picker.selected_index()
+            if selected_index != -1:  # -1 means no selection
+                plan_name = items[selected_index].split(':')[0]
+                plan = self.wm.get(plan_name)
+                if plan is not None and type(plan) == dict and 'item' in plan:
+                    plan = plan['item']
+                if plan is None or not self.validate_plan(plan):
+                    self.display_response(f'failed to load "{plan_name}", not found or missing name/dscp\n{plan}')
+                    return None
+
+            else: # init new plan
+                plan = self.initialize()
+                if plan is None:
+                    print(f'failed to create new plan\n"{plan}"')
+                    return None
+                plan_name = find('<name>',plan)
+                self.wm.assign(plan_name, plan)
+                self.wm.save('Planner.wm') 
+        return plan
+        
+    def initialize(self, topic='', task_dscp=None):
+        """Initialize a new plan in XML format"""
+        index_str = str(random.randint(0,999))+'_'
+        plan_suffix = ''
+        
+        plan_suffix = confirmation_popup(f'Plan Name? (will be prefixed with plan{index_str})', 'plan')
+        plan_name = 'Plan'+index_str+plan_suffix
+        if plan_suffix is None or not plan_suffix:
                 return None
-
-       else: # init new plan
-          plan = self.initialize()
-          if plan is None:
-             print(f'failed to create new plan\n"{plan}"')
-             return None
-          self.cot.save_workingMemory() # do we really want to put plans in working memory?
-       return plan
-    
-   def initialize(self, topic='', awm=False):
-       index_str = str(random.randint(0,999))+'_'
-       plan_suffix = ''
-       if awm:
-          plan_suffix = self.cot.confirmation_popup(f'Plan Name? (will be prefixed with plan{index_str})', 'plan')
-          plan_name = 'plan'+index_str+plan_suffix
-          task_dscp = self.cot.confirmation_popup(f'Short description? {plan_name}', "do something useful")
-          if plan_suffix is None or not plan_suffix:
-             return
-       else:
-          plan_name = 'plan: '+topic
-       plan = {}
-       plan['name'] = plan_name
-       task_dscp = self.cot.confirmation_popup(f'Short description? {plan_name}', "do something useful")
-       plan['task'] = topic
-       plan['dscp'] = task_dscp
-       plan['sbar'] = {}
-       plan['steps'] = {}
-       return plan
-
-   def generate(self, plan=None):
-       if plan is None:
-          plan = self.select_plan()
-          
-       if 'sbar' not in plan or plan['sbar'] is None or len(plan['sbar']) == 0:
-          result = self.analyze(plan)
-          if result is None: return None
-          self.cot.save_workingMemory() # do we really want to put plans in working memory? Yes!
-          next = self.cot.confirmation_popup('analysis complete, continue?', result['name']+": "+result['task'])
-          if not next: return plan
-
-       if 'steps' not in plan or plan['steps'] is None or len(plan['steps']) == 0:
-          print(f'building plan')
-          plan = self.plan(plan)
-          if 'steps' in plan:
-             print(f"planner returned {len(plan['steps'])}")
-          else: 
-             print(f"planner didn't add 'steps' to plan!")
-             return plan
-          self.cot.save_workingMemory() # do we really want to put plans in working memory? yes for now
-          next = self.cot.confirmation_popup('planning complete, execute?', result['name']+": "+result['task'])
-          if not next: return plan
-       print(f"run plan steps: {len(plan['steps'])}")
-       self.interpreter.interpret(plan['steps'])
-       return plan
-    
-   def analyze(self, plan, short=False, model=None):
-      # short means ask only one clarification, maybe none if query is detailed (tbd)
-      #not in args above because may not be available at def time
-      if model is None:
-         model = self.llm.template
-      prefix = plan['name']
-      task_dscp = plan['task']
-      print(f'Analyze task_dscp {task_dscp}')
-      if 'sbar' not in plan:
-         plan['sbar'] = {}
-      sbar = plan['sbar']
-      # Loop for obtaining user responses
-      # Generate interview questions for the remaining steps using GPT-4
-      interview_instructions = [
-         ("needs", "Generate a question to add details to the task the user wants to accomplish."),
-         ("background", "Generate a followup question about any additional requirements of the task."),
-         ("observations", "Summarize the information about the task, and comment on any incompleteness in the definition."),
-      ]
-      if short:
-         #only ask one question
-         interview_instructions = [
-         ("background", "Generate a question about any additional requirements of the task."),
-      ]
-      messages = [SystemMessage(content="Your role is to interview the user to expand the information about a task to be accomplished. The user has asked you to: "+task_title+".\nUser provided this further description: "+task_dscp+'.\n')]
-      for step, instruction in interview_instructions:
-         messages.append(UserMessage(content=instruction+"""\nRespond using the following JSON template:
-
-{"question":'<question to ask>'}
-
-Respond only with the above JSON, without any commentary or explanatory text
-"""))
-         if step != 'observations':
-            user_prompt = self.llm.ask('', messages, template=model, temp = 0.05, max_tokens=100, stop_on_json=True, stops=['</End>'])
-            if user_prompt is not None and type(user_prompt) is dict and 'question' in user_prompt:
-               user_prompt = user_prompt['question']
-            print(f"\nAI : {step}, {user_prompt}")
-            past = ''
-            if sbar is not None and sbar == dict and step in plan['sbar']:
-               past = plan_state.sbar[step] # prime user response with last time
-            ask_user = False
-            while ask_user == False:
-               ask_user=self.cot.confirmation_popup(str(user_prompt), str(past))
-            sbar[step] = {'q':user_prompt, 'a':ask_user}
-            messages.append(AssistantMessage(content=user_prompt))
-            messages.append(UserMessage(content=ask_user))
-         else: # closing AI thoughts and user feedback. No need to add to messages because no more iterations
-            observations = self.llm.ask('', messages, template=model, max_tokens=150,temp = 0.05)
-            if observations is not None:
-               observations = observations.split('\n')[0]
-            sbar['observations']=observations
-            print(f"\nAI : {step}, {observations}")
-            user_response = False
-            while user_response == False:
-               user_response = self.cot.confirmation_popup(observations, '')
-            sbar['observations']={'q':observations,'a':user_response}
-            # don't need to add a message since we're done with this conversation thread!
-            print(f"Requirements \n{sbar}")
-         plan['sbar'] = sbar
-      return plan
-
-   def outline(self, config, plan):
-      # an 'outline' is a plan for a writing task!
-      # 'config' is a paper_writer configuration for this writing task
-      if 'length' in config:
-         length = config['length']
-      else:
-         length = 1200
-
-      number_top_sections = max(3, int(length/2000 + 0.5))
-      depth = max(1, int(math.log(length/2)-6))
+                
+        if task_dscp is None:
+            task_dscp = confirmation_popup(f'Short description? {topic}', "do something useful")
             
-      outline_syntax =\
-"""{"title": '<report title>', "sections":[ {"title":"<title of section 1>", "dscp":'<description of content of section 1>', "sections":[{"title":'<title of subsection 1 of section 1>', "dscp":'<description of content of subsection 1>'}, {"title":'<title of subsection 2 section 1>', "dscp":'<description of content of subsection 2>' } ] }, {"title":"<title of section 2>",... }
+        # Create XML structure
+        plan_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<plan>
+    <name>{plan_name}</name>
+    <task>{topic}</task>
+    <dscp>{task_dscp}</dscp>
+    <sbar></sbar>
+    <outline></outline>
+</plan>
 """
+           
+        return plan_xml
 
-      outline_prompt =\
-f"""
-Write an outline for a research report on: {plan['task']}.
+    def generate(self, plan=None):
+        if plan is None:
+            plan = self.select_plan()
+            
+        if find('<sbar>', plan) is None or len(findall('<sbar>', plan)) == 0:
+            result = self.analyze(plan)
+            if result is None: return None
+            self.wm.save_workingMemory() # do we really want to put plans in working memory? Yes!
+            next = confirmation_popup('analysis complete, continue? '+find(result,'name')+": "+find(result,'task'), 'No SBAR!')
+            if not next: return plan
+
+        if 'outline' not in plan or plan['outline'] is None or len(plan['outline']) == 0:
+            print(f'building plan')
+            plan = self.plan(plan)
+            if 'outline' in plan:
+                print(f"planner returned {len(plan['outline'])}")
+            else: 
+                print(f"planner didn't add 'outline' to plan!")
+                return plan
+            self.wm.save_workingMemory() # do we really want to put plans in working memory? yes for now
+            next = confirmation_popup('planning complete, execute?', result['name']+": "+result['task'])
+            if not next: return plan
+        print(f"run plan outline: {len(plan['outline'])}")
+        self.interpreter.interpret(plan['outline'])
+        return plan
+        
+    def analyze(self, plan_xml, short=False, model=None):
+        """Analyze plan requirements using SBAR framework"""
+        from utils.xml_utils import find, findall
+                    
+        # Parse existing plan
+        prefix = find('<name>', plan_xml)
+        task_dscp = find('<task>', plan_xml)
+        print(f'Analyze task_dscp {task_dscp}')
+        
+        # Interview instructions
+        interview_instructions = [
+            ("needs", "Generate a question to add details to the task the user wants to accomplish."),
+            ("background", "Generate a followup question about any additional requirements of the task."),
+            ("observations", "Summarize the information about the task, and comment on any incompleteness in the definition."),
+        ]
+        if short:
+            interview_instructions = [
+                ("background", "Generate a question about any additional requirements of the task."),
+            ]
+                
+        messages = [SystemMessage(content="""Your role is to interview the user to expand the information about a task to be accomplished. 
+The user has asked you to: """+task_dscp)]
+        
+        # Build SBAR responses
+        old_sbar_xml = find('<sbar>',plan_xml) or ''
+        sbar_xml = ''
+        for step, instruction in interview_instructions:
+            messages.append(UserMessage(content=instruction+"""\nRespond using the following XML template:
+
+<question>question to ask</question>
+
+Respond only with the above XML, without any commentary or explanatory text. End your response with <End/>"""))
+                
+            if step != 'observations':
+                # Get question from LLM
+                response = self.llm.ask('', messages, template=model, temp=0.05, max_tokens=100, stops=['<End/>'])
+                user_prompt = find('<question>',response)
+                print(f"\nAI : {step}, {user_prompt}")
+                
+                # Get past answer if exists
+                past = find(f"<{step}>",old_sbar_xml)  or ''
+                if past is None:
+                    past = ''
+                else:
+                    past = find('<a>',past)
+                    if past is None:
+                        past = ''
+                        
+                # Get user response
+                ask_user = False
+                while ask_user == False:
+                    ask_user = confirmation_popup(str(user_prompt), str(past))
+                        
+                # Add to SBAR XML
+                sbar_xml += f"""
+        <{step}>
+            <q>{user_prompt}</q>
+            <a>{ask_user}</a>
+        </{step}>"""
+                        
+                messages.append(AssistantMessage(content=user_prompt))
+                messages.append(UserMessage(content=ask_user))
+                    
+            else:  # observations
+                observations = self.llm.ask('', messages, template=model, max_tokens=150, temp=0.05)
+                if observations is not None:
+                    observations = observations.split('\n')[0]
+                print(f"\nAI : {step}, {observations}")
+                    
+                user_response = False
+                while user_response == False:
+                    user_response = confirmation_popup(observations, '')
+                        
+                # Add observations to SBAR XML
+                sbar_xml += f"""
+        <observations>
+            <q>{observations}</q>
+            <a>{user_response}</a>
+        </observations>"""
+                    
+        # Create updated plan XML
+        updated_plan = f"""<?xml version="1.0" encoding="UTF-8"?>
+    <plan>
+        <name>{prefix}</name>
+        <task>{task_dscp}</task>
+        <sbar>{sbar_xml}
+        </sbar>
+        <steps/>
+    </plan>
+    </End>"""
+            
+        return updated_plan
+
+    def outline(self, config, plan_xml):
+        """Generate outline for writing task"""
+        
+        # Get length from config
+        if 'length' in config:
+            length = config['length']
+        else:
+            length = 1200
+
+        number_top_sections = max(3, int(length/2000 + 0.5))
+        depth = max(1, int(math.log(length/2)-6))
+                
+        outline_syntax = """<outline>
+        <section>
+            <title>Section Title</title>
+            <dscp>Section description</dscp>
+            <sections>
+                <section>
+                    <title>Subsection Title</title>
+                    <dscp>Subsection description</dscp>
+                </section>
+            </sections>
+        </section>
+    </outline>"""
+
+        outline_prompt = f"""You are a research assistant. Write an outline for a research report on: {find(plan_xml, 'task')}.
 Details on the requested report include:
 
-<DETAILS>
-{plan['dscp']}
-</DETAILS>
+<Description>
+{find('<dscp>',plan_xml)}
+</Description>
+
+<Details>
+{find('<sbar>',plan_xml)}
+</Details>
 
 The outline should have about {number_top_sections} top-level sections and {'no subsections.' if depth <= 0 else 'a depth of '+str(depth)}.
-Respond ONLY with the outline, in JSON format:
+Respond ONLY with the outline, in XML format:
 
 {outline_syntax}
-"""
-      revision_prompt=\
-f"""
-<PRIOR_OUTLINE>
+
+End your response with:
+<End/>"""
+
+        revision_prompt = f"""You are a research assistant. Revise the Prior Outline for a research report on: {find('<task>',plan_xml)}
+Details on the requested report include:
+
+<Description>
+{find('<dscp>',plan_xml)}
+</Description>
+
+<Details>
+{find('<sbar>',plan_xml)}
+</Details>
+
+The prior outline was:
+<PriorOutline>
 {{{{$outline}}}}
-</PRIOR_OUTLINE>
+</PriorOutline>
 
-<CRITIQUE>
+And the critique of that outline:
+<Critique>
 {{{{$critique}}}}
-</CRITIQUE>
+</Critique>
 
-Reason step by step to analyze and improve the above outline with respect to the above Critique. 
+Reason step by step to analyze and improve the above PriorOutline with respect to the above Critique. 
+Respond ONLY with the outline, in XML format:
 
 {outline_syntax}
-"""
-      user_satisfied = False
-      user_critique = ''
-      first_time = True
-      prior_outline = ''
-      if 'outline' in plan:
-         prior_outline = plan['outline']
-         first_time = False
-         
-      while not user_satisfied:
-         if not first_time:
-            user_critique = self.cot.confirmation_popup(json.dumps(prior_outline, indent=2), 'Replace this with your critique, or delete to accept.')
+
+End your response with:
+<End/>"""
+
+
+        user_satisfied = False
+        user_critique = ''
+        first_time = True
+        prior_outline = find('<outline>',plan_xml) or ''
+        prior_outline_extract = self.extract_outline_from_xml(prior_outline)
+        while not user_satisfied:
+            if not first_time:
+                user_critique = confirmation_popup(prior_outline, 'Replace this with your critique, or delete this and click ok to accept.')
+                print(f'user_critique {user_critique}')
+                if user_critique != False and len(user_critique) < 4:
+                    user_satisfied = True
+                    print("*******user satisfied with outline")
+                    break
+                else:
+                    print('***** user not satisfied, retrying')
+            
+            messages = [SystemMessage(content=outline_prompt)]
+            if not first_time:
+                print(f'using revision prompt')
+                messages = [SystemMessage(content=revision_prompt)]
+                
+            prior_outline = self.llm.ask({'outline': prior_outline, 'critique': user_critique}, 
+                    messages, 
+                    max_tokens=500, 
+                    temp=0.1,
+                    stops=['<End/>']
+            )
+            first_time = False
+
+        # Create updated plan XML with new outline
+        updated_plan = f"""<?xml version="1.0" encoding="UTF-8"?>
+    <plan>
+        <name>{find(plan_xml, 'name')}</name>
+        <task>{find(plan_xml, 'task')}</task>
+        <dscp>{find(plan_xml, 'dscp')}</dscp>
+        <sbar>{find(plan_xml, 'sbar')}</sbar>
+        <steps>{find(plan_xml, 'steps')}</steps>
+        <outline>{prior_outline}</outline>
+    </plan>
+    </End>"""
+
+        return updated_plan
+        
+
+    #
+    ### Plan creation
+    #
+
+    def plan(self, plan):
+        if 'steps' not in plan:
+            plan['steps'] = {}
+        plan_prompt=\
+            """
+    Reason step by step to create a plan for performing the TASK described above. 
+    The plan should consist only of a list of actions, where each step is one of the available Actions listed earlier, specified in full.
+    Note the the 'plan' action accepts a complete, concise, text statement of a subtask.  Control flow over the actions must be expressed using the 'if', 'while', 'break', 'continue', or 'return' actions as appropriate.  Respond only with the plan using the above plan format, optionally followed by explanatory notes. Do not use any markdown or code formatting in your response.
+
+    """
+        print(f'******* Developing Plan for {plan["name"]}')
+
+        revision_prompt=\
+            """
+    Reason step by step to analyze and improve the above plan with respect to the above Critique. 
+    """
+        user_satisfied = False
+        user_critique = '123'
+        first_time = True
+        while not user_satisfied:
+            messages = [SystemMessage(content="""Your task is to create a plan using the set of predefined actions:
+
+    {{$actions}}
+
+    The plan must be a JSON list of action instantiations, using this JSON format:
+
+    {"actions: [{"action": '<action_name>', "arguments": '<argument or argument list>', "result":'<result>'}, ... ],
+    "notes":'<notes about the plan>'}\n\n"""),
+                        UserMessage(content=f"Task: {plan['name']}\n{json.dumps(plan['sbar'], indent=2)}\n"+plan_prompt)
+                        ]
+            if first_time:
+                first_time = False
+            else:
+                messages.append(AssistantMessage(content='Critique: '+user_critique))
+                messages.append(UserMessage(content=revision_prompt))
+                
+            #print(f'******* task state prompt:\n {gpt_message}')
+            steps = self.llm.ask({"actions":action_primitive_descriptions}, messages, max_tokens=2000, temp=0.1)
+            self.display_response(f'***** Plan *****\n{steps}\n\nPlease review and critique or <Enter> when satisfied')
+            
+            user_critique = confirmation_popup('Critique', '')
             print(f'user_critique {user_critique}')
             if user_critique != False and len(user_critique) <4:
-               user_satisfied = True
-               print("*******user satisfied with outline")
-               plan['outline'] = prior_outline
-               break
+                user_satisfied = True
+                print("*******user satisfied with plan")
+                break
             else:
-               print('***** user not satisfield, retrying')
-         
-         messages = [SystemMessage(content=outline_prompt),
-                     AssistantMessage(content='')
-                     ]
-         if not first_time:
-            print(f'adding revision prompt')
-            messages.append(UserMessage(content=revision_prompt))
-         #print(f'******* task state prompt:\n {gpt_message}')
-         prior_outline = self.llm.ask({'outline':prior_outline, 'critique':user_critique}, messages, template=outline_model, max_tokens=500, temp=0.1, stops=['</End>'])
-         first_time = False
-
-      return plan
-      
-
-   #
-   ### Plan creation
-   #
-
-   def plan(self, plan):
-       if 'steps' not in plan:
-          plan['steps'] = {}
-       plan_prompt=\
-          """
-Reason step by step to create a plan for performing the TASK described above. 
-The plan should consist only of a list of actions, where each step is one of the available Actions listed earlier, specified in full.
-Note the the 'plan' action accepts a complete, concise, text statement of a subtask.  Control flow over the actions must be expressed using the 'if', 'while', 'break', 'continue', or 'return' actions as appropriate.  Respond only with the plan using the above plan format, optionally followed by explanatory notes. Do not use any markdown or code formatting in your response.
-
-"""
-       print(f'******* Developing Plan for {plan["name"]}')
-
-       revision_prompt=\
-          """
-Reason step by step to analyze and improve the above plan with respect to the above Critique. 
-"""
-       user_satisfied = False
-       user_critique = '123'
-       first_time = True
-       while not user_satisfied:
-          messages = [SystemMessage(content="""Your task is to create a plan using the set of predefined actions:
-
-{{$actions}}
-
-The plan must be a JSON list of action instantiations, using this JSON format:
-
-{"actions: [{"action": '<action_name>', "arguments": '<argument or argument list>', "result":'<result>'}, ... ],
- "notes":'<notes about the plan>'}\n\n"""),
-                      UserMessage(content=f"Task: {plan['name']}\n{json.dumps(plan['sbar'], indent=2)}\n"+plan_prompt)
-                      ]
-          if first_time:
-             first_time = False
-          else:
-             messages.append(AssistantMessage(content='Critique: '+user_critique))
-             messages.append(UserMessage(content=revision_prompt))
-             
-          #print(f'******* task state prompt:\n {gpt_message}')
-          steps = self.llm.ask({"actions":action_primitive_descriptions}, messages, max_tokens=2000, temp=0.1)
-          self.cot.display_response(f'***** Plan *****\n{steps}\n\nPlease review and critique or <Enter> when satisfied')
-          
-          user_critique = self.cot.confirmation_popup('Critique', '')
-          print(f'user_critique {user_critique}')
-          if user_critique != False and len(user_critique) <4:
-             user_satisfied = True
-             print("*******user satisfied with plan")
-             break
-          else:
-             print('***** user not satisfield, retrying')
-       plan['steps'] = steps
-       return plan
-    
+                print('***** user not satisfield, retrying')
+        plan['steps'] = steps
+        return plan
+        
+    def extract_outline_from_xml(self, plan_xml, indent=""):
+        """Convert XML outline to readable indented text
+        Args:
+            plan_xml: XML string containing plan with outline
+            indent: Current indentation (for recursion)
+        Returns:
+            String containing human-readable outline
+        """
+        result = []
+        outline = find('<outline>',plan_xml)
+        if not outline:
+            return "No outline found"
+            
+        # Process each section
+        for section in findall('<section>',outline):
+            title = find('<title>',section)
+            dscp = find('<dscp>',section)
+            result.append(f"{indent}• {title}")
+            if dscp:
+                result.append(f"{indent}  {dscp}")
+                
+            # Recursively process subsections
+            subsections = findall(section, 'sections/section')
+            if subsections:
+                for subsection in subsections:
+                    sub_xml = f"<outline><section>{subsection}</section></outline>"
+                    sub_result = self.extract_outline_from_xml(sub_xml, indent + "    ")
+                    result.append(sub_result)
+                    
+        return "\n".join(result)
+        

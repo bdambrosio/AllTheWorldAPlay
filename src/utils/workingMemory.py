@@ -36,6 +36,9 @@ class WorkingMemory:
         else:
             return None
         
+    def keys(self):
+        return self._wm.keys()
+        
     def select(self, query):
         """ exhaustive for now, assuming enough context size """
         content = [self._wm[key] for key in self._wm.keys()]

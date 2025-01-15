@@ -47,8 +47,7 @@ from wordfreq import tokenize as wf_tokenize
 from transformers import AutoTokenizer, AutoModel
 import webbrowser
 import rewrite as rw
-import utils.jsonEditor as ew
-from planner import Planner
+from library.planner import Planner
 from utils.llm_api import LLM
 import utils.LLMScript as script    
 # startup AI resources
@@ -748,8 +747,6 @@ End your response with:
     display.display_response(report)
     display.display_msg(paper_ids)
     return report
-    
-f#rom Planner import Planner
 
 if __name__ == '__main__':
     def parse_arguments():
@@ -787,15 +784,7 @@ if __name__ == '__main__':
             sys.exit(0)
 
         if hasattr(args, 'report') and args.report is not None:
-            if hasattr(args, 'template'):
-                cot = oiv.OwlInnerVoice(None, args.template)
-            else:
-                cot = oiv.OwlInnerVoice(None)
-            # set cot for rewrite so it can access llm
-            rw.cot = cot
-            s2.cot = cot
-
-            pl = Planner(None, cot, args.template)
+            pl = Planner(None, 'local')
             app = QApplication(sys.argv)
             write_report(app, args.report)
             sys.exit(0)
@@ -805,5 +794,3 @@ if __name__ == '__main__':
     except Exception as e:
         traceback.print_exc()
         print(str(e))
-        sys.exit(-1)
-    

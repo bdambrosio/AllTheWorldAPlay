@@ -247,6 +247,8 @@ Your conversation style is warm, gentle, humble, and engaging."""
             return self.do_web(dict_item)
         elif dict_item['action'] == 'wiki':
             return self.do_wiki(dict_item)
+        elif dict_item['action'] == 'if':
+            return self.do_if(dict_item)
         else:
             self.display_msg(f"action not yet implemented {item['action']}")
             #raise ValueError(f"action not yet implemented {item['action']}")
@@ -612,3 +614,29 @@ End your response with:
         """Clean shutdown of interpreter"""
         self.wm.save('interpreter')
         # Any other cleanup needed
+
+    def do_if(self, action):
+        """Execute if-condition action"""
+        action, arguments, result = self.parse_as_action(action)
+        if not isinstance(arguments, tuple) or len(arguments) != 2:
+            raise InvalidAction(f'if requires (condition, action_list) arguments: {str(arguments)}')
+        
+        condition = self.resolve_arg(arguments[0])
+        action_list = arguments[1]
+        
+        # Evaluate condition
+        condition_result = self.llm.ask("", [
+            SystemMessage(content="Evaluate this condition and respond only with 'true' or 'false':"),
+            UserMessage(content=condition)
+        ])
+        
+        if condition_result and condition_result.lower().strip() == 'true':
+            if isinstance(action_list, list):
+                # Execute action list
+                for action_item in action_list:
+                    self.do_item(action_item)
+            else:
+                # Single action
+                self.do_item(action_list)
+        
+        return condition_result
