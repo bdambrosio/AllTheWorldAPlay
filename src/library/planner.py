@@ -397,7 +397,10 @@ End your response with:
             first_time = False
 
         # Create updated plan XML with new outline (strip <outline> tags from prior_outline first)
-        updated_plan = xml.set('<outline>',plan_xml, xml.find('<outline>',prior_outline))
+        outline_update_value = xml.find('<outline>',prior_outline)
+        if outline_update_value is None:
+            outline_update_value = prior_outline
+        updated_plan = xml.set('<outline>', plan_xml, outline_update_value)
         self.save_plan(updated_plan)
         return updated_plan
         

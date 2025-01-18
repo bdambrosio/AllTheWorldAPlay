@@ -368,7 +368,7 @@ End your response with:
                 paper = s2.paper_from_title(title)
                 if paper is not None:
                     ppr_ids.add(paper['faiss_id'])
-                    resources.append([paper['faiss_id'], papers[title]])
+                    #text_ids.append([paper['faiss_id'], paper[title]])
                 for section_id in papers[title]:
                     texts.append(s2.section_from_id(section_id)['synopsis'])
                     text_ids.append(section_id)
@@ -393,10 +393,11 @@ End your response with:
         #
         ### first collect entities
         #
-        keywds = rw.paper_ners(paper_title, paper_outline, texts, text_ids)
-        missing_entities = rw.literal_missing_ners(keywds, draft)
-        print(f'\n missing entities in initial draft {len(missing_entities)}\n')
-
+        #keywds = rw.paper_ners(paper_title, paper_outline, texts, text_ids)
+        #missing_entities = rw.literal_missing_ners(keywds, draft)
+        #print(f'\n missing entities in initial draft {len(missing_entities)}\n')
+        num_rewrites = 0
+        keywds = []
         for i in range(num_rewrites):
             if i < num_rewrites-1:
                 #add new entities
