@@ -119,76 +119,57 @@ def plan_search():
 
 def make_search_queries(outline, section_outline, sbar):
     prompt = """
-Following is an outline for a research paper, in JSON format: 
+Following is an outline for a research paper, in XML format: 
 
 {{$outline}}
 
 From this outline generate 3 SemanticScholar search queries for the section:
 {{$target_section}}
 
-A query can contain no more than 100 characters, Respond in a plain JSON format without any Markdown or code block formatting,  using the following format:
-{"query0":'query 0 text',"query1": 'query 1 text', "query2": query 2 text'}
+A query can contain no more than 100 characters, Respond in a plain XML format without any Markdown or code block formatting,  using the following format:
 
-Respond ONLY with the JSON above, do not include any commentary or explanatory text.
+<Search>
+  <query>query 1 text</query>
+  <query>query 2 text</query>
+  <query>query 3 text</query>
+</Search>
+
+Respond ONLY with the XML above, do not include any commentary or explanatory text.
+End your response with:
+<End/>
 """
-    messages = [SystemMessage(content=prompt),
-                AssistantMessage(content='')
+    messages = [SystemMessage(content=prompt)
                 ]
-    queries = llm.ask({"outline":json.dumps(outline, indent=2), "target_section":json.dumps(section_outline, indent=2)}, messages, stop_on_json=True, max_tokens=150)
-    if type(queries) is dict:
-        print(f'\nquery forsection:\n{section_outline}\nqueries:\n{json.dumps(queries, indent=2)}')
+    response = llm.ask({"outline":xml.format_xml(outline, ), "target_section":xml.format_xml(section_outline)}, 
+                      messages, stops=['<End/>'], max_tokens=150)
+    queries = xml.find('<Search>', response)
+    if type(queries) is not None and len(queries) >0:
+        queries = xml.findall('<query>', queries)
+        print(f"\nquery forsection:\n{section_outline}\nqueries:\n{'\n'.join(queries)}")
     else:
         print(f'\nquery forsection:\n{section_outline}\nqueries:\n{queries}')
     return queries
 
-def generate_s2_search_queries(query):
-    information_requirements = script.sufficient_response(query)
-    prompt = """
-Generate a set of short Semantic Scholar (s2) search queries, in JSON format, given the following set of information requirements withing the overall topic of:
-
-{{$query}}
-
-<InformationNeeds>
-{{$needs}}
-</InformationNeeds>
-
-A query should contain no more than 10 tokens. 
-Respond in a plain JSON format without any Markdown or code block formatting,  using the following format:
-
-{"information-need1":'s2 query text 1',"information-need2": '<s2 query text 2>', ...}
-
-Respond ONLY with the JSON above, do not include any commentary or explanatory text.
-"""
-    messages = [SystemMessage(content=prompt),
-                AssistantMessage(content='')
-                ]
-    queries = llm.ask({"query":query, "needs":information_requirements}, messages, stop_on_json=True, max_tokens=300)
-    if type(queries) is dict:
-        print(f'\nquery: {query}\ns2 queries:\n{json.dumps(queries, indent=2)}')
-    else:
-        print(f'\nquery: {query}\ns2 queries:\n{queries}')
-    return queries
-    
+   
 def s2_search (outline, section_outline, sbar=None):
     #
     ### Note - ALL THIS IS DOING IS PRE-LOADING LOCAL LIBRARY!!! Doesn't need to return anything!
     # this call is a recursive call, 'section_outline' is a subsection of 'outline' that is being processed
     #convert below to use new xml outline format with nested sections
-    if 'section' in section_outline and xml.findall('<section>', section_outline) is not None and len(xml.findall('<section>', section_outline)) > 0: 
-        for subsection in xml.findall('<section>', section_outline):
+    section_list = xml.findall('<section>', section_outline)
+    if 'sections' in section_outline and xml.findall('<sections>', section_outline) is not None and len(xml.findall('<sections>', section_outline)) > 0: 
+        for subsection in xml.findall('<section>', xml.find('<sections>', section_outline)):
             s2_search(outline, subsection, sbar)
+    elif section_list is not None and len(section_list) > 1: 
+            for section in section_list:
+                s2_search(outline, section, sbar)
     else:
-        queries = make_search_queries(outline, section_outline, sbar)
+        queries = make_search_queries(outline, section_outline, sbar)   
         bads = ['(',')',"'",' AND', ' OR'] #tulu sometimes tries to make fancy queries, S2 doesn't like them
-        if type(queries) is not dict:
+        if type(queries) is not list:
             print(f's2_search query construction failure')
             return None
-        for i in range(3):
-            if 'query'+str(i) not in queries:
-                continue
-            query = queries['query'+str(i)]
-            for bad in bads:
-                query = query.replace(bad, '')
+        for query in queries:
             result_list, total_papers, next_offset = s2.get_articles(query, confirm=True)
             print(f's2_search found {len(result_list)} new papers')
             while next_offset < total_papers and confirmation_popup('Continue?', query):
@@ -236,191 +217,85 @@ def write_report(app, topic):
         except:
             print(f'Invalid length: {length}, assuming 1200')
             length = 1200
-        write_report_aux(paper_outline=outline, section_outline=outline, length=length)
+    report, paper_ids = write_report_aux(outline, xml.find('<title>',outline), outline, length=length, rewrites=1)
+    print(f'write_report final result\n{report}')
+    with open(f'{topic}.txt', 'w') as f:
+        f.write(report)
+    with open(f'{topic}.ids', 'w') as f:
+        f.write(str(paper_ids))
+    return report
         
-def write_report_aux(paper_outline=None, section_outline=None, texts=None, length=400, dscp='', 
-                     topic='', paper_title='', abstract='', depth=0, parent_section_title='', 
-                     parent_section_partial='', heading_1_title='', heading_1_draft = '', num_rewrites=1, resources=None):
-    #
-    ## need to mod this to handle 'resources' longer than available context
-    ## resources OR texts, not both! - if both, assume texts is unpacked from resources
-    #
-    if depth == 0: 
-        n = 0; paper_ids=[] #set section number initially to 0
-    if len(paper_title) == 0 and depth == 0 and 'title' in paper_outline:
-        paper_title=xml.find('<title>',paper_outline)
-    if 'length' in section_outline:
-        length = xml.find('<length>',section_outline)
-    if 'rewrites' in section_outline:
-        num_rewrites = xml.find('<rewrites>',section_outline)
-
-    # subsection dscp is full path dscp descending from root
-    subsection_dscp = dscp
-    if 'task' in section_outline:
-        # overall instruction for this subsection
-        subsection_dscp += '\n'+ xml.find('<task>',section_outline)
+def write_report_aux(outline, paper_title, full_outline, length, rewrites=0):
+    """Generate report text from outline.
+    Returns: (text, paper_ids)
+    """
+    # Process direct child sections first
+    sections = xml.findall('<section>', outline)
+    if not sections:
+        return "", set()
         
-    # subsection topic is local title or dscp 
-    subsection_topic = xml.find('<dscp>', section_outline) if 'dscp' in section_outline else xml.find('<title>',section_outline)
-    subsection_title = xml.find('<title>',section_outline)
-    #print(f"\nWRITE_PAPER section: {topic}")
-    if depth == 0 and resources is not None:
-        # do this only once
-        # remember, synopsis is the only text field in section and actually contains the original text
-        texts = [s2.section_from_id(id)['synopsis'] for id in resources[1][0]]
-        print(f'write_report_aux depth 0 len {sum(len(text) for text in texts)}, limit {llm.context_size*2} chars')
-        if sum(len(text) for text in texts) >  llm.context_size*2: # context is in tokens, len is chars
-            # texts are too long for context, do query-specific extract first
-            words = int(llm.context_size*2 * ((llm.context_size*2)/sum(len(text) for text in texts)))
-            summary_texts = []
-            summary_text = ''
-            for text in texts:
-                if len(summary_text) + len(text) <  (llm.context_size*2):
-                    summary_text += '\n'+text
-                    continue
-                else:
-                    summary_text = script.process2(arg1=topic,
-                                                   arg2=summary_text,
-                                                   instruction=f"""You are a skilled technical writer. 
-Compress the content of Text2, retaining all the information relevant to Text1 and as much other technical content as possible. 
-Limit your response to {words} words.
-Be concise. Your goal is to retain maximum information content.
-Do not include any introductory, explanatory, or discursive text.
-End your response with:
-</END>
-""",
-                                                   max_tokens = int(words*1.5),
-                                                   eos='</END>')
-
-                    summary_texts.append(summary_text)
-                    summary_text = text
-            if len(summary_text) > 0:
-                summary_texts.append(summary_text)
-            texts = summary_texts
-
-    if 'section' in section_outline and len(xml.findall('<section>',section_outline)) > 0:
-        #
-        ### write section intro first draft
-        #
-        subsection_depth = 1+depth
-        num_sections = len(xml.findall('<section>',section_outline))
-        subsection_token_length = int(length/len(xml.findall('<section>',section_outline)))
-        section = ''
-        n=0
-        paper_ids = []
-        for subsection in xml.findall('<section>',section_outline):
-            if depth == 0:
-                heading_1_title = xml.find('<title>',subsection)
-                heading_1_draft = ''
-            print(f"subsection title {xml.find('<title>',subsection)}")
-            text, subsection_paper_ids =\
-                write_report_aux(paper_outline=paper_outline,
-                                 section_outline=subsection,
-                                 texts=texts,
-                                 length=subsection_token_length,
-                                 dscp=subsection_dscp,
-                                 topic=subsection_topic,
-                                 paper_title=paper_title,
-                                 abstract=abstract,
-                                 depth=subsection_depth,
-                                 parent_section_title=subsection_title,
-                                 parent_section_partial=section,
-                                 heading_1_title= heading_1_title,
-                                 heading_1_draft=heading_1_draft,
-                                 num_rewrites=num_rewrites,
-                                 resources=resources)
-            subsection_text = '\n\n'+'.'*depth+xml.find('<title>',subsection)+'\n'+text
-            section += subsection_text
-            for paper_id in subsection_paper_ids:
-                if paper_id not in paper_ids:
-                    paper_ids.append(paper_id)
-            heading_1_draft += subsection_text
-            if depth==0:
-                citations = []
-                for paper_id in paper_ids:
-                    citations.append(str(paper_id)+': '+str(s2.cite(paper_id)))
-                with open(f'section{n}.txt', 'w') as pf:
-                    pf.write(section +'\n\nReferences:+\n'+'\n'.join(citations))
-                n += 1
-            
-        if depth != 0:
-            return section, paper_ids
-        else:
-            citations = []
-            for paper_id in paper_ids:
-                citations.append(str(s2.cite(paper_id)))
-            return section +'\n\nReferences:+\n'+'\n\n'.join(citations)
+    # Calculate length per section
+    section_length = length // len(sections)
     
-    else:
-        # no subsections, write this terminal section
-        section = '' if 'title' not in section_outline else xml.find('<title>',section_outline)
-        print(f'heading_1 {heading_1_title}\npst {parent_section_title}\nsubsection topic {subsection_topic}')
-        query = heading_1_title+', '+parent_section_title+' '+subsection_topic
-        # below assumes web searching has been done
-        if resources is None and texts is None:
-            # do local search, texts to use not provided
-            texts = []
-            text_ids = []
-            print(f'** write_report_aux Doing local search ! **')
-            papers = s2.search(query, subsection_dscp, char_limit=llm.context_size*2)
-            ppr_ids = set()
-            for title in papers.keys(): # title is the paper title
-                paper = s2.paper_from_title(title)
-                if paper is not None:
-                    ppr_ids.add(paper['faiss_id'])
-                    #text_ids.append([paper['faiss_id'], paper[title]])
-                for section_id in papers[title]:
-                    texts.append(s2.section_from_id(section_id)['synopsis'])
-                    text_ids.append(section_id)
-                    # tbd - what to do if search returns more than will fit in context?
-                    # for now assume with report section dscp context will hold most important
-                    # although note we aren't enumerating in order by search rating.
-                    # maybe should prune more in search? Make it an option?
-                    if sum(len(text) for text in texts) > llm.context_size*2:
-                        break
-        else:
-            ppr_ids = set(resources[0])
-        subsection_token_length = max(400,length) # no less than a paragraph
-        print(f"\nWriting: {xml.find('<title>',section_outline)} length {length}")
-        draft = rw.write(paper_title, paper_outline, xml.find('<title>',section_outline), '', texts, '', subsection_topic,
-                         int(subsection_token_length), parent_section_title, heading_1_title, heading_1_draft)
-        print(f'\nFirst Draft:\n{draft}\n')
-        if num_rewrites < 1:
-            return draft, ppr_ids
-
-        #
-        ### Now do rewrites
-        #
-        ### first collect entities
-        #
-        #keywds = rw.paper_ners(paper_title, paper_outline, texts, text_ids)
-        #missing_entities = rw.literal_missing_ners(keywds, draft)
-        #print(f'\n missing entities in initial draft {len(missing_entities)}\n')
-        num_rewrites = 0
-        keywds = []
-        for i in range(num_rewrites):
-            if i < num_rewrites-1:
-                #add new entities
-                draft = rw.add_pp_rewrite(paper_title, paper_outline, xml.find('<title>',section_outline), 
-                                          draft, texts, keywds, subsection_topic, int((1.3**(i+1))*subsection_token_length), 
-                                          parent_section_title, heading_1_title, heading_1_draft)
-            else:
-                # refine in final rewrite
-                draft = rw.rewrite(paper_title, paper_outline, xml.find('<title>',section_outline), 
-                                   draft, texts, keywds, subsection_topic, 2*subsection_token_length, 
-                                   parent_section_title, heading_1_title, heading_1_draft)
-            missing_entities = rw.literal_missing_ners(keywds, draft)
-            print(f'\n missing entities after rewrite {len(missing_entities)} \n')
-
+    # Process each section and collect results
+    text = []
+    all_paper_ids = set()
+    
+    for section in sections:
+        # Get section metadata
+        title = xml.find('<title>', section)
+        dscp = xml.find('<dscp>', section)
         
-        section = draft
-        # make sure we write out top level sections even if they have no subsections!
-        if depth==0: # single top-level section with no subsections
-            with open(f'section{n}.txt', 'w') as pf:
-                pf.write(draft)
-            n += 1
+        # Generate section content
+        section_text, section_paper_ids = \
+            generate_section(paper_title, outline, dscp, section, title, dscp, section_length, rewrites=rewrites)
+        text.append(section_text)
+        all_paper_ids.update(section_paper_ids)
+        
+        # Handle subsections if present
+        subsections = xml.find('<sections>', section)
+        if subsections:
+            sub_text, sub_paper_ids = write_report_aux(subsections, paper_title, full_outline, section_length, rewrites=rewrites)
+            text.append(sub_text)
+            all_paper_ids.update(sub_paper_ids)
+            
+    return "\n\n".join(text), all_paper_ids
 
-    return section, ppr_ids
+def generate_section(paper_title, outline, background_query,section_outline, title, dscp, length, rewrites=0):
+    """Generate content for a single section with rewrites.
+    Returns:
+        tuple: (section_text, paper_ids)
+    """
+    # Extract core content from tags
+    section_title = xml.get_text(paper_title)
+    section_dscp = xml.get_text(dscp)
+    
+    print(f'subsection topic {section_dscp}')
+    query = background_query+', '+section_title+' '+section_dscp
+    # below assumes web searching has been done
+    source_texts = []
+    source_text_ids = []
+    print(f'** write_report_aux Doing local search ! **')
+    papers = s2.search(query, section_dscp, char_limit=llm.context_size*2)
+    ppr_ids = set()
+    for title in papers.keys(): # title is the paper title
+        paper = s2.paper_from_title(title)
+        if paper is not None:
+            ppr_ids.add(paper['faiss_id'])
+            for section_id in papers[title]:
+                source_texts.append(s2.section_from_id(section_id)['synopsis'])
+                if sum(len(source_text) for source_text in source_texts) > llm.context_size*2:
+                    break
+        
+    subsection_token_length = max(400,length) # no less than a paragraph
+    print(f"\nWriting: {xml.find('<title>',section_outline)} length {length}")
+    draft = rw.write(paper_title, outline, section_title, '', source_texts, '', section_dscp,
+                    int(subsection_token_length), '', '', '')
+    print(f'\nFirst Draft:\n{draft}\n')
+    if rewrites < 1:
+        return draft, ppr_ids
+
+    return draft, ppr_ids
 
 class DisplayApp(QtWidgets.QWidget):
     def __init__(self, query, paper_id, sections=[], dscp='', template=''):
@@ -616,11 +491,13 @@ if __name__ == '__main__':
 
         if hasattr(args, 'report') and args.report is not None:
             pl = Planner(None, 'local')
+            llm = LLM('local')
             app = QApplication(sys.argv)
             write_report(app, args.report)
             sys.exit(0)
         else:
-            pl = Planner(None, 'local')
+            llm = LLM('deepseek')
+            pl = Planner(None, 'deepseek')
             app = QApplication(sys.argv)
             write_report(app, 'conversational recommender literature review')
             print('paper_writer.py -report expects to be called from Owl with topic')

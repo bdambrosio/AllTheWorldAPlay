@@ -140,7 +140,7 @@ class TestWriteReport(unittest.TestCase):
         
     def test_nested_sections(self):
         """Verify handling of sections containing subsections"""
-        report, paper_ids = write_report_aux(self.config, self.sample_outline, self.sample_outline, 1000)
+        report, paper_ids = self.write_report_aux(self.config, self.sample_outline, self.sample_outline, 1000)
         self.assertIsNotNone(report)
         # Report should be longer due to subsection content
         self.assertGreater(len(report), 500)
@@ -159,7 +159,7 @@ class TestWriteReport(unittest.TestCase):
                 <dscp>Second description</dscp>
             </section>
         </outline>"""
-        report, paper_ids = write_report_aux(self.config, outline, outline, 1000)
+        report, paper_ids = self.write_report_aux(self.config, outline, outline, 1000)
         self.assertIsNotNone(report)
         # Should handle both sections
         self.assertGreater(len(report), 800)
@@ -183,7 +183,7 @@ class TestWriteReport(unittest.TestCase):
             </section>
         </outline>"""
         total_length = 1500
-        report, _ = write_report_aux(self.config, outline, outline, total_length)
+        report, _ = self.write_report_aux(self.config, outline, outline, total_length)
         self.assertIsNotNone(report)
         # Total length should be approximately what was requested
         self.assertGreater(len(report), total_length * 0.8)
@@ -209,7 +209,7 @@ class TestWriteReport(unittest.TestCase):
                 </sections>
             </section>
         </outline>"""
-        report, _ = write_report_aux(self.config, deep_outline, deep_outline, 1500)
+        report, _ = self.write_report_aux(self.config, deep_outline, deep_outline, 1500)
         self.assertIsNotNone(report)
         # Should handle deep nesting
         self.assertGreater(len(report), 1000)
@@ -224,7 +224,7 @@ class TestWriteReport(unittest.TestCase):
                 </sections>
             </section>
         </outline>"""
-        report, _ = write_report_aux(self.config, outline, outline, 500)
+        report, _ = self.write_report_aux(self.config, outline, outline, 500)
         self.assertIsNotNone(report)
         # Should still generate content for empty sections
         self.assertGreater(len(report), 200)
@@ -241,7 +241,7 @@ class TestWriteReport(unittest.TestCase):
         ]
         for outline in bad_outlines:
             with self.assertRaises(Exception):
-                write_report_aux(self.config, outline, outline, 500)
+                self.write_report_aux(self.config, outline, outline, 500)
 
 if __name__ == '__main__':
     unittest.main()
