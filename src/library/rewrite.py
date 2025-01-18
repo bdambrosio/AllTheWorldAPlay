@@ -11,7 +11,7 @@ import library.semanticScholar3 as s2
 import spacy
 from utils.LLMRequestOptions import LLMRequestOptions
 from utils.llm_api import LLM
-
+import utils.xml_utils as xml
 cot=None
 llm = LLM('local')
 spacy_ner = spacy.load("en_core_web_sm")
@@ -245,7 +245,7 @@ def format_outline(json_data, indent=0):
 
     if "sections" in json_data:
         for section in json_data["sections"]:
-            formatted_str += format_outline(section, indent + 1)
+            formatted_str += xml.format_xml(section)
 
     return formatted_str
 
@@ -353,7 +353,7 @@ def write(paper_title, paper_outline, section_title, draft, paper_summaries, ner
 You are writing a paper titled:
 {paper_title}
 The outline for the full paper is:
-{format_outline(paper_outline)}
+{xml.format_xml(paper_outline)}
 
 Your current task is to write the part titled: '{section_title}'
 The following research texts are provided for your use in this writing task.
@@ -365,7 +365,7 @@ The following research texts are provided for your use in this writing task.
 Again, you are writing a paper titled:
 {paper_title}
 The outline for the full paper is:
-{format_outline(paper_outline)}
+{xml.format_xml(paper_outline)}
 
 The {heading_1_title} section content up to this point is:
 

@@ -44,13 +44,13 @@ def set(key, form, value):
     forml = form.lower()
     keyl = key.lower()
     keyle = keyl[0] + '/' + keyl[1:]
-    if current:
+    if current is not None:
         new_form = form.replace(keyl+current+keyle, keyl+value+keyle)
     else:
-        new_form = form+keyl+value+keyle
+        raise ValueError(f'key {key} not found in form {form}')
     return new_form
 
-def format_xml(xml_string, indent=2):
+def format_xml_formal(xml_string, indent=2):
     """
     Print a formatted version of the given XML string with specified indentation.
 
@@ -69,4 +69,89 @@ def format_xml(xml_string, indent=2):
 
 def print_formatted_xml(xml_string, indent=2):
     print(format_xml(xml_string, indent))
+
+class XMLFormatError(Exception):
+    """Error formatting XML string"""
+    pass
+
+def format_xml(xml_str, indent=0):
+    """Format XML string with minimal assumptions about structure.
+    Handles nested tags with same name (like sections/section/sections/section).
+    """
+    if not xml_str or not isinstance(xml_str, str):
+        return ''
+        
+    result = []
+    i = 0
+    
+    while i < len(xml_str):
+        # Skip whitespace
+        while i < len(xml_str) and xml_str[i].isspace():
+            i += 1
+        if i >= len(xml_str):
+            break
+            
+        # Find start of tag
+        if xml_str[i] != '<':
+            i += 1
+            continue
+            
+        # Skip processing instructions and comments
+        if xml_str[i:].startswith('<?') or xml_str[i:].startswith('<!--'):
+            end = xml_str.find('>', i)
+            if end == -1:
+                raise XMLFormatError("Unclosed processing instruction or comment")
+            i = end + 1
+            continue
+            
+        # Find tag name
+        name_end = xml_str.find('>', i)
+        if name_end == -1:
+            raise XMLFormatError("Unclosed tag")
+        tag_name = xml_str[i+1:name_end].strip()
+        if not tag_name:
+            raise XMLFormatError("Empty tag name")
+            
+        # Find closing tag by counting nesting
+        stack = []
+        pos = i
+        while pos < len(xml_str):
+            open_pos = xml_str.find('<', pos)
+            if open_pos == -1:
+                break
+                
+            close_bracket = xml_str.find('>', open_pos)
+            if close_bracket == -1:
+                raise XMLFormatError("Unclosed tag")
+                
+            if xml_str[open_pos+1] == '/':  # Closing tag
+                close_tag = xml_str[open_pos+2:close_bracket].strip()
+                if stack and stack[-1] == close_tag:
+                    stack.pop()
+                    if not stack and close_tag == tag_name:
+                        end_pos = open_pos
+                        break
+            else:  # Opening tag
+                new_tag = xml_str[open_pos+1:close_bracket].strip()
+                stack.append(new_tag)
+                
+            pos = close_bracket + 1
+            
+        if not stack and end_pos:
+            # Extract and format content
+            content = xml_str[name_end+1:end_pos].strip()
+            if '<' in content and '>' in content:
+                result.append(' ' * indent + f'<{tag_name}>')
+                result.append(format_xml(content, indent + 2))
+                result.append(' ' * indent + f'</{tag_name}>')
+            else:
+                result.append(' ' * indent + f'<{tag_name}>{content}</{tag_name}>')
+                
+            i = end_pos + len(tag_name) + 3  # skip past </tag_name>
+        else:
+            raise XMLFormatError(f"Missing closing tag for {tag_name}")
+            
+    return '\n'.join(result)
+
+
 

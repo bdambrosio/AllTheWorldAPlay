@@ -13,16 +13,17 @@ class WorkingMemory:
         self._wm = {}
         self.filename=name+'_wm'
         
-    def save(self, filename):
+    def save(self):
         # note we need to update wm when awm changes! tbd
         with open(self.filename+'.pkl', 'wb') as f:
           pickle.dump(self._wm, f)
+
    
-    def load(self, filename):
+    def load(self):
        try:
           with open(self.filename+'.pkl', 'rb') as f:
              self._wm = pickle.load(f)
-             print(f'loaded {len(self._wm.keys())} items from {filename}.pkl')
+             print(f'loaded {len(self._wm.keys())} items from {self.filename}.pkl')
        except Exception as e:
            print(f'load failed, creating {str(e)}')
            self._wm = {}

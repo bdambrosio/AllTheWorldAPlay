@@ -1,7 +1,19 @@
 {
     "version": "0.2.0",
     "configurations": [
-
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
+        },
         {
             "name": "Python Debugger: Memory Unittests",
             "type": "debugpy",
@@ -14,7 +26,6 @@
                 "CUDA_VISIBLE_DEVICES": "0"
             },
             "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
-
         },
         {
             "name": "Python Debugger: Cognitive Unittests",
@@ -28,7 +39,6 @@
                 "CUDA_VISIBLE_DEVICES": "0"
             },
             "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
-
         },
         {
             "name": "Python Debugger: Bellona",
@@ -189,7 +199,9 @@
                 "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
                 "CUDA_VISIBLE_DEVICES": "0"
             },
-            "purpose": ["debug-test"]
+            "purpose": [
+                "debug-test"
+            ]
         },
         {
             "name": "PaperWriter Tests",
@@ -204,7 +216,23 @@
                 "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
                 "CUDA_VISIBLE_DEVICES": "0"
             },
-            "purpose": ["debug-test"]
+            "purpose": [
+                "debug-test"
+            ]
+        },
+        {
+            "name": "XML Utils Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "utils/xml_utils_unitTests.py",
+            "console": "integratedTerminal",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python", // On Windows: venv\\Scripts\\python.exe
+            "justMyCode": true,
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
         }
     ]
 }
