@@ -35,8 +35,6 @@ GOOGLE = 'google'
 host='127.0.0.1'
 port = 5004
 
-def get_available_models():
-    return list(cv.conv_templates.keys())
 
 """
 def ask_LLM(model, gpt_message, max_tokens=100, temp=0.3, top_p=1.0, host=host, port=port,
@@ -101,68 +99,6 @@ def part_of_keyword(word, keywords):
 
 """
 
-pattern = r'\{\$[^}]*\}'
-def run_request(client, bindings, prompt, options, template):
-    """ substitute variables, then apply template """
-    #
-    ### first substitute for {{$var-name}} in prompt
-    #
-    global pattern
-    #print(f'run_request {bindings}\n{prompt}\n')
-    if bindings is None or len(bindings) == 0:
-        substituted_prompt = prompt
-    else:
-        substituted_prompt = []
-        for message in prompt:
-            if type(message.content) is not str: # substitutions only in strings
-                substituted_prompt.append(message)
-                continue
-            matches = re.findall(pattern, message.content)
-            new_content = message.content
-            for match in matches:
-                var = match[2:-1]
-                #print(f'var {var}, content {new_content}')
-                if var in bindings.keys():
-                    new_content = new_content.replace('{{$'+var+'}}', str(bindings[var]))
-                else:
-                    raise ValueError(f'unbound prompt variable {var}')
-            substituted_prompt.append(LLMMessage(message.role, new_content))
-    
-    #
-    ## now apply template
-    #
-
-    if template.lower().startswith('gpt'): #gpt doesn't need one
-        response = client.executeRequest(asdicts(substituted_prompt), options, template)
-        return response
-
-    elif template.lower().startswith('claude'): #claude client handles formatting
-        response = client.executeRequest(asdicts(substituted_prompt), options, template)
-        return response
-
-    #OSClient - run template
-    conv=cv.get_conv_template(template)
-    user_role = conv.roles[0]
-    asst_role = conv.roles[1]
-    system_role = conv.roles[2] if len(conv.roles)>2 else conv.roles[0]
-    
-    for msg_idx, msg in enumerate(substituted_prompt):
-        conv.append_message(msg.role, msg.content)
-    # priming prompt
-    if conv.response_prime and (substituted_prompt[len(substituted_prompt)-1].role != 'assistant')\
-       and conv.name != 'command-r' and not conv.name.startswith('llama'):
-        conv.append_message('assistant','')
-    prompt = conv.get_prompt()
-    prompt = re.sub('\n{3,}', '\n\n', prompt)
-
-    #print(f'calling client.execute \n---\n{prompt}\n---\n')
-    response = client.executeRequest(prompt, options, conv)
-    if response['status'] != 'success':
-        return response
-    if not isinstance(response['message'], dict):
-        #print(f"***** utility run_request repair {type(response['message'])}\n {response['message']}")
-        response['message'] = {'role': 'assistant', 'content': response['message'] or ''}
-    return response
 
 def get_search_phrase_and_keywords(cot, query_string):
     print(f'get phrase query_string:{query_string}')
@@ -234,3 +170,30 @@ def reform(elements):
   for paragraph in paragraphs:
     total_pp_len += len(paragraph)
   return paragraphs
+
+def get_src_path():
+    """Get absolute path to src directory and ensure it ends with 'src/'
+    
+    Returns:
+        str: Absolute path to src directory with trailing slash
+        
+    Raises:
+        RuntimeError: If src directory cannot be found in current path
+        
+    Example:
+        >>> get_src_path()
+        '/home/user/project/src/'
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Split path into components
+    parts = script_dir.split(os.sep)
+    
+    # Find 'src' in path
+    try:
+        src_index = parts.index('src')
+        # Reconstruct path up to and including 'src'
+        src_path = os.sep.join(parts[:src_index + 1]) + os.sep
+        return src_path
+    except ValueError:
+        raise RuntimeError("Could not find 'src' directory in path")

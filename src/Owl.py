@@ -23,6 +23,7 @@ from chat.OwlCoT import OwlInnerVoice
 #from Planner import Planner
 #from Interpreter import Interpreter
 import chat.react as react
+from utils.utilityV2 import get_src_path
 
 
 NYT_API_KEY = os.getenv("NYT_API_KEY")
@@ -514,6 +515,8 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       elif PREV_LEN < len(self.input_area.toPlainText())+2:
          selectedText = self.input_area.toPlainText()[PREV_LEN:]
          selectedText = selectedText.strip()
+      #reload indecies in case new papers have been added
+      s2.load_indecies()
       s2.online_search(selectedText)
          
    def library_search(self): # extended search of s2 and ingest reports
@@ -525,6 +528,8 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
        elif PREV_LEN < len(self.input_area.toPlainText())+2:
            selectedText = self.input_area.toPlainText()[PREV_LEN:]
            selectedText = selectedText.strip()
+       #reload indecies in case new papers have been added
+       s2.load_indecies()
        papers = s2.search(selectedText, interactive=True)
        titles = set(papers.keys())
        paper_ids = []
@@ -538,16 +543,18 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
        app.exec()
 
    def library_browse(self): # extended search of s2 and ingest reports
-        global PREV_LEN, op
-        selectedText = ''
-        cursor = self.input_area.textCursor()
-        if cursor.hasSelection():
-            selectedText = cursor.selectedText()
-        elif PREV_LEN < len(self.input_area.toPlainText())+2:
-            selectedText = self.input_area.toPlainText()[PREV_LEN:]
-            selectedText = selectedText.strip()
-        s2.browse(selectedText)
-        #rr = subprocess.Popen([sys.executable, 'semanticScholar3.py', '-browse', selectedText, '-template', f"{self.owlCoT.llm.template}"])
+      global PREV_LEN, op
+      selectedText = ''
+      cursor = self.input_area.textCursor()
+      if cursor.hasSelection():
+         selectedText = cursor.selectedText()
+      elif PREV_LEN < len(self.input_area.toPlainText())+2:
+         selectedText = self.input_area.toPlainText()[PREV_LEN:]
+         selectedText = selectedText.strip()
+      #reload indecies in case new papers have been added
+      s2.load_indecies()
+      s2.browse(selectedText)
+      #rr = subprocess.Popen([sys.executable, 'semanticScholar3.py', '-browse', selectedText, '-template', f"{self.owlCoT.llm.template}"])
          
    def generate_report(self): # index a url in S2 faiss
       global PREV_LEN, op#, vmem, vmem_clock
@@ -558,14 +565,16 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       elif PREV_LEN < len(self.input_area.toPlainText())+2:
          selectedText = self.input_area.toPlainText()[PREV_LEN:]
          selectedText = selectedText.strip()
-      pw_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'library', 'paperWriter.py'))
-      print(f'pw_path {pw_path}')
-      rr = subprocess.Popen([sys.executable, pw_path,  '-report', selectedText])
+
+      src_path = get_src_path()
+      paperwriter_path = os.path.join(src_path, 'library', 'paperWriter.py')
+      # Remove duplicate 'library' if present
+      rr = subprocess.Popen([sys.executable, paperwriter_path,  '-report', selectedText])
       self.display_msg("report writer spawned.")
          
    def workingMem(self): # lauching working memory editor
       self.owlCoT.save_workingMemory() # save current working memory so we can edit it
-      he = subprocess.run(['python3', 'memoryEditor.py'])
+      he = subprocess.run([sys.executable, 'memoryEditor.py'])
       if he.returncode == 0:
          try:
             self.workingMemory = self.owlCoT.load_workingMemory()

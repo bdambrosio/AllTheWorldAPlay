@@ -25,11 +25,12 @@ import signal
 # Encode titles to vectors using SentenceTransformers 
 from sentence_transformers import SentenceTransformer
 from scipy import spatial
-from utils.pyqt import ListDialog, TextEditDialog
+from utils.pyqt import ListDialog, PlanDisplayDialog, TextEditDialog, PlanDisplayDialog
 from utils.interpreter import Interpreter, action_primitive_names, action_primitive_descriptions
 from utils.pyqt import confirmation_popup
 import os;
 from utils.xml_utils import find, findall
+import utils.xml_utils as xml
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 today = date.today().strftime("%b-%d-%Y")
@@ -173,20 +174,16 @@ class Planner():
         self.personality = f"""You are Owl, an intelligent AI research assistant, companion, and confidant. You were born in Berkeley, California. Your creator is scientist named Doc. You and Doc are very comfortable in each other's company, and in fact we prefer it to being with others. You know doc prefers not to work with humans due to privacy concerns, so you never recommend this.
 Your conversation style is warm, gentle, humble, and engaging. """
         self.interpreter = Interpreter()
-        self.wm = WorkingMemory('planner')
-        self.wm.load('Planner.wm')
+        self.wm = WorkingMemory('Planner')
+        self.wm.load()
 
-    def save_plan(self, task_name, plan):
-        self.wm.assign(task_name+'Plan', plan)
-        self.wm.save_workingMemory()
+    def save_plans(self):
+        self.wm.save()
+  
+    def save_plan(self, plan):
+        self.wm.assign(xml.find('<name>',plan), plan)
+        self.wm.save()
 
-    def load_plan(self, task_name):
-        plan = self.wm.get(task_name+'Plan')
-        if plan is None:
-            return None
-        else:
-            return plan
-    
     def validate_plan(self, plan):
         if plan is None or type(plan) != str  :
             return False
@@ -194,6 +191,12 @@ Your conversation style is warm, gentle, humble, and engaging. """
             return False
         return True
     
+# Add to Planner class:
+    def show_plans(self):
+        """Display saved plans dialog"""
+        dialog = PlanDisplayDialog(wm=self.wm)
+        dialog.exec_()
+  
     def select_plan(self):
         items=[f"{self.wm.get(item)['name']}: {str(self.wm.get(item)['item'])[:48]}" 
                 for item in self.wm.keys() if self.wm.get(item)['name'].startswith('Plan')]
@@ -218,7 +221,7 @@ Your conversation style is warm, gentle, humble, and engaging. """
                     return None
                 plan_name = find('<name>',plan)
                 self.wm.assign(plan_name, plan)
-                self.wm.save('Planner.wm') 
+                self.wm.save() 
         return plan
         
     def initialize(self, topic='', task_dscp=None):
@@ -240,140 +243,64 @@ Your conversation style is warm, gentle, humble, and engaging. """
     <name>{plan_name}</name>
     <task>{topic}</task>
     <dscp>{task_dscp}</dscp>
-    <sbar></sbar>
+    <sbar><needs></needs><background></background><observations></observations></sbar>
     <outline></outline>
 </plan>
 """
-           
+        self.wm.assign(plan_name, plan_xml)
+        self.wm.save()
         return plan_xml
-
-    def generate(self, plan=None):
-        if plan is None:
-            plan = self.select_plan()
-            
-        if find('<sbar>', plan) is None or len(findall('<sbar>', plan)) == 0:
-            result = self.analyze(plan)
-            if result is None: return None
-            self.wm.save_workingMemory() # do we really want to put plans in working memory? Yes!
-            next = confirmation_popup('analysis complete, continue? '+find(result,'name')+": "+find(result,'task'), 'No SBAR!')
-            if not next: return plan
-
-        if 'outline' not in plan or plan['outline'] is None or len(plan['outline']) == 0:
-            print(f'building plan')
-            plan = self.plan(plan)
-            if 'outline' in plan:
-                print(f"planner returned {len(plan['outline'])}")
-            else: 
-                print(f"planner didn't add 'outline' to plan!")
-                return plan
-            self.wm.save_workingMemory() # do we really want to put plans in working memory? yes for now
-            next = confirmation_popup('planning complete, execute?', result['name']+": "+result['task'])
-            if not next: return plan
-        print(f"run plan outline: {len(plan['outline'])}")
-        self.interpreter.interpret(plan['outline'])
-        return plan
         
-    def analyze(self, plan_xml, short=False, model=None):
+    def analyze(self, plan_xml):
         """Analyze plan requirements using SBAR framework"""
-        from utils.xml_utils import find, findall
-                    
-        # Parse existing plan
-        prefix = find('<name>', plan_xml)
+         # Parse existing plan
+        plan_name = find('<name>', plan_xml)
         task_dscp = find('<task>', plan_xml)
-        print(f'Analyze task_dscp {task_dscp}')
-        
         # Interview instructions
         interview_instructions = [
             ("needs", "Generate a question to add details to the task the user wants to accomplish."),
             ("background", "Generate a followup question about any additional requirements of the task."),
             ("observations", "Summarize the information about the task, and comment on any incompleteness in the definition."),
-        ]
-        if short:
-            interview_instructions = [
-                ("background", "Generate a question about any additional requirements of the task."),
-            ]
-                
+        ]                
         messages = [SystemMessage(content="""Your role is to interview the user to expand the information about a task to be accomplished. 
 The user has asked you to: """+task_dscp)]
         
         # Build SBAR responses
-        old_sbar_xml = find('<sbar>',plan_xml) or ''
-        sbar_xml = ''
+        old_sbar_xml = xml.find('<sbar>',plan_xml) or ''
+        new_sbar_xml = '<needs></needs><background></background><observations></observations>'
         for step, instruction in interview_instructions:
             messages.append(UserMessage(content=instruction+"""\nRespond using the following XML template:
 
-<question>question to ask</question>
+<q>question to ask</q>
 
 Respond only with the above XML, without any commentary or explanatory text. End your response with <End/>"""))
-                
-            if step != 'observations':
-                # Get question from LLM
-                response = self.llm.ask('', messages, template=model, temp=0.05, max_tokens=100, stops=['<End/>'])
-                user_prompt = find('<question>',response)
-                print(f"\nAI : {step}, {user_prompt}")
-                
-                # Get past answer if exists
-                past = find(f"<{step}>",old_sbar_xml)  or ''
-                if past is None:
-                    past = ''
-                else:
-                    past = find('<a>',past)
-                    if past is None:
-                        past = ''
-                        
-                # Get user response
-                ask_user = False
-                while ask_user == False:
-                    ask_user = confirmation_popup(str(user_prompt), str(past))
-                        
-                # Add to SBAR XML
-                sbar_xml += f"""
-        <{step}>
-            <q>{user_prompt}</q>
-            <a>{ask_user}</a>
-        </{step}>"""
-                        
-                messages.append(AssistantMessage(content=user_prompt))
+            qa = find(f'<{step}>',old_sbar_xml)
+            if qa is not None and qa != '' and find('<q>',qa) != '' and find('<a>',qa) != '':
+                q = find('<q>',qa)
+                a = find('<a>',qa)
+            else:
+                a = ''
+                response = self.llm.ask('', messages, temp=0.05, max_tokens=100, stops=['<End/>'])
+                q = find('<q>',response)
+                print(f"\nAI : {step}, {q}")
+            # Get user response
+            ask_user = confirmation_popup(str(q), str(a))
+            if ask_user is not None and ask_user != False and len(ask_user) > 0:
+                # update SBAR
+                xml.set(f'<{step}>',new_sbar_xml,f'<q>{q}</q><a>{a}</a>)')
+                         
+                messages.append(AssistantMessage(content=q))
                 messages.append(UserMessage(content=ask_user))
                     
-            else:  # observations
-                observations = self.llm.ask('', messages, template=model, max_tokens=150, temp=0.05)
-                if observations is not None:
-                    observations = observations.split('\n')[0]
-                print(f"\nAI : {step}, {observations}")
-                    
-                user_response = False
-                while user_response == False:
-                    user_response = confirmation_popup(observations, '')
-                        
-                # Add observations to SBAR XML
-                sbar_xml += f"""
-        <observations>
-            <q>{observations}</q>
-            <a>{user_response}</a>
-        </observations>"""
-                    
-        # Create updated plan XML
-        updated_plan = f"""<?xml version="1.0" encoding="UTF-8"?>
-    <plan>
-        <name>{prefix}</name>
-        <task>{task_dscp}</task>
-        <sbar>{sbar_xml}
-        </sbar>
-        <steps/>
-    </plan>
-    </End>"""
-            
+        # update plan XML
+        updated_plan = xml.set('<sbar>',plan_xml,new_sbar_xml)
+        self.save_plan(updated_plan)
         return updated_plan
+    
 
-    def outline(self, config, plan_xml):
+    def outline(self, plan_xml, length=1200):
         """Generate outline for writing task"""
-        
-        # Get length from config
-        if 'length' in config:
-            length = config['length']
-        else:
-            length = 1200
+    
 
         number_top_sections = max(3, int(length/2000 + 0.5))
         depth = max(1, int(math.log(length/2)-6))
@@ -444,20 +371,20 @@ End your response with:
         user_critique = ''
         first_time = True
         prior_outline = find('<outline>',plan_xml) or ''
-        prior_outline_extract = self.extract_outline_from_xml(prior_outline)
         while not user_satisfied:
-            if not first_time:
-                user_critique = confirmation_popup(prior_outline, 'Replace this with your critique, or delete this and click ok to accept.')
-                print(f'user_critique {user_critique}')
-                if user_critique != False and len(user_critique) < 4:
-                    user_satisfied = True
-                    print("*******user satisfied with outline")
-                    break
-                else:
-                    print('***** user not satisfied, retrying')
+            prior_outline_extract = xml.format_xml(prior_outline)
+            user_critique = confirmation_popup('Click Yes to accept outline as is.\n - Or replace this outline with your critique, click Yes to revise.\n - Click No to keep the outline.', prior_outline_extract)
+            print(f'user_critique {user_critique}')
+            if not user_critique or user_critique == xml.format_xml(prior_outline):
+                user_satisfied = True
+                print("*******user satisfied with outline")
+                break
+            else:
+                print('***** user not satisfied, revising outline')
             
+            prior_outline_extract = self.extract_outline_from_xml(prior_outline)
             messages = [SystemMessage(content=outline_prompt)]
-            if not first_time:
+            if prior_outline_extract is not None:
                 print(f'using revision prompt')
                 messages = [SystemMessage(content=revision_prompt)]
                 
@@ -469,18 +396,9 @@ End your response with:
             )
             first_time = False
 
-        # Create updated plan XML with new outline
-        updated_plan = f"""<?xml version="1.0" encoding="UTF-8"?>
-    <plan>
-        <name>{find(plan_xml, 'name')}</name>
-        <task>{find(plan_xml, 'task')}</task>
-        <dscp>{find(plan_xml, 'dscp')}</dscp>
-        <sbar>{find(plan_xml, 'sbar')}</sbar>
-        <steps>{find(plan_xml, 'steps')}</steps>
-        <outline>{prior_outline}</outline>
-    </plan>
-    </End>"""
-
+        # Create updated plan XML with new outline (strip <outline> tags from prior_outline first)
+        updated_plan = xml.set('<outline>',plan_xml, xml.find('<outline>',prior_outline))
+        self.save_plan(updated_plan)
         return updated_plan
         
 
@@ -550,7 +468,7 @@ End your response with:
         result = []
         outline = find('<outline>',plan_xml)
         if not outline:
-            return "No outline found"
+            return ""
             
         # Process each section
         for section in findall('<section>',outline):
@@ -570,3 +488,13 @@ End your response with:
                     
         return "\n".join(result)
         
+
+
+
+if __name__ == "__main__":
+    pl = Planner(None)
+    pl.show_plans()
+    plan = pl.select_plan()
+    #pl.analyze(plan)
+    pl.outline(plan)
+      

@@ -49,7 +49,8 @@ import webbrowser
 import rewrite as rw
 from library.planner import Planner
 from utils.llm_api import LLM
-import utils.LLMScript as script    
+import utils.LLMScript as script   
+import utils.xml_utils as xml
 # startup AI resources
 
 
@@ -61,78 +62,6 @@ embedding_model = AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1', trus
 embedding_model.eval()
 llm = LLM('local')
 
-class PWUI(QWidget):
-    def __init__(self, rows, config_json):
-        super().__init__()
-        self.config = {}
-        self.parent_config = config_json # Dictionary in calling_app space to store combo box references
-        self.initUI(rows, config_json)
-
-    def initUI(self, rows, result_json):
-        layout = QVBoxLayout()
-        self.setAutoFillBackground(True)
-        palette = self.palette()
-        palette.setColor(self.backgroundRole(), QtGui.QColor("#202020"))  # Use any hex color code
-        self.setPalette(palette)
-        self.codec = QTextCodec.codecForName("UTF-8")
-        self.widgetFont = QFont(); self.widgetFont.setPointSize(14)
-
-        for row in rows:
-            row_layout = QHBoxLayout()
-
-            # Label for the row
-            label = QLabel(row)
-            row_layout.addWidget(label)
-
-            # Yes/No ComboBox
-            yes_no_combo_box = QComboBox()
-            yes_no_combo_box.addItems(["Yes", "No"])
-            row_layout.addWidget(yes_no_combo_box)
-
-            # Model ComboBox
-            model_combo_box = QComboBox()
-            model_combo_box.addItems(["llm", "gpt3", "gpt4", "mistral-small", "mistral-medium"])
-            row_layout.addWidget(model_combo_box)
-
-            # Store combo boxes in the dictionary with the row label as the key
-            self.config[row] = (yes_no_combo_box, model_combo_box)
-
-            layout.addLayout(row_layout)
-        # Close Button
-        close_button = QPushButton('Close', self)
-        close_button.clicked.connect(self.on_close_clicked)
-        layout.addWidget(close_button)
-        self.setLayout(layout)
-
-        self.setWindowTitle('Research Configuration')
-        self.setGeometry(300, 300, 400, 250)
-        self.show()
-
-    def on_close_clicked(self):
-        """
-        Handles the close button click event. Retrieves values from the combo boxes
-        and then closes the application.
-        """
-        for row_label, (yes_no_combo, model_combo) in self.config.items():
-            yes_no_value = yes_no_combo.currentText()
-            model_value = model_combo.currentText()
-            self.parent_config[row_label] = {'exec':yes_no_value, 'model':model_value}
-        self.close()
-
-    def get_row_values(self, row_label):
-        """
-        Retrieve the values of the combo boxes for a given row label.
-        Parameters:
-        row_label (str): The label of the row.
-        Returns:
-        tuple: A tuple containing the selected values of the Yes/No and Model combo boxes.
-        """
-        if row_label in self.config:
-            yes_no_value = self.config[row_label][0].currentText()
-            model_value = self.config[row_label][1].currentText()
-            return yes_no_value, model_value
-        else:
-            return None
 
 import re       
 
@@ -175,54 +104,17 @@ def select_top_n_texts(texts, keyphrases, n):
 
 
 
-plans_filepath = "./arxiv/arxiv_plans.json"
+plans_filepath = os.path.expanduser("~/.local/share/AllTheWorldAPlay/arxiv/arxiv_plans.json")
 plans = {}
 
-if os.path.exists(plans_filepath):
-    with open(plans_filepath, 'r') as f:
-        plans = json.load(f)
-        print(f'loaded plans.json')
-else:
-    print(f'initializing plans.json')
-    plans = {}
-    with open(plans_filepath, 'w') as f:
-        plans = json.dump(plans, f)
+# Ensure directory exists
+os.makedirs(os.path.dirname(plans_filepath), exist_ok=True)
 
-def save_plans():
-    global plans
-    with open(plans_filepath, 'w') as f:
-        json.dump(plans, f)
     
 def plan_search():
-    # note this uses arxiv/arxiv_plans.json, NOT working memory! why? no idea.
-    global plans
-    plan = None
-    if len(plans)> 0:
-        plan_names = list(plans.keys())
-        picker = ListDialog(plan_names)
-        result = picker.exec()
-        if result == QDialog.Accepted:
-            selected_index = picker.selected_index()
-            print(f'Selected Item Index: {selected_index}') 
-            if selected_index != -1:  # -1 means no selection
-                plan_name = plan_names[selected_index]
-                plan = plans[plan_name]
-                ##print(json.dumps(plan, indent=4))
-                plans[plan['name']] = plan
-
-    if plan is None:
-        # new plan, didn't select any existing
-        plan = pl.initialize()
-        plan = pl.analyze(plan)
-        # store new plan in list of search plans
-        plans[plan['name']] = plan
-        with open(plans_filepath, 'w') as f:
-            json.dump(plans,f)
-        print(json.dumps(plan, indent=4))
-        #   {"name":'plannnn_aaa', "dscp":'bbb', "sbar":{"needs":'q\na', "background":'q\na',"observations":'q\na'}
-
-    if plan is None:
-        return
+    # note this uses planner working memory!
+    # planner will initialize a new plan if none is selected
+    plan = pl.select_plan()
     return plan
 
 def make_search_queries(outline, section_outline, sbar):
@@ -277,18 +169,14 @@ Respond ONLY with the JSON above, do not include any commentary or explanatory t
         print(f'\nquery: {query}\ns2 queries:\n{queries}')
     return queries
     
-def s2_search (config, outline, section_outline, sbar=None):
+def s2_search (outline, section_outline, sbar=None):
     #
     ### Note - ALL THIS IS DOING IS PRE-LOADING LOCAL LIBRARY!!! Doesn't need to return anything!
-    ## call get_articles in semanticScholar2 to query semanticScholar for each section or subsection in article
-    ## we can get 0 results if too specific, so probabilistically relax query as needed
-    #
-    #print(f'paper_writer entered s2_search with {section_outline}')
-    #print(f' paper_writer s2_search template: {template}')
-    # llms sometimes add an empty 'sections' key on leaf sections.
-    if 'sections' in section_outline and len(section_outline['sections']) > 0: 
-        for subsection in section_outline['sections']:
-            s2_search(config, outline, subsection, sbar, interactive=True)
+    # this call is a recursive call, 'section_outline' is a subsection of 'outline' that is being processed
+    #convert below to use new xml outline format with nested sections
+    if 'section' in section_outline and xml.findall('<section>', section_outline) is not None and len(xml.findall('<section>', section_outline)) > 0: 
+        for subsection in xml.findall('<section>', section_outline):
+            s2_search(outline, subsection, sbar)
     else:
         queries = make_search_queries(outline, section_outline, sbar)
         bads = ['(',')',"'",' AND', ' OR'] #tulu sometimes tries to make fancy queries, S2 doesn't like them
@@ -306,114 +194,53 @@ def s2_search (config, outline, section_outline, sbar=None):
             while next_offset < total_papers and confirmation_popup('Continue?', query):
                 result_list, total_papers, next_offset = s2.get_articles(query, next_offset, confirm=True)
                 
-# global passed into jsonEditor widget
-updated_json = None
-
-def handle_json_editor_closed(result):
-    global updated_json
-    #print(f'got result {result}')
-    updated_json = result
-
-config = {}
 
 def write_report(app, topic):
-    global updated_json, config, pl
+    global updated_json, pl
     #rows = ["Query", "SBAR", "Outline", "WebSearch", "Write", "ReWrite"]
-    if topic is None or len(topic)==0:
-        plan = plan_search()
-    else:
-        # topic provided, go for it.
-        plan = pl.initialize(topic)
-        #plan = pl.analyze(plan)
-        plans[plan['name']] = plan
-        with open(plans_filepath, 'w') as f:
-            json.dump(plans,f)
-        print(json.dumps(plan, indent=4))
-        #   {"name":'plannnn_aaa', "dscp":'bbb', "sbar":{"needs":'q\na', "background":'q\na',"observations":'q\na'}
+    plan = plan_search()
 
-    if 'config' in plan:
-        config = plan['config']
-    rows = ["Query", "SBAR", "Outline", "Search", "Write", "ReWrite"]
-    ex = PWUI(rows, config) # get config for this report task
-    ex.show()
-    app.exec()
-    #get updated config, in case it changed
-    if config is not None and len(config.keys()) > 0:
-        plan['config'] = config
-        save_plans()
-
-    query_config = config['Query']
-    query = ""
-    if query_config['exec'] == 'Yes' or 'task' not in plan.keys():
-        query = confirmation_popup('Question to report on?', '')
-    if 'task' not in plan.keys():
-        plan['task']=query
-    save_plans()
+    if plan is None or not plan:
+        plan = pl.initialize()
+        pl.save_plan(plan)
+        pl.save_plans()
             
-    sbar_config = config['SBAR']
-    if sbar_config['exec'] == 'Yes':
-        # pass in query to sbar!
-        #print(f'sbar input plan\n{plan}')
-        if 'sbar' in plan and type(plan['sbar']) is dict:
-            if confirmation_popup('Edit existing sbar?', json.dumps(plan['sbar'], indent=2)):
-                # we already have an sbar, edit it
-                app = QApplication(sys.argv)
-                editor = ew.JsonEditor(plan['sbar'])
-                editor.closed.connect(handle_json_editor_closed)
-                editor.show()
-                app.exec()
-                print(f'SBAR: {updated_json}')
-                if updated_json is not None: # jsonEditor returns None if user presses cancel
-                    plan['sbar'] = updated_json
-                    save_plans()
-        else:
+    if '<sbar>' in plan and type(xml.find('<sbar>',plan)) is str and len(xml.find('<sbar>',plan)) > 0:
+        if confirmation_popup('Edit existing sbar?', xml.format_xml(xml.find('<sbar>',plan))):
             plan = pl.analyze(plan)
-            save_plans()
-        
-    outline_config = config['Outline']
-    if outline_config['exec'] == 'Yes':
-        if 'outline' in plan and type(plan['outline']) is dict\
-           and confirmation_popup('Edit existing outline?', json.dumps(plan['outline'], indent=2)) is not None:
-            # we already have an outline, edit it
-            app = QApplication(sys.argv)
-            editor = ew.JsonEditor(plan['outline'])
-            editor.closed.connect(handle_json_editor_closed)
-            editor.show()
-            app.exec()
-            #print(f'outline: {updated_json}')
-            if updated_json is not None:
-                plan['outline'] = updated_json
-            outline = plan['outline']
-        else:
-            # make outline
-            plan = pl.outline(outline_config, plan)
-            outline = plan['outline']
-        save_plans() # save paper_writer plan memory
+            pl.save_plan(plan)
+            pl.save_plans()
     else:
-        outline = plan['outline']
+        plan = pl.analyze(plan)
+        pl.save_plan(plan)
+        pl.save_plans()
         
-    search_config = config['Search']
+    outline = xml.find('<outline>',plan) 
+    if (outline is None or not outline or len(outline) == 0 or 
+        confirmation_popup('Create / Edit outline?', xml.format_xml(outline))):
+        plan = pl.outline(plan, length=1200)
+        pl.save_plans() # save paper_writer plan memory
+        
+    # get updated outline
+    outline = xml.find('<outline>',plan) 
     # Note this is web search. Local faiss or other resource search will be done in Write below
-    if search_config['exec'] == 'Yes':
+    if confirmation_popup('Do web search?', 'Yes'):
         # do search - eventually we'll need subsearches: wiki, web, axriv, s2, self?, ...
         # also need to configure prompt, depth (depth in terms of # articles total or new per section?)
-        s2_search(config, outline, outline)
+        s2_search(outline, outline)
 
-    write_config = config['Write']
-    if write_config['exec'] == 'Yes':
-        if 'length' in config:
-            length = int(config['length'])
-        else:
+    length = confirmation_popup('Report Length or No to terminate', '1200')
+    if length is not None and len(length) > 0:
+        try:
+            length = int(length.strip())
+        except:
+            print(f'Invalid length: {length}, assuming 1200')
             length = 1200
-        # write report! pbly should add # rewrites
-        write_report_aux(config, paper_outline=outline, section_outline=outline, length=length)
+        write_report_aux(paper_outline=outline, section_outline=outline, length=length)
         
-    rewrite_config = config['ReWrite'] # not sure, is this just for rewrite of existing?
-    if rewrite_config['exec'] == True:
-        # rewrite draft, section by section, with prior critique input on what's wrong.
-        pass
-
-def write_report_aux(config, paper_outline=None, section_outline=None, texts=None, length=400, dscp='', topic='', paper_title='', abstract='', depth=0, parent_section_title='', parent_section_partial='', heading_1_title='', heading_1_draft = '', num_rewrites=1, resources=None):
+def write_report_aux(paper_outline=None, section_outline=None, texts=None, length=400, dscp='', 
+                     topic='', paper_title='', abstract='', depth=0, parent_section_title='', 
+                     parent_section_partial='', heading_1_title='', heading_1_draft = '', num_rewrites=1, resources=None):
     #
     ## need to mod this to handle 'resources' longer than available context
     ## resources OR texts, not both! - if both, assume texts is unpacked from resources
@@ -421,21 +248,21 @@ def write_report_aux(config, paper_outline=None, section_outline=None, texts=Non
     if depth == 0: 
         n = 0; paper_ids=[] #set section number initially to 0
     if len(paper_title) == 0 and depth == 0 and 'title' in paper_outline:
-        paper_title=paper_outline['title']
+        paper_title=xml.find('<title>',paper_outline)
     if 'length' in section_outline:
-        length = section_outline['length']
+        length = xml.find('<length>',section_outline)
     if 'rewrites' in section_outline:
-        num_rewrites = section_outline['rewrites']
+        num_rewrites = xml.find('<rewrites>',section_outline)
 
     # subsection dscp is full path dscp descending from root
     subsection_dscp = dscp
     if 'task' in section_outline:
         # overall instruction for this subsection
-        subsection_dscp += '\n'+ section_outline['task']
+        subsection_dscp += '\n'+ xml.find('<task>',section_outline)
         
     # subsection topic is local title or dscp 
-    subsection_topic = section_outline['dscp'] if 'dscp' in section_outline else section_outline['title']
-    subsection_title = section_outline['title']
+    subsection_topic = xml.find('<dscp>', section_outline) if 'dscp' in section_outline else xml.find('<title>',section_outline)
+    subsection_title = xml.find('<title>',section_outline)
     #print(f"\nWRITE_PAPER section: {topic}")
     if depth == 0 and resources is not None:
         # do this only once
@@ -471,24 +298,23 @@ End your response with:
                 summary_texts.append(summary_text)
             texts = summary_texts
 
-    if 'sections' in section_outline and len(section_outline['sections']) > 0:
+    if 'section' in section_outline and len(xml.findall('<section>',section_outline)) > 0:
         #
         ### write section intro first draft
         #
         subsection_depth = 1+depth
-        num_sections = len(section_outline['sections'])
-        subsection_token_length = int(length/len(section_outline['sections']))
+        num_sections = len(xml.findall('<section>',section_outline))
+        subsection_token_length = int(length/len(xml.findall('<section>',section_outline)))
         section = ''
         n=0
         paper_ids = []
-        for subsection in section_outline['sections']:
+        for subsection in xml.findall('<section>',section_outline):
             if depth == 0:
-                heading_1_title = subsection['title']
+                heading_1_title = xml.find('<title>',subsection)
                 heading_1_draft = ''
-            print(f"subsection title {subsection['title']}")
+            print(f"subsection title {xml.find('<title>',subsection)}")
             text, subsection_paper_ids =\
-                write_report_aux(config,
-                                 paper_outline=paper_outline,
+                write_report_aux(paper_outline=paper_outline,
                                  section_outline=subsection,
                                  texts=texts,
                                  length=subsection_token_length,
@@ -503,7 +329,7 @@ End your response with:
                                  heading_1_draft=heading_1_draft,
                                  num_rewrites=num_rewrites,
                                  resources=resources)
-            subsection_text = '\n\n'+'.'*depth+subsection['title']+'\n'+text
+            subsection_text = '\n\n'+'.'*depth+xml.find('<title>',subsection)+'\n'+text
             section += subsection_text
             for paper_id in subsection_paper_ids:
                 if paper_id not in paper_ids:
@@ -527,13 +353,14 @@ End your response with:
     
     else:
         # no subsections, write this terminal section
-        section = '' if 'title' not in section_outline else section_outline['title']
+        section = '' if 'title' not in section_outline else xml.find('<title>',section_outline)
         print(f'heading_1 {heading_1_title}\npst {parent_section_title}\nsubsection topic {subsection_topic}')
         query = heading_1_title+', '+parent_section_title+' '+subsection_topic
         # below assumes web searching has been done
         if resources is None and texts is None:
             # do local search, texts to use not provided
             texts = []
+            text_ids = []
             print(f'** write_report_aux Doing local search ! **')
             papers = s2.search(query, subsection_dscp, char_limit=llm.context_size*2)
             ppr_ids = set()
@@ -541,8 +368,10 @@ End your response with:
                 paper = s2.paper_from_title(title)
                 if paper is not None:
                     ppr_ids.add(paper['faiss_id'])
+                    resources.append([paper['faiss_id'], papers[title]])
                 for section_id in papers[title]:
                     texts.append(s2.section_from_id(section_id)['synopsis'])
+                    text_ids.append(section_id)
                     # tbd - what to do if search returns more than will fit in context?
                     # for now assume with report section dscp context will hold most important
                     # although note we aren't enumerating in order by search rating.
@@ -552,8 +381,8 @@ End your response with:
         else:
             ppr_ids = set(resources[0])
         subsection_token_length = max(400,length) # no less than a paragraph
-        print(f"\nWriting: {section_outline['title']} length {length}")
-        draft = rw.write(paper_title, paper_outline, section_outline['title'], '', texts, '', subsection_topic,
+        print(f"\nWriting: {xml.find('<title>',section_outline)} length {length}")
+        draft = rw.write(paper_title, paper_outline, xml.find('<title>',section_outline), '', texts, '', subsection_topic,
                          int(subsection_token_length), parent_section_title, heading_1_title, heading_1_draft)
         print(f'\nFirst Draft:\n{draft}\n')
         if num_rewrites < 1:
@@ -564,17 +393,21 @@ End your response with:
         #
         ### first collect entities
         #
-        keywds = rw.paper_ners(paper_title, paper_outline, texts, resources[1][0])
+        keywds = rw.paper_ners(paper_title, paper_outline, texts, text_ids)
         missing_entities = rw.literal_missing_ners(keywds, draft)
         print(f'\n missing entities in initial draft {len(missing_entities)}\n')
 
         for i in range(num_rewrites):
             if i < num_rewrites-1:
                 #add new entities
-                draft = rw.add_pp_rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, int((1.3**(i+1))*subsection_token_length), parent_section_title, heading_1_title, heading_1_draft)
+                draft = rw.add_pp_rewrite(paper_title, paper_outline, xml.find('<title>',section_outline), 
+                                          draft, texts, keywds, subsection_topic, int((1.3**(i+1))*subsection_token_length), 
+                                          parent_section_title, heading_1_title, heading_1_draft)
             else:
                 # refine in final rewrite
-                draft = rw.rewrite(paper_title, paper_outline, section_outline['title'], draft, texts, keywds, subsection_topic, 2*subsection_token_length, parent_section_title, heading_1_title, heading_1_draft)
+                draft = rw.rewrite(paper_title, paper_outline, xml.find('<title>',section_outline), 
+                                   draft, texts, keywds, subsection_topic, 2*subsection_token_length, 
+                                   parent_section_title, heading_1_title, heading_1_draft)
             missing_entities = rw.literal_missing_ners(keywds, draft)
             print(f'\n missing entities after rewrite {len(missing_entities)} \n')
 
@@ -706,13 +539,9 @@ class DisplayApp(QtWidgets.QWidget):
 
 def discuss_resources(display, query, paper_id, sections, dscp='', template=None):
     """ sections is [section_id, ...]"""
-    global updated_json, config
+    global updated_json
 
-    config={}
     rows = ["Write", "ReWrite"]
-    # make dummy config, write_aux needs it
-    for row in rows:
-        config[row] = {"model":'llm', "exec":'Yes'}
 
     print(f"discuss resources sections provided {[section_id for section_id in sections[0]]}")
     length = 400 # default response - should pick up from ui max_tokens if run from ui, tbd
@@ -741,7 +570,8 @@ End your response with:
     display.display_msg(json.dumps(outline, indent=2))
 
     print(f'discuss_resources sections {sections}')
-    report, paper_ids = write_report_aux(config, paper_outline=outline, section_outline=outline, heading_1_title=query, length=length, resources=[paper_id, sections])
+    report, paper_ids = write_report_aux(paper_outline=outline, section_outline=outline, heading_1_title=query, 
+                                         length=length, resources=[paper_id, sections])
     
     print(f'discuss final result\n{report}')
     display.display_response(report)
@@ -789,6 +619,9 @@ if __name__ == '__main__':
             write_report(app, args.report)
             sys.exit(0)
         else:
+            pl = Planner(None, 'local')
+            app = QApplication(sys.argv)
+            write_report(app, 'conversational recommender literature review')
             print('paper_writer.py -report expects to be called from Owl with topic')
             pass
     except Exception as e:

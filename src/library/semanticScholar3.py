@@ -1,4 +1,6 @@
 import os, sys, glob, time
+
+from utils.utilityV2 import get_src_path
 print(os.path.dirname(__file__))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 print(sys.path)
@@ -671,17 +673,19 @@ def get_arxiv_preprint_meta(query, top_k=3):
         return None
     else:
         #print(f'considering {best_ppr.title}')
-        if best_ppr.title.strip()[:40].lower() == query.strip()[:40].lower():
-            result_dict = dict(paper_library_init_values)
-            result_dict["year"] = best_ppr.published.year
-            result_dict["title"] = best_ppr.title
-            result_dict["authors"] = [", ".join(str(author.name) for author in best_ppr.authors)]
-            result_dict["abstract"] = best_ppr.summary 
-            if hasattr(best_ppr, 'doi'):
-                result_dict["doi"]= best_ppr.doi
-            result_dict["pdf_url"] = [x.href for x in best_ppr.links][1]
-            return result_dict
-        return None
+        if best_ppr.title.strip()[:32].lower() != query.strip()[:32].lower():
+            index_query = pyqt.confirmation_popup("Index this article?", best_ppr.title)
+            if index_query is None or not index_query:
+                return None
+        result_dict = dict(paper_library_init_values)
+        result_dict["year"] = best_ppr.published.year
+        result_dict["title"] = best_ppr.title
+        result_dict["authors"] = [", ".join(str(author.name) for author in best_ppr.authors)]
+        result_dict["abstract"] = best_ppr.summary 
+        if hasattr(best_ppr, 'doi'):
+            result_dict["doi"]= best_ppr.doi
+        result_dict["pdf_url"] = [x.href for x in best_ppr.links][1]
+        return result_dict
 
 def get_paper_sections(paper_id):
     sections = section_library_df[section_library_df['paper_id'] == int(paper_id)]
@@ -1448,7 +1452,9 @@ class PaperSelect(QWidget):
         #resources['port'] = port
         with open('/home/bruce/.local/share/owl/discuss_resources.pkl', 'wb') as f:
             pickle.dump(resources, f)
-        rc = subprocess.run([sys.executable, 'library/paperWriter.py', '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
+        src_path = get_src_path()
+        paperwriter_path = os.path.join(src_path, 'library', 'paperWriter.py')
+        rc = subprocess.Popen([sys.executable, paperwriter_path,  '-discuss', '/home/bruce/.local/share/owl/discuss_resources.pkl'])
         
     def on_show_clicked(self):
         """ Handles the show button click event. """
