@@ -287,7 +287,7 @@ Respond only with the above XML, without any commentary or explanatory text. End
             ask_user = confirmation_popup(str(q), str(a))
             if ask_user is not None and ask_user != False and len(ask_user) > 0:
                 # update SBAR
-                xml.set(f'<{step}>',new_sbar_xml,f'<q>{q}</q><a>{a}</a>)')
+                new_sbar_xml = xml.set(f'<{step}>',new_sbar_xml,f'<q>{q}</q><a>{ask_user}</a>)')
                          
                 messages.append(AssistantMessage(content=q))
                 messages.append(UserMessage(content=ask_user))
@@ -372,7 +372,10 @@ End your response with:
         first_time = True
         prior_outline = find('<outline>',plan_xml) or ''
         while not user_satisfied:
-            prior_outline_extract = xml.format_xml(prior_outline)
+            try:
+                prior_outline_extract = xml.format_xml(prior_outline)
+            except:
+                prior_outline_extract = prior_outline
             user_critique = confirmation_popup('Click Yes to accept outline as is.\n - Or replace this outline with your critique, click Yes to revise.\n - Click No to keep the outline.', prior_outline_extract)
             print(f'user_critique {user_critique}')
             if not user_critique or user_critique == xml.format_xml(prior_outline):
@@ -390,7 +393,7 @@ End your response with:
                 
             prior_outline = self.llm.ask({'outline': prior_outline, 'critique': user_critique}, 
                     messages, 
-                    max_tokens=500, 
+                    max_tokens=800, 
                     temp=0.1,
                     stops=['<End/>']
             )
@@ -482,7 +485,7 @@ End your response with:
                 result.append(f"{indent}  {dscp}")
                 
             # Recursively process subsections
-            subsections = findall(section, 'sections/section')
+            subsections = findall('sections/section', section)
             if subsections:
                 for subsection in subsections:
                     sub_xml = f"<outline><section>{subsection}</section></outline>"
