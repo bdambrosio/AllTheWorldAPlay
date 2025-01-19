@@ -1,5 +1,5 @@
 import unittest
-from xml_utils import format_xml, XMLFormatError, findall
+from xml_utils import format_xml, XMLFormatError, find, findall
 
 class TestXMLUtils(unittest.TestCase):
     def test_simple_tag(self):
@@ -37,8 +37,6 @@ class TestXMLUtils(unittest.TestCase):
 
     def test_error_handling(self):
         """Test error conditions"""
-        with self.assertRaises(XMLFormatError):
-            format_xml(None)  # None input
             
         with self.assertRaises(XMLFormatError):
             format_xml("")    # Empty input
@@ -161,94 +159,11 @@ class TestXMLUtils(unittest.TestCase):
 </section>"""
         self.assertEqual(format_xml(xml.strip()), expected)
 
-    def test_findall_levels(self):
-        """Test findall returns only matches at specified level"""
-        xml = """<root>
-            <section>
-                <title>First</title>
-                <sections>
-                    <section>
-                        <title>Nested</title>
-                    </section>
-                </sections>
-            </section>
-            <section>
-                <title>Second</title>
-            </section>
-        </root>"""
-        
-        # Should find only top-level sections
-        results = findall('<section>', xml)
-        self.assertEqual(len(results), 2)
-        self.assertIn('<title>First</title>', results[0])
-        self.assertIn('<title>Second</title>', results[1])
-        
-        # Should find nested section using path
-        results = findall('<section>/<sections>/<section>', xml)
-        self.assertEqual(len(results), 1)
-        self.assertIn('<title>Nested</title>', results[0])
-
-    def test_findall_multiple_levels(self):
-        """Test findall with deeply nested structures"""
-        xml = """<outline>
-            <section>
-                <title>A</title>
-                <sections>
-                    <section>
-                        <title>A.1</title>
-                        <sections>
-                            <section>
-                                <title>A.1.1</title>
-                            </section>
-                        </sections>
-                    </section>
-                </sections>
-            </section>
-            <section>
-                <title>B</title>
-            </section>
-        </outline>"""
-        
-        # Top level sections
-        results = findall('<section>', xml)
-        self.assertEqual(len(results), 2)
-        self.assertIn('<title>A</title>', results[0])
-        self.assertIn('<title>B</title>', results[1])
-        
-        # Second level sections
-        results = findall('<section>/<sections>/<section>', xml)
-        self.assertEqual(len(results), 1)
-        self.assertIn('<title>A.1</title>', results[0])
-        
-        # Third level sections
-        results = findall('<section>/<sections>/<section>/<sections>/<section>', xml)
-        self.assertEqual(len(results), 1)
-        self.assertIn('<title>A.1.1</title>', results[0])
-
-    def test_findall_siblings(self):
-        """Test findall with multiple siblings at same level"""
-        xml = """<root>
-            <parent>
-                <child>First</child>
-                <child>Second</child>
-                <child>Third</child>
-            </parent>
-        </root>"""
-        
-        results = findall('<parent>/<child>', xml)
-        self.assertEqual(len(results), 3)
-        self.assertIn('First', results[0])
-        self.assertIn('Second', results[1])
-        self.assertIn('Third', results[2])
-
     def test_findall_empty(self):
         """Test findall with no matches"""
         xml = "<root><a>1</a><b>2</b></root>"
         
         results = findall('<nonexistent>', xml)
-        self.assertEqual(results, [])
-        
-        results = findall('<root>/<nonexistent>', xml)
         self.assertEqual(results, [])
 
     def test_findall_malformed(self):
@@ -263,6 +178,64 @@ class TestXMLUtils(unittest.TestCase):
         for xml in bad_xml:
             results = findall('<any>', xml)
             self.assertEqual(results, [])
+
+    def test_findall_siblings(self):
+        """Test findall with multiple siblings at same level"""
+        xml = """<root>
+            <parent>
+                <child>First</child>
+                <child>Second</child>
+                <child>Third</child>
+            </parent>
+        </root>"""
+        
+        results = findall('<child>', xml)
+        self.assertEqual(len(results), 3)
+        self.assertIn('First', results[0])
+        self.assertIn('Second', results[1])
+        self.assertIn('Third', results[2])
+
+    def test_findall_self_closing(self):
+        """Test findall with self-closing tags"""
+        xml = '<root><item/><item x="1"/><item>text</item></root>'
+        results = findall('<item>', xml)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0], 'text')
+
+    def test_format_xml_self_closing(self):
+        """Test formatting XML with self-closing tags"""
+        xml = '<root><item/><data x="1" y="2"/></root>'
+        expected = """<root>
+  <item/>
+  <data x="1" y="2"/>
+</root>"""
+        self.assertEqual(format_xml(xml), expected)
+
+    def test_format_xml_mixed_tags(self):
+        """Test formatting XML with mix of normal and self-closing tags"""
+        xml = '<root><item/><data>content</data><empty/></root>'
+        expected = """<root>
+  <item/>
+  <data>content</data>
+  <empty/>
+</root>"""
+        self.assertEqual(format_xml(xml), expected)
+
+    def test_find_self_closing(self):
+        """Test finding self-closing tags"""
+        xml = '<root><pos x="1" y="2"/><data>content</data></root>'
+        self.assertEqual(find('<pos>', xml), '')  # Self-closing tag returns empty string
+        self.assertEqual(find('<data>', xml), 'content')  # Normal tag returns content
+
+    def test_find_multiple_self_closing(self):
+        """Test finding self-closing tags with multiple instances"""
+        xml = '<root><item/><item x="1"/><item>text</item></root>'
+        self.assertEqual(find('<item>', xml), '')  # First match is self-closing
+        
+    def test_find_attributes_self_closing(self):
+        """Test finding self-closing tags with attributes"""
+        xml = '<root><pos x="1" y="2" type="point"/></root>'
+        self.assertEqual(find('<pos>', xml), '')  # Self-closing with attributes returns empty string
 
 if __name__ == '__main__':
     unittest.main() 

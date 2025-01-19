@@ -2,105 +2,85 @@ import xml.dom.minidom
 # a couple of utils for retrieving data from XML
 # ridiculous computationally, but LLMs seem much more robust at producing XML than JSON.
 
-def findall(tag_path, xml_str):
-    """Find all occurrences of tag in xml_str at the specified level.
+def findall(tag, xml_str):
+    """Find all occurrences of tag in xml_str.
     Args:
+        tag: Tag to find (with angle brackets)
         xml_str: String containing XML
-        tag_path: Path to tag (e.g. '<outline>/<section>')
     Returns:
-        List of matching XML strings at the specified level
+        List of matching XML strings
     """
     if not xml_str or not isinstance(xml_str, str):
         return []
         
-    # Strip angle brackets from path components
-    tags = [tag.strip('<>') for tag in tag_path.split('/')]
-    if not tags:
-        return []
-        
-    # For multi-level paths, recurse to find context
-    if len(tags) > 1:
-        contexts = findall(f'<{tags[0]}>', xml_str)  # Add brackets for recursive call
-        results = []
-        for context in contexts:
-            # Add brackets back for remaining path
-            bracketed_path = '/'.join(f'<{tag}>' for tag in tags[1:])
-            results.extend(findall(bracketed_path, context))
-        return results
-        
-    # Find all occurrences at this level
-    target_tag = tags[0]
+    # Strip angle brackets from tag
+    tag_name = tag.strip('<>')
     results = []
     i = 0
     
     while i < len(xml_str):
-        try:
-            # Find start of tag at this level
-            start = xml_str.find(f'<{target_tag}', i)
-            if start == -1:
-                break
-                
-            # Find tag end
-            name_end = xml_str.find('>', start)
-            if name_end == -1:
-                i = start + 1
-                continue
-                
-            # Use stack to find matching end tag
-            stack = []
-            pos = start
-            found_end = False
+        # Find start of tag
+        start = xml_str.find(f'<{tag_name}', i)
+        if start == -1:
+            break
             
-            while pos < len(xml_str):
-                open_pos = xml_str.find('<', pos)
-                if open_pos == -1:
-                    break
-                    
-                close_bracket = xml_str.find('>', open_pos)
-                if close_bracket == -1:
-                    break
-                    
-                if xml_str[open_pos+1] == '/':  # Closing tag
-                    close_tag = xml_str[open_pos+2:close_bracket].strip()
-                    if stack and stack[-1] == close_tag:
-                        stack.pop()
-                        if not stack and close_tag == target_tag:
-                            # Found complete tag at this level
-                            results.append(xml_str[start:close_bracket+1])
-                            found_end = True
-                            i = close_bracket + 1
-                            break
-                else:  # Opening tag
-                    new_tag = xml_str[open_pos+1:close_bracket].strip()
-                    stack.append(new_tag)
-                    
-                pos = close_bracket + 1
-                
-            if not found_end:
-                i = start + 1
+        # Find tag end
+        tag_end = xml_str.find('>', start)
+        if tag_end == -1:
+            break
             
-        except Exception:
-            # Skip malformed sections
-            i += 1
+        # Check for self-closing tag
+        tag_content = xml_str[start+1:tag_end].strip()
+        if tag_content.endswith('/') or xml_str[tag_end-1] == '/':
+            i = tag_end + 1
+            continue
             
+        # Find closing tag
+        end = xml_str.find(f'</{tag_name}>', tag_end)
+        if end == -1:
+            break
+            
+        results.append(xml_str[tag_end + 1:end])
+        i = end + len(tag_name) + 3
+        
     return results
 
 
-def find(key, form):
-    """ find first occurrences of an xml field in a string """
-    if form is None:
-        raise ValueError('None!')
-    forml = form.lower()
-    keyl = key.lower()
-    keyle = keyl[0] + '/' + keyl[1:]
-    start_idx = forml.find(keyl)
-    if start_idx == -1:
-        return None
-    start_idx += len(keyl)
-    end_idx = forml[start_idx:].find(keyle)
-    if end_idx == -1:
-        return form[start_idx:]
-    return form[start_idx: start_idx + end_idx]
+def find(key, xml_str):
+    """Find content of first occurrence of key in xml_str.
+    Args:
+        key: Tag to find (with angle brackets)
+        xml_str: String containing XML
+    Returns:
+        Content of tag if found, empty string if not found or self-closing
+    """
+    if not key or not xml_str:
+        return ""
+        
+    # Strip angle brackets from search key
+    tag = key.strip('<>')
+    
+    # Find start of tag
+    start = xml_str.find(f'<{tag}')
+    if start == -1:
+        return ""
+        
+    # Find end of opening tag
+    tag_end = xml_str.find('>', start)
+    if tag_end == -1:
+        return ""
+        
+    # Check for self-closing tag
+    tag_content = xml_str[start+1:tag_end].strip()
+    if tag_content.endswith('/') or xml_str[tag_end-1] == '/':
+        return ""
+        
+    # Find closing tag
+    end = xml_str.find(f'</{tag}>', tag_end)
+    if end == -1:
+        return ""
+        
+    return xml_str[tag_end + 1:end]
 
 
 def set(key, form, value):
@@ -143,7 +123,7 @@ def format_xml(xml_str, indent=0):
     Handles nested tags with same name (like sections/section/sections/section).
     """
     if not xml_str or not isinstance(xml_str, str):
-        return ''
+        raise XMLFormatError("Input must be non-empty string")  # Changed from return ''
         
     result = []
     i = 0
@@ -168,17 +148,27 @@ def format_xml(xml_str, indent=0):
             i = end + 1
             continue
             
-        # Find tag name
+        # Find tag name and check for self-closing tag
         name_end = xml_str.find('>', i)
         if name_end == -1:
             raise XMLFormatError("Unclosed tag")
-        tag_name = xml_str[i+1:name_end].strip()
-        if not tag_name:
+        tag_content = xml_str[i+1:name_end].strip()
+        if not tag_content:
             raise XMLFormatError("Empty tag name")
+            
+        # Get tag name (everything before first space if attributes exist)
+        tag_name = tag_content.split()[0]
+            
+        # Check for self-closing tag (ending with /)
+        if tag_content.endswith('/') or xml_str[name_end-1] == '/':
+            result.append(' ' * indent + xml_str[i:name_end+1])
+            i = name_end + 1
+            continue
             
         # Find closing tag by counting nesting
         stack = []
         pos = i
+        end_pos = None
         while pos < len(xml_str):
             open_pos = xml_str.find('<', pos)
             if open_pos == -1:
@@ -196,8 +186,9 @@ def format_xml(xml_str, indent=0):
                         end_pos = open_pos
                         break
             else:  # Opening tag
-                new_tag = xml_str[open_pos+1:close_bracket].strip()
-                stack.append(new_tag)
+                new_tag = xml_str[open_pos+1:close_bracket].strip().split()[0]
+                if not xml_str[close_bracket-1] == '/':  # Not self-closing
+                    stack.append(new_tag)
                 
             pos = close_bracket + 1
             
