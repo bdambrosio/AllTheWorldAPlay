@@ -899,7 +899,7 @@ End your response with:
             return
 
         # Test completion through cognitive processor's state system
-        satisfied = self.cognitive_processor.state_system.test_state_termination(
+        satisfied = self.test_priority_termination(
             termination_check, 
             consequences,
             world_updates
