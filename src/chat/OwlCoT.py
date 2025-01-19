@@ -67,7 +67,7 @@ class OwlInnerVoice():
         self.port = port
         self.city = city
         self.state = state
-        self.llm = llm_api.LLM(llm='local')
+        self.llm = llm_api.LLM(llm='Claude')
         #self.interpreter = Interpreter(self)
         self.script = LLMScript(self)
         self.max_tokens = 12000

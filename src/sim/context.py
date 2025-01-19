@@ -31,7 +31,12 @@ class Context():
         self.llm = None
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = step  # Amount to advance each step
-        
+
+    def set_llm(self, llm):
+        self.llm = llm
+        for actor in self.actors:
+            actor.set_llm(llm)
+
     def load(self, dir):
         try:
             with open(dir / 'scenario.json', 'r') as s:

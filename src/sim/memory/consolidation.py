@@ -9,6 +9,9 @@ class MemoryConsolidator:
     def __init__(self, llm):
         self.llm = llm
 
+    def set_llm(self, llm):
+        self.llm = llm
+
     def consolidate(self, memory: StructuredMemory):
         """Periodic memory maintenance and optimization"""
         # Get memories by drive using retrieval system
