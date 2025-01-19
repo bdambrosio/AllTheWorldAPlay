@@ -709,7 +709,10 @@ def get_detailed_visibility_description(world, x, y, observer_height):
     visible_patches.append(world.patches[x][y])  # Add current patch
 
     root = ET.Element("visibility_report")
-    ET.SubElement(root, "position", x=str(x), y=str(y))
+    pos = ET.SubElement(root, "position")
+    pos.set("x", str(x))
+    pos.set("y", str(y))
+    pos.text = ""
 
     for direction in Direction:
         direction_element = ET.SubElement(root, "direction", name=direction.name)
@@ -742,8 +745,9 @@ def get_detailed_visibility_description(world, x, y, observer_height):
             distance = manhattan_distance(x, y, patch.x, patch.y)
             for resource in patch.resources:
                 resource_element = ET.SubElement(resources_element, "resource")
-                resource_element.set("name", resource.name.replace('_', ' ').title())
+                resource_element.set("name", resource.name)
                 resource_element.set("distance", str(distance))
+                resource_element.text = ""
 
         water_patches = [p for p in direction_patches if p.has_water]
         if water_patches:
@@ -763,6 +767,7 @@ def get_detailed_visibility_description(world, x, y, observer_height):
                 agent_element = ET.SubElement(agents_element, "agent")
                 agent_element.set("name", agent.name)
                 agent_element.set("distance", str(manhattan_distance(x, y, agent.x, agent.y)))
+                agent_element.text = ""
 
     return ET.tostring(root, encoding="unicode")
 
