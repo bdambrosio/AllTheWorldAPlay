@@ -1,8 +1,8 @@
 # AllTheWorldAPlay[^1] (ATWAP)
 
 ## A simple toy to test the Humanity of your LLM
-12/30/2024 - 'Lost' basic scenario now runs, and by default uses DeepSeek. Haven't run it long enough to see where it breaks down.
-Recap: there is now a simple initialized grid-world map of the terrain, modelling hills, streams, and simple food resources. Not sure where this will go, but I was running into too many boundaries without it. Maybe it should just be a 'my dinner with Andre' like locationless discussion. 
+1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
+major overhaul of the cognitive architecture of characters.
 
 Anyway, if you see something like 'Southwest' in the main dialog, that means a character took a move on the map in that direction.
 
@@ -11,7 +11,8 @@ To use one of the other built-in scenarios, move it to the main src dir before y
 ### 
 ![Play screenshot](images/lost.jpg)
 
--12/14/2024 - Work in progress - restoring the original Owl functionality (smart reasoning personal chatbot with internet and library access).
+- 12/30/2024 - 'Lost' basic scenario now runs, and by default uses DeepSeek. Haven't run it long enough to see where it breaks down.
+Recap: there is now a simple initialized grid-world map of the terrain, modelling hills, streams, and simple food resources. Not sure where this will go, but I was running into too many boundaries without it. Maybe it should just be a 'my dinner with Andre' like locationless discussion-12/14/2024 - Work in progress - restoring the original Owl functionality (smart reasoning personal chatbot with internet and library access).
 - 6/29/2004 - Work in progress - integrating a procedurally generated initial worldmap. Many other changes in agent architecture also in progress. 
 I recommend you stick with a release for now, untill this stabilizes.
 - 6/4/2024 - Added load/save. Really crude - to load, pick a saved world from list on cli. To save, give world a name in popup. Note: No overwrite check, so be careful! Not well tested. And, you still need to init from basic scenario dscp.
