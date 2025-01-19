@@ -352,13 +352,13 @@ class MainWindow(QMainWindow):
         self.llm = llm_api.LLM(server)
         self.context = context
         #set refs to llm
-        self.context.llm = self.llm
+        self.context.set_llm(self.llm)
         self.actors = context.actors
         self.init_ui()
         self.internal_time = 0
         self.server=server
         for actor in self.actors:
-           actor.llm = self.llm
+           actor.set_llm(self.llm)
         for actor in self.actors:
            print(f'calling {actor.name} initialize')
            actor.initialize(self)

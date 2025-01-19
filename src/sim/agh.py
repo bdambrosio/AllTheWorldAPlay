@@ -453,6 +453,11 @@ class Agh(Character):
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
 
+    def set_llm(self, llm):
+        self.llm = llm
+        if self.memory_consolidator is not None:
+            self.memory_consolidator.set_llm(llm)
+
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
         filtered_data = {}
