@@ -33,7 +33,7 @@ deepseek_client = DeepSeekClient.DeepSeekClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 
-def generate_image(llm, description, size='512x512', filepath='test.png'):
+def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
     prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
 Your task is to compress detailed scene descriptions into optimal prompts for Stable Diffusion 3.5-large-turbo, which has a 128 token limit.
@@ -53,6 +53,8 @@ Output only the compressed prompt, no explanations
 End your response with:
 </End>
 """)]
+    if llm is None: 
+        llm = LLM('local')
     compressed_prompt = llm.ask({"input":description}, prompt, stops=['</End>'])
     cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'

@@ -1,0 +1,188 @@
+/* Dark theme base */
+body {
+  background-color: #2b2b2b;
+  color: #e0e0e0;
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  display: grid;
+  grid-template-columns: 320px 1fr 150px;  /* Match CharacterPanel width */
+  gap: 5px;
+  padding: 10px;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  background-color: #2b2b2b;
+  box-sizing: border-box;
+}
+
+.main-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.world-panel {
+  background-color: #333333;
+  border-radius: 5px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: calc(100vh - 40px);
+}
+
+.world-description {
+  font-size: 1.1em;
+  line-height: 1.4;
+  color: #e0e0e0;
+}
+
+.character-info {
+  margin: 20px 0;
+}
+
+.character-block {
+  background-color: #3c3c3c;
+  border-radius: 5px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.character-block h3 {
+  margin: 0 0 10px 0;
+  color: #2b2b2b;
+}
+
+.character-state {
+  color: #2b2b2b;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.command-area {
+  margin-top: auto;
+}
+
+.output-area {
+  background-color: #2d2d2d;
+  border-radius: 5px;
+  padding: 15px;
+  margin-bottom: 10px;
+  height: 200px;
+  overflow-y: auto;
+}
+
+.message {
+  color: #d0d0d0;
+  margin: 5px 0;
+}
+
+.input-area {
+  margin-top: 10px;
+}
+
+.command-input {
+  width: 100%;
+  padding: 8px;
+  background-color: #404040;
+  border: 1px solid #505050;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 1em;
+}
+
+.command-input::placeholder {
+  color: #808080;
+}
+
+.control-panel {
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 120px;  /* Narrower than grid column */
+}
+
+.control-button {
+  width: 100%;
+  padding: 8px;
+  background-color: #444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 150px;
+  text-align: center;
+  font-size: .9em;
+}
+
+.control-button:hover {
+  background-color: #505050;
+}
+
+.command-panel {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.history-panel {
+  grid-column: 2;
+  grid-row: 1;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.character-panel {
+  grid-column: 1;  /* Left column */
+  background-color: #2b2b2b;
+  border: 1px solid #000000;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+.memory-panel {
+  display: none; /* Hidden initially, can be shown later */
+}
+
+h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.message {
+  padding: 8px;
+  margin: 4px 0;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.center-panel {
+  grid-column: 2;  /* Center column */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.log-area {
+  background-color: #333333;
+  color: #FFFFFF;
+  padding: 10px;
+  height: 500px;
+  overflow-y: auto;
+  font-size: 1.1em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}

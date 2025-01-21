@@ -31,6 +31,10 @@ class Context():
         self.llm = None
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = step  # Amount to advance each step
+        # Add new fields for UI independence
+        self.state_listeners = []
+        self.output_buffer = []
+        self.widget_refs = {}  # Keep track of widget references for PyQt UI
 
     def set_llm(self, llm):
         self.llm = llm
@@ -77,6 +81,10 @@ class Context():
                 
         return '\n'.join(history) if history else ""
 
+    def generate_image_description(self):
+        return "wide-view photorealistic style. "+self.current_state
+        
+        
     def image(self, filepath, image_generator='tti_serve'):
         try:
             state = '. '.join(self.current_state.split('.')[:2])
@@ -350,3 +358,41 @@ END""")]
             delta = self.time_step
         self.simulation_time += delta
         return self.simulation_time
+
+    def add_state_listener(self, listener):
+        """Allow UIs to register for updates"""
+        self.state_listeners.append(listener)
+
+    def _notify_listeners(self, update_type, data=None):
+        """Notify all listeners of state changes"""
+        for listener in self.state_listeners:
+            listener(update_type, data)
+
+    # Modify existing display method
+    def display_output(self, text):
+        """UI-independent output handling"""
+        self.output_buffer.append({
+            'text': text,
+            'timestamp': self.simulation_time
+        })
+        self._notify_listeners('output', {'text': text})
+
+    # Modify existing display update
+    def update_display(self):
+        """UI-independent state update"""
+        state = {
+            'characters': self.characters,
+            'simulation_time': self.simulation_time,
+            'running': self.running,
+            'paused': self.paused
+        }
+        self._notify_listeners('state_update', state)
+
+    def set_widget(self, entity, widget):
+        """Maintain widget references for PyQt UI"""
+        self.widget_refs[entity] = widget
+        entity.widget = widget
+
+    def get_widget(self, entity):
+        """Get widget reference for entity"""
+        return self.widget_refs.get(entity)
