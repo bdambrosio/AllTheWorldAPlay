@@ -27,6 +27,7 @@ from sim.DialogManagement import DialogManager
 from collections import defaultdict
 from dataclasses import dataclass, field
 import numpy as np
+from sim.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 
 
 def find_first_digit(s):
@@ -112,6 +113,8 @@ class Character:
         )
 
         self.drives: List[Drive] = []  # Initialize empty drive list
+        self.perceptual_state = PerceptualState(self)
+        
 
     # Required memory system methods that must be implemented by derived classes
     def add_to_history(self, message: str):
@@ -483,6 +486,37 @@ class Agh(Character):
         except Exception as e:
             print(f' error restoring {self.name}, {str(e)}')
 
+    def generate_image_description(self):
+        description = self.character
+        try:
+            context = ''
+            i = 0
+            candidates = self.context.current_state.split('.')
+            while len(context) < 84 and i < len(candidates):
+                context += candidates[i]+'. '
+                i +=1
+            context = context[:96]
+            description = self.name + ', '+'. '.join(self.character.split('.')[:2])[6:] +', '+\
+                self.show.replace(self.name, '')[-128:].strip()
+            description = description[:192-min(len(context), 48)] + '. '+context
+
+        except Exception as e:
+            traceback.print_exc()
+        return description
+
+    def update_actor_image(self):
+        try:
+            description = self.generate_image_description()
+            prompt = description
+            #print(f' actor image prompt len {len(prompt)}')
+            image_path = llm_api.generate_image(self.llm, prompt, size='192x192', filepath=self.name + '.png')
+        except Exception as e:
+            traceback.print_exc()
+        return image_path
+
+    def update_world_image(self):
+        raise NotImplementedError("Derived classes must implement update_world_image")
+    
     def add_to_history(self, message: str):
         """Add message to structured memory"""
         if message is None or message == '':
@@ -496,6 +530,15 @@ class Agh(Character):
         self.structured_memory.add_entry(entry)
         self.new_memory_cnt += 1
    
+    def add_to_history_perceptual(self, text: str, intensity: float = 0.7):
+        """Legacy method - routes through perceptual system"""
+        self.perceptual_state.add_input(PerceptualInput(
+            mode=SensoryMode.EXTERIOR,  # Default for legacy calls
+            content=text,
+            timestamp=self.context.simulation_time,
+            intensity=intensity
+        ))
+        
     def _find_related_drives(self, message: str) -> List[Drive]:
         """Find drives related to a memory message"""
         related_drives = []
@@ -972,7 +1015,7 @@ End your response with:
         if act_name == 'Think':
             self.thought = act_arg + '\n ... ' + self.reason
         else:
-            self.thought = act_arg[:64] + ' ...\n ... ' + self.reason
+            self.thought =  self.reason
 
         # Update active task if needed
         if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
@@ -1931,4 +1974,15 @@ End your response with:
             return 'thought'
         else:
             return 'general'
+
+    def to_json(self):
+        """Return JSON-serializable representation"""
+        return {
+            'name': self.name,
+            'show': self.show.strip(),  # Current visible state
+            'thoughts': self.thought.strip(),  # Current thoughts
+            'priorities': [p for p in self.priorities],
+            'description': self.character.strip(),  # For image generation
+            'history': self.format_history().strip() # Recent history, limited to last 5 entries
+        }
 

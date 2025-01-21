@@ -1,3 +1,5 @@
+import os, json, math, time, requests, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
 import sys
 import os
@@ -43,9 +45,9 @@ def map_state(state):
     return ', '.join(mapped_state)
 
 class HoverWidget(QWidget):
-    def __init__(self, entity):
+    def __init__(self, character):
         super().__init__()
-        self.entity = entity
+        self.character = character
         
         # Create the main layout
         self.layout = QVBoxLayout()
@@ -78,7 +80,7 @@ class HoverWidget(QWidget):
         if event.type() == QEvent.Enter:
             print(f' enter under mouse! {event}')
             self.text_widget.clear()
-            recent_memories = self.entity.structured_memory.get_recent(5)
+            recent_memories = self.character.structured_memory.get_recent(5)
             memory_text = '\n'.join(memory.text for memory in recent_memories)
             add_text_ns(self.text_widget, memory_text)
             self.text_widget.setVisible(True)
@@ -133,17 +135,17 @@ class InputWidget(QDialog):
 class BackgroundSense(QThread):
     #class BackgroundSense():
     taskCompleted = pyqtSignal()
-    def __init__(self, entity):
+    def __init__(self, character):
         super().__init__()
-        self.entity = entity
+        self.character = character
 
     def run(self):
         global UPDATE_LOCK
         with UPDATE_LOCK:
             try:
-                print(f'calling {self.entity} senses')
-                # other source of effective input is assignment to self.entity.sense_input, e.g. from other say
-                result = self.entity.senses(sense_data = '')
+                print(f'calling {self.character.name} senses')
+                # other source of effective input is assignment to self.character.sense_input, e.g. from other say
+                result = self.character.senses(sense_data = '')
                 self.taskCompleted.emit()
             except Exception as e:
                 traceback.print_exc()
@@ -160,24 +162,27 @@ class WrappingLabel(QLabel):
         return QSize(0, super().minimumSizeHint().height())
 
 class CustomWidget(QWidget):
-    def __init__(self, entity, parent=None):
-        super(CustomWidget, self).__init__(parent)
-        self.ui = parent
-        self.entity = entity
-        self.entity.widget = self
+    def __init__(self, context, character, parent=None):
+        super().__init__(parent)
+        self.context = context
+        self.character = character
+        self.ui=parent
+        self.init_ui()
+
+    def init_ui(self):
         layout = QVBoxLayout()
         self.top_bar = QHBoxLayout()
-        name = QLabel(self.entity.name, self)
+        name = QLabel(self.context.name, self)
         name.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         name.adjustSize()
         self.top_bar.addWidget(name)
-        if type(self.entity) != context.Context:
-            self.active_task = WrappingLabel(self.entity.active_task.peek(), self)
+        if self.character != self.context:
+            self.active_task = WrappingLabel(self.character.active_task.peek(), self)
             self.active_task.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.active_task.setWordWrap(True)
             self.active_task.adjustSize()
             self.top_bar.addWidget(self.active_task)
-            self.state = WrappingLabel(map_state(self.entity.state), self)
+            self.state = WrappingLabel(map_state(self.character.state), self)
             self.state.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.state.setWordWrap(True)
             self.state.adjustSize()
@@ -185,10 +190,9 @@ class CustomWidget(QWidget):
             self.top_bar.setSpacing(5)  # Add this line
             self.top_bar.addStretch()  # Add this line
             layout.addLayout(self.top_bar)
-        if self.entity.name !='World':
             h_layout = QHBoxLayout()
-            self.image_label = HoverWidget(self.entity)
-            self.image_label.set_image('images/'+self.entity.name+'.png')
+            self.image_label = HoverWidget(self.character)
+            self.image_label.set_image('images/'+self.character.name+'.png')
             h_layout.addWidget(self.image_label)
             self.intentions = QTextEdit()
             self.intentions.setLineWrapMode(QTextEdit.WidgetWidth)
@@ -214,15 +218,17 @@ class CustomWidget(QWidget):
         self.setLayout(layout)
         self.setStyleSheet("background-color: #333333; color: #FFFFFF;")
         self.cycle = 0
-        if self.entity.name != 'World':
-            self.update_actor_image()
-            
-        print(f'{self.entity.name} ui widget inititalized')
+        #if self.context.name != 'World': # can't do this before entity is fully initialized
+        #    self.update_actor_image()
+        if self.character != self.context:
+            self.character.update_actor_image()
+        #self.show()
+        print(f'{self.character.name} ui widget inititalized')
         
     def update_actor_image(self):
         try:
             #add first two sentences of initial context for background
-            context = self.entity.context.current_state.split('.')
+            context = self.context.current_state.split('.')
             if len(context[0].strip()) > 0:
                 context = context[0].strip()
                 rem_context = context[1:]
@@ -230,46 +236,39 @@ class CustomWidget(QWidget):
                 context = context[1].strip()
                 rem_context = context[2:]
             else:
-                context = self.entity.context.current_state[:84]
-            if IMAGEGENERATOR == 'dall-e-2':
-                # can take a longer dscp than tti_serve
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[8:] +', '+\
-                    self.entity.show + '. Location: '+context
-                prompt = "photorealistic style. "+description+rem_context
-                llm_api.generate_dalle_image(prompt, size='192x192', filepath=self.entity.name + '.png')
-                self.set_image(str(llm_api.IMAGE_PATH)+self.entity.name+'.png')
-            elif IMAGEGENERATOR == 'tti_serve':
+                context = self.context.current_state[:84]
                 context = ''
                 i = 0
-                candidates = self.entity.context.current_state.split('.')
+                candidates = self.context.current_state.split('.')
                 while len(context) < 84 and i < len(candidates):
                     context += candidates[i]+'. '
                     i +=1
                 context = context[:96]
-                description = self.entity.name + ', '+'. '.join(self.entity.character.split('.')[:2])[6:] +', '+\
-                    self.entity.show.replace(self.entity.name, '')[-128:].strip()
+                description = self.character.name + ', '+'. '.join(self.character.character.split('.')[:2])[6:] +', '+\
+                    self.character.show.replace(self.character.name, '')[-128:].strip()
                 description = description[:192-min(len(context), 48)] + '. '+context
                 prompt = description
                 print(f' actor image prompt len {len(prompt)}')
-                image_path = llm_api.generate_image(self.entity.llm, prompt, size='192x192', filepath=self.entity.name + '.png')
+                image_path = llm_api.generate_image(self.context.llm, prompt, size='192x192', filepath=self.character.name + '.png')
                 self.set_image(str(image_path))
         except Exception as e:
             traceback.print_exc()
 
     def update_world_image(self):
-        image_path = self.ui.context.image(filepath='worldsim.png', image_generator=IMAGEGENERATOR)
-        self.ui.set_image(image_path)
+        # assumes this is being executed on context widget
+        image_path = self.context.image(filepath='worldsim.png')
+        self.ui.set_image(str(image_path))
 
     def start_sense(self):
-        result = self.entity.senses(sense_data = '')
-        #self.background_task = BackgroundSense(self.entity)
+        result = self.character.senses(sense_data = '')
+        #self.background_task = BackgroundSense(self.context)
         agh_threads.append(self) # keep track of how many threads are running, even if serially
         #self.background_task.run()
         #self.handle_sense_completed()
         #self.background_task.taskCompleted.connect(self.handle_sense_completed)
         #self.background_task.start()
         #time.sleep(0.1) # ensure entities run in listed order
-        print(f'{self.entity.name} started sense')
+        print(f'{self.character.name} started sense')
         self.handle_sense_completed()   
 
     def format_intentions(self):
@@ -277,37 +276,37 @@ class CustomWidget(QWidget):
                           +':</b>('+str(xml.find('<Source>', intention))+') '+str(xml.find('<Act>', intention))[:32]
                           +'<br> Why: '+str(xml.find('<Reason>', intention))[:32]
                           +'<br>'
-                          for intention in self.entity.intentions])
+                          for intention in self.character.intentions])
             
     def format_tasks(self):
         return '<br>'.join(["<b>"+str(xml.find('<Name>', task))
                           +':</b> '+str(xml.find('<Reason>', task))
                           +'<br>'
-                          for task in self.entity.priorities])
+                          for task in self.character.priorities])
             
     def handle_sense_completed(self):
-        if self.entity.name != 'World':
+        if self.character != self.context:
             self.update_entity_state_display()
-            self.update_actor_image()
+            self.character.update_actor_image()
             self.ui.display('\n')
-            self.ui.display(self.entity.show)
-            self.entity.show='' # need to not erase till image update!
+            self.ui.display(self.character.show)
+            self.character.show='' # need to not erase till image update!
         else:
             self.thoughts.insertPlainText('\n------time passes-----\n')
-            self.thoughts.insertPlainText(str(self.entity.current_state))
-            if self.entity.show is not None and len(self.entity.show) > 0:
-                self.ui.display(self.entity.show)
-                self.entity.show=''
-            for entity in self.entity.ui.actors:
+            self.thoughts.insertPlainText(str(self.context.current_state))
+            if self.context.show is not None and len(self.context.show) > 0:
+                self.ui.display(self.context.show)
+                self.context.show=''
+            for entity in self.context.ui.actors:
                 if entity.name != 'World' and type(entity) != context.Context:
                     entity.widget.update_entity_state_display()
-            path = self.entity.image('worldsim.png')
+            path = self.context.image('worldsim.png')
             self.ui.set_image(path)
             #self.ui.display('\n----- context updated -----\n')
             self.ui.display('\n')
 
         # initiate another cycle?
-        print(f'{self.entity.name} sense completed')
+        print(f'{self.context.name} sense completed')
         
             
     def set_image(self, image_path):
@@ -325,11 +324,11 @@ class CustomWidget(QWidget):
         self.start_sense()
 
     def update_entity_state_display(self):
-        self.active_task.setText(self.entity.active_task.peek())
+        self.active_task.setText(self.character.active_task.peek())
         self.active_task.adjustSize()
         
         print(f'updating entity state display')
-        self.state.setText(map_state(self.entity.state))
+        self.state.setText(map_state(self.character.state))
         self.state.adjustSize()
 
         self.priorities.clear()
@@ -337,38 +336,60 @@ class CustomWidget(QWidget):
         self.intentions.clear()
         self.intentions.insertHtml(self.format_intentions())
         # display show, not reason, because show includes thought if act was think
-        if self.entity.show is not None and len(self.entity.show) > 4:
+        if self.character.show is not None and len(self.character.show) > 4:
             self.thoughts.moveCursor(QTextCursor.End)
             self.thoughts.insertPlainText('\n-------------\n')
-            self.thoughts.insertPlainText(self.entity.thought)
+            self.thoughts.insertPlainText(self.character.thought)
             self.thoughts.moveCursor(QTextCursor.End)
-        #if type(self.entity) == agh.Agh:
-        #    print(f'\n----\n{self.entity.name} last_acts:\n{self.entity.last_acts}\n')
+        #if type(self.context) == agh.Agh:
+        #    print(f'\n----\n{self.context.name} last_acts:\n{self.context.last_acts}\n')
         
-class MainWindow(QMainWindow):
-    def __init__(self, context, server, world_name=None):
+class WorldSim(QMainWindow):
+    def __init__(self, context, server='deepseek', world_name='Lost'):
         super().__init__()
-        self.world_name = world_name
-        self.llm = llm_api.LLM(server)
         self.context = context
-        #set refs to llm
+        self.server = server
+        self.world_name = world_name
+        self.character_widgets = {}  # Track character widgets here
+        self.llm = LLM(server)
         self.context.set_llm(self.llm)
-        self.actors = context.actors
+        self.steps_since_last_update = 0
+        
+        # Add listener for state updates
+        self.context.add_state_listener(self.handle_state_update)
         self.init_ui()
-        self.internal_time = 0
-        self.server=server
-        for actor in self.actors:
+        for actor in self.context.actors:
            actor.set_llm(self.llm)
-        for actor in self.actors:
+        for actor in self.context.actors:
            print(f'calling {actor.name} initialize')
            actor.initialize(self)
-        for actor in self.actors:
+        for actor in self.context.actors:
             print(f'calling {actor.name} greet')
             #actor.greet()
             actor.see()
 
-        for actor in self.actors:
-           actor.widget.update_entity_state_display()
+        for widget in self.custom_widgets:
+           #
+           widget.update_entity_state_display()
+
+    def handle_state_update(self, update_type, data):
+        """Handle context state updates"""
+        if update_type == 'output':
+            self.text_display.append(data['text'])
+        elif update_type == 'state_update':
+            # Update character display
+            self.update_character_display(data['characters'])
+            # Update other UI elements as needed
+            self.text_display.update()
+            
+    def update_character_display(self, characters):
+        """Update character panel with current states"""
+        text = ""
+        for char in characters:
+            text += f"{char.name}:\n"
+            for priority in char.priorities:
+                text += f"  {priority.name}: {priority.value}\n"
+        self.character_display.setText(text)
 
     def init_ui(self):
         # Main central widget
@@ -382,12 +403,11 @@ class MainWindow(QMainWindow):
         
         # Left panel with custom widgets
         left_panel = QVBoxLayout()
-        self.custom_widgets = [CustomWidget(self.context, parent=self)]
-        self.custom_widgets.extend([ CustomWidget(actor, parent=self) for actor in self.actors])
-        for widget in self.custom_widgets:
-            left_panel.addWidget(widget)
-            widget.entity.ui = self # let entity know about UI for display
-        
+        self.custom_widgets = [
+            self.create_character_widget(actor, parent=self)
+            for actor in self.context.actors
+        ]
+       
         left_panel_widget = QWidget()
         left_panel_widget.setLayout(left_panel)
         left_panel_widget.setFixedWidth(800)
@@ -398,7 +418,7 @@ class MainWindow(QMainWindow):
         center_panel = QVBoxLayout()
         
         self.image_label = QLabel()
-        self.context.widget.update_world_image()
+        #self.context.widget.update_world_image()
         self.image_label.setAlignment(Qt.AlignCenter)
         center_panel.addWidget(self.image_label)
         
@@ -460,13 +480,18 @@ class MainWindow(QMainWindow):
         self.setGeometry(300, 300, 800, 600)
         self.setWindowTitle('PyQt5 Application')
         agh.ui = self
+        #self.show()       
         for widget in self.custom_widgets:
-            if widget.entity.name == 'World':
+            if widget.character == widget.context:
                 widget.thoughts.clear()
-                widget.thoughts.insertPlainText(str(widget.entity.current_state))
+                widget.thoughts.insertPlainText(str(widget.character.current_state))
+                widget.update_world_image()
             else:
                 widget.update_entity_state_display()
-        
+                widget.character.update_actor_image()
+            left_panel.addWidget(widget)
+
+        self.context.image()
         self.show()
 
     def display(self, r):
@@ -498,7 +523,6 @@ class MainWindow(QMainWindow):
         
 
     def step_completed(self):
-        self.internal_time += 1
         self.run_button.setEnabled(True)
         self.step_button.setEnabled(True)
         QApplication.processEvents()
@@ -522,7 +546,7 @@ class MainWindow(QMainWindow):
 
     def refresh(self):
         for widget in self.custom_widgets:
-            if type(widget.entity) != context.Context:
+            if type(widget.context) != context.Context:
                 widget.update_entity_state_display()
 
 
@@ -572,18 +596,27 @@ class MainWindow(QMainWindow):
         new_time = self.context.advance_time()
         
         for widget in self.custom_widgets:
-            if type(widget.entity) != context.Context:
+            if type(widget.character) != context.Context:
                 # Pass simulation time to forward
                 widget.update_value(new_time)
                 # Process events periodically to check for pause
                 QApplication.processEvents()
             else:
-                if self.internal_time % 5 == 4:
-                    widget.update_value(self.internal_time)
+                if self.steps_since_last_update > 5:    
+                    widget.context.senses('')
+                    widget.update_world_image()
+                    self.steps_since_last_update = 0
                 else:
+                    self.steps_since_last_update += 1
                     widget.thoughts.clear()
-                    widget.thoughts.insertPlainText(str(widget.entity.current_state))
+                    widget.thoughts.insertPlainText(str(widget.context.current_state))
         self.step_completed()
+
+    def create_character_widget(self, character, parent=None):
+        """Create and track widget for character"""
+        widget = CustomWidget(self.context, character, self)
+        self.character_widgets[character] = widget
+        return widget
 
 def main(context, server='local', world_name=None):
     global APP, main_window, WORLDS_DIR
@@ -595,14 +628,84 @@ def main(context, server='local', world_name=None):
         print(f"Directory '{worlds_path}' already exists.")
     APP = QApplication(sys.argv)
 
-    main_window = MainWindow(context, server=server, world_name=None)
+    main_window = WorldSim(context, server, world_name)
+    main_window.world_name = world_name
+    main_window.llm = LLM(server)
+    main_window.context = context
+    #set refs to llm
+    main_window.context.set_llm(main_window.llm)
+    main_window.actors = context.actors
+    main_window.server = server
+    for actor in main_window.actors:
+       actor.set_llm(main_window.llm)
+    for actor in main_window.actors:
+       print(f'calling {actor.name} initialize')
+       actor.initialize(main_window)
+    for actor in main_window.actors:
+        print(f'calling {actor.name} greet')
+        #actor.greet()
+        actor.see()
+
+    #for actor in main_window.actors:
+    #   actor.widget.update_entity_state_display()
 
     # Update server setting for characters
     for actor in context.actors:
         if isinstance(actor, agh.Agh):
-            actor.llm = llm_api.LLM(server)
+            actor.llm = LLM(server)
             
     sys.exit(APP.exec_())
 
 if __name__ == '__main__':
-    main()
+    S = agh.Agh("Samantha", """You are a pretty young Sicilian woman. 
+You love the outdoors and hiking.
+You are intelligent, introspective, philosophical and a bit of a romantic, but keep this mostly to yourself. 
+You have a painful history, maybe it is just as well you don't remember it.
+You are very informal, chatty, and think and speak in teen slang, and are a playful and flirty when relaxed. 
+You are comfortable on long treks, and are unafraid of hard work. 
+You are suspicious by nature, and wary of strangers. 
+Your name is Samanatha""")
+
+    #Specifying for this scenario, otherwise all they do is hunt for water, berries, and grubs
+    S.set_drives([
+    #"evaluation of Joe. Can I trust him?",
+    #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
+    #"finding a way out of the forest.",
+    "solving the mystery of how they ended up in the forest with no memory.",
+    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    "immediate physiological needs: survival, shelter, water, food, rest."
+    ])
+    S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
+
+    #
+    ## Now Joe, the other character in this 'survivor' scenario
+    #
+
+    J = agh.Agh("Joe", """You are a young Sicilian male, intelligent and self-sufficient. 
+You are informal and somewhat impulsive. 
+You are strong, and think you love the outdoors, but are basically a nerd.
+You yearn for something more, but don't know what it is.
+You are socially awkward, especially around strangers. 
+You speak in informal teen style.
+Your name is Joe.""")
+
+    J.set_drives([
+    "communication and coordination with Samantha, gaining Samantha's trust.",
+    #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
+    #"finding a way out of the forest.",
+    "solving the mystery of how they ended up in the forest with no memory.",
+    #"love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    "immediate physiological needs: survival, shelter, water, food, rest."
+    ])
+
+    J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
+    # add a romantic thread. Doesn't work very well yet. One of my test drivers of agh, actually.
+    J.add_to_history("You think Whoever she is, she is pretty!")
+
+
+    #    first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
+    W = context.Context([S, J],
+                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
+""")
+
+    main(W, server='deepseek', world_name='Lost')

@@ -1,0 +1,147 @@
+.character-info {
+  margin: 6px 0;
+  width: 300px;
+}
+
+.character-block {
+  background-color: #333333;
+  border-radius: 5px;
+  padding: 2px;
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-bar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.name-and-image {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.char-name {
+  font-weight: bold;
+  min-width: fit-content;
+}
+
+.char-state {
+  flex: 1;
+  max-height: 80px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding: 5px;
+  background-color: #2b2b2b;  /* Slightly darker for contrast */
+  border-radius: 3px;
+  margin-right: 5px;
+}
+
+/* Style scrollbar for better visibility */
+.char-state::-webkit-scrollbar {
+  width: 6px;
+}
+
+.char-state::-webkit-scrollbar-track {
+  background: #2b2b2b;
+}
+
+.char-state::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.char-state::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+.active-task, .char-state {
+  flex: 1;
+  word-wrap: break-word;
+}
+
+.middle-section {
+  display: flex;
+  gap: 6px;
+}
+
+.character-image {
+  width: 192px;
+  height: 192px;
+  border-radius: 5px;
+}
+
+.section-container h4 {
+  margin: 0 0 5px 0;
+}
+
+.priorities-area, .history-area {
+  flex: 1;
+  background-color: #333333;
+  color: #FFFFFF;
+  padding: 0 5px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.thoughts-area {
+  background-color: #333333;
+  color: #FFFFFF;
+  padding: 3px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.character-block h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.1em;
+}
+
+.character-state {
+  margin-left: 79px;
+  color: #b0b0b0;
+  font-size: 0.75em;
+  line-height: 1.4;
+}
+
+.character-show {
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.character-thoughts {
+  margin-bottom: 6px;
+  color: #d0d0d0;
+}
+
+.character-priorities {
+  margin-bottom: 6px;
+  font-size: 0.75em;
+}
+
+.character-history {
+  font-size: 0.75em;
+  color: #909090;
+}
+
+.history-entry {
+  margin: 3px 0;
+}
+
+.priority-item {
+  white-space: pre-wrap;
+  margin-bottom: 1em;
+  font-size: 0.75em;
+}
+
+.history-item {
+  white-space: pre-wrap;
+  font-size: 0.75em;
+} 
