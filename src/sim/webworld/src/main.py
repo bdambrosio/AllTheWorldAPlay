@@ -54,63 +54,182 @@ async def root():
 @app.get("/api/session/new")
 async def create_session():
     session_id = str(uuid.uuid4())
-    sessions[session_id] = SimulationWrapper()
+    sessions[session_id] = None
     return {"session_id": session_id}
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    try:
-        await websocket.accept()
-        
-        if session_id not in sessions:
-            await websocket.close(code=1008)  # Policy violation
-            return
-            
-        sim = sessions[session_id]
-        
-        while True:
-            try:
-                data = json.loads(await websocket.receive_text())
-                
-                if data.get('type') == 'command':
-                    action = data.get('action')
-                    
-                    if action == 'step':
-                        # Create callback for character updates
-                        async def update_character(name, char_data):
-                            # Send character update
-                            await websocket.send_text(json.dumps({
-                                'type': 'character_update',
-                                'name': name,
-                                'data': char_data
-                            }))
-                            # Send show text to middle panel
-                            if char_data.get('show'):
-                                await websocket.send_text(json.dumps({
-                                    'type': 'show_update',
-                                    'text': f"{name}: {char_data['show']}\n"
-                                }))
-                        
-                        # Pass callback to step
-                        await sim.simulation.step(update_character)
-                        
-                        # Send final status
+    await websocket.accept()
+    sessions[session_id] = None
+    
+    async def update_world(name, world_data):
+            # Send character update
+            context_data = sim.simulation.context.to_json()
+            image_path = context_data['image']
+            if image_path:
+                with open(image_path, 'rb') as f:
+                    image_data = f.read()
+                    context_data['image'] = base64.b64encode(image_data).decode()
+            await websocket.send_text(json.dumps({
+                'type': 'world_update',
+                'name': 'World',
+                'data': context_data
+            }))
+
+    async def update_character(name, char_data):
+                        # Send character update
                         await websocket.send_text(json.dumps({
-                            'type': 'status_update',
-                            'status': {
-                                'running': sim.simulation.running,
-                                'paused': sim.simulation.paused
-                            }
+                            'type': 'character_update',
+                            'name': name,
+                            'data': char_data
                         }))
+                        # Send show text to middle panel
+                        if char_data.get('show'):
+                            await websocket.send_text(json.dumps({
+                                'type': 'show_update',
+                                'text': f"{name}: {char_data['show']}\n"
+                            }))
+                        if char_data.get('show'):
+                            await websocket.send_text(json.dumps({
+                                'type': 'show_update',
+                                'text': f"{name}: {char_data['show']}\n"
+                            }))                                        
+
+ 
+
+
+    async def run_simulation(sim):
+        if sim is None:
+            return
+        while sim.simulation.running and not sim.simulation.paused:
+            await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
+            await asyncio.sleep(0.1)
+    
+    try:
+        while True:
+            data = json.loads(await websocket.receive_text())
+            
+            if data.get('type') == 'command':
                         
-                    elif action == 'run':
-                        sim.simulation.run()
-                    elif action == 'pause':
-                        sim.simulation.pause()
-                    elif action == 'inject':
-                        sim.simulation.inject(data.get('text', ''))
+                action = data.get('action')
+                sim = sessions[session_id]
+                
+                if action == 'run' and sim is not None:
+                    sim.simulation.running = True
+                    sim.simulation.paused = False
+                    asyncio.create_task(run_simulation(sim))
+                
+                elif action == 'pause' and sim is not None:
+                    sim.simulation.paused = True
+                    sim.simulation.running = False
+                
+                elif action == 'initialize':
+                    try:
+                        # Get path to plays directory relative to main.py
+                        main_dir = Path(__file__).parent
+                        plays_dir = (main_dir / '../../../plays').resolve()
+                        
+                        # List .py files, excluding system files
+                        play_files = [f.name for f in plays_dir.glob('*.py') 
+                                    if f.is_file() and not f.name.startswith('__')]
+                        
+                        await websocket.send_text(json.dumps({
+                            'type': 'play_list',
+                            'plays': play_files
+                        }))
+                    except Exception as e:
+                        await websocket.send_text(json.dumps({
+                            'type': 'play_error',
+                            'error': f'Failed to list plays: {str(e)}'
+                        }))
+                
+                elif action == 'load_play':
+                    play_name = data.get('play')
+                    if sim is not None and sim.simulation:  # If simulation exists
+                        await websocket.send_text(json.dumps({
+                            'type': 'confirm_reload',
+                            'message': 'This will reset the current simulation. Continue?'
+                        }))
+                    else:  # No existing simulation
+                        try:
+                            main_dir = Path(__file__).parent
+                            play_path = (main_dir / '../../../plays' / play_name).resolve()
+                            sessions[session_id] = SimulationWrapper(play_path)
+                            sim = sessions[session_id]
+                            await websocket.send_text(json.dumps({
+                                'type': 'play_loaded',
+                                'name': play_name
+                            }))
+                            #image_path = sim.simulation.context.image(filepath='worldsim.png')
+                            context_data = sim.simulation.context.to_json()
+                            image_path = context_data['image']
+                            if image_path:
+                                with open(image_path, 'rb') as f:
+                                    image_data = f.read()
+                                    context_data['image'] = base64.b64encode(image_data).decode()
+                            await websocket.send_text(json.dumps({
+                                'type': 'world_update',
+                                'name': 'World',
+                                'data': context_data
+                            }))
+
+                        except Exception as e:
+                            await websocket.send_text(json.dumps({
+                                'type': 'play_error',
+                                'error': f'Failed to load play: {str(e)}'
+                            }))
+                
+                elif action == 'confirm_load_play':
+                    play_name = data.get('play')
+                    try:
+                        main_dir = Path(__file__).parent
+                        play_path = (main_dir / '../../../plays' / play_name).resolve()
+                        sim = SimulationWrapper(play_path, world_update_callback=update_world)
+                        sessions[session_id] = sim
+                        await websocket.send_text(json.dumps({
+                            'type': 'play_loaded',
+                            'name': play_name
+                        }))
+                        context_data = sim.simulation.context.to_json()
+                        image_path = context_data['image']
+                        if image_path:
+                            with open(image_path, 'rb') as f:
+                                image_data = f.read()
+                                context_data['image'] = base64.b64encode(image_data).decode()
+                        await websocket.send_text(json.dumps({
+                            'type': 'world_update',
+                            'name': 'World',
+                            'data': context_data
+                        }))
+                    except Exception as e:
+                        sim = None
+                        await websocket.send_text(json.dumps({
+                            'type': 'play_error',
+                            'error': f'Failed to load play: {str(e)}'
+                        }))
+                
+                elif action == 'step':
+                    # Create callback for character updates
+                    if sim is None:
+                        return
+                  
+                    # Pass callback to step
+                    await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
                     
-                    # Send updated state
+                    # Send final status
+                    await websocket.send_text(json.dumps({
+                        'type': 'status_update',
+                        'status': {
+                            'running': sim.simulation.running,
+                            'paused': sim.simulation.paused
+                        }
+                    }))
+                    
+                elif action == 'inject' and sim is not None:
+                    sim.simulation.inject(data.get('text', ''))
+                
+                # Send updated state
+                if sim is not None:
                     state = {
                         'type': 'state_update',
                         'characters': {
@@ -122,18 +241,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         }
                     }
                     await websocket.send_text(json.dumps(state))
-                    
-            except Exception as e:
-                    await websocket.send_text(json.dumps({
-                        'type': 'error',
-                        'message': f"Command error: {str(e)}"
-                    }))
-                    
-            except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({
-                    'type': 'error',
-                    'message': "Invalid message format"
-                }))
                 
     except WebSocketDisconnect:
         print(f"Client disconnected: {session_id}")

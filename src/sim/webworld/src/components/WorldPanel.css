@@ -1,0 +1,18 @@
+.world-image {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.world-description {
+  color: #FFFFFF;
+  font-size: 1.1em;
+  line-height: 1.5;
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding: 10px;
+  background-color: #333333;
+  border-radius: 4px;
+}

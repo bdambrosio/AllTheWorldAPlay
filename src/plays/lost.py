@@ -76,6 +76,7 @@ W = context.Context([S, J],
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
 
-worldsim.main(W, server='deepseek')
+# uncomment one if running from command line to use PyQt UI
+# #worldsim.main(W, server='deepseek')
 #worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
 #worldsim.main(W, server='llama.cpp')

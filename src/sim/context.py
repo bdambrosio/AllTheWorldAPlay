@@ -322,7 +322,7 @@ Include characters in your response only with respect to the effects of their ab
 Respond using the following XML format:
 
 <Situation>
-Sentence describing physical space, suitable for image generator,
+Sentence describing physical space, suitable for image generator.
 Updated State description of about 300 words
 </Situation>
 
@@ -331,11 +331,12 @@ Include ONLY the concise updated situation description in your response.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
 Limit your total response to about 330 words
+Ensure your response is surrounded with <Situation> and </Situation> tags as shown above.
 End your response with:
-END""")]
+<End/>""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
-                                temp=0.6, stops=['END'], max_tokens=500)
+                                temp=0.6, stops=['<End/>'], max_tokens=700)
         new_situation = xml.find('<Situation>', response)
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
@@ -396,3 +397,10 @@ END""")]
     def get_widget(self, entity):
         """Get widget reference for entity"""
         return self.widget_refs.get(entity)
+
+    def to_json(self):
+        """Return JSON-serializable dict of context state"""
+        return {
+            'show': self.current_state,
+            'image': self.image('worldsim.png')
+        }
