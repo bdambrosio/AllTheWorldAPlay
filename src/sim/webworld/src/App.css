@@ -28,10 +28,10 @@ body {
   background-color: #333333;
   border-radius: 5px;
   padding: 20px;
-  display: flex;
+  #display: flex;
   flex-direction: column;
   gap: 20px;
-  height: calc(100vh - 40px);
+  #height: calc(100vh - 40px);
 }
 
 .world-description {
@@ -185,4 +185,30 @@ h3 {
   font-size: 1.1em;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #333333;
+  padding: 20px;
+  border-radius: 5px;
+  z-index: 1000;
+}
+
+.dialog button {
+  margin: 0 5px;
+  padding: 5px 10px;
+}
+
+.status-area {
+  margin-top: 20px;
+  font-size: 0.9em;
+  color: #ccc;
+}
+
+.status-area div {
+  margin: 5px 0;
 }

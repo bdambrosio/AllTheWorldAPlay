@@ -12,29 +12,31 @@ import base64
 class SimulationWrapper:
     """Wrapper for existing simulation engine"""
     
-    def __init__(self):
+    def __init__(self, play_path=None):
         """Initialize new simulation instance"""
-        # Create scenario like worldsim does
-        S = Agh("Samantha", """You are a pretty young Sicilian woman...""")
-        S.set_drives([
-            "solving the mystery of how they ended up in the forest with no memory.",
-            "love and belonging, including home, acceptance, friendship, trust, intimacy.",
-            "immediate physiological needs: survival, shelter, water, food, rest."
-        ])
-        S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
-
-        J = Agh("Joe", """You are a young Sicilian male...""")
-        J.set_drives([
-            "communication and coordination with Samantha, gaining Samantha's trust.",
-            "solving the mystery of how they ended up in the forest with no memory.",
-            "immediate physiological needs: survival, shelter, water, food, rest."
-        ])
-        J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
-        J.add_to_history("You think Whoever she is, she is pretty!")
-
-        W = Context([S, J], """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity...""")
-        
-        self.simulation = Simulation(W, server='deepseek', world_name='Lost')
+        if play_path is None:
+            raise ValueError("Play path is required")
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("play_module", play_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+            
+        if not hasattr(module, 'W'):
+            raise ValueError("Play file must define a 'W' variable")
+        if hasattr(module, 'server'):
+            server = module.server
+        else:
+            server = 'deepseek'
+        if hasattr(module, 'world_name'):
+            world_name = module.world_name
+        else:
+            world_name = 'Lost'
+            
+        self.context = module.W
+        self.simulation = Simulation(self.context, server, world_name)
+        self.simulation.initialized = True
+        self.simulation.running = False
+        self.simulation.paused = False
         
     def process_command(self, command: str) -> str:
         """Process command and return response"""
@@ -64,6 +66,7 @@ class Simulation:
             #actor.greet()
             actor.see()
 
+ 
 
     def process_command(self, command: str) -> str:
         """Process command and return response"""
@@ -73,7 +76,7 @@ class Simulation:
         except Exception as e:
             return f"Error: {str(e)}"
             
-    async def step(self, char_update_callback=None):
+    async def step(self, char_update_callback=None, world_update_callback=None):
         """Perform one simulation step with optional character update callback"""
         if self.initialized:
             for char in self.characters:
@@ -84,7 +87,7 @@ class Simulation:
                 try:
                     description = char.generate_image_description()
                     if description:
-                        image_path = generate_image(self.context.llm, description)
+                        image_path = generate_image(self.context.llm, description, char.name+'.png')
                         if image_path:
                             with open(image_path, 'rb') as f:
                                 image_data = base64.b64encode(f.read()).decode()
@@ -100,12 +103,13 @@ class Simulation:
                     char_update_callback(char.name, char.to_json())
             
             #now handle context
-            if self.steps_since_last_update > 5:    
+            if self.steps_since_last_update > 4:    
                 self.context.senses('')
-                self.context.image(filepath='worldsim.png')
+                image_path = self.context.image(filepath='worldsim.png')
                 if char_update_callback:
                     context_data = self.context.to_json()
-                    await char_update_callback('World', context_data)
+                    context_data['image'] = image_path
+                    await world_update_callback('World', context_data)
                 self.steps_since_last_update = 0
             else:
                 self.steps_since_last_update += 1

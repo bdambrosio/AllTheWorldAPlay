@@ -1872,6 +1872,7 @@ End your response with:
         dialog_active = False
         my_active_task = self.active_task.peek()
         intention = None
+        self.show = ''
         for candidate in self.intentions:
             source = xml.find('<Source>', candidate)
             if source == 'dialog' or source =='watcher':
