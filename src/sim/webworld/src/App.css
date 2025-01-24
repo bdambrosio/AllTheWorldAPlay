@@ -28,10 +28,8 @@ body {
   background-color: #333333;
   border-radius: 5px;
   padding: 20px;
-  #display: flex;
   flex-direction: column;
   gap: 20px;
-  #height: calc(100vh - 40px);
 }
 
 .world-description {

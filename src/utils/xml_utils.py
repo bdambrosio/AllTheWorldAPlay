@@ -57,26 +57,28 @@ def find(key, xml_str):
     if not key or not xml_str:
         return ""
         
+    keyl = key.lower()
+    xml_strl = xml_str.lower()
     # Strip angle brackets from search key
-    tag = key.strip('<>')
+    tag = keyl.strip('<>')
     
     # Find start of tag
-    start = xml_str.find(f'<{tag}')
+    start = xml_strl.find(f'<{tag}')
     if start == -1:
         return ""
         
     # Find end of opening tag
-    tag_end = xml_str.find('>', start)
+    tag_end = xml_strl.find('>', start)
     if tag_end == -1:
         return ""
         
     # Check for self-closing tag
-    tag_content = xml_str[start+1:tag_end].strip()
-    if tag_content.endswith('/') or xml_str[tag_end-1] == '/':
+    tag_content = xml_strl[start+1:tag_end].strip()
+    if tag_content.endswith('/') or xml_strl[tag_end-1] == '/':
         return ""
         
     # Find closing tag
-    end = xml_str.find(f'</{tag}>', tag_end)
+    end = xml_strl.find(f'</{tag}>', tag_end)
     if end == -1:
         return ""
         

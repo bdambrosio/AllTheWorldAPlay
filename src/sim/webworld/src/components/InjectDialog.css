@@ -1,0 +1,35 @@
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  color: #FFFFFF;
+}
+
+.form-group select,
+.form-group textarea {
+  background-color: #2b2b2b;
+  color: #FFFFFF;
+  border: 1px solid #444;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+} 

@@ -8,6 +8,7 @@ from sim.agh import Agh
 from sim.context import Context
 from utils.llm_api import LLM, generate_image
 import base64
+from sim.human import Human  # Add this import
 
 class SimulationWrapper:
     """Wrapper for existing simulation engine"""
@@ -50,10 +51,11 @@ class Simulation:
         self.context = context
         self.server = server
         self.world_name = world_name
-        self.initialized = True
+        self.initialized = False
         self.steps_since_last_update = 0
         self.running = False
         self.paused = False
+        self.watcher = None  # Add watcher storage
         self.llm = LLM(server)
         self.context.set_llm(self.llm)
         for actor in self.context.actors:
@@ -105,10 +107,10 @@ class Simulation:
             #now handle context
             if self.steps_since_last_update > 4:    
                 self.context.senses('')
-                image_path = self.context.image(filepath='worldsim.png')
+                #image_path = self.context.image(filepath='worldsim.png')
                 if char_update_callback:
                     context_data = self.context.to_json()
-                    context_data['image'] = image_path
+                    #context_data['image'] = image_path
                     await world_update_callback('World', context_data)
                 self.steps_since_last_update = 0
             else:
@@ -136,9 +138,24 @@ class Simulation:
         """Load saved world state"""
         return self.context.load_world(filename)
         
-    def inject(self, text):
-        """Inject text into simulation"""
-        return self.context.inject(text)
+    async def inject(self, target_name, text, update_callback=None):
+        """Route inject command using watcher pattern from worldsim"""
+        if self.watcher is None:
+            self.watcher = Human('Watcher', "Human user representative", None)
+            self.watcher.context = self.context
+
+
+        if target_name == 'World':
+            # Stub for now
+            return
+            
+        # Format message as "character-name, message" like worldsim
+        formatted_message = f"{target_name}, {text}"
+        self.watcher.inject(formatted_message)
+        target = self.context.get_actor_by_name(target_name)
+        if update_callback and target:
+            await update_callback(target_name, target.to_json())
+            target.show = ''
         
     def get_character_status(self):
         """Get current character states"""

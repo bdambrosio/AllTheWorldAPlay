@@ -42,7 +42,7 @@ Your task is to compress detailed scene descriptions into optimal prompts for St
 </SceneDescription>
 Rules:
 The input is either a character description or a scene description. If the former, then the first word is the character name.
-Preserve key visual elements and artistic direction
+Preserve key visual elements and artistic direction, including, if it is a character description, character appearance and emotional state as well askey elements of the background scene.
 Prioritize descriptive adjectives and specific nouns
 Maintain the core mood/atmosphere
 Remove narrative elements that don't affect the visual
