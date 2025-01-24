@@ -89,12 +89,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 'type': 'show_update',
                                 'text': f"{name}: {char_data['show']}\n"
                             }))
-                        if char_data.get('show'):
-                            await websocket.send_text(json.dumps({
-                                'type': 'show_update',
-                                'text': f"{name}: {char_data['show']}\n"
-                            }))                                        
-
  
 
 
@@ -110,7 +104,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             data = json.loads(await websocket.receive_text())
             
             if data.get('type') == 'command':
-                        
                 action = data.get('action')
                 sim = sessions[session_id]
                 
@@ -225,8 +218,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         }
                     }))
                     
-                elif action == 'inject' and sim is not None:
-                    sim.simulation.inject(data.get('text', ''))
+                elif action == 'inject':
+                    target = data.get('target')
+                    text = data.get('text')
+                    try:
+                        await sim.simulation.inject(target, text, update_callback=update_character)
+                    except Exception as e:
+                        print(f"Error handling inject: {e}")
                 
                 # Send updated state
                 if sim is not None:
@@ -244,10 +242,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
     except WebSocketDisconnect:
         print(f"Client disconnected: {session_id}")
+        # Stop simulation if running
+        if session_id in sessions:
+            sim = sessions[session_id]
+            if sim.simulation:
+                sim.simulation.running = False
+                sim.simulation.paused = True
+            # Clean up session
+            del sessions[session_id]
+            
     except Exception as e:
-        print(f"WebSocket error: {str(e)}")
-        try:
-            await websocket.close(code=1011)  # Internal error
-        except:
-            pass
+        print(f"Error in websocket handler: {e}")
+        # Clean up on other errors too
+        if session_id in sessions:
+            del sessions[session_id]
         

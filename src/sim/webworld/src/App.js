@@ -3,6 +3,7 @@ import './App.css';
 import CharacterPanel from './components/CharacterPanel';
 import ShowPanel from './components/ShowPanel';
 import WorldPanel from './components/WorldPanel';
+import InjectDialog from './components/InjectDialog';
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
@@ -23,6 +24,7 @@ function App() {
   const [currentPlay, setCurrentPlay] = useState(null);
   const [worldState, setWorldState] = useState({});
   const websocket = useRef(null);
+  const [showInjectDialog, setShowInjectDialog] = useState(false);
 
   useEffect(() => {
     async function initSession() {
@@ -130,15 +132,8 @@ function App() {
     }
   };
 
-  const handleInject = async () => {
-    if (websocket.current?.readyState === WebSocket.OPEN && inputValue) {
-      websocket.current.send(JSON.stringify({
-        type: 'command',
-        action: 'inject',
-        text: inputValue
-      }));
-      setInputValue('');
-    }
+  const handleInject = (target, text) => {
+    sendCommand('inject', { target, text });
   };
 
   const sendCommand = async (command, payload = {}) => {
@@ -168,7 +163,7 @@ function App() {
         <button className="control-button" onClick={handleRun}>Run</button>
         <button className="control-button" onClick={handleStep}>Step</button>
         <button className="control-button" onClick={handlePause}>Pause</button>
-        <button className="control-button" onClick={handleInject}>Inject</button>
+        <button className="control-button" onClick={() => setShowInjectDialog(true)}>Inject</button>
         <button className="control-button">Refresh</button>
         <button className="control-button">Load World</button>
         <button className="control-button">Save World</button>
@@ -203,6 +198,14 @@ function App() {
           }}>Yes</button>
           <button onClick={() => setShowConfirmDialog(false)}>No</button>
         </div>
+      )}
+
+      {showInjectDialog && (
+        <InjectDialog
+          characters={characters}
+          onSend={handleInject}
+          onClose={() => setShowInjectDialog(false)}
+        />
       )}
     </div>
   );

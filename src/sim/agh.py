@@ -455,6 +455,7 @@ class Agh(Character):
         self.memory_consolidator = MemoryConsolidator(self.llm)
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
+        self.watcher_message_pending = False
 
     def set_llm(self, llm):
         self.llm = llm
@@ -498,7 +499,37 @@ class Agh(Character):
             context = context[:96]
             description = self.name + ', '+'. '.join(self.character.split('.')[:2])[6:] +', '+\
                 self.show.replace(self.name, '')[-128:].strip()
-            description = description[:192-min(len(context), 48)] + '. '+context
+            prompt = [UserMessage(content="""Following is a description of a character in a play. 
+
+<Description>
+{{$description}}
+</Description>
+            
+Extract from this description two or three words that describe the character's emotional state.
+Use common adjectives like happy, sad, frightened, worriedangry, curious, aroused, cold, hungry, tired, disoriented, etc.
+The words should each describe a different aspect of the character's emotional state, and should be distinct from each other.
+
+Respond using this XML format:
+
+<EmotionalState>
+  <State>adjective</State>
+</EmotionalState>
+
+End your response with:
+</End>
+""")]
+            concerns = ''
+            for priority in self.priorities:
+                concern = xml.find('<State>', priority) + '. '+xml.find('<Reason>', priority)
+                concerns = concerns + '; '+concern
+            state = description + '.\n '+concerns +'\n'+ context
+            response = self.llm.ask({ "description": state}, prompt, temp=0.2, stops=['</End>'], max_tokens=100)
+            state = xml.find('<EmotionalState>', response)
+            if state:
+                states = xml.findall('<State>', state)
+                description = description[:192-min(len(context), 48)] + ', '+', '.join(states)+'.'
+            else:
+                description = description[:192-min(len(context), 48)] + ', '+context
 
         except Exception as e:
             traceback.print_exc()
@@ -1606,6 +1637,7 @@ End your response with:
 </Plan>"""
             self.priorities.append(new_task)
             self.active_task.push(new_task_name)
+            self.watcher_message_pending = True
             return
 
         # Dialog context management
@@ -1720,10 +1752,11 @@ End your response with:
             return 
 
         reason = xml.find('<Reason>', answer_xml)
-        if source != 'watcher':
+        if source != 'watcher' and source != 'inject':
             response_source = 'dialog'
         else:
             response_source = 'watcher'
+            self.show = response
 
         # Check for duplicate response
         dup = self.repetitive(response, last_act, '')

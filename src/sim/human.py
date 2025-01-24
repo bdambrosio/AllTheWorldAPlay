@@ -33,6 +33,7 @@ class Human(Character):
         if source != 'inject':
             self.add_to_history(f'You say to {to_actor.name}: {message}')
         # user has no task management!
+        print(f'telling {to_actor.name} {message}')
         self.acts(to_actor, 'Say', message, '', source)
 
  
@@ -95,5 +96,7 @@ class Human(Character):
                 
         if target:
             self.tell(target, message)
+            if target is not None:
+                target.watcher_message_pending = True
         else:
             print(f"Character {target_name} not found")
