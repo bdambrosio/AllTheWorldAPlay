@@ -90,7 +90,7 @@ Luna is sketching in her notebook while listening. Emma is focused intently on w
 Daria has an arched eyebrow and slight smirk, while Victoria is checking her planner between 
 comments. Sage is relaxed but attentive, occasionally sipping her tea.""")
 
-worldsim.main(Cafe, server='local')
+#worldsim.main(Cafe, server='local')
 
 # Scenario notes:
 # This simulation creates a space for exploring teenage life challenges through different perspectives:

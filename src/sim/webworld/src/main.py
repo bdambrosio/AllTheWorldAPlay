@@ -245,7 +245,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         # Stop simulation if running
         if session_id in sessions:
             sim = sessions[session_id]
-            if sim.simulation:
+            if sim and sim.simulation:
                 sim.simulation.running = False
                 sim.simulation.paused = True
             # Clean up session

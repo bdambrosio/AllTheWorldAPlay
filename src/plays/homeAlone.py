@@ -16,4 +16,4 @@ doc = human.Human('Doc', 'A self-contained computer scientist')
 context = context.Context([jill],
             "A soft glow")
 
-worldsim.main(context, server='local')
+#worldsim.main(context, server='local')

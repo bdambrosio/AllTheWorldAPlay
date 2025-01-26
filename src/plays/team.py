@@ -57,7 +57,7 @@ The team is gathered in their usual working area with visible signs of a long-ru
 whiteboards filled with diagrams, sticky notes tracking tasks, and multiple coffee cups on desks.
 Sarah is frowning at her monitor, Mike looks tired and anxious, and Lisa is glancing between them with concern.""")
 
-worldsim.main(W, server='local')
+#worldsim.main(W, server='local')
 
 # Training scenario notes:
 # The trainee (TeamLead) needs to:

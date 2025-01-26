@@ -11,4 +11,4 @@ context = agh.Context([maam, jeff],
             "Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, including the vacuum, washer-dryer, refrigerator, and vacuum, although the disposal has been making funny noises lately. The bot, joe, is awaiting orders for the day. It is early morning on a workday for Madam.")
 
 
-worldsim.main(context)
+#worldsim.main(context)
