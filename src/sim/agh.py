@@ -421,10 +421,10 @@ class Agh(Character):
                 
         # Initialize drives
         self.drives = [
-            "immediate physiological needs: survival, water, food, clothing, shelter, rest.",
-            "safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events.",
-            "assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance).",
-            "love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance."
+            Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
+            Drive("safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events."),
+            Drive("assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance)."),
+            Drive("love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.")
         ]
 
         # Initialize dialog management
@@ -1002,13 +1002,7 @@ End your response with:
 
             if self.active_task.peek() is None and len(self.priorities) == 0:
                 # Update priorities through cognitive processor
-                self.cognitive_state = self.cognitive_processor.process_cognitive_update(
-                    self.cognitive_state,
-                    self.format_history(2),
-                    self.context.current_state,
-                    "task completed"
-                )
-                self.priorities = self.cognitive_state.active_priorities
+                self.update_priorities()
 
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
@@ -1757,6 +1751,8 @@ End your response with:
         else:
             response_source = 'watcher'
             self.show = response
+            if from_actor.name == 'Watcher':
+                return response
 
         # Check for duplicate response
         dup = self.repetitive(response, last_act, '')
@@ -2009,12 +2005,22 @@ End your response with:
         else:
             return 'general'
 
+    def format_thought_for_UI (self):
+        if self.thought is None:
+            return ''
+        if self.priorities is None or len(self.priorities) == 0:
+            return self.thought.strip()
+        name = xml.find('<Name>', self.priorities[0])
+        if name is None or name == '':
+            return self.thought.strip()
+        return name + ': '+self.thought.strip()
+    
     def to_json(self):
         """Return JSON-serializable representation"""
         return {
             'name': self.name,
             'show': self.show.strip(),  # Current visible state
-            'thoughts': self.thought.strip(),  # Current thoughts
+            'thoughts': self.format_thought_for_UI(),  # Current thoughts
             'priorities': [p for p in self.priorities],
             'description': self.character.strip(),  # For image generation
             'history': self.format_history().strip() # Recent history, limited to last 5 entries

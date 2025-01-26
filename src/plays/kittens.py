@@ -57,9 +57,6 @@ W = context.Context([lemon, meow],
                 """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happenning.
 """)
 
-# pick one. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random). And, of course, you need an openai account.
-#     set OS.env OPENAI_API_KEY 
-#worldsim.IMAGEGENERATOR = 'dall-e-2'
-worldsim.IMAGEGENERATOR = 'tti_serve'
+#worldsim.IMAGEGENERATOR = 'tti_serve'
 
-worldsim.main(W, server=server)
+#worldsim.main(W, server=server)

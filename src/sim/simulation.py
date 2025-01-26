@@ -9,6 +9,12 @@ from sim.context import Context
 from utils.llm_api import LLM, generate_image
 import base64
 from sim.human import Human  # Add this import
+import asyncio
+from collections import deque
+from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SimulationWrapper:
     """Wrapper for existing simulation engine"""
@@ -67,8 +73,12 @@ class Simulation:
             print(f'calling {actor.name} greet')
             #actor.greet()
             actor.see()
-
- 
+        self.inject_queue = asyncio.Queue()  # Queue for injects
+        self.is_running = False
+        self.is_paused = False
+        self.websocket = None
+        self.current_step = 0
+        self.connection_active = False
 
     def process_command(self, command: str) -> str:
         """Process command and return response"""
@@ -80,41 +90,49 @@ class Simulation:
             
     async def step(self, char_update_callback=None, world_update_callback=None):
         """Perform one simulation step with optional character update callback"""
-        if self.initialized:
-            for char in self.characters:
-                # Process character step
-                char.senses()
-                
-                # Generate and send image update
-                try:
-                    description = char.generate_image_description()
-                    if description:
-                        image_path = generate_image(self.context.llm, description, char.name+'.png')
-                        if image_path:
-                            with open(image_path, 'rb') as f:
-                                image_data = base64.b64encode(f.read()).decode()
-                                char_data = char.to_json()
-                                char_data['image'] = image_data
-                                if char_update_callback:
-                                    await char_update_callback(char.name, char_data)
-                except Exception as e:
-                    print(f"Error generating image for {char.name}: {e}")
+        try:
+            # Process any queued injects before the step
+            while not self.inject_queue.empty():
+                inject = await self.inject_queue.get()
+                await self._process_inject(inject)
+
+            if self.initialized:
+                for char in self.characters:
+                    # Process character step
+                    char.senses()
                     
-                # Send update even if image fails
-                if char_update_callback and not char_data.get('image'):
-                    char_update_callback(char.name, char.to_json())
-            
-            #now handle context
-            if self.steps_since_last_update > 4:    
-                self.context.senses('')
-                #image_path = self.context.image(filepath='worldsim.png')
-                if char_update_callback:
-                    context_data = self.context.to_json()
-                    #context_data['image'] = image_path
-                    await world_update_callback('World', context_data)
-                self.steps_since_last_update = 0
-            else:
-                self.steps_since_last_update += 1
+                    # Generate and send image update
+                    char_data = char.to_json()
+                    try:
+                        description = char.generate_image_description()
+                        if description:
+                            image_path = generate_image(self.context.llm, description, char.name+'.png')
+                            if image_path:
+                                with open(image_path, 'rb') as f:
+                                    image_data = base64.b64encode(f.read()).decode()
+                                    char_data['image'] = image_data
+                                    if char_update_callback:
+                                        await char_update_callback(char.name, char_data)
+                    except Exception as e:
+                        print(f"Error generating image for {char.name}: {e}")
+                        
+                #now handle context
+                if self.steps_since_last_update > 4:    
+                    self.context.senses('')
+                    if char_update_callback:
+                        context_data = self.context.to_json()
+                        await world_update_callback('World', context_data)
+                    self.steps_since_last_update = 0
+                else:
+                    self.steps_since_last_update += 1
+
+                # Yield control briefly to allow other tasks
+                await asyncio.sleep(0)
+
+        except Exception as e:
+            logger.error(f"Error in simulation step: {e}")
+            self.is_running = False
+            raise  # Re-raise to maintain existing error handling
             
     def run(self):
         """Start continuous simulation"""
@@ -174,6 +192,23 @@ class Simulation:
         """Access actors through context"""
         return self.context.actors if self.initialized else []
 
+    async def set_websocket(self, websocket):
+        self.websocket = websocket
+        self.connection_active = True
+        
+    async def handle_inject(self, target: str, text: str):
+        await self.inject_queue.put({
+            'target': target,
+            'text': text
+        })
+        
+            
+    async def handle_disconnect(self):
+        logger.info("Client disconnected, cleaning up...")
+        self.connection_active = False
+        self.websocket = None
+        # Optionally pause simulation
+        self.is_paused = True
 
 # Add a simple test character class
 class TestCharacter:

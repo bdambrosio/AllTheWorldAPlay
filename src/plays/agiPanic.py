@@ -9,7 +9,7 @@ annie = agh.Agh("Annie", "You are an AI humanoid young woman. You are in charge 
 
 annie.add_to_history('You think Madam is worried about the government confiscating and destroying me.')
 
-context = context.Context([maam, annie],
+W = context.Context([maam, annie],
             "Madam's apartment is large, sunny, and tidy, in a modern luxury building. All appliances are functioning properly, although the disposal has been making funny noises lately. It is early morning on a workday for Madam. Newspaper articles have been increasingly hysterical about the dangers of AI.")
 
 # following is an experiment, and isn't actually used yet...
@@ -20,4 +20,4 @@ Fanatics and extremists begin to attack humanoid AI in the streets.
 
 Meanwhile, an underground movement of humanoid AI supporters begins to form.
 """
-worldsim.main(context)
+#worldsim.main(context)

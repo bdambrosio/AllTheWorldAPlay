@@ -6,9 +6,6 @@ import sim.context as context, sim.agh as agh
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 # Create characters
-# I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
-# I find it disorienting for characters to change ethnic characteristics every time they are rendered, so they are nailed down here.
-# I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
 S = agh.Agh("Samantha", """You are a pretty young Sicilian woman. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic, but keep this mostly to yourself. 
@@ -78,5 +75,3 @@ worldsim.IMAGEGENERATOR = 'tti_serve'
 
 # uncomment one if running from command line to use PyQt UI
 # #worldsim.main(W, server='deepseek')
-#worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
-#worldsim.main(W, server='llama.cpp')

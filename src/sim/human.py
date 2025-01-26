@@ -96,7 +96,5 @@ class Human(Character):
                 
         if target:
             self.tell(target, message)
-            if target is not None:
-                target.watcher_message_pending = True
         else:
             print(f"Character {target_name} not found")

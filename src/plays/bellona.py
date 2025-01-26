@@ -37,5 +37,5 @@ W = context.Context([K, L],
 The sun hangs low in the hazy sky, casting an eerie light over the buildings t
 and deserted streets.
 """)
-worldsim.IMAGEGENERATOR = 'tti_serve'
-worldsim.main(W)
+#worldsim.IMAGEGENERATOR = 'tti_serve'
+#worldsim.main(W)

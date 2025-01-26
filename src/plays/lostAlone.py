@@ -17,15 +17,16 @@ However, you are also very informal, chatty, think and speak in teen slang, and 
 
 S.add_to_history("You think This is very very strange. Where am i? I'm near panic. How did I get here? Why can't I remember anything?")
 W = context.Context([S],
-                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
+                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. 
+It is a early morning on what seems like it will be a warm, sunny day.
 """)
 
 # pick one. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random). And, of course, you need an openai account.
 #     set OS.env OPENAI_API_KEY 
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
-worldsim.IMAGEGENERATOR = 'tti_serve'
+#worldsim.IMAGEGENERATOR = 'tti_serve'
 
 
-worldsim.main(W)
+#worldsim.main(W)
 #worldsim.main(W, server='Claude') # yup, Claude is supported. I'll add openAI when I get to it. But RUN LOCAL OSS if you can!
 #worldsim.main(W, server='llama.cpp')
