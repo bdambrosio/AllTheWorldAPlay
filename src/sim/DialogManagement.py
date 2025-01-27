@@ -10,12 +10,20 @@ class DialogContext:
     target: str    # Name of agent being spoken to
     start_time: float = field(default_factory=time.time)
     turn_count: int = 0
+    fatigue: float = 0.0  # Add fatigue counter
+    fatigue_threshold: float = 5.0  # Configurable threshold
     interrupted_task: Optional[str] = None  # Task that was interrupted by dialog
     participants: Set[str] = field(default_factory=set)
     
     def add_turn(self):
-        """Record a new turn in the conversation"""
+        """Record a new turn in the conversation and increase fatigue"""
         self.turn_count += 1
+        self.fatigue += 1.0  # Basic increment
+        # Could be modified based on turn length, emotion, etc.
+        
+    def is_fatigued(self) -> bool:
+        """Check if conversation has become fatiguing"""
+        return self.fatigue >= self.fatigue_threshold
         
     def duration(self) -> float:
         """Get how long dialog has been active"""
@@ -55,18 +63,22 @@ class DialogManager:
             self.current_dialog.add_turn()
             
     def end_dialog(self):
-        """End current dialog and handle task resumption"""
+        """End current dialog with fatigue consideration"""
         if not self.current_dialog:
             return
+            
+        # Store fatigue level for future interactions
+        if self.current_dialog.target:
+            self.agent.structured_memory.add_memory(
+                f"Conversation with {self.current_dialog.target} ended with fatigue level {self.current_dialog.fatigue}"
+            )
             
         interrupted_task = self.current_dialog.interrupted_task
         self.current_dialog = None
         
-        # Clear dialog from active task if present
         if self.agent.active_task.peek() == 'dialog':
             self.agent.active_task.pop()
             
-        # Attempt to resume interrupted task if still relevant
         if interrupted_task and self._is_task_still_relevant(interrupted_task):
             self.agent.active_task.push(interrupted_task)
             

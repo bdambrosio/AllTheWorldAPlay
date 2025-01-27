@@ -52,7 +52,7 @@ class SimulationWrapper:
 class Simulation:
     """Wrapper for existing simulation engine"""
     
-    def __init__(self, context, server='deepseek', world_name='Lost'):
+    def __init__(self, context, server='local', world_name='Lost'):
         """Initialize with existing context from scenario"""
         self.context = context
         self.server = server

@@ -1,47 +1,58 @@
-import React from 'react';
+import React, { useState } from 'react';
+import CharacterNarrative from './CharacterNarrative';
 import './CharacterPanel.css';
 
-function CharacterPanel({ characters }) {
+function CharacterPanel({ character }) {
+  const [showNarrative, setShowNarrative] = useState(false);
+
+  if (!character) {
+    return <div className="character-panel">Loading...</div>;
+  }
+
   return (
-    <div className="character-info">
-      {Object.entries(characters).map(([name, char]) => (
-        <div key={name} className="character-block">
-          <div className="top-bar">
-              <span className="char-name">{name}</span>
-              <img 
-                src={`data:image/png;base64,${char.image}`}
-                alt={name}
-                className="character-image"
-              />
-          </div>
-          
-          <div className="middle-section">
-            <div className="section-container">
-              <h4>Priorities</h4>
-              <div className="priorities-area">
-                {char.priorities?.map((priority, pIndex) => (
-                  <div key={pIndex} className="priority-item">
-                    {priority}
-                  </div>
-                ))}
+    <div className="character-panel">
+      <div 
+        className="character-image-container"
+        onMouseEnter={() => setShowNarrative(true)}
+        onMouseLeave={() => setShowNarrative(false)}
+      >
+        <img 
+          src={character.image} 
+          alt={character.name} 
+          className="character-image"
+        />
+        {showNarrative && character.narrative && (
+          <CharacterNarrative narrative={character.narrative} />
+        )}
+      </div>
+      
+      <div className="middle-section">
+        <div className="section-container">
+          <h4>Priorities</h4>
+          <div className="priorities-area">
+            {character.priorities?.map((priority, index) => (
+              <div key={index} className="priority-item">
+                {priority}
               </div>
-            </div>
-            <div className="section-container">
-              <h4>History</h4>
-              <div className="history-area">
-                <div className="history-item">
-                  {char.history}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="thoughts-area">
-            <h4>Thoughts</h4>
-            {char.thoughts}
+            ))}
           </div>
         </div>
-      ))}
+        <div className="section-container">
+          <h4>History</h4>
+          <div className="history-area">
+            <div className="history-item">
+              {character.history}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="thoughts-area">
+        <h4>Thoughts</h4>
+        <div className="thoughts-content">
+          {character.thoughts}
+        </div>
+      </div>
     </div>
   );
 }

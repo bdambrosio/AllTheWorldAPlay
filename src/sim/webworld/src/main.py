@@ -165,6 +165,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 'name': 'World',
                                 'data': context_data
                             }))
+                            await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
 
                         except Exception as e:
                             await websocket.send_text(json.dumps({
@@ -194,6 +195,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'name': 'World',
                             'data': context_data
                         }))
+                        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
                     except Exception as e:
                         sim = None
                         await websocket.send_text(json.dumps({

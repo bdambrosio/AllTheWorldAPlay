@@ -795,7 +795,8 @@ End your response with:
         for key, item in self.state.items():
             trigger = item['drive'].text
             value = item['state']
-            mapped.append(f"- Drive: {trigger}; Immediate Goal: {key}; State: '{value}'")
+            termination = item['termination']
+            mapped.append(f"- Drive: {trigger}; Goal: {termination}; State: '{value}'")
         return "A 'State' of 'High' means the task is important or urgent\n"+'\n'.join(mapped)
 
 
@@ -862,114 +863,41 @@ End your response with:
         print(f'created new task to reflect {task_name}\n {reason}\n  {new_task}')
         return new_task
 
-    def repetitive(self, text, last_act, history):
-        """ test if content duplicates last_act or entry in history """
-        if last_act == None or len(last_act) < 10:
-            return False
+    def repetitive(self, new_response, last_response, source):
+        """Check if response is repetitive considering wider context"""
+        # Get more historical context from structured memory
+        recent_memories = self.structured_memory.get_recent(3)  # Increased window
+        dialog_history = '\n'.join(mem.text for mem in recent_memories 
+                                 if "say" in mem.text.lower())
+        
+        prompt = [UserMessage(content="""Given a character's recent dialog history and a new response, determine if the new response is repetitive or adds nothing new to the conversation.
 
-        # Get recent memories
-        recent_memories = self.structured_memory.get_recent(5)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
+Recent dialog history:
+<History>
+{{$history}}
+</History>
 
-        prompt = [UserMessage(content="""You are {{$name}}.
-Analyze the following NewText for duplicative content. 
+New response:
+<Response>
+{{$response}}
+</Response>
 
-A text is considered repetitive if:
-1. It duplicates previous thought, speech, or action literally or substantively.
-2. It addresses the same subject or task as the earlier text.
-3. It adds no new thought, speech, or action.
+Consider:
+- The meaning and intent of the response
+- The flow of conversation
+- Whether it advances the dialog
+- If it repeats ideas or phrases already expressed
 
-===Examples===
-<LastAct>
-None
-</LastAct>
+Respond with only 'True' if repetitive or 'False' if the response adds something new.
+End response with:
+<End/>""")]
 
-<NewText>
-Kidd starts walking around the city, observing the strange phenomena and taking mental notes of anything that catches his eye, hoping to uncover some clues about Bellona's secrets.
-</NewText>
+        result = self.llm.ask({
+            'history': dialog_history,
+            'response': new_response
+        }, prompt, temp=0.2, stops=['<End/>'], max_tokens=100)
 
-False
-----
-<LastAct>
-Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
-</LastAct>
-
-<NewText>
-Annie checks the water filtration system filter to ensure it is functioning properly and replace it if necessary.
-</NewText>
-
-True
------
-<LastAct>
-Hey, let's stick together. We're stronger together than alone. Maybe we can help each other figure things out.
-</LastAct>
-
-<NewText>
-Hey, maybe we should start by looking for any signs of civilization or other people nearby. 
-That way, we can make sure we're not completely alone out here. Plus, it might help us figure out where we are and how we got here. What do you think?
-</NewText>
-
-False
-----
-<LastAct>
-Joe decides to start exploring the area around him, looking for any clues or signs that could help him understand how he ended up in the forest with no memory.
-</LastAct>
-
-<NewText>
-Joe continues exploring the forest, looking for any signs of human activity or clues about his past. 
-He keeps an eye out for footprints, discarded items, or anything else that might provide insight into how he ended up here.
-</NewText>
-
-False
-----
-<LastAct>
-I'll head back to the fields now and finish plowing the south field before the sun sets.
-</LastAct>
-
-<NewText>
-After finishing plowing the south field, Jean will head over to the north field to check on the irrigation system and ensure the crops are getting enough water.
-</NewText>
-
-False
-
-===End Examples===
-
-<LastAct>
-{{$last_act}}
-</LastAct>
-
-<NewText>
-{{$text}}
-</NewText>
-          
-Does the above NewText duplicate, literally or substantively, text appearing in LastAct?
-Respond 'True' if NewText is duplicative, 'False' if it is not.
-Respond ONLY with 'False' or 'True'.
-Do not include any introductory, explanatory, or discursive text.
-End your response with:
-</End>
-"""
-                            )
-                ]
-        response = self.llm.ask({
-            "text": text, 
-            "last_act": last_act, 
-            "history": history, 
-            'name': self.name,
-            "memories": memory_text  # Updated from 'memory' to use structured memory
-        }, prompt, temp=0.2, stops=['</End>'], max_tokens=12)
-        response = response.lower()
-        idxt = response.find('true')
-        idxf = response.find('false')
-        if idxf > -1 and idxt> -1:
-            if idxf <= idxt: # sometime runon junk will have true later, ignore it!
-                return False
-            else:
-                return True
-        elif idxt> -1:
-            return True
-        else:
-            return False
+        return 'true' in result.lower()
 
     def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
         """Check if task is complete and update state"""
@@ -1001,7 +929,7 @@ End your response with:
             self.intentions = new_intentions
 
             if self.active_task.peek() is None and len(self.priorities) == 0:
-                # Update priorities through cognitive processor
+                # Should never happen, but just in case
                 self.update_priorities()
 
 
@@ -1247,7 +1175,7 @@ End your response with:
         reason = xml.find('<Reason>', task_xml)
 
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the first step of the following task.
+Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the next step of the following task.
 
 <Task>
 {{$task}}
@@ -1936,6 +1864,7 @@ End your response with:
                     if len(intention_choices) > 1:
                         del intention_choices[task_index]
                     else:
+                        #not sure how we got here. No priority generated an actionable intention
                         self.update_priorities()
                         return self.senses(sense_data=sense_data, ui_queue=ui_queue)
 
@@ -1982,11 +1911,11 @@ End your response with:
         self.acts(target, act_name, act_arg, self.reason, source)
 
         # maybe we should do this at start of next sense?
-        #if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
-        #    for task in self.priorities:
-        #        if refresh_task == task:
-        #            print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
-        #            self.actualize_task('refresh', refresh_task) # regenerate intention
+        if refresh_task is not None and task_name != 'dialog' and task_name != 'watcher':
+            for task in self.priorities:
+                if refresh_task == task:
+                    #print(f"refresh task just before actualize_task call {xml.find('<Text>', refresh_task)}")
+                    self.actualize_task('refresh', refresh_task) # regenerate intention
 
     # Add this method to the Agh class
     def _determine_category(self, message: str) -> str:
@@ -2023,6 +1952,12 @@ End your response with:
             'thoughts': self.format_thought_for_UI(),  # Current thoughts
             'priorities': [p for p in self.priorities],
             'description': self.character.strip(),  # For image generation
-            'history': self.format_history().strip() # Recent history, limited to last 5 entries
+            'history': self.format_history().strip(), # Recent history, limited to last 5 entries
+            'narrative': {
+                'recent_events': self.narrative.recent_events,
+                'ongoing_activities': self.narrative.ongoing_activities,
+                'relationships': self.narrative.key_relationships,
+                'background': self.narrative.background
+            }
         }
 

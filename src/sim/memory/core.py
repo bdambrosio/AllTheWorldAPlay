@@ -295,7 +295,7 @@ class NarrativeSummary:
     
     # Metadata
     last_update: datetime  # Last narrative update time
-    update_interval: timedelta = field(default_factory=lambda: timedelta(hours=4))
+    update_interval: timedelta = field(default_factory=lambda: timedelta(hours=0))
     
     # Supporting information
     key_relationships: Dict[str, str] = field(default_factory=dict)  # name: relationship description
@@ -345,9 +345,9 @@ class NarrativeSummary:
             return self.get_full_narrative()
     
     def initialize_relationships(self, valid_characters: List[str]):
-        """Initialize relationships with valid character names"""
-        # Keep only relationships with valid characters
+        """Initialize relationships with valid character names at startup"""
+        # Create initial neutral/unknown relationship entries for all valid characters
         self.key_relationships = {
-            name: desc for name, desc in self.key_relationships.items()
-            if name in valid_characters
+            name: f"No significant interactions with {name} yet. Relationship is neutral." 
+            for name in valid_characters
         }
