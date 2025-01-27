@@ -65,13 +65,14 @@ J.add_to_history("You think Whoever she is, she is pretty!")
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = context.Context([S, J],
-                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
-""")
+                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humanity. 
+It is a early morning on what seems like it will be a warm, sunny day.
+Two people are standing in the middle of the forest, looking around in confusion.""")
 
 # pick one. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random). And, of course, you need an openai account.
 #     set OS.env OPENAI_API_KEY 
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
-
+server='local'
 # uncomment one if running from command line to use PyQt UI
 # #worldsim.main(W, server='deepseek')

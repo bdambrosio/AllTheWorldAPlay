@@ -36,12 +36,24 @@ function App() {
         
         websocket.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
-          console.log('Msg received:', data.type);
+          console.log('Message received:', data);  // See full message
           switch(data.type) {
             case 'character_update':
+              console.log('Character data:', data.name);  // Reduced logging
               setCharacters(prev => ({
                 ...prev,
-                [data.name]: data.data
+                [data.name]: {
+                  name: data.name,
+                  description: data.data.description,
+                  history: data.data.history,
+                  image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
+                  narrative: data.data.narrative,
+                  relationships: data.data.relationships,
+                  priorities: data.data.priorities,
+                  show: data.data.show,
+                  thoughts: data.data.thoughts,
+                  type: data.type
+                }
               }));
               if (data.data.show) {
                 setLogText(prev => {
@@ -147,10 +159,17 @@ function App() {
     }
   };
 
+  console.log('Current characters:', characters);  // See if state is updated
+
   return (
     <div className="app-container">
-      <div className="character-panel">
-        <CharacterPanel characters={characters} />
+      <div className="character-panels">
+        {Object.values(characters).map(character => (
+          <CharacterPanel 
+            key={character.name} 
+            character={character}
+          />
+        ))}
       </div>
       <div className="center-panel">
         <WorldPanel worldState={worldState} />

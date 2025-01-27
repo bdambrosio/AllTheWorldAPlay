@@ -19,9 +19,7 @@ class Context():
             actor.context = self
             if mapContext:
                 actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
-            for actor in self.actors:
-                if actor.mapAgent != None:
-                    actor.look() # provide initial local view
+                actor.look() # provide initial local view
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
@@ -87,7 +85,7 @@ class Context():
         
     def image(self, filepath, image_generator='tti_serve'):
         try:
-            state = '. '.join(self.current_state.split('.')[:2])
+            state = '. '.join(self.current_state.split('.')[:3])
             characters = '\n' + '.\n'.join(
                 [entity.name + ' is ' + entity.character.split('.')[0][8:] for entity in self.actors])
             prompt = state + characters
