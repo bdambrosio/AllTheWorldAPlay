@@ -8,7 +8,7 @@ body {
 
 .app-container {
   display: grid;
-  grid-template-columns: 320px 1fr 150px;  /* Match CharacterPanel width */
+  grid-template-columns: 350px 1fr 150px;  /* Match CharacterPanel width */
   gap: 5px;
   padding: 10px;
   min-height: 100vh;

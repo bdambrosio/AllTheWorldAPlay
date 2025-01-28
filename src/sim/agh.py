@@ -306,10 +306,10 @@ End your response with:
             return ''  
         obs = self.mapAgent.look()
         view = {}
-        for dir in ['CURRENT', 'NORTH', 'NORTHEAST', 'EAST', 'SOUTHEAST', 
-                   'SOUTH', 'SOUTHWEST', 'WEST', 'NORTHWEST']:
+        for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
+                   'South', 'Southwest', 'West', 'Northwest']:
             dir_obs = map.extract_direction_info(obs, dir)
-            if dir == 'CURRENT':
+            if dir == 'Current':
                 del dir_obs['visibility']
             view[dir] = dir_obs
         self.my_map[self.x][self.y] = view
@@ -322,13 +322,13 @@ End your response with:
         if obs is None or not obs or all(not v for v in obs.values()):
             return "You see nothing special."
         
-        return f"""A look at the current location and in each of 8 compass points. 
-terrain is the environment type perceived.
-slope is the ground slope in the given direction
-resources is a list of resource type detected and distance in the given direction from the current location
-agents is the other actors visible
-streams is the water resources visible
-{json.dumps(obs, indent=2)}
+        return f"""A look from the current orientation and in each of 8 compass points. 
+terrain: environment type perceived.
+slope:ground slope in the given direction
+resources:a list of resource type detected and distance in the given direction from the current location
+agents: the other actors visible
+water: the water resources visible
+{json.dumps(obs, indent=2).strip('\'"{}')}
 """
 
     # Utility methods
@@ -605,10 +605,10 @@ End your response with:
             return ''  # Return empty string if no map agent exists
         obs = self.mapAgent.look()
         view = {}
-        for dir in ['CURRENT', 'NORTH', 'NORTHEAST', 'EAST', 'SOUTHEAST', 
-                   'SOUTH', 'SOUTHWEST', 'WEST', 'NORTHWEST']:
+        for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
+                   'South', 'Southwest', 'West', 'Northwest']:
             dir_obs = map.extract_direction_info(obs, dir)
-            if dir == 'CURRENT':
+            if dir == 'Current':
                 del dir_obs['visibility']  # empty, since visibility means how far one can see
             view[dir] = dir_obs
         self.my_map[self.x][self.y] = view
@@ -867,12 +867,12 @@ End your response with:
         """Check if response is repetitive considering wider context"""
         # Get more historical context from structured memory
         recent_memories = self.structured_memory.get_recent(3)  # Increased window
-        dialog_history = '\n'.join(mem.text for mem in recent_memories 
-                                 if "say" in mem.text.lower())
+        history = '\n'.join(mem.text for mem in recent_memories)
         
-        prompt = [UserMessage(content="""Given a character's recent dialog history and a new response, determine if the new response is repetitive or adds nothing new to the conversation.
+        prompt = [UserMessage(content="""Given a character's recent history and a new proposed response, 
+determine if the new response is pointlessly repetitive and unrealistic.
 
-Recent dialog history:
+Recent history:
 <History>
 {{$history}}
 </History>
@@ -893,7 +893,7 @@ End response with:
 <End/>""")]
 
         result = self.llm.ask({
-            'history': dialog_history,
+            'history': history,
             'response': new_response
         }, prompt, temp=0.2, stops=['<End/>'], max_tokens=100)
 
@@ -901,7 +901,7 @@ End response with:
 
     def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
         """Check if task is complete and update state"""
-        termination_check = xml.find('<Termination_check>', task_xml) if task_xml != None else None
+        termination_check = xml.find('<TerminationCheck>', task_xml) if task_xml != None else None
         if termination_check is None:
             return
 
@@ -1068,11 +1068,12 @@ Consider:
 Respond using this XML format:
 <Plan>
   <Name>brief action name</Name>
-  <Description>detailed plan description</Description>
-  <Reason>why this is important now</Reason>
+  <Description>detailed action description</Description>
+  <Reason>why this action is important now</Reason>
   <TerminationCheck>condition that would satisfy this need</TerminationCheck>
 </Plan>
 
+Description, should be detailed but concise. Reason, and TerminationCheck should be terse.
 Respond ONLY with three plans using the above XML format.
 Order plans from highest to lowest priority.
 End response with:
@@ -1120,9 +1121,9 @@ Consider these factors in determining task completion:
 {{$memories}}
 </RecentMemories>
 
-<Completion_criterion>
+<CompletionCriterion>
 {{$termination_check}}
-</Completion_criterion>
+</CompletionCriterion>
 
 Respond using this XML format:
 
@@ -1234,11 +1235,9 @@ A SpecificAct is one which:
 - Has a clear beginning and end point.
 - Can be performed or acted out by a person.
 - Can be easily visualized or imagined as a film clip.
-- Is consistent with any action commitments made in your last statements in RecentHistory.
-- Is consistent with the Situation (e.g., does not suggest as new an action described in Situation).
+- Makes sense as the next action given observed results of previous act . 
+- Is consistent with any incomplete action commitments made in your last statements in RecentHistory.
 - Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
-- Makes sense as the next thing to do or say as a follow-on action to the previous specific act (if any), 
-    given the observed result (if any). This can include a new turn in dialog or action, especially when the observed result does not indicate progress on the Task. 
 - Significantly advances the story or task at hand.
 - Is stated in the appropriate person (voice):
         If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
@@ -1352,7 +1351,7 @@ End your response with:
                 'duplicative': duplicative_insert,
                 'history': self.narrative.get_summary('medium'),
                 'name': self.name,
-                "situation": self.context.current_state + '\n' + self.format_look(),
+                "situation": self.context.current_state + '\n\n' + self.format_look(),
                 "state": mapped_state,
                 "task": task_xml,
                 "reason": reason,
@@ -1373,7 +1372,8 @@ End your response with:
                 dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
-                    duplicative_insert = f"\nThe following Say is duplicative of previous dialog:\n'{act}'\nWhat else could you say or how else could you say it?"
+                    duplicative_insert = f"""\n****\nDon't duplicate this previous act:\n'{act}'
+What else could you say or how else could you say it?\n****"""
                     if tries == 0:
                         act = None  # force redo
                         temp += .3
@@ -1385,16 +1385,24 @@ End your response with:
                 dup = self.repetitive(act, last_act, self.format_history(2))
                 if dup:
                     print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert = f"The following Do is repetitive of a previous act:\n'{act}'. What else could you do or how else could you describe it?"
+                    duplicative_insert = f"""\n****\nBeware of duplicating this previous act:\n'{act}'.
+What else could you do or how else could you describe it?\n****"""
                     if tries < 1:
                         act = None  # force redo
                         temp += .3
                     else:
                         #act = None #skip task, nothing interesting to do
                         pass
-            elif mode == 'Look' and self.previous_action == 'Look':
-                act = None
-                temp += .3
+            elif mode ==  self.previous_action and self.repetitive(act, last_act, self.format_history(2)):
+                print(f'\n*****Repetitive act test failed*****\n  {act}\n')
+                duplicative_insert = f"""\n****\nBeware of duplicating this previous act:\n'{act}'. 
+What else could you do or how else could you describe it?\n****"""
+                if tries < 1:
+                    act = None  # force redo
+                    temp += .3
+                else:
+                    act = None #skip task, nothing interesting to do
+                    pass
             tries += 1
 
         if act is not None:
@@ -1830,6 +1838,7 @@ End your response with:
         my_active_task = self.active_task.peek()
         intention = None
         self.show = ''
+        #check for intentions created by previous Say or hear
         for candidate in self.intentions:
             source = xml.find('<Source>', candidate)
             if source == 'dialog' or source =='watcher':
@@ -1889,8 +1898,6 @@ End your response with:
             if task_name is None:
                 task_name = self.make_task_name(self.reason)
                 print(f'No source found, created task name: {task_name}')
-            task_xml = self.find_or_make_task_xml(task_name, self.reason)
-            refresh_task = task_xml # intention for task was removed about, remember to rebuild
             self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
             task_name = xml.find('<Source>', intention)

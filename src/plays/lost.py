@@ -73,6 +73,6 @@ Two people are standing in the middle of the forest, looking around in confusion
 #     set OS.env OPENAI_API_KEY 
 #worldsim.IMAGEGENERATOR = 'dall-e-2'
 worldsim.IMAGEGENERATOR = 'tti_serve'
-server='local'
+server='deepseek'
 # uncomment one if running from command line to use PyQt UI
 # #worldsim.main(W, server='deepseek')

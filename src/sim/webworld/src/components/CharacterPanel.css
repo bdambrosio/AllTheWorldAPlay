@@ -1,6 +1,6 @@
 .character-info {
   margin: 6px 0;
-  width: 300px;
+  width: 340px;
 }
 
 .character-block {
@@ -85,6 +85,7 @@
 
 .section-container {
   flex: 1;
+  min-width: 0;
 }
 
 .section-container h4 {
@@ -99,6 +100,8 @@
   min-height: 100px;
   max-height: 200px;
   overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .thoughts-area {
@@ -148,4 +151,22 @@
 .priority-item, .history-item {
   margin-bottom: 8px;
   font-size: 0.9em;
+}
+
+.character-panel {
+  width: 340px;
+  margin: 0 auto;
+}
+
+.info-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.priorities-pane, .history-pane {
+  min-width: 0;
+  padding: 10px;
 } 
