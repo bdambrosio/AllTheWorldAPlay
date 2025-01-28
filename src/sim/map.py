@@ -14,15 +14,15 @@ init()
 
 
 class Direction(Enum):
-    CURRENT = auto()
-    NORTH = auto()
-    NORTHEAST = auto()
-    EAST = auto()
-    SOUTHEAST = auto()
-    SOUTH = auto()
-    SOUTHWEST = auto()
-    WEST = auto()
-    NORTHWEST = auto()
+    Current = auto()
+    North = auto()
+    Northeast = auto()
+    East = auto()
+    Southeast = auto()
+    South = auto()
+    Southwest = auto()
+    West = auto()
+    Northwest = auto()
 
     @staticmethod
     def from_string(text):
@@ -51,22 +51,22 @@ class Direction(Enum):
         
         # Handle common variations
         direction_map = {
-            'n': Direction.NORTH,
-            'ne': Direction.NORTHEAST, 
-            'e': Direction.EAST,
-            'se': Direction.SOUTHEAST,
-            's': Direction.SOUTH, 
-            'sw': Direction.SOUTHWEST,
-            'w': Direction.WEST,
-            'nw': Direction.NORTHWEST,
-            'north': Direction.NORTH,
-            'northeast': Direction.NORTHEAST,
-            'east': Direction.EAST, 
-            'southeast': Direction.SOUTHEAST,
-            'south': Direction.SOUTH,
-            'southwest': Direction.SOUTHWEST,
-            'west': Direction.WEST,
-            'northwest': Direction.NORTHWEST
+            'n': Direction.North,
+            'ne': Direction.Northeast, 
+            'e': Direction.East,
+            'se': Direction.Southeast,
+            's': Direction.South, 
+            'sw': Direction.Southwest,
+            'w': Direction.West,
+            'nw': Direction.Northwest,
+            'north': Direction.North,
+            'northeast': Direction.Northeast,
+            'east': Direction.East, 
+            'southeast': Direction.Southeast,
+            'south': Direction.South,
+            'southwest': Direction.Southwest,
+            'west': Direction.West,
+            'northwest': Direction.Northwest
         }
         
         # Try exact match first
@@ -99,15 +99,15 @@ def get_direction_offset(direction):
         return (0, 0)
         
     offsets = {
-        Direction.NORTH: (0, -1),
-        Direction.NORTHEAST: (1, -1),
-        Direction.EAST: (1, 0),
-        Direction.SOUTHEAST: (1, 1),
-        Direction.SOUTH: (0, 1),
-        Direction.SOUTHWEST: (-1, 1),
-        Direction.WEST: (-1, 0),
-        Direction.NORTHWEST: (-1, -1),
-        Direction.CURRENT: (0, 0)
+        Direction.North: (0, -1),
+        Direction.Northeast: (1, -1),
+        Direction.East: (1, 0),
+        Direction.Southeast: (1, 1),
+        Direction.South: (0, 1),
+        Direction.Southwest: (-1, 1),
+        Direction.West: (-1, 0),
+        Direction.Northwest: (-1, -1),
+        Direction.Current: (0, 0)
     }
     
     return offsets[direction]
@@ -137,25 +137,25 @@ def get_water_flow_direction(world, x, y):
 
 
 def get_direction_name(dx, dy):
-    if dx == 0 and dy < 0: return Direction.NORTH
-    if dx > 0 and dy < 0: return Direction.NORTHEAST
-    if dx > 0 and dy == 0: return Direction.EAST
-    if dx > 0 and dy > 0: return Direction.SOUTHEAST
-    if dx == 0 and dy > 0: return Direction.SOUTH
-    if dx < 0 and dy > 0: return Direction.SOUTHWEST
-    if dx < 0 and dy == 0: return Direction.WEST
-    if dx < 0 and dy < 0: return Direction.NORTHWEST
-    return Direction.CURRENT
+    if dx == 0 and dy < 0: return Direction.North
+    if dx > 0 and dy < 0: return Direction.Northeast
+    if dx > 0 and dy == 0: return Direction.East
+    if dx > 0 and dy > 0: return Direction.Southeast
+    if dx == 0 and dy > 0: return Direction.South
+    if dx < 0 and dy > 0: return Direction.Southwest
+    if dx < 0 and dy == 0: return Direction.West
+    if dx < 0 and dy < 0: return Direction.Northwest
+    return Direction.Current
 
 class TerrainType(Enum):
-    DENSE_FOREST = 1
-    LIGHT_FOREST = 2
-    CLEARING = 3
+    DenseForest = 1
+    LightForest = 2
+    Clearing = 3
 
 class Resource(Enum):
-    BERRIES = 1
-    MUSHROOMS = 2
-    FALLEN_LOG = 3
+    Berries = 1
+    Mushrooms = 2
+    FallenLog = 3
 
 class Patch:
     def __init__(self, x, y):
@@ -337,34 +337,34 @@ class WorldMap:
 
                 # Berries: More common in clearings and light forests, less common at high elevations
                 if random.random() < 0.1 and patch.elevation < 0.7:
-                    if patch.terrain == TerrainType.CLEARING:
-                        patch.resources.append(Resource.BERRIES)
-                    elif patch.terrain == TerrainType.LIGHT_FOREST and random.random() < 0.7:
-                        patch.resources.append(Resource.BERRIES)
+                    if patch.terrain == TerrainType.Clearing:
+                        patch.resources.append(Resource.Berries)
+                    elif patch.terrain == TerrainType.LightForest and random.random() < 0.7:
+                        patch.resources.append(Resource.Berries)
 
                 # Mushrooms: More common in dense and light forests, prefer middle elevations
                 if 0.3 < patch.elevation < 0.8:
-                    if patch.terrain in [TerrainType.DENSE_FOREST, TerrainType.LIGHT_FOREST] and random.random() < 0.15:
-                        patch.resources.append(Resource.MUSHROOMS)
+                    if patch.terrain in [TerrainType.DenseForest, TerrainType.LightForest] and random.random() < 0.15:
+                        patch.resources.append(Resource.Mushrooms)
 
                 # Fallen logs: More common in dense forests, slightly more common at higher elevations
                 if random.random() < 0.05 + (0.05 * patch.elevation):
-                    if patch.terrain == TerrainType.DENSE_FOREST:
-                        patch.resources.append(Resource.FALLEN_LOG)
-                    elif patch.terrain == TerrainType.LIGHT_FOREST and random.random() < 0.3:
-                        patch.resources.append(Resource.FALLEN_LOG)
+                    if patch.terrain == TerrainType.DenseForest:
+                        patch.resources.append(Resource.FallenLog)
+                    elif patch.terrain == TerrainType.LightForest and random.random() < 0.3:
+                        patch.resources.append(Resource.FallenLog)
 
     def print_map(self):
         terrain_chars = {
-            TerrainType.DENSE_FOREST: Fore.GREEN + '█' + Style.RESET_ALL,
-            TerrainType.LIGHT_FOREST: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
-            TerrainType.CLEARING: Fore.YELLOW + '░' + Style.RESET_ALL
+            TerrainType.DenseForest: Fore.GREEN + '█' + Style.RESET_ALL,
+            TerrainType.LightForest: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
+            TerrainType.Clearing: Fore.YELLOW + '░' + Style.RESET_ALL
         }
 
         resource_chars = {
-            Resource.BERRIES: Fore.RED + '•' + Style.RESET_ALL,
-            Resource.MUSHROOMS: Fore.MAGENTA + '∩' + Style.RESET_ALL,
-            Resource.FALLEN_LOG: Fore.WHITE + '=' + Style.RESET_ALL
+            Resource.Berries: Fore.RED + '•' + Style.RESET_ALL,
+            Resource.Mushrooms: Fore.MAGENTA + '∩' + Style.RESET_ALL,
+            Resource.FallenLog: Fore.WHITE + '=' + Style.RESET_ALL
         }
 
         for y in range(self.height):
@@ -403,11 +403,11 @@ class WorldMap:
     def set_terrain_heights(self):
         for row in self.patches:
             for patch in row:
-                if patch.terrain == TerrainType.DENSE_FOREST:
+                if patch.terrain == TerrainType.DenseForest:
                     patch.height = 20  # 20 feet
-                elif patch.terrain == TerrainType.LIGHT_FOREST:
+                elif patch.terrain == TerrainType.LightForest:
                     patch.height = 15  # 15 feet
-                elif patch.terrain == TerrainType.CLEARING:
+                elif patch.terrain == TerrainType.Clearing:
                     patch.height = 1  # 1 foot (grass)
                 if patch.has_water:
                     patch.height = 0  # Water level
@@ -618,16 +618,16 @@ class WorldMap:
                         print(Fore.BLUE + '~' + Style.RESET_ALL, end='')
                     elif self.patches[px][py].resources:
                         resource_chars = {
-                            Resource.BERRIES: Fore.RED + '•' + Style.RESET_ALL,
-                            Resource.MUSHROOMS: Fore.MAGENTA + '∩' + Style.RESET_ALL,
-                            Resource.FALLEN_LOG: Fore.WHITE + '=' + Style.RESET_ALL
+                            Resource.Berries: Fore.RED + '•' + Style.RESET_ALL,
+                            Resource.Mushrooms: Fore.MAGENTA + '∩' + Style.RESET_ALL,
+                            Resource.FallenLog: Fore.WHITE + '=' + Style.RESET_ALL
                         }
                         print(resource_chars[self.patches[px][py].resources[0]], end='')
                     else:
                         terrain_chars = {
-                            TerrainType.DENSE_FOREST: Fore.GREEN + '█' + Style.RESET_ALL,
-                            TerrainType.LIGHT_FOREST: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
-                            TerrainType.CLEARING: Fore.YELLOW + '░' + Style.RESET_ALL
+                            TerrainType.DenseForest: Fore.GREEN + '█' + Style.RESET_ALL,
+                            TerrainType.LightForest: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
+                            TerrainType.Clearing: Fore.YELLOW + '░' + Style.RESET_ALL
                         }
                         print(terrain_chars[self.patches[px][py].terrain], end='')
                 else:
@@ -677,14 +677,14 @@ class Agent:
     def get_direction_offset(direction):
         direction = Direction.from_string(direction)
         offsets = {
-            Direction.NORTH: (0, -1),
-            Direction.NORTHEAST: (1, -1),
-            Direction.EAST: (1, 0),
-            Direction.SOUTHEAST: (1, 1),
-            Direction.SOUTH: (0, 1),
-            Direction.SOUTHWEST: (-1, 1),
-            Direction.WEST: (-1, 0),
-            Direction.NORTHWEST: (-1, -1)
+            Direction.North: (0, -1),
+            Direction.Northeast: (1, -1),
+            Direction.East: (1, 0),
+            Direction.Southeast: (1, 1),
+            Direction.South: (0, 1),
+            Direction.Southwest: (-1, 1),
+            Direction.West: (-1, 0),
+            Direction.Northwest: (-1, -1)
         }
         return offsets[direction]
 
@@ -717,7 +717,7 @@ def get_detailed_visibility_description(world, x, y, observer_height):
     for direction in Direction:
         direction_element = ET.SubElement(root, "direction", name=direction.name)
 
-        if direction == Direction.CURRENT:
+        if direction == Direction.Current:
             direction_patches = [world.patches[x][y]]
         else:
             direction_patches = [p for p in visible_patches if get_direction_name(p.x - x, p.y - y) == direction]
@@ -730,15 +730,15 @@ def get_detailed_visibility_description(world, x, y, observer_height):
         adjacent_patch = min(direction_patches, key=lambda p: manhattan_distance(x, y, p.x, p.y))
         elevation_change = adjacent_patch.elevation - world.patches[x][y].elevation
 
-        if direction != Direction.CURRENT:
+        if direction != Direction.Current:
             ET.SubElement(direction_element, "visibility").text = str(max_distance)
 
         ET.SubElement(direction_element, "terrain").text = adjacent_patch.terrain.name.replace('_', ' ').title()
 
-        if direction != Direction.CURRENT:
+        if direction != Direction.Current:
             slope_element = ET.SubElement(direction_element, "slope")
             slope_element.text = get_slope_description(elevation_change)
-            slope_element.set("elevation_change", f"{elevation_change:.2f}")
+            #slope_element.set("elevation_change", f"{elevation_change:.2f}")
 
         resources_element = ET.SubElement(direction_element, "resources")
         for patch in direction_patches:
@@ -752,7 +752,7 @@ def get_detailed_visibility_description(world, x, y, observer_height):
         water_patches = [p for p in direction_patches if p.has_water]
         if water_patches:
             water_element = ET.SubElement(direction_element, "water")
-            if direction == Direction.CURRENT:
+            if direction == Direction.Current:
                 flow_direction = get_water_flow_direction(world, x, y)
                 water_element.set("flow", flow_direction)
             else:
@@ -795,7 +795,7 @@ def extract_direction_info(xml_string, direction_name):
     Extract information about a specific direction from the visibility description XML.
 
     :param xml_string: The XML string returned by get_detailed_visibility_description
-    :param direction_name: The name of the direction to extract (e.g., "NORTH", "SOUTHEAST")
+    :param direction_name: The name of the direction to extract (e.g., "North", "Southeast")
     :return: A dictionary containing the extracted information
     """
     root = ET.fromstring(xml_string)
@@ -809,7 +809,16 @@ def extract_direction_info(xml_string, direction_name):
     info = {}
 
     # Extract basic information
-    info['visibility'] = direction_elem.findtext('visibility')
+ 
+    visibility = direction_elem.findtext('visibility')
+    if visibility is not None:
+        try:
+            info['visibility'] = int(visibility) 
+        except:
+            info['visibility'] = visibility
+    else:
+        info['visibility'] = 0
+
     info['terrain'] = direction_elem.findtext('terrain')
 
     # Extract slope information if available
@@ -817,14 +826,13 @@ def extract_direction_info(xml_string, direction_name):
     if slope_elem is not None:
         info['slope'] = {
             'description': slope_elem.text,
-            'elevation_change': slope_elem.get('elevation_change')
-        }
+         }
 
     # Extract resource information
     resources = direction_elem.find('resources')
     if resources is not None:
         info['resources'] = [
-            {'name': resource.get('name'), 'distance': resource.get('distance')}
+            {'name': resource.get('name'), 'distance': int(resource.get('distance'))}
             for resource in resources.findall('resource')
         ]
 
@@ -832,17 +840,26 @@ def extract_direction_info(xml_string, direction_name):
     water_elem = direction_elem.find('water')
     if water_elem is not None:
         info['water'] = {
-            'flow': water_elem.get('flow'),
-            'distances': water_elem.get('distances')
-        }
+            'flow': water_elem.get('flow')
+        } 
+        try:
+            info['water']['distances'] = water_elem.get('distances')
+        except:
+            pass
 
     # Extract agent information if available
     agents_elem = direction_elem.find('agents')
     if agents_elem is not None:
-        info['agents'] = [
-            {'name': agent.get('name'), 'distance': agent.get('distance')}
-            for agent in agents_elem.findall('agent')
-        ]
+        try:
+            info['agents'] = [
+                {'name': agent.get('name'), 'distance': int(agent.get('distance')  )}
+                for agent in agents_elem.findall('agent')
+            ]
+        except:
+            info['agents'] = [
+                {'name': agent.get('name'), 'distance': agent.get('distance') }
+                for agent in agents_elem.findall('agent')
+            ]
 
     return info
 
@@ -861,13 +878,13 @@ if __name__ == '__main__':
     detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
     print_formatted_xml(detailed_visibility_description)
 
-    me.move(Direction.NORTHEAST)
+    me.move(Direction.Northeast)
     detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
     print_formatted_xml(detailed_visibility_description)
 
-    me.move(Direction.NORTHEAST)
+    me.move(Direction.Northeast)
     detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
     print_formatted_xml(detailed_visibility_description)
     print()
-    print(extract_direction_info(detailed_visibility_description, 'NORTH'))
+    print(extract_direction_info(detailed_visibility_description, 'Northeast'))
 

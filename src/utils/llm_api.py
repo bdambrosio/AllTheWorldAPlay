@@ -175,6 +175,7 @@ class LLM():
         if temp is None: temp = 0.7
         if top_p is None: top_p = 1.0
           
+        start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
         try:
@@ -182,6 +183,7 @@ class LLM():
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             response = self.run_request(input, prompt_msgs, options)
             #response = response.replace('<|im_end|>', '')
+            print(f'llm: {f"{time.time()-start:.1f}"}')
             if stops is not None and type(response) is str: # claude returns eos
                 if type(stops) is str:
                     stops = [stops]
