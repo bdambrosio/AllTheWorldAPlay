@@ -291,7 +291,6 @@ class NarrativeSummary:
     # Core narrative components
     recent_events: str  # Last few hours in detail
     ongoing_activities: str  # Current goals and activities
-    background: str  # Key past events and relationships
     
     # Metadata
     last_update: datetime  # Last narrative update time
@@ -315,10 +314,7 @@ class NarrativeSummary:
             
         if self.ongoing_activities:
             sections.append("Current Activities:\n" + self.ongoing_activities)
-            
-        if self.background:
-            sections.append("Background:\n" + self.background)
-            
+                        
         if self.key_relationships:
             rel_text = "\n".join(f"- {name}: {desc}" for name, desc 
                                in self.key_relationships.items())

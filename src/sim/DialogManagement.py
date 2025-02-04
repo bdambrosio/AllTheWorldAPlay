@@ -1,6 +1,8 @@
+from datetime import datetime
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Set
+from sim.memory.core import MemoryEntry
 import utils.xml_utils as xml
 
 @dataclass
@@ -69,27 +71,64 @@ class DialogManager:
             
         # Store fatigue level for future interactions
         if self.current_dialog.target:
-            self.agent.structured_memory.add_memory(
-                f"Conversation with {self.current_dialog.target} ended with fatigue level {self.current_dialog.fatigue}"
+            entry = MemoryEntry(
+                text=f"Conversation with {self.current_dialog.target} ended with fatigue level {self.current_dialog.fatigue}",
+                importance=0.5,  # Default importance
+                timestamp=datetime.now(),
+                confidence=1.0
             )
-            
+
+            self.agent.structured_memory.add_entry(entry)
+
+        self.agent.memory_consolidator.update_narrative(
+            memory=self.agent.structured_memory,
+            narrative=self.agent.narrative,
+            current_time=self.agent.context.simulation_time,
+            character_desc=self.agent.character
+        )
         interrupted_task = self.current_dialog.interrupted_task
+        if self.current_dialog.participants:
+
+            for actor_name in self.current_dialog.participants:
+                actor = self.agent.context.get_actor_by_name(actor_name)
+                if actor and actor.dialog_manager:
+                    if actor.dialog_manager.current_dialog:
+                        actor.dialog_manager.current_dialog = None
+                actor.intentions = []
         self.current_dialog = None
+        self.agent.intentions = []
         
         if self.agent.active_task.peek() == 'dialog':
             self.agent.active_task.pop()
-            
+           
         if interrupted_task and self._is_task_still_relevant(interrupted_task):
-            self.agent.active_task.push(interrupted_task)
+            # If the interrupted task is not the current task, push it onto the stack 
+            # to resume it after the dialog ends
+            if interrupted_task != self.agent.active_task.peek():
+                self.agent.active_task.push(interrupted_task)   
+        elif interrupted_task and self.agent.active_task.peek() == interrupted_task:
+            # If the interrupted task is the current task, remove it since no longer relevant
+            self.agent.active_task.pop()
             
     def _is_task_still_relevant(self, task_name: str) -> bool:
         """Check if a task is still relevant and should be resumed"""
         # Look for task in current priorities
         for task in self.agent.priorities:
-            if xml.find('<Name>', task) == task_name:
-                # Could add additional checks here (effectiveness, state changes, etc)
-                return True
-        return False
+            if xml.find('<name>', task) == task_name:
+                # Check if task is already satisfied using agent's satisfaction test
+                termination_check = xml.find('<termination_check>', task)
+                if termination_check:
+                    satisfied = self.agent.test_priority_termination(
+                        termination_check,
+                        '',  # No new consequences to check
+                        ''   # No world updates to check
+                    )
+                    if satisfied:
+                        return False  # Task is complete, don't resume
+                
+                return True  # Task exists and isn't satisfied
+            
+        return False  # Task not found in current priorities
 
 # Modified hear() method in Agh class
 def hear(self, from_actor, message, source='dialog', respond=True):

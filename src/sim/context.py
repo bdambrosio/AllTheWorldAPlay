@@ -9,11 +9,21 @@ from datetime import datetime, timedelta
 
 
 class Context():
-    def __init__(self, actors, situation, step='4 hours', mapContext=True):
+    def __init__(self, actors, situation, step='4 hours', mapContext=True, server='local'):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
         self.map = map.WorldMap(60, 60)
+        self.step = step  # amount of time to step per scene update
+        self.name = 'World'
+        self.llm = llm_api.LLM(server)
+        self.simulation_time = datetime.now()  # Starting time
+        self.time_step = step  # Amount to advance each step
+        # Add new fields for UI independence
+        self.state_listeners = []
+        self.output_buffer = []
+        self.widget_refs = {}  # Keep track of widget references for PyQt UI
+        self.force_sense = False # force full sense for all actors
         for actor in self.actors:
             #place all actors in the world
             actor.context = self
@@ -24,20 +34,12 @@ class Context():
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
                 actor.narrative.initialize_relationships(valid_names)
-        self.step = step  # amount of time to step per scene update
-        self.name = 'World'
-        self.llm = None
-        self.simulation_time = datetime.now()  # Starting time
-        self.time_step = step  # Amount to advance each step
-        # Add new fields for UI independence
-        self.state_listeners = []
-        self.output_buffer = []
-        self.widget_refs = {}  # Keep track of widget references for PyQt UI
 
     def set_llm(self, llm):
         self.llm = llm
         for actor in self.actors:
             actor.set_llm(llm)
+            actor.last_sense_time = datetime.now()
 
     def load(self, dir):
         try:
@@ -112,32 +114,32 @@ It may be there are no significant updates to report.
 Limit your changes to the consequences for elements in the existing state or new elements added to the state.
 Most important are those consequences that might activate or inactive tasks or intentions by actors.
 
-<ActionEffects>
+<actionEffects>
 {{$consequences}}
-</ActionEffects>
+</actionEffects>
 
-<Environment>
+<environment>
 {{$state}}
-</Environment>
+</environment>
 
 Your response should be concise, and only include only statements about changes to the existing Environment.
 Do NOT repeat elements of the existing Environment, respond only with significant changes.
 Do NOT repeat as an update items already present at the end of the Environment statement.
 Your updates should be dispassionate. 
 Use the following XML format:
-<Updates>
+<updates>
 concise statement(s) of significant changes to Environment, if any, one per line.
-</Updates>
+</updates>
 
 Include ONLY the concise updated state description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
-</End>""")
+</end>""")
                   ]
 
         response = self.llm.ask({"consequences": consequences, "state": self.current_state},
-                                prompt, temp=0.5, stops=['</End>'], max_tokens=60)
-        updates = xml.find('<Updates>', response)
+                                prompt, temp=0.5, stops=['</end>'], max_tokens=60)
+        updates = xml.find('<updates>', response)
         if updates is not None:
             self.current_state += '\n' + updates
         else:
@@ -149,21 +151,21 @@ End your response with:
         prompt = [UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
 
-<Action>
+<action>
 {{$action}}
-</Action>
+</action>
 
 in the current situation: 
 
-<Situation>
+<situation>
 {{$state}}
-</Situation>
+</situation>
 
 given {{$name}} local map is:
 
-<LocalMap>
+<localMap>
 {{$local_map}}
-</LocalMap
+</localMap
 
 Respond with the observable result.
 Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
@@ -181,13 +183,13 @@ Be extremely terse when reporting character emotional state, only report the mos
 Be concise!
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
-<STOP>
+<end/>
 """)]
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state}, prompt, temp=0.7, stops=['<STOP>'], max_tokens=300)
+                                     "state": self.current_state}, prompt, temp=0.7, stops=['<end/>'], max_tokens=300)
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -216,15 +218,15 @@ End your response with:
             and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
             The previous state was:
 
-            <PreviousState>
+            <previousState>
             {{$situation}}
-            </PreviousState> 
+            </previousState> 
 
             In the interim, the characters in the world had the following interactions:
 
-            <History>
+            <history>
             {{$history}}
-            </History>
+            </history>
 
             All actions performed by actors since the last situation update are including in the above History.
             Do not include in your updated situation any actions not listed above.
@@ -232,10 +234,10 @@ End your response with:
 
             Respond using the following XML format:
 
-            <Situation>
+            <situation>
             Sentence describing physical space, suitable for image generator,
             Updated State description of about 300 words
-            </Situation>
+            </situation>
 
             Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
             Include ONLY the concise updated situation description in your response. 
@@ -243,11 +245,11 @@ End your response with:
             .
             Limit your total response to about 330 words
             End your response with:
-            END""")]
+            <end/>""")]
 
             response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
-                                    temp=0.6, stops=['END'], max_tokens=500)
-            new_situation = xml.find('<Situation>', response)
+                                    temp=0.6, stops=['<end/>'], max_tokens=500)
+            new_situation = xml.find('<situation>', response)
             if new_situation is not None:
                 updates = self.world_updates_from_act_consequences(new_situation)
                 self.current_state = new_situation
@@ -303,15 +305,15 @@ Your situation description should be dispassionate,
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
 The situation as of {{$step}} ago was:
 
-<PreviousSituation>
+<previousSituation>
 {{$situation}}
-</PreviousSituation> 
+</previousSituation> 
 
 In the interim, the characters in the world had the following interactions:
 
-<History>
+<history>
 {{$history}}
-</History>
+</history>
 
 All actions performed by actors since the last situation update are including in the above History.
 Do not include in your updated situation any actions not listed above.
@@ -319,23 +321,23 @@ Include characters in your response only with respect to the effects of their ab
 
 Respond using the following XML format:
 
-<Situation>
+<situation>
 Sentence describing physical space, suitable for image generator.
 Updated State description of about 300 words
-</Situation>
+</situation>
 
 Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
 Include ONLY the concise updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
 Limit your total response to about 330 words
-Ensure your response is surrounded with <Situation> and </Situation> tags as shown above.
+Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
-<End/>""")]
+<end/>""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
-                                temp=0.6, stops=['<End/>'], max_tokens=700)
-        new_situation = xml.find('<Situation>', response)
+                                temp=0.6, stops=['<end/>'], max_tokens=700)
+        new_situation = xml.find('<situation>', response)
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation

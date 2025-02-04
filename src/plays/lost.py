@@ -6,14 +6,16 @@ import sim.context as context, sim.agh as agh
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 # Create characters
-S = agh.Agh("Samantha", """You are a pretty young Sicilian woman. 
+server='deepseeklocal'
+#server='local'
+S = agh.Agh("Samantha", """You are Samantha, a healthy, attractive young woman. 
 You love the outdoors and hiking.
-You are intelligent, introspective, philosophical and a bit of a romantic, but keep this mostly to yourself. 
+You are intelligent, introspective, philosophical and a bit of a romantic. 
 You have a painful history, maybe it is just as well you don't remember it.
-You are very informal, chatty, and think and speak in teen slang, and are a playful and flirty when relaxed. 
+You are very informal, chatty, think and speak in informal teen style, and are a playful and flirty when relaxed. 
 You are comfortable on long treks, and are unafraid of hard work. 
-You are suspicious by nature, and wary of strangers. 
-Your name is Samanatha""")
+You are wary of strangers. 
+""", server=server)
 
 # Drives are what cause a character to create tasks.
 # Below is the default an agh inherits if you don't override, as we do below.
@@ -41,13 +43,13 @@ S.add_to_history("You think This is very very strange. Where am i? I'm near pani
 ## Now Joe, the other character in this 'survivor' scenario
 #
 
-J = agh.Agh("Joe", """You are a young Sicilian male, intelligent and self-sufficient. 
+J = agh.Agh("Joe", """You are Joe, a healthy, nerdy young man, intelligent and self-sufficient. 
 You are informal and somewhat impulsive. 
 You are strong, and think you love the outdoors, but are basically a nerd.
 You yearn for something more, but don't know what it is.
 You are socially awkward, especially around strangers. 
-You speak in informal teen style.
-Your name is Joe.""")
+You speak in informally.
+""", server=server)
 
 J.set_drives([
     "communication and coordination with Samantha, gaining Samantha's trust.",
@@ -67,12 +69,7 @@ J.add_to_history("You think Whoever she is, she is pretty!")
 W = context.Context([S, J],
                 """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humanity. 
 It is a early morning on what seems like it will be a warm, sunny day.
-Two people are standing in the middle of the forest, looking around in confusion.""")
+Two people are standing in the middle of the forest, looking around in confusion.""", server=server)
 
-# pick one. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random). And, of course, you need an openai account.
-#     set OS.env OPENAI_API_KEY 
-#worldsim.IMAGEGENERATOR = 'dall-e-2'
-worldsim.IMAGEGENERATOR = 'tti_serve'
-server='deepseek'
-# uncomment one if running from command line to use PyQt UI
-# #worldsim.main(W, server='deepseek')
+# uncomment if running from command line to use PyQt UI
+#worldsim.main(W, server=server)
