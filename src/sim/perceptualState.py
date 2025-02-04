@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
 
@@ -43,9 +43,9 @@ class PerceptualState:
                 self.attention_focus = sensory_input.mode
                 
             # Add to agent's memory if significant
-            if self.owner and sensory_input.intensity > 0.5:
+            if self.owner and sensory_input.intensity > 0.4:
                 self.owner.add_to_history(
-                    f"You perceive ({sensory_input.mode.value}): {sensory_input.content}"
+                    f"You {sensory_input.mode.value}: {sensory_input.content}"
                 )
     
     def get_current_percepts(self, mode: Optional[SensoryMode] = None) -> List[PerceptualInput]:
@@ -142,3 +142,43 @@ class PerceptualState:
                     f"You perceive from {p.source} ({p.mode.value}): {p.content}"
                 )
 
+    def recent_significant_change(self, 
+                            time_window: float = 5.0,
+                            intensity_threshold: float = 0.7) -> bool:
+        """
+        Check if there have been any significant perceptual changes recently.
+    
+        Args:
+            time_window: Number of seconds to look back
+            intensity_threshold: Minimum intensity to consider significant
+        
+        Returns:
+            bool: True if significant changes detected
+        """
+        current_time = self.owner.context.simulation_time
+        window_start = current_time - timedelta(seconds=time_window)
+    
+        # Check each sensory mode
+        for mode in SensoryMode:
+            recent_inputs = [
+                input for input in self.current_inputs[mode]
+                if input.timestamp >= window_start
+            ]
+        
+            # Look for high intensity inputs
+            for input in recent_inputs:
+                if input.intensity >= intensity_threshold:
+                    return True
+                
+            # Check for pattern changes
+            if len(recent_inputs) >= 2:
+                # Get average intensity before and after midpoint
+                midpoint = len(recent_inputs) // 2
+                early_avg = sum(i.intensity for i in recent_inputs[:midpoint]) / midpoint
+                late_avg = sum(i.intensity for i in recent_inputs[midpoint:]) / (len(recent_inputs) - midpoint)
+            
+                # Check if intensity pattern changed significantly 
+                if abs(late_avg - early_avg) >= intensity_threshold/2:
+                    return True
+    
+        return False

@@ -272,15 +272,15 @@ class CustomWidget(QWidget):
         self.handle_sense_completed()   
 
     def format_intentions(self):
-        return '<br>'.join(["<b>"+str(xml.find('<Mode>', intention))
-                          +':</b>('+str(xml.find('<Source>', intention))+') '+str(xml.find('<Act>', intention))[:32]
-                          +'<br> Why: '+str(xml.find('<Reason>', intention))[:32]
+        return '<br>'.join(["<b>"+str(xml.find('<mode>', intention))
+                          +':</b>('+str(xml.find('<source>', intention))+') '+str(xml.find('<act>', intention))[:32]
+                          +'<br> Why: '+str(xml.find('<reason>', intention))[:32]
                           +'<br>'
                           for intention in self.character.intentions])
             
     def format_tasks(self):
-        return '<br>'.join(["<b>"+str(xml.find('<Name>', task))
-                          +':</b> '+str(xml.find('<Reason>', task))
+        return '<br>'.join(["<b>"+str(xml.find('<name>', task))
+                          +':</b> '+str(xml.find('<reason>', task))
                           +'<br>'
                           for task in self.character.priorities])
             

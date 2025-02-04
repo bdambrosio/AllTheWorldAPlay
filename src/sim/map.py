@@ -474,100 +474,16 @@ class WorldMap:
         return visible_patches
 
     def is_visible(self, x1, y1, x2, y2, observer_height):
-        """Check if target position is visible from observer position
-        Uses Bresenham's line algorithm for more efficient line traversal"""
-        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        if distance == 0:
-            return True
-
-        # Use Bresenham's line algorithm for more efficient line traversal
-        dx = abs(x2 - x1)
-        dy = abs(y2 - y1)
-        x, y = x1, y1
-        sx = 1 if x1 < x2 else -1
-        sy = 1 if y1 < y2 else -1
-        err = dx - dy
-
-        observer_elevation = self.patches[x1][y1].elevation * 100 + observer_height
-        target_elevation = self.patches[x2][y2].elevation * 100 + self.patches[x2][y2].height
-
-        while True:
-            if x == x2 and y == y2:
-                break
-
-            check_patch = self.patches[x][y]
-            check_elevation = check_patch.elevation * 100 + check_patch.height
-
-            # Calculate elevation angle efficiently
-            dist_so_far = math.sqrt((x - x1) ** 2 + (y - y1) ** 2)
-            if dist_so_far > 0:  # Avoid division by zero
-                current_angle = math.atan2(check_elevation - observer_elevation, dist_so_far)
-                target_angle = math.atan2(target_elevation - observer_elevation, distance)
-            
-                if current_angle > target_angle:
-                    return False
-
-            e2 = 2 * err
-            if e2 > -dy:
-                err = err - dy
-                x = x + sx
-            if e2 < dx:
-                err = err + dx
-                y = y + sy
-
-            if not (0 <= x < self.width and 0 <= y < self.height):
-                return False
-
-        return True    
-
-    def get_visibility(self, x, y, observer_height):
-            visible_patches = []
-            for dx in range(-20, 21):  # Observe up to 20 patches in each direction
-                for dy in range(-20, 21):
-                    target_x, target_y = x + dx, y + dy
-                    if 0 <= target_x < self.width and 0 <= target_y < self.height:
-                        if self.is_visible(x, y, target_x, target_y, observer_height):
-                            visible_patches.append(self.patches[target_x][target_y])
-            return visible_patches
-
-    def is_visible_old(self, x1, y1, x2, y2, observer_height):
-        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        if distance == 0:
-            return True  # The observer's own patch is always visible
-
-        # Calculate the angle to the target patch
-        angle = math.atan2(y2 - y1, x2 - x1)
-
-        # Check visibility along the line of sight
-        for i in range(1, int(distance) + 1):
-            check_x = int(x1 + i * math.cos(angle))
-            check_y = int(y1 + i * math.sin(angle))
-
-            if not (0 <= check_x < self.width and 0 <= check_y < self.height):
-                return False
-
-            check_patch = self.patches[check_x][check_y]
-            observer_elevation = self.patches[x1][y1].elevation * 100 + observer_height
-            target_elevation = check_patch.elevation * 100 + check_patch.height
-
-            # Calculate the elevation angle to the current check point
-            elevation_angle = math.atan2(target_elevation - observer_elevation, i)
-
-            # If this angle is greater than the angle to the target, the target is not visible
-            if elevation_angle > math.atan2(
-                    self.patches[x2][y2].elevation * 100 + self.patches[x2][y2].height - observer_elevation, distance):
-                return False
-
-        return True
-
-    # 4. Optimized Line of Sight
-    def is_visible(self, x1, y1, x2, y2, observer_height):
         """Optimized line of sight calculation using Bresenham's algorithm"""
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         if distance == 0:
             return True
+            
+        # Always see adjacent cells (including diagonals)
+        if distance <= math.sqrt(2):
+            return True
 
-        # Use Bresenham's line algorithm for more efficient line traversal
+        # Rest of existing code for non-adjacent cells...
         dx = abs(x2 - x1)
         dy = abs(y2 - y1)
         x, y = x1, y1
@@ -646,11 +562,11 @@ class Agent:
 
 
     def look(self):
-        obs = get_detailed_visibility_description(self.world, self.x, self.y, 5)
+        obs = get_detailed_visibility_description(self.world, self.x, self.y, self, 5)
         return obs
 
     def local_map(self):
-        obs = get_detailed_visibility_description(self.world, self.x, self.y, 5)
+        obs = get_detailed_visibility_description(self.world, self.x, self.y, self, 5)
         return obs
 
     def move(self, direction):
@@ -674,22 +590,65 @@ class Agent:
 
 
     @staticmethod
-    def get_direction_offset(direction):
-        direction = Direction.from_string(direction)
-        offsets = {
-            Direction.North: (0, -1),
-            Direction.Northeast: (1, -1),
-            Direction.East: (1, 0),
-            Direction.Southeast: (1, 1),
-            Direction.South: (0, 1),
-            Direction.Southwest: (-1, 1),
-            Direction.West: (-1, 0),
-            Direction.Northwest: (-1, -1)
+    def get_direction_offset(direction_text):
+        """
+        Get x,y offset for a direction, handling natural language descriptions
+        
+        Args:
+            direction_text: String that may contain a direction within it
+            
+        Returns:
+            Tuple of (dx, dy) offsets or (0,0) if no valid direction found
+        """
+        # First try direct conversion
+        direction = Direction.from_string(direction_text)
+        if direction:
+            offsets = {
+                Direction.North: (0, -1),
+                Direction.Northeast: (1, -1),
+                Direction.East: (1, 0),
+                Direction.Southeast: (1, 1),
+                Direction.South: (0, 1),
+                Direction.Southwest: (-1, 1),
+                Direction.West: (-1, 0),
+                Direction.Northwest: (-1, -1)
+            }
+            return offsets[direction]
+
+        # If that fails, look for direction words in the text
+        direction_words = {
+            'north': (0, -1),
+            'northeast': (1, -1), 
+            'east': (1, 0),
+            'southeast': (1, 1),
+            'south': (0, 1),
+            'southwest': (-1, 1),
+            'west': (-1, 0),
+            'northwest': (-1, -1),
+            # Add common abbreviations
+            'n': (0, -1),
+            'ne': (1, -1),
+            'e': (1, 0),
+            'se': (1, 1),
+            's': (0, 1),
+            'sw': (-1, 1),
+            'w': (-1, 0),
+            'nw': (-1, -1)
         }
-        return offsets[direction]
+
+        # Convert to lowercase and split into words
+        words = direction_text.lower().split()
+        
+        # Look for any direction word in the text
+        for word in words:
+            if word in direction_words:
+                return direction_words[word]
+                
+        # If no direction found, return no movement
+        return (0, 0)
 
     def get_detailed_visibility_description(self, height=5):
-        return get_detailed_visibility_description(self.world, self.x, self.y, height)
+        return get_detailed_visibility_description(self.world, self.x, self.y, self, height)
 
 def manhattan_distance(x1, y1, x2, y2):
     return abs(x2 - x1) + abs(y2 - y1)
@@ -704,7 +663,7 @@ def get_slope_description(elevation_change):
         return "Downhill"
 
 
-def get_detailed_visibility_description(world, x, y, observer_height):
+def get_detailed_visibility_description(world, x, y, observer, observer_height):
     visible_patches = world.get_visibility(x, y, observer_height)
     visible_patches.append(world.patches[x][y])  # Add current patch
 
@@ -715,7 +674,7 @@ def get_detailed_visibility_description(world, x, y, observer_height):
     pos.text = ""
 
     for direction in Direction:
-        direction_element = ET.SubElement(root, "direction", name=direction.name)
+        direction_element = ET.SubElement(root, direction.name)
 
         if direction == Direction.Current:
             direction_patches = [world.patches[x][y]]
@@ -760,7 +719,7 @@ def get_detailed_visibility_description(world, x, y, observer_height):
                 water_element.set("distances", ",".join(map(str, sorted(water_distances))))
 
         visible_agents = [agent for agent in world.agents if
-                          world.patches[agent.x][agent.y] in direction_patches and (agent.x != x or agent.y != y)]
+                          world.patches[agent.x][agent.y] in direction_patches and agent != observer]
         if visible_agents:
             agents_element = ET.SubElement(direction_element, "agents")
             for agent in visible_agents:
@@ -801,7 +760,7 @@ def extract_direction_info(xml_string, direction_name):
     root = ET.fromstring(xml_string)
 
     # Find the direction element
-    direction_elem = root.find(f".//direction[@name='{direction_name}']")
+    direction_elem = root.find(f".//{direction_name}")
 
     if direction_elem is None:
         return f"No information found for direction: {direction_name}"

@@ -80,7 +80,8 @@ def find(key, xml_str):
     # Find closing tag
     end = xml_strl.find(f'</{tag}>', tag_end)
     if end == -1:
-        return ""
+        # run on tag_end + 1 to end of string
+        return xml_str[tag_end + 1:]
         
     return xml_str[tag_end + 1:end]
 

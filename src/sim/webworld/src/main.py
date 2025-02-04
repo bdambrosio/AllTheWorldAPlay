@@ -153,6 +153,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 'type': 'play_loaded',
                                 'name': play_name
                             }))
+                            await asyncio.sleep(0.1)
                             #image_path = sim.simulation.context.image(filepath='worldsim.png')
                             context_data = sim.simulation.context.to_json()
                             image_path = context_data['image']
@@ -165,8 +166,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 'name': 'World',
                                 'data': context_data
                             }))
+                            await asyncio.sleep(0.1)
                             await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
-
+                            await asyncio.sleep(0.1)
                         except Exception as e:
                             await websocket.send_text(json.dumps({
                                 'type': 'play_error',
@@ -195,7 +197,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'name': 'World',
                             'data': context_data
                         }))
+                        await asyncio.sleep(0.1)
                         await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
+                        await asyncio.sleep(0.1)
                     except Exception as e:
                         sim = None
                         await websocket.send_text(json.dumps({
@@ -219,6 +223,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'paused': sim.simulation.paused
                         }
                     }))
+                    await asyncio.sleep(0.1)
                     
                 elif action == 'inject':
                     target = data.get('target')
@@ -241,7 +246,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         }
                     }
                     await websocket.send_text(json.dumps(state))
-                
+                    await asyncio.sleep(0.1)
     except WebSocketDisconnect:
         print(f"Client disconnected: {session_id}")
         # Stop simulation if running

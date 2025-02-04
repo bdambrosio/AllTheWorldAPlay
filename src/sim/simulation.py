@@ -113,8 +113,9 @@ class Simulation:
                                     char_data['image'] = image_data
                                     if char_update_callback:
                                         await char_update_callback(char.name, char_data)
+                                        await asyncio.sleep(0.1)
                     except Exception as e:
-                        print(f"Error generating image for {char.name}: {e}")
+                         print(f"Error generating image for {char.name}: {e}")
                         
                 #now handle context
                 if self.steps_since_last_update > 4:    
@@ -122,6 +123,7 @@ class Simulation:
                     if char_update_callback:
                         context_data = self.context.to_json()
                         await world_update_callback('World', context_data)
+                        await asyncio.sleep(0.1)
                     self.steps_since_last_update = 0
                 else:
                     self.steps_since_last_update += 1
@@ -173,6 +175,7 @@ class Simulation:
         target = self.context.get_actor_by_name(target_name)
         if update_callback and target:
             await update_callback(target_name, target.to_json())
+            await asyncio.sleep(0.1)
             target.show = ''
         
     def get_character_status(self):

@@ -19,10 +19,6 @@ function CharacterNarrative({ narrative }) {
                 .map(([name, desc]) => `${name}: ${desc}`)
                 .join('\n')
         },
-        background: {
-            label: 'Background',
-            content: narrative.background
-        }
     };
 
     return (

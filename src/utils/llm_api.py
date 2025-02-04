@@ -1,11 +1,12 @@
 from matplotlib.hatch import Stars
 import os, sys, re, traceback, requests, json
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
 import socket
 import time
 from pathlib import Path
-
 from sympy import Ordinal
+from utils.DeepSeekLocalClient import DeepSeekLocalClient
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
@@ -14,6 +15,7 @@ import utils.ClaudeClient as anthropic_client
 import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
+import utils.DeepSeekLocalClient as DeepSeekLocalClient
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
@@ -29,7 +31,7 @@ except openai.OpenAIError as e:
    print(e)
 
 deepseek_client = DeepSeekClient.DeepSeekClient()
-
+deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -37,9 +39,9 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
 
     prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
 Your task is to compress detailed scene descriptions into optimal prompts for Stable Diffusion 3.5-large-turbo, which has a 128 token limit.
-<SceneDescription>
+<scene>
 {{$input}}
-</SceneDescription>
+</scene>
 Rules:
 The input is either a character description or a scene description. If the former, then the first word is the character name.
 Preserve key visual elements and artistic direction, including, if it is a character description, character appearance and emotional state as well askey elements of the background scene.
@@ -51,11 +53,12 @@ Start with the most important visual elements
 Output only the compressed prompt, no explanations
 
 End your response with:
-</End>
+</end>
 """)]
-    if llm is None: 
-        llm = LLM('local')
-    compressed_prompt = llm.ask({"input":description}, prompt, stops=['</End>'])
+    #if llm is None: 
+    #    llm = LLM('local')
+    #compressed_prompt = llm.ask({"input":description}, prompt, stops=['</End>'])
+    compressed_prompt = description
     cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'
     response =  requests.get(url, params={"prompt":"phtorealistic style: "+compressed_prompt, "size":size})
@@ -98,10 +101,11 @@ class LLM():
         else:
             self.context_size = 16384  # conservative local mis/mixtral default
             try:
-                response = requests.post('http://127.0.0.1:5000' + '/template')
-                if response.status_code == 200:
-                    self.context_size = response.json()['context_size']
-                    print(f'context: {self.context_size}')
+                if 'deepseeklocal' not in self.llm:
+                    response = requests.post('http://127.0.0.1:5000' + '/template')
+                    if response.status_code == 200:
+                        self.context_size = response.json()['context_size']
+                        print(f'context: {self.context_size}')
             except Exception as e:
                 print(f' fail to get prompt template from server {str(e)}')
 
@@ -134,10 +138,10 @@ class LLM():
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
-        if options.model is not None and 'deepseek' in options.model:
+        if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'deepseek' in self.llm:
+        if 'deepseek' in self.llm and 'deepseeklocal' not in self.llm:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         if 'llama.cpp' in self.llm:
@@ -151,11 +155,32 @@ class LLM():
             return response
         else:
             if options.stops is None: options.stops = []
-            response =  requests.post(url, headers= headers,
+            if 'deepseeklocal' in self.llm:
+                headers = {"Content-Type": "application/json"}
+                url = 'http://localhost:5000/v1/completions'
+                content = '\n'.join([msg['content'] for msg in substituted_prompt])
+                response =  requests.post(url, headers= headers,
+                                          json={"model":"/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B", 
+                                                "prompt":content, "temperature":options.temperature,
+                                               "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
+            else:
+                url = 'http://localhost:5000/v1/chat/completions'
+                response =  requests.post(url, headers={"Content-Type":"application/json"},
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
-            text = response.content.decode('utf-8').strip()
+            if 'deepseeklocal' in self.llm:
+                text = response.json()['choices'][0]['text']
+                if (index := text.find('</think>')) > -1:
+                    text = text[index+8:].strip()
+                return text
+            elif 'local' in self.llm:
+                text = response.content.decode('utf-8').strip()
+                return text
+
+            if 'deepseeklocal' in self.llm and (index := text.find('</think>')) > -1:
+                text = text[index+8:].strip()
+                return text
             if text.startswith('{'):
                 try:
                     jsonr = json.loads(text)
@@ -183,7 +208,10 @@ class LLM():
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             response = self.run_request(input, prompt_msgs, options)
             #response = response.replace('<|im_end|>', '')
-            print(f'llm: {f"{time.time()-start:.1f}"}')
+            elapsed = time.time()-start
+            print(f'llm: {elapsed}')
+            if elapsed > 10.0:
+                print(f'llm: {elapsed}')
             if stops is not None and type(response) is str: # claude returns eos
                 if type(stops) is str:
                     stops = [stops]

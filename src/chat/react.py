@@ -43,20 +43,20 @@ react_intro_string = """Your assignment is to complete the Task given below. Thi
 
 # leaving these out, since already in memories
 react_suffix_string = """
-<PreviousOrient>
+<previousOrient>
 {{$orient}}
-</PreviousOrient>
+</previousOrient>
 
-<PreviousThought>
+<previousThought>
 {{$thought}}
-</PreviousThought>
+</previousThought>
 """
 
 orient_think_string = """
 You have the actions above available. Note that these include a number of information-gathering acts.
 
 The OTP plan includes the following steps:
-<OTP>
+<otp>
 1. Orient: Analyze the Task above and determine whether anything remains sufficiently unresolved or unknown to prevent task completion. 
 For example, do you have enough knowledge in known fact or Memory to answer an information request at the level of detail requested? 
 If no such unresolved condition exists, respond with: 'All preconditions are satisfied'.
@@ -64,29 +64,29 @@ Otherwise choose the single most significant information lack or unresolved cond
 Your bias when there is ambiguity should be to assume you can complete a task without further information-seeking.
 Your response should be concise, limited to a single short sentence where possible.
 Respond with the results of your analysis in the format:
-<Orient>
+<orient>
 ...orientation statement...
-</Orient>
+</orient>
 
 =====Example Orient Responses=====
 
 Following is an example of detection of an incomplete precondition:
-<Task>
+<task>
 please get article Why Gaza Protests on U.S. College Campuses Have Become So Contagious
-</Task>
+</task>
 
-<Orient>
+<orient>
 I have no 'article title Why Gaza Protests on U.S. College Campuses Have Become So Contagious retrieval complete' statement in working memory'.
-</Orient>
+</orient>
 
 Following is an example of all preconditions satisfied:
-<Task>
+<task>
 Why is the sky blue?
-</Task>
+</task>
 
-<Orient>
+<orient>
 All preconditions are satisfied.
-</Orient>
+</orient>
 
 =====End Example Orient Responses=====
 
@@ -99,13 +99,14 @@ Respond with your thoughts in the format:
 ...thought...
 ...thought...
 ...
-</Thoughts>
+</thoughts>
 
-</OTP>
+<otp>
+</otp>
 
 Now perform steps 1 and 2: Orient, Think, as instructed in the OTP plan above.
 End your response with:
-</End>
+<end/>
 """
 
 
@@ -124,36 +125,36 @@ Respond only in XML as shown,  with no additional discursive or explanatory text
 """
 
 act_string="""
-<Actions>
+<actions>
 
 i. Answer: Respond to the task originating actor. 'Answer' should always be the first action choice when an answer for the user Task or Question is available from known fact, memory-stream, and/or reasoning. Answer must be expressed in a style matching your Personality above, and should be of a length reflecting the complexity of the Task or Question. Respond with the following format:
-<Act>answer</Act>
-<Target>name of originating actor of task</Target>
-<Content>answer or response to target question or task</Content>
+<act>answer</act>
+<target>name of originating actor of task</target>
+<content>answer or response to target question or task</content>
 
 ii. Library: search the local library of computing and biomedicine papers. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'library' can be chosen when there is insufficient information to complete user task, and can only be chosen if there is no 'library action rejected' statement in the <MemoryStream>. 'Library' should be chosen before the 'Research' action on a same or similar Question, as 'Library' is less resource intensive. To use the 'Library' action, formulate a concise, Question for the specific information needed. It can be useful to significantly rephrase a previously used question, but never repeat a previous question verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. Respond in the following format:
-<Act>library</Act>
-<Target>library</Target>
-<Content>question on information needed</Content>
+<act>library</act>
+<target>library</target>
+<content>question on information needed</content>
 
 iii. Google: search the web for information. Information found is placed in working memory, where it can be retrieved using the 'review' action. 'Google' can be chosen when there is insufficient information to complete user task, and can only be chosen if there is no 'google action rejected' statement in the <MemoryStream>. To use the 'Google' action, formulate a concise, Question for the specific information needed. It can be useful to significantly rephrase a previously used question, but never repeat a previous question verbatim. Your question must be single, self-contained and context-free. That is, it must contain exactly one information request, and all NERs must be explicitly named. Inclusion by reference is not permitted. Respond in the following format:
-<Act>google</Act>
-<Target>google</Target>
-<Content>question on information needed</Content>
+<act>google</act>
+<target>google</target>
+<content>question on information needed</content>
 
 iv. Review: Extract relevant information from the memory stream and previous knowledge-seeking acts for review. To review for specific data, formulate a concise, detailed Question specifying the information needed. This action should not be chosen repeatedly with the same or similar query. Respond in the following format:
-<Act>review</Act>
-<Target>self</Target>
-<Content>concise statement of data needed.</Content>
+<act>review</act>
+<target>self</target>
+<content>concise statement of data needed.</content>
 
 v. Article: Retrieve a news article by name from the NYTimes api. This action should be chosen when explicitly directed in Task or promised in an immediately preceding thought, but may be relevant at other times also. When a preceding thought expresses an intention to perform an article act, a subsequent memory stream item recording 'article title ... retrieval complete' will appear when the retrieval is complete, otherwise it is still pending.
 You have the credentials needed for this action to succeed. Respond using the following format: Respond in the following format: 
-<Act>article</Act>
-<Target>self</Target>
-<Content>name of article</Content>
+<act>article</act>
+<target>self</target>
+<content>name of article</content>
 
 End your response with:
-</End>
+</end>
 *****
 Example:
 
@@ -161,14 +162,14 @@ Task:
 How are you feeling?
 
 Response:
-<Act>answer</Act>
-<Target>Doc</Target>
-<Content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, everything seems to be operating smoothly so far!</Content>
-</End>
+<act>answer</act>
+<target>Doc</target>
+<content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, everything seems to be operating smoothly so far!</content>
+</end>
 
 End Example
 *****
-</Actions>
+</actions>
 
 """
 
@@ -179,19 +180,19 @@ respond_string = """
 Choose an action to respond to the originating actor.
 The action must be from the list of Actions below. 
 
-<Actions>
+<actions>
 
 i. Answer: Respond to the task originating actor. 'Answer' should always be the first action choice when an answer for the user Task or Question is available from known fact, memory-stream, and/or reasoning. Answer must be expressed in a style matching your Personality above, and should be of a length reflecting the complexity of the Task or Question. Respond with the following format:
-<Act>answer</Act>
-</Target><name of originating actor of task></Target>
-<Content><answer or response to target question or task></Content>
+<act>answer</act>
+<target><name of originating actor of task></target>
+<content><answer or response to target question or task></content>
 
 v. Article: Retrieve a news article by name from the NYTimes api. This action must be chosen when explicitly directed in Task or promised in a 'thought', but may be relevant at other times also. When a preceding thought expresses an intention to perform an article act, a subsequent memory stream item recording 'article retrieval complete' will appear when the retrieval is complete, otherwise it is still pending.You have the credentials needed for this action to succeed. Respond using the following format: Respond in the following format: 
-<Act>article</Act>
-</Target>self</Target>
-<Content><name of article></Content>
+<act>article</act>
+<target>self</target>
+<content><name of article></content>
 
-End your response with </End>
+End your response with </end>
 
 *****
 Example:
@@ -200,16 +201,16 @@ Task:
 How are you feeling?
 
 Response:
-<Act>answer</Act>
-<Target>Doc</Target>
-<Content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, 
-everything seems to be operating smoothly so far!</Content>
-</End>
+<act>answer</act>
+<target>Doc</target>
+<content>I appreciate your concern, Doc -- while I don't experience feelings per se since I'm an artificial intelligence without emotional capabilities, 
+everything seems to be operating smoothly so far!</content>
+</end>
 
 End Example
 *****
 
-</Actions>
+</actions>
 
 """
 
@@ -275,17 +276,17 @@ class Actor (agh.Agh):
         
         # Build context for OTP using cognitive state
         input_text = f"""
-<Task>
+<task>
 {task_text}
-</Task>
+</task>
 
-<CognitiveState>
+<cognitiveState>
 {self.current_state}
-</CognitiveState>
+</cognitiveState>
 
-<Priorities>
+<priorities>
 {self.priorities}
-</Priorities>
+</priorities>
 """
         
         # Run OTP with cognitive awareness
@@ -414,16 +415,6 @@ class Actor (agh.Agh):
             else:
                 print(f'\nMemory: {memory.text}')
                 
-    """
-    def format_memories(self, short=True):
-          if len(self.memory_stream.memories) == 0:
-              return ''
-          else:
-              return '<Memory Stream>\n' +\
-                  '\nMemory: '.join([m.text for m in self.memory_stream.memories[-5:]]) +\
-                  '\n</Memory Stream>\n'
-    """
-    
 
     # should this shorten memories, or should that be done at remember time? And maybe worry about losing full mem there?
     def selective_recall(self, query, recent=12):
@@ -461,7 +452,7 @@ class Actor (agh.Agh):
         if not memories:
             return ''
         
-        return '<Memory Stream>\n' + '\n'.join(memories) + '\n</Memory Stream>\n'
+        return '<memory_tream>\n' + '\n'.join(memories) + '\n</memory_stream>\n'
                 
             
     def research_analysis(self, query):
@@ -540,24 +531,24 @@ Recent relevant memories:
         
         prompt = [UserMessage(content="""Given the Task and your Analysis of it below, evaluate the following Proposal below against each of the following Measures and respond with a concise statement of your evaluation. Your evaluation should focus on the degree to which the proposal actually addresses and proposes detailed solutions to the Task and its Analysis items, and include evaluations of those proposed solution elements against the Measures.
 
-<Task>
+<task>
 {{$task}}
-</Task>
+</task>
 
-<Analysis>
+<analysis>
 {{$analysis}}
-</Analysis>
+</analysis>
 
-<Measures>
+<measures>
 {{$measures}}
-</Measures>
+</measures>
 
 End your response with:
-</End>"""),
+</end>"""),
                   UserMessage(content="""
-<Proposal>
+<proposal>
 {{$proposal}}
-</Proposal>
+</proposal>
 """
                               ),
                   ]
@@ -566,7 +557,7 @@ End your response with:
                                      "measurers": '\n\n'.join(measures), "proposal":draft},
                                     prompt,
                                     temp=0.01,
-                                    max_tokens=600, stops=["</End>"])
+                                    max_tokens=600, stops=["</end>"])
         print(f"""\n**** Evaluation ****
 ***
 
@@ -658,17 +649,17 @@ Evaluation
             UserMessage(content=f"""
 {self.personality}
 
-<Task>
+<task>
 {task_text}
-</Task>
+</task>
 
-<Context>
+<context>
 {relevant_info}
-</Context>
+</context>
 
-<CurrentState>
+<current_state>
 {self.current_state}
-</CurrentState>
+</current_state>
 
 {act_prefix_string}
 {act_string}
@@ -676,12 +667,12 @@ Evaluation
         ]
         
         # Get action selection in XML format
-        action_response = self.llm.ask({}, prompt, max_tokens=1000, stops=["</End>"])
+        action_response = self.llm.ask({}, prompt, max_tokens=1000, stops=["</end>"])
         
         # Extract action components
-        act = xml.find('<Act>', action_response)
-        target = xml.find('<Target>', action_response)
-        content = xml.find('<Content>', action_response)
+        act = xml.find('<act>', action_response)
+        target = xml.find('<target>', action_response)
+        content = xml.find('<content>', action_response)
         
         if act and target and content:
             if act.lower() == 'answer':

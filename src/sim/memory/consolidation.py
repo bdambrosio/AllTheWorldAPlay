@@ -49,10 +49,10 @@ Events:
 
 Respond with just the summary, no additional text.
 End your response with:
-</End>
+</end>
 """)]
                 
-                summary = self.llm.ask({}, prompt, stops=["</End>"])
+                summary = self.llm.ask({}, prompt, stops=["</end>"])
                 if summary:
                     abstract.summary = summary.strip()
 
@@ -134,42 +134,11 @@ End your response with:
         pass
 
     def update_narrative(self, memory: StructuredMemory, narrative: NarrativeSummary, 
-                        current_time: datetime, character_desc: str) -> None:
+                        current_time: datetime, character_desc: str, cycle: int = 0, relationsOnly: bool = True) -> None:
         """Update narrative summary based on recent memories and abstractions"""
         
         if not narrative.needs_update(current_time):
             return
-        
-        # Update background narrative
-        prompt = [UserMessage(content=f"""Given a character's previous background and recent significant experiences, 
-create an updated background summary that captures their key characteristics and important past events.
-
-Character Description:
-{character_desc}
-
-Previous Background:
-{narrative.background if narrative.background else "No previous background"}
-
-Recent Abstract Activities:
-{chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(5))}
-
-Important Recent Memories:
-{chr(10).join(f"- {mem.text}" for mem in memory.get_all() if mem.importance > 0.8)}
-
-Create a concise background summary (about 200 words) that:
-1. Maintains key character-defining events
-2. Incorporates significant new experiences
-3. Explains current personality/behavior patterns
-4. Preserves essential relationships
-
-Respond with just the background summary, no additional text.
-End with:
-</End>
-""")]
-
-        new_background = self.llm.ask({}, prompt, stops=["</End>"])
-        if new_background:
-            narrative.background = new_background.strip()
         
         # Update ongoing activities
         active_abstract = memory.get_active_abstraction()
@@ -188,7 +157,7 @@ Recent Abstractions:
 {chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(3))}
 
 Recent Concrete Memories:
-{chr(10).join(f"- {mem.text}" for mem in memory.get_recent(5))}
+{chr(10).join(f"- {mem.text}" for mem in memory.get_recent(8))}
 
 Create a concise summary (about 100 words) that describes:
 1. What the character is currently doing
@@ -202,12 +171,14 @@ End with:
 </End>
 """)]
 
-        new_activities = self.llm.ask({}, prompt, stops=["</End>"])
-        if new_activities:
-            narrative.ongoing_activities = new_activities.strip()
+        if not relationsOnly:
+            narrative.last_update = current_time
+            new_activities = self.llm.ask({}, prompt, stops=["</End>"])
+            if new_activities:
+                narrative.ongoing_activities = new_activities.strip()
         
         # Update recent events
-        recent_window = current_time - timedelta(hours=4)  # Last 4 hours
+        recent_window = current_time - timedelta(hours=24)  # Last 4 hours
         recent_abstracts = [abs for abs in memory.get_recent_abstractions(5)
                            if abs.start_time >= recent_window]
         recent_concretes = [mem for mem in memory.get_recent(10)
@@ -236,12 +207,13 @@ Create a flowing narrative (about 150 words) that:
 Write in past tense, focus on specific details and immediate consequences.
 Respond with just the event narrative, no additional text.
 End with:
-</End>
+</end>
 """)]
 
-        new_events = self.llm.ask({}, prompt, stops=["</End>"])
-        if new_events:
-            narrative.recent_events = new_events.strip()
+        if not relationsOnly:
+            new_events = self.llm.ask({}, prompt, stops=["</end>"])
+            if new_events:
+                narrative.recent_events = new_events.strip()
         
         # Update key relationships
         valid_chars = [a.name for a in memory.owner.context.actors 
@@ -290,16 +262,15 @@ Describe their current relationship in a brief statement that captures:
 3. Any recent changes
 4. Ongoing dynamics
 
-Respond with just the relationship description, no additional text.
+Respond with just a conciserelationship description, no additional text.
 End with:
-</End>
+</end>
 """)]
 
-                new_relation = self.llm.ask({}, prompt, stops=["</End>"])
+                new_relation = self.llm.ask({}, prompt, stops=["</end>"])
                 if new_relation:
                     narrative.key_relationships[char_name] = new_relation.strip()
         
-        narrative.last_update = current_time
 
     def _create_abstraction(self, memory: StructuredMemory, memories: List[MemoryEntry], drive: Drive) -> None:
         """Create a new abstract memory from related concrete memories"""

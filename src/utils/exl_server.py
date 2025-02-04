@@ -71,20 +71,24 @@ config.prepare()
 model = ExLlamaV2(config)
 
 if 'Llama-3.1-70B' in model_name.lower() or 'llama-3-70b' in model_name.lower():
-    print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([36, 36])
+    print(f"Loading model: {model_name}\n context {context_size} 42,42")
+    model.load([42, 44])
 
-elif 'command-r' in model_name:
+elif 'Mistral-Small-24B' in model_name or 'Llama-3.3-70B-Instruct' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([36, 48])
+    model.load([32, 42])
 
 elif 'qwen' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
     model.load([36,44])
 
-else:
+elif 'calme' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([42, 48])
+    model.load([36,44])
+
+#else:
+#    print(f"Loading model: {model_name}\n context {context_size}")
+#    model.load([42, 48])
 
 
     print('model load done..')

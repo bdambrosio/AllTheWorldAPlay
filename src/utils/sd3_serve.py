@@ -2,9 +2,13 @@ from fastapi import FastAPI, Response
 import torch
 from diffusers import StableDiffusion3Pipeline # type: ignore
 
+#pipe = StableDiffusion3Pipeline.from_pretrained(
+#    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16,
+#).to("cuda")
+
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3.5-large", torch_dtype=torch.bfloat16
-).to("cuda")
+    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16,device_map='balanced'
+)
 
 #pipe = StableDiffusion3Pipeline.from_pretrained(
 #    "stabilityai/stable-diffusion-3.5-large", torch_dtype=torch.bfloat16
@@ -14,7 +18,7 @@ from io import BytesIO
 
 app = FastAPI()
 
-pipe.to("cuda")
+#pipe.to("cuda")
 
 prompt = "A raccoon trapped inside a glass jar full of colorful candies, the background is steamy with vivid colors."
 
