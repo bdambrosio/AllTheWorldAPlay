@@ -247,8 +247,11 @@ End with:
             if char_memories:
                 prompt = [UserMessage(content=f"""Analyze the relationship between these characters based on recent interactions.
 
-Character: {character_desc}
-Other Character: {char_name}
+Character: 
+{character_desc}
+
+
+Other Characters: {char_name}
 
 Previous Relationship Status:
 {narrative.key_relationships.get(char_name, "No previous relationship data")}
@@ -262,12 +265,12 @@ Describe their current relationship in a brief statement that captures:
 3. Any recent changes
 4. Ongoing dynamics
 
-Respond with just a conciserelationship description, no additional text.
+Respond with a concise updated relationship description of up to 100 tokens, no additional text.
 End with:
 </end>
 """)]
 
-                new_relation = self.llm.ask({}, prompt, stops=["</end>"])
+                new_relation = self.llm.ask({}, prompt, max_tokens=200, stops=["</end>"])
                 if new_relation:
                     narrative.key_relationships[char_name] = new_relation.strip()
         

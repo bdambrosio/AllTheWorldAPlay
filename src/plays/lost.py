@@ -7,7 +7,7 @@ import sim.context as context, sim.agh as agh
 
 # Create characters
 server='deepseeklocal'
-#server='local'
+server='local'
 S = agh.Agh("Samantha", """You are Samantha, a healthy, attractive young woman. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 

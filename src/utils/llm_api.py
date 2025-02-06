@@ -34,6 +34,7 @@ deepseek_client = DeepSeekClient.DeepSeekClient()
 deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+vllm_model = 'deepseek-r1-distill-llama-70b-awq'
 
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
@@ -90,10 +91,17 @@ pattern = r'\{\$[^}]*\}'
 # options include 'local', 'Claude', 'OpenAI', 'deepseek-chat',
 class LLM():
     def __init__(self, llm='local'):
+        global vllm_model
         self.llm = llm
         print(f'will use {self.llm} as llm')
         if llm.startswith('GPT') or llm.startswith('deepseek'):
-            self.context_size = 32000
+            models = requests.get('http://127.0.0.1:5000/v1/models')
+            if models.status_code == 200:
+                vllm_model = models.json()['data'][0]['id']
+                print(f'vllm model: {vllm_model}')
+            else:
+                print(f'fail to get models {models.status_code}')
+            self.context_size = 16384
         elif llm.startswith('mistral'):
             self.context_size = 32000  # I've read mistral uses sliding 8k window
         elif llm.startswith('claude'):
@@ -114,6 +122,7 @@ class LLM():
             print(f"Directory '{IMAGE_PATH}' created.")
 
     def run_request(self, bindings, prompt, options):
+        global vllm_model
         #
         ### first substitute for {{$var-name}} in prompt
         #
@@ -160,8 +169,8 @@ class LLM():
                 url = 'http://localhost:5000/v1/completions'
                 content = '\n'.join([msg['content'] for msg in substituted_prompt])
                 response =  requests.post(url, headers= headers,
-                                          json={"model":"/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B", 
-                                                "prompt":content, "temperature":options.temperature,
+                                          json={"model":vllm_model, 
+                                                "prompt":content, "temperature":0.0,
                                                "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
             else:
                 url = 'http://localhost:5000/v1/chat/completions'
@@ -209,9 +218,9 @@ class LLM():
             response = self.run_request(input, prompt_msgs, options)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
-            print(f'llm: {elapsed}')
-            if elapsed > 10.0:
-                print(f'llm: {elapsed}')
+            print(f'llm: {elapsed:.2f}')
+            if elapsed > 5.0:
+                print(f'llm excessive time: {elapsed:.2f}')
             if stops is not None and type(response) is str: # claude returns eos
                 if type(stops) is str:
                     stops = [stops]

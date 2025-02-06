@@ -99,8 +99,7 @@ class Simulation:
             if self.initialized:
                 for char in self.characters:
                     # Process character step
-                    char.senses()
-                    
+                    char.cognitive_cycle()
                     # Generate and send image update
                     char_data = char.to_json()
                     try:

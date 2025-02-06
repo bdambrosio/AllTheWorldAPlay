@@ -9,6 +9,7 @@ class SensoryMode(Enum):
     AUDITORY = "auditory" 
     MOVEMENT = "movement"
     INTERNAL = "internal"
+    UNCLASSIFIED = "unclassified"
 
 @dataclass
 class PerceptualInput:
