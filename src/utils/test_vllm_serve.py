@@ -1,32 +1,38 @@
+import time
 import requests, json
 import llm_api
 from Messages import UserMessage, SystemMessage, AssistantMessage
 
+llm = llm_api.LLM('deepseeklocal')
 llm = llm_api.LLM('local')
-content="""Given a message, determine the most appropriate sensory mode for it.
-Input may be auditory, visual, or movement, or internal.
+content="""Determine its sensory mode of the following message,
+a terse description of the perceptual content,
+and the emotionalintensity of the perceptual content.
+
+sense mode may be:
+auditory
+visual
+movement
+internal
+unclassified
 
 <message>
-you hear: hi Joe
+You see Joe
 </message>
 
-Respond only with the answer, do NOT report your thinking.
-Respond using this XML format:
+Respond using this format:
 
-<input>true/false </input>
-<mode>auditory/visual/movement/internal</mode>
-<content>terse description of perceptual content in the given mode</content>
-<intensity>0-1</intensity>
-Be sure to include any character name in the content.
-Do not include any introductory, discursive, or explanatory text.
-Do not include any markdown or other formatting information.
-Respond only with the above XML.
-End your response with:
+mode
 <end/>
+
+Respond only with the mode. Do not include any introductory, discursive, or explanatory text.
 """
 
 prompt = [UserMessage(content=content)]
 
-response = llm.ask({}, prompt, max_tokens=100, stops=['<end/>'])
-
-print(response)
+for i in range(5):
+    start = time.time()
+    response = llm.ask({}, prompt, temp=0, max_tokens=10, stops=['<end/>'])
+    elapsed = time.time()-start
+    print(f'llm: {elapsed:.2f}')
+    print(response)
