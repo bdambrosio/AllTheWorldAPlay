@@ -2,11 +2,11 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
+import plays.config as configuration
 
+server = configuration.server
 # Create characters
 
-server='deepseeklocal'
-#server='local'
 jill = agh.Agh("Jill", "I am a young confused woman.", server=server)
 jill.set_drives([
     "self-knowledge: comfort with knowing one's place in the world.",

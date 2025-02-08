@@ -172,15 +172,21 @@ class Patch:
         return self.elevation < other.elevation
 
 class WorldMap:
-    def __init__(self, width, height, iterations=5):
+    def __init__(self, width, height, terrain_types=None, resources=None, iterations=5):
+        """Initialize world map with optional terrain types and resources"""
         self.width = width
         self.height = height
+        
+        # Use provided enums or defaults
+        self.TerrainType = terrain_types or TerrainType
+        self.Resource = resources or Resource
+        
         self.patches = [[Patch(x, y) for y in range(height)] for x in range(width)]
         self.generate_elevation()
         self.generate_terrain(iterations)
         self.generate_resources()
         self.set_terrain_heights()
-        self.agents = []  # New list to store registered agents
+        self.agents = []
         self.generate_water_features(num_sources=10, min_length=20)
         self.agents = []  # List exists but isn't fully utilized
 
@@ -197,7 +203,7 @@ class WorldMap:
         # Initialize with random terrain
         for row in self.patches:
             for patch in row:
-                patch.terrain = random.choice(list(TerrainType))
+                patch.terrain = random.choice(list(self.TerrainType))
 
         # Apply cellular automaton rules
         for _ in range(iterations):
@@ -206,7 +212,7 @@ class WorldMap:
             for x in range(self.width):
                 for y in range(self.height):
                     neighbors = self.get_neighbors(x, y)
-                    terrain_counts = {t: 0 for t in TerrainType}
+                    terrain_counts = {t: 0 for t in self.TerrainType}
 
                     for nx, ny in neighbors:
                         terrain_counts[self.patches[nx][ny].terrain] += 1
@@ -330,41 +336,46 @@ class WorldMap:
         return neighbors
 
     def generate_resources(self):
+        """Generate resources based on terrain type"""
+        terrain_types = list(self.TerrainType)  # Get ordered list of terrain types
         for row in self.patches:
             for patch in row:
                 if patch.has_water:
-                    continue  # Skip water patches
+                    continue
 
-                # Berries: More common in clearings and light forests, less common at high elevations
-                if random.random() < 0.1 and patch.elevation < 0.7:
-                    if patch.terrain == TerrainType.Clearing:
-                        patch.resources.append(Resource.Berries)
-                    elif patch.terrain == TerrainType.LightForest and random.random() < 0.7:
-                        patch.resources.append(Resource.Berries)
-
-                # Mushrooms: More common in dense and light forests, prefer middle elevations
-                if 0.3 < patch.elevation < 0.8:
-                    if patch.terrain in [TerrainType.DenseForest, TerrainType.LightForest] and random.random() < 0.15:
-                        patch.resources.append(Resource.Mushrooms)
-
-                # Fallen logs: More common in dense forests, slightly more common at higher elevations
-                if random.random() < 0.05 + (0.05 * patch.elevation):
-                    if patch.terrain == TerrainType.DenseForest:
-                        patch.resources.append(Resource.FallenLog)
-                    elif patch.terrain == TerrainType.LightForest and random.random() < 0.3:
-                        patch.resources.append(Resource.FallenLog)
+                # Try spawning each resource type
+                for resource in self.Resource:
+                    spawn_chance = 0.1  # Base spawn chance
+                    
+                    # Adjust chance based on terrain order (more resources in open areas)
+                    terrain_index = terrain_types.index(patch.terrain)
+                    spawn_chance *= 1.0 - (terrain_index * 0.2)  # Decreases with denser terrain
+                        
+                    # Adjust for elevation
+                    if patch.elevation > 0.7:
+                        spawn_chance *= 0.5  # Reduced at high elevations
+                        
+                    if random.random() < spawn_chance:
+                        patch.resources.append(resource)
 
     def print_map(self):
+        """Print map with terrain and resource symbols"""
+        # Available colors in order
+        colors = [Fore.GREEN, Fore.YELLOW, Fore.RED, Fore.MAGENTA, Fore.CYAN, Fore.BLUE]
+        symbols = ['█', '▓', '░', '■', '◆', '●']  # Different symbols for variety
+        
+        # Map terrain types to colors and symbols by index
+        terrain_types = list(self.TerrainType)
         terrain_chars = {
-            TerrainType.DenseForest: Fore.GREEN + '█' + Style.RESET_ALL,
-            TerrainType.LightForest: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
-            TerrainType.Clearing: Fore.YELLOW + '░' + Style.RESET_ALL
+            terrain: colors[i % len(colors)] + symbols[i % len(symbols)] + Style.RESET_ALL
+            for i, terrain in enumerate(terrain_types)
         }
-
+        
+        # Map resources to remaining colors
+        resource_types = list(self.Resource)
         resource_chars = {
-            Resource.Berries: Fore.RED + '•' + Style.RESET_ALL,
-            Resource.Mushrooms: Fore.MAGENTA + '∩' + Style.RESET_ALL,
-            Resource.FallenLog: Fore.WHITE + '=' + Style.RESET_ALL
+            resource: colors[(i + len(terrain_types)) % len(colors)] + '•' + Style.RESET_ALL
+            for i, resource in enumerate(resource_types)
         }
 
         for y in range(self.height):

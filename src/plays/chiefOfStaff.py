@@ -1,7 +1,10 @@
 import sim.worldsim as worldsim
 import sim.agh as agh
+import plays.config as configuration
+
+server = configuration.server
 # Create characters
-server='deepseeklocal'
+#server='deepseeklocal'
 #server='local'
 maam = agh.Agh("Madam", \
                """You are a human female, a busy working executive. 

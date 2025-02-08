@@ -25,6 +25,7 @@ function App() {
   const [worldState, setWorldState] = useState({});
   const websocket = useRef(null);
   const [showInjectDialog, setShowInjectDialog] = useState(false);
+  const logRef = useRef(null);
 
   useEffect(() => {
     async function initSession() {
@@ -108,6 +109,12 @@ function App() {
     return () => websocket.current?.close();
   }, []);
 
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logText]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!inputValue.trim() || !websocket.current) return;
@@ -172,9 +179,18 @@ function App() {
         ))}
       </div>
       <div className="center-panel">
-        <WorldPanel worldState={worldState} />
-        <div className="log-area">
-          {logText}
+        <div className="world-container">
+          <div className="world-header">
+            <div className="world-panel">
+              <WorldPanel worldState={worldState} />
+            </div>
+            <div className="world-description">
+              {worldState.show}
+            </div>
+          </div>
+          <div className="log-area" ref={logRef}>
+            {logText}
+          </div>
         </div>
       </div>
       <div className="control-panel">

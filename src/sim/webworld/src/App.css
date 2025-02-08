@@ -24,29 +24,48 @@ body {
   flex-direction: column;
 }
 
-.world-panel {
-  background-color: #333333;
-  border-radius: 5px;
-  padding: 20px;
+.world-container {
+  position: relative;
+  width: 100%;
+  height: 100%;  /* Fill container height */
+  display: flex;
   flex-direction: column;
-  gap: 20px;
+}
+
+.world-header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;  /* Prevent header from shrinking */
+}
+
+.world-panel {
+  width: 508px;
+  height: 508px;
+  background-color: #333333;
+  border-radius: 0px;
+  padding: 10px;
+  flex-shrink: 0;
 }
 
 .world-description {
-  font-size: 1.1em;
-  line-height: 1.4;
-  color: #e0e0e0;
+  flex: 1;
+  background-color: #333333;
+  border-radius: 2px;
+  padding: 10px;
+  color: #FFFFFF;
+  min-height: 512px;
 }
 
 .character-info {
-  margin: 20px 0;
+  margin: 10px 0;
 }
 
 .character-block {
   background-color: #3c3c3c;
   border-radius: 5px;
-  padding: 15px;
-  margin-bottom: 15px;
+  padding: 10px;
+  margin-bottom: 10px;
 }
 
 .character-block h3 {
@@ -67,8 +86,8 @@ body {
 .output-area {
   background-color: #2d2d2d;
   border-radius: 5px;
-  padding: 15px;
-  margin-bottom: 10px;
+  padding: 10px;
+  margin-bottom: 5px;
   height: 200px;
   overflow-y: auto;
 }
@@ -171,18 +190,21 @@ h3 {
   grid-column: 2;  /* Center column */
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 10px;
+  flex: 1;  /* Allow panel to grow */
+  min-width: 0;  /* Allow panel to shrink */
 }
 
 .log-area {
   background-color: #333333;
   color: #FFFFFF;
   padding: 10px;
-  height: 500px;
-  overflow-y: auto;
+  flex: 1;  /* Fill remaining space */
   font-size: 1.1em;
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-y: scroll;
+  scroll-behavior: smooth;
 }
 
 .dialog {
@@ -197,7 +219,7 @@ h3 {
 }
 
 .dialog button {
-  margin: 0 5px;
+  margin: 5px;
   padding: 5px 10px;
 }
 
@@ -209,4 +231,11 @@ h3 {
 
 .status-area div {
   margin: 5px 0;
+}
+
+/* Ensure image fits container */
+.world-panel img {
+  width: 98%;
+  height: 98%;
+  object-fit: scale-down;
 }

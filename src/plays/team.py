@@ -1,8 +1,8 @@
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
+import plays.config as configuration
 
-server='deepseeklocal'
-#server='local'
+server = configuration.server
 # Create the team members
 Lead = human.Human("TeamLead", """You are the team lead of a small software development team.
 You've been brought into this simulation for leadership training.

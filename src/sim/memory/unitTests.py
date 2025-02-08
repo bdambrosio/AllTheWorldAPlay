@@ -219,7 +219,6 @@ class TestMemorySystem(unittest.TestCase):
             ongoing_activities="",
             background="",
             last_update=base_time - timedelta(hours=5),  # Force update needed
-            key_relationships={},
             active_drives=["explore", "socialize"]
         )
         
@@ -245,9 +244,10 @@ class TestMemorySystem(unittest.TestCase):
         character_desc = "I am a pale grey kitten named Lemon. I love playing and exploring."
         
         # Update narrative
-        self.consolidator.update_narrative(
+        self.consolidator.update_cognitive_model(
             memory=self.memory,
             narrative=narrative,
+            knownActorManager=self.memory.owner.known_actors,
             current_time=base_time + timedelta(hours=4),
             character_desc=character_desc
         )
@@ -280,14 +280,14 @@ class TestMemorySystem(unittest.TestCase):
             ongoing_activities="Original activities",
             background="Original background",
             last_update=base_time,
-            key_relationships={},
             active_drives=[]
         )
         
         # Try update too soon (within update_interval)
-        self.consolidator.update_narrative(
+        self.consolidator.update_cognitive_model(
             memory=self.memory,
             narrative=narrative,
+            knownActorManager=self.memory.owner.known_actors,
             current_time=base_time + timedelta(hours=1),
             character_desc="Test character"
         )
@@ -297,9 +297,10 @@ class TestMemorySystem(unittest.TestCase):
                         "Should not update before interval")
         
         # Try update after interval
-        self.consolidator.update_narrative(
+        self.consolidator.update_cognitive_model(
             memory=self.memory,
             narrative=narrative,
+            knownActorManager=self.memory.owner.known_actors,
             current_time=base_time + timedelta(hours=5),
             character_desc="Test character"
         )

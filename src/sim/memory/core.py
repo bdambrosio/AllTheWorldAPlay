@@ -297,7 +297,6 @@ class NarrativeSummary:
     update_interval: timedelta = field(default_factory=lambda: timedelta(hours=0))
     
     # Supporting information
-    key_relationships: Dict[str, str] = field(default_factory=dict)  # name: relationship description
     active_drives: List[str] = field(default_factory=list)  # Current motivating drives
     key_events: List[Dict] = field(default_factory=list)  # Important memories that shaped character
     
@@ -314,36 +313,15 @@ class NarrativeSummary:
             
         if self.ongoing_activities:
             sections.append("Current Activities:\n" + self.ongoing_activities)
-                        
-        if self.key_relationships:
-            rel_text = "\n".join(f"- {name}: {desc}" for name, desc 
-                               in self.key_relationships.items())
-            sections.append("Key Relationships:\n" + rel_text)
-            
+                                    
         return "\n\n".join(sections)
     
     def get_summary(self, length: str = 'medium') -> str:
         """Get narrative summary of specified length (short/medium/long)"""
-        if length == 'short':
+        if length == 'short' or length == 'medium':
             # Just recent events and current activities
             return "\n\n".join([self.recent_events, self.ongoing_activities])
-        elif length == 'medium':
-            # Include key relationships
-            rel_text = "\n".join(f"- {name}: {desc}" for name, desc 
-                               in self.key_relationships.items())
-            return "\n\n".join([
-                self.recent_events,
-                self.ongoing_activities,
-                "Relationships:\n" + rel_text
-            ])
         else:
             # Full narrative
             return self.get_full_narrative()
     
-    def initialize_relationships(self, valid_characters: List[str]):
-        """Initialize relationships with valid character names at startup"""
-        # Create initial neutral/unknown relationship entries for all valid characters
-        self.key_relationships = {
-            name: f"No significant interactions with {name} yet. Relationship is neutral." 
-            for name in valid_characters
-        }

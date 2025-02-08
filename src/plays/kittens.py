@@ -1,10 +1,23 @@
+from enum import Enum
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
+import plays.config as configuration
 
-server='deepseeklocal'
-#server='local'
+server = configuration.server
+class GardenTerrain(Enum):
+    Grass = 1      # Roads and walkways
+    Tree = 2    # Commercial/residential buildings
+    Flower = 3       # Open spaces, squares
+    Bush = 4        # Green spaces
+
+class GardenResource(Enum):
+    Bug = 1     # Public transport
+    Butterfly = 2        # Retail locations
+    Flower = 3        # Food/drink venues
+    Leaf = 4       # Rest spots
+    Seed = 5    # Waste disposal
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 # Create characters
@@ -52,7 +65,7 @@ meow.add_to_history("Where did that Lemon go this time?")
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = context.Context([lemon, meow],
                 """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happenning.
-""", server=server)
+""", terrain_types=GardenTerrain, resources=GardenResource, server=server)
 
 #worldsim.IMAGEGENERATOR = 'tti_serve'
 
