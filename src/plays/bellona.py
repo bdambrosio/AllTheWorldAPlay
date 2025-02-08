@@ -2,9 +2,26 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
+import plays.config as configuration
+from enum import Enum
+from sim.map import WorldMap
 
-server='deepseeklocal'
-#server='local'
+class UrbanTerrain(Enum):
+    Street = 1      # Roads and walkways
+    Building = 2    # Commercial/residential buildings
+    Plaza = 3       # Open spaces, squares
+    Park = 4        # Green spaces
+    Construction = 5 # Building sites
+
+class UrbanResource(Enum):
+    BusStop = 1     # Public transport
+    Shop = 2        # Retail locations
+    Cafe = 3        # Food/drink venues
+    Bench = 4       # Rest spots
+    TrashBin = 5    # Waste disposal
+
+
+server = configuration.server
 K = agh.Agh("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
 You are a newcomer to the strange, isolated city of Bellona.
 You are intelligent, introspective, and somewhat disoriented by your new surroundings.
@@ -36,8 +53,7 @@ L.set_drives([
 L.add_to_history("You think: A newcomer in Bellona? How intriguing. He seems lost, but he's hot! I wonder what brought him here.")
 W = context.Context([K, L],
 """A post-apocalyptic urban landscape, the city of Bellona is isolated, lawless, and filled with strange phenomena. 
-The sun hangs low in the hazy sky, casting an eerie light over the buildings t
-and deserted streets.
-""", server=server)
+The sun hangs low in the hazy sky, casting an eerie light over the buildings and deserted streets.
+""", terrain_types=UrbanTerrain, resources=UrbanResource, server=server)
 #worldsim.IMAGEGENERATOR = 'tti_serve'
 #worldsim.main(W)

@@ -2,12 +2,9 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
+import plays.config as configuration
 
-# the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
-
-# Create characters
-server='deepseeklocal'
-server='local'
+server = configuration.server
 S = agh.Agh("Samantha", """You are Samantha, a healthy, attractive young woman. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 

@@ -3,7 +3,7 @@ import './WorldPanel.css';
 
 function WorldPanel({ worldState }) {
   return (
-    <div className="world-panel">
+    <div>
       {worldState?.image && (
         <img 
           src={`data:image/png;base64,${worldState.image}`}
@@ -11,10 +11,7 @@ function WorldPanel({ worldState }) {
           className="world-image"
         />
       )}
-      <div className="world-description">
-        {worldState?.show || ''}
-      </div>
-    </div>
+     </div>
   );
 }
 

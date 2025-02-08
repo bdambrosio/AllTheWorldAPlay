@@ -1,6 +1,7 @@
 # memory/consolidation.py
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from sim.cognitive.knownActor import KnownActorManager
 from utils.Messages import UserMessage
 from .core import Drive, StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
 import numpy as np
@@ -133,7 +134,7 @@ End your response with:
         """Detect behavioral/event patterns across abstract memories"""
         pass
 
-    def update_narrative(self, memory: StructuredMemory, narrative: NarrativeSummary, 
+    def update_cognitive_model(self, memory: StructuredMemory, narrative: NarrativeSummary, knownActorManager: KnownActorManager,
                         current_time: datetime, character_desc: str, cycle: int = 0, relationsOnly: bool = True) -> None:
         """Update narrative summary based on recent memories and abstractions"""
         
@@ -239,40 +240,9 @@ End with:
                     potential_chars.add(word)
         
         # Only use valid characters from potential and existing chars
-        all_chars = set(valid_chars) & (set(narrative.key_relationships.keys()) | potential_chars)
+        all_chars = set(valid_chars) & (set(knownActorManager.names()) | potential_chars)
+        knownActorManager.update_all_relationships(all_texts)
         
-        # Analyze each character relationship
-        for char_name in all_chars:
-            char_memories = [text for text in all_texts if char_name.lower() in text.lower()]
-            if char_memories:
-                prompt = [UserMessage(content=f"""Analyze the relationship between these characters based on recent interactions.
-
-Character: 
-{character_desc}
-
-
-Other Characters: {char_name}
-
-Previous Relationship Status:
-{narrative.key_relationships.get(char_name, "No previous relationship data")}
-
-Recent Interactions:
-{chr(10).join(f"- {text}" for text in char_memories)}
-
-Describe their current relationship in a brief statement that captures:
-1. The nature of their connection
-2. Current emotional state
-3. Any recent changes
-4. Ongoing dynamics
-
-Respond with a concise updated relationship description of up to 100 tokens, no additional text.
-End with:
-</end>
-""")]
-
-                new_relation = self.llm.ask({}, prompt, max_tokens=200, stops=["</end>"])
-                if new_relation:
-                    narrative.key_relationships[char_name] = new_relation.strip()
         
 
     def _create_abstraction(self, memory: StructuredMemory, memories: List[MemoryEntry], drive: Drive) -> None:

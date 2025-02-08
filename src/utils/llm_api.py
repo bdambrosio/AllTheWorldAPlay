@@ -219,7 +219,7 @@ class LLM():
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
             print(f'llm: {elapsed:.2f}')
-            if elapsed > 5.0:
+            if elapsed > 4.0:
                 print(f'llm excessive time: {elapsed:.2f}')
             if stops is not None and type(response) is str: # claude returns eos
                 if type(stops) is str:

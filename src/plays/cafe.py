@@ -2,9 +2,9 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
+import plays.config as configuration
 
-server='deepseeklocal'
-#server='local'
+server = configuration.server
 # Create the human player character
 Player = human.Human("Player", """You are a teenage girl who has come to the café after school.
 You're looking for advice and conversation about life, relationships, and your future.

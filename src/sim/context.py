@@ -9,11 +9,11 @@ from datetime import datetime, timedelta
 
 
 class Context():
-    def __init__(self, actors, situation, step='4 hours', mapContext=True, server='local'):
+    def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server='local'):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
-        self.map = map.WorldMap(60, 60)
+        self.map = map.WorldMap(60, 60, terrain_types, resources)
         self.step = step  # amount of time to step per scene update
         self.name = 'World'
         self.llm = llm_api.LLM(server)
@@ -26,14 +26,13 @@ class Context():
         self.force_sense = False # force full sense for all actors
         for actor in self.actors:
             #place all actors in the world
-            actor.context = self
+            actor.set_context(self)
             if mapContext:
                 actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
                 actor.look() # provide initial local view
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
-                actor.narrative.initialize_relationships(valid_names)
 
     def set_llm(self, llm):
         self.llm = llm

@@ -13,6 +13,7 @@ import asyncio
 from collections import deque
 from typing import Dict, Any
 import logging
+import traceback  # Add at top if not already imported
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,7 @@ class Simulation:
 
         except Exception as e:
             logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             self.is_running = False
             raise  # Re-raise to maintain existing error handling
             

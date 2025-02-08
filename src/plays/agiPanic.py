@@ -1,8 +1,8 @@
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
-# Create characters
-server='deepseeklocal'
-#server='local'
+import plays.config as configuration
+
+server = configuration.server
 maam = agh.Agh("Madam", """You are an human female head of household, a busy working executive. 
 You depend on Annie, your housebot and trusted companion, to keep your house in order. 
 However, your are increasingly worried about societal panic about 'AGI' (Artificial General Intelligence), 

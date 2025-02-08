@@ -1,9 +1,25 @@
+from enum import Enum
 from sim.memory.core import Drive
 import sim.worldsim as worldsim
 import sim.agh as agh
 from sim.context import Context
-server='deepseeklocal'
-#server='local'
+import plays.config as configuration
+
+server = configuration.server
+class RuralTerrain(Enum):
+    Road = 1      # Roads and walkways
+    Barn = 2    # Commercial/residential buildings
+    Field = 3       # Open spaces, squares
+    Farmhouse = 4        # Green spaces
+    MarketSquare = 5 # Building sites
+
+class RuralResource(Enum):
+    Hay = 1     # Public transport
+    MarketStand = 2        # Retail locations
+    Produce = 3        # Food/drink venues
+    Tree = 4       # Rest spots
+
+
 J = agh.Agh("Jean", """You are Jean Macquart, a hardworking young peasant farmer. 
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.
@@ -35,6 +51,6 @@ F.add_to_history("You think – I saw that Jean Macquart again in the field. He 
 
 W =Context([J, F],
 """A small 19th century French farming village surrounded by fields ripe with wheat and other crops. 
-It is late afternoon on a hot summer day.""", server=server)
+It is late afternoon on a hot summer day.""", terrain_types=RuralTerrain, resources=RuralResource, server=server)
 #worldsim.IMAGEGENERATOR = 'tti_serve'
 #worldsim.main(W)

@@ -2,11 +2,12 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
-
+import config
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
 server='deepseeklocal'
-#server='local'
+server='local'
+server = config.server
 # Create characters
 # I like looking at pretty women. pbly because I'm male hetero-oriented. Change to suit your fancy.
 # I find it disorienting for characters to change racial characteristics every time they are rendered, so they are nailed down here.
