@@ -154,7 +154,7 @@ def create_action_record(agent, mode: Mode, action_text: str,
                         task_name: str, target=None) -> ActionRecord:
     """Helper to create an ActionRecord from current agent state"""
     state_snapshot = StateSnapshot(
-        values={term: info["state"] 
+        values={term: info["urgency"] 
                 for term, info in agent.state.items()},
         timestamp=time.time()
     )

@@ -231,15 +231,12 @@ class MemoryRetrieval:
     def __init__(self):
         self.embedding_model = _embedding_model  # Use shared model
     
-    def get_by_drive(self, 
-                    memory: StructuredMemory, 
-                    drive: Drive, 
-                    threshold: float = 0.1,
-                    max_results: int = 3) -> List[MemoryEntry]:
-        """Get memories related to drive using embeddings"""
-        if drive.embedding is None:
-            drive.embedding = self.embedding_model.encode(drive.text)
-            
+    def _retrieve_by_embedding(self, 
+                             memory: StructuredMemory,
+                             search_embedding: np.ndarray,
+                             threshold: float = 0.1,
+                             max_results: int = 3) -> List[MemoryEntry]:
+        """Core retrieval method using embedding similarity"""
         related_memories = []
         current_time = memory.owner.context.simulation_time
         
@@ -247,7 +244,7 @@ class MemoryRetrieval:
             if mem.embedding is None:
                 mem.embedding = self.embedding_model.encode(mem.text)
                 
-            similarity = self._compute_similarity(drive.embedding, mem.embedding)
+            similarity = self._compute_similarity(search_embedding, mem.embedding)
             if similarity >= threshold:
                 age_hours = (current_time - mem.timestamp).total_seconds() / 3600
                 age_factor = max(0.5, 1.0 - (age_hours / 24))
@@ -256,6 +253,25 @@ class MemoryRetrieval:
                 
         sorted_memories = sorted(related_memories, key=lambda x: x[1], reverse=True)
         return [mem for mem, _ in sorted_memories[:max_results]]
+
+    def get_by_drive(self, 
+                    memory: StructuredMemory, 
+                    drive: Drive, 
+                    threshold: float = 0.1,
+                    max_results: int = 3) -> List[MemoryEntry]:
+        """Get memories related to drive using embeddings"""
+        if drive.embedding is None:
+            drive.embedding = self.embedding_model.encode(drive.text)
+        return self._retrieve_by_embedding(memory, drive.embedding, threshold, max_results)
+
+    def get_by_text(self,
+                   memory: StructuredMemory,
+                   search_text: str,
+                   threshold: float = 0.1, 
+                   max_results: int = 3) -> List[MemoryEntry]:
+        """Get memories related to search text using embeddings"""
+        search_embedding = self.embedding_model.encode(search_text)
+        return self._retrieve_by_embedding(memory, search_embedding, threshold, max_results)
 
     def find_related_abstractions(self,
                                 memory: StructuredMemory,

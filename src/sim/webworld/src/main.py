@@ -1,4 +1,5 @@
 import os, json, math, time, requests, sys
+import traceback
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -170,11 +171,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
                             await asyncio.sleep(0.1)
                         except Exception as e:
+                            print(f"Error in simulation step: {e}")
+                            print(f"Traceback:\n{traceback.format_exc()}")
                             await websocket.send_text(json.dumps({
                                 'type': 'play_error',
                                 'error': f'Failed to load play: {str(e)}'
                             }))
-                
+  
                 elif action == 'confirm_load_play':
                     play_name = data.get('play')
                     try:

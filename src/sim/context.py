@@ -29,7 +29,7 @@ class Context():
             actor.set_context(self)
             if mapContext:
                 actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
-                actor.look() # provide initial local view
+                #actor.look() # provide initial local view
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
