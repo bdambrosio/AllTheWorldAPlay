@@ -6,6 +6,7 @@ import traceback
 import time
 from typing import List, Dict, Optional
 from sim.cognitive import knownActor
+from sim.cognitive import perceptualState
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory, Drive
 from sim.memory.core import MemoryRetrieval
@@ -61,7 +62,7 @@ class Stack:
     def is_empty(self):
         return len(self.stack) == 0
 
-    def size(self):
+    def ize(self):
         return len(self.stack)
 
 
@@ -113,7 +114,7 @@ class Character:
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
         self.sense_threshold = timedelta(hours=4)
-        
+        self.intention = None
 
     def set_context(self, context):
         self.context = context
@@ -198,7 +199,7 @@ class Character:
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
         # Update state and priorities
-        self.generate_state()
+        self.generate_goals()
         self.update_priorities()
 
         # Reset new memory counter
@@ -264,7 +265,7 @@ class Character:
         raise NotImplementedError("Derived classes must implement hear")
         self.add_perceptual_input(f"You hear {from_actor.name} say: {message}")
 
-    def say_target(self, text):
+    def say_target(self, act_name, text):
         """Determine the intended recipient of a message"""
         prompt = [UserMessage(content="""Determine the intended hearer of the following message spoken by you.
 {{$character}}
@@ -281,12 +282,14 @@ Known other actors include:
 {{$actors}}
 </actors>
         
-The message is:
+The message is an {{$action_type}} and its content is:
         
 <Message>
 {{$message}}
 </Message>
 
+If the message is an internal thought, respond with the name of the actor the thought is about.
+If the message is a spoken message, respond with the name of the intended recipient.
 Respond using the following XML format:
 
 <target>
@@ -300,12 +303,18 @@ End your response with:
         response = self.llm.ask({
             'character': self.character,
             'history': self.narrative.get_summary('medium'),
-            'actors': '\n'.join([actor.name for actor in self.context.actors]),
+            'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]),
+            'action_type': 'internal thought' if act_name == 'Think' else 'spoken message',
             "message": text
         }, prompt, temp=0.2, stops=['</end>'], max_tokens=180)
 
-        return xml.find('<name>', response)
-
+        candidate = xml.find('<name>', response)
+        if candidate is not None:
+            for actor in self.context.actors:
+                if actor.name in candidate:
+                    return actor.name
+        else:
+            return None
     # World interaction methods
     def look(self, height=5):
         """Get visual information about surroundings"""
@@ -333,7 +342,7 @@ End your response with:
                 if 'resources' in view[dir]:
                     text_view += f"resources {view[dir]['resources']}, "
                 if 'agents' in view[dir]:
-                    text_view += f"agents {view[dir]['agents']}, "
+                    text_view += f"others {view[dir]['agents']}, "
                     visible_actors.extend(view[dir]['agents'])
                 if 'water' in view[dir]:
                     text_view += f"water {view[dir]['water']}"
@@ -344,9 +353,7 @@ End your response with:
         # update actor visibility.
         self.actor_models.set_all_actors_invisible()
         for actor in visible_actors:
-            if self.actor_models.get_actor_model(actor['name']) is None:
-                self.actor_models.add_actor_model(actor['name'])
-            self.actor_models.get_actor_model(actor['name']).visible = True
+            self.actor_models.get_actor_model(actor['name'], create_if_missing=True).visible = True
          # Create visual perceptual input
         prompt = [UserMessage(content="""Your current state is :
                               
@@ -397,7 +404,7 @@ End your response with:
 terrain: environment type perceived.
 slope:ground slope in the given direction
 resources:a list of resource type detected and distance in the given direction from the current location
-agents: the other actors visible
+others: the other actors visible
 water: the water resources visible
 {json.dumps(obs, indent=2).replace('\'"{}', '').replace('\'"', '')}
 """
@@ -452,7 +459,7 @@ water: the water resources visible
         """Add initial visual memories of other actors"""
         for actor in self.context.actors:
             if actor != self:
-                self.add_perceptual_input(f'You see {actor.name}')
+                self.add_perceptual_input(f'You see {actor.name}', mode='visual')
 
     def save(self, filepath):
         """Save character state"""
@@ -621,13 +628,16 @@ adjective, adjective, adjective
     def add_perceptual_input(self, message: str, percept=True, mode=None):
         """Add a perceptual input to the agent's perceptual state"""
         content = message
-        prompt = [UserMessage(content="""Determine its sensory mode of the following message,
+        if mode is None or mode not in perceptualState.SensoryMode:
+            prompt = [UserMessage(content="""Determine its sensory mode of the following message,
 a terse description of the perceptual content,
 and the emotionalintensity of the perceptual content.
 
 sense mode may be:
 auditory
 visual
+olfactory
+tactile
 movement
 internal
 unclassified
@@ -642,19 +652,20 @@ mode
 
 Respond only with a single choice of mode. Do not include any introductory, discursive, or explanatory text.
 """)]
-        print("Perceptual input",end=' ')
-        response = self.llm.ask({"message": message}, prompt, temp=0, stops=['<end/>'], max_tokens=150)
-        if response:
-            mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
-            try:
-                mode = SensoryMode(mode)
-            except:
-                # unknown mode, skip
-                mode=SensoryMode.UNCLASSIFIED
-        else:
-            mode = SensoryMode.UNCLASSIFIED
+            print("Perceptual input",end=' ')
+            response = self.llm.ask({"message": message}, prompt, temp=0, stops=['<end/>'], max_tokens=150)
+            if response:
+                mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
+            else:
+                mode = 'unclassified'
+
+        try:
+            mode = perceptualState.SensoryMode(mode)
+        except:
+            # unknown mode, skip
+            mode=perceptualState.SensoryMode.UNCLASSIFIED
         perceived_content = message
-        intensity = 0.4 # assume low intensity
+        intensity = 0.6 # assume low intensity
         perceptual_input = PerceptualInput(
             mode=mode,
             content=perceived_content if percept else message,
@@ -662,7 +673,8 @@ Respond only with a single choice of mode. Do not include any introductory, disc
             intensity=intensity
         )
         self.perceptual_state.add_input(perceptual_input)
-
+        return perceptual_input
+    
     def add_to_history(self, message: str):
         """Add message to structured memory"""
         if message is None or message == '':
@@ -707,10 +719,15 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         recent_memories = self.structured_memory.get_recent(n)
         return '\n'.join(memory.text for memory in recent_memories)
     
-
-    def generate_state(self):
+    def generate_goals(self):
         """Generate states to track, derived from drives and current memory context"""
         self.state = {}
+        for drive in self.drives:
+            goal = self.generate_goal(drive)
+            self.state[goal['goal']] = goal
+
+    def generate_goal(self, drive):
+        """Generate states to track, derived from drives and current memory context"""
         
         prompt = [UserMessage(content="""Given a Drive and related memories, assess the current state relative to that drive.
 
@@ -734,21 +751,25 @@ Respond only with a single choice of mode. Do not include any introductory, disc
 {{$character}}
 </character>
 
-Analyze the memories and assess the current state relative to this drive.
+Consider this drive and and your memories, situation, and character, paying special attention to drive_memories, 
+and determine your current state relative to this drive.  
 Consider:
 1. How well the drive's needs are being met
 2. Recent events that affect the drive
 3. The importance scores of relevant memories
 4. Any patterns or trends in the memories
 
+Respond with a goal, in four parts: a terse (5-6 words) description of the goal, an urgency assessment (1 word), 
+    a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
+    and a termination condition (5-6 words) that would reduce its urgency.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #goal 
-#term terse term for this drive state
-#assessment very high/high/medium-high/medium/medium-low/low
-#trigger terse restatement of specific situation or memory that most affects this state
-#termination> 5-6 word statement of condition that would satisfy this drive
+#term terse (5-6 words) description of this goal
+#urgency high/medium/low
+#trigger terse (4-7 words) restatement of primary situation or memory that most relates to this goal
+#termination> 5-6 word statement of condition that would somewhat satisfy this goal
 ##
 
 Respond ONLY with the above hash-formatted text.
@@ -756,64 +777,63 @@ End response with:
 <end/>
 """)]
 
-        # Process each drive in priority order
-        for drive in self.drives:
-            print(f'{self.name} generating state for drive: {drive.text}')
+        print(f'{self.name} generating state for drive: {drive.text}')
             
-            # Get relevant memories
-            drive_memories = self.memory_retrieval.get_by_drive(
-                memory=self.structured_memory,
-                drive=drive,
-                threshold=0.1,
-                max_results=5
-            )
+        # Get relevant memories
+        drive_memories = self.memory_retrieval.get_by_drive(
+            memory=self.structured_memory,
+            drive=drive,
+            threshold=0.1,
+            max_results=5
+        )
             
             # Get recent memories regardless of drive
-            recent_memories = self.structured_memory.get_recent(5)
+        recent_memories = self.structured_memory.get_recent(5)
             
-            # Format memories for LLM
-            drive_memories_text = "\n".join([
-                f"[{mem.timestamp}] (importance: {mem.importance:.1f}): {mem.text}"
-                for mem in drive_memories
-            ])
+        # Format memories for LLM
+        drive_memories_text = "\n".join([
+            f"(importance: {mem.importance:.1f}): {mem.text}"
+            for mem in drive_memories
+        ])
             
-            recent_memories_text = "\n".join([
-                f"[{mem.timestamp}] (importance: {mem.importance:.1f}): {mem.text}"
-                for mem in recent_memories
-            ])
+        recent_memories_text = "\n".join([
+            f"(importance: {mem.importance:.1f}): {mem.text}"
+            for mem in recent_memories
+        ])
             
-            # Generate state assessment
-            response = self.llm.ask({
-                "drive": drive.text,
-                "recent_memories": recent_memories_text,
-                "drive_memories": drive_memories_text,
-                "situation": self.context.current_state if self.context else "",
-                "character": self.character
-            }, prompt, temp=0.3, stops=['<end/>'])     
+        # Generate state assessment
+        response = self.llm.ask({
+            "drive": drive.text,
+            "recent_memories": recent_memories_text,
+            "drive_memories": drive_memories_text,
+            "situation": self.context.current_state if self.context else "",
+            "character": self.character
+        }, prompt, temp=0.3, stops=['<end/>'])     
             
-            # Parse response
-            try:
-                term = hash_utils.find('term', response)
-                assessment = hash_utils.find('assessment', response)
-                trigger = hash_utils.find('trigger', response)
-                termination = hash_utils.find('termination', response)
+        # Parse response
+        try:
+            term = hash_utils.find('term', response)
+            urgency = hash_utils.find('urgency', response)
+            trigger = hash_utils.find('trigger', response)
+            termination = hash_utils.find('termination', response)
                 
-                if term and assessment:
-                    self.state[term] = {
-                        "drive": drive,
-                        "state": assessment,
-                        "trigger": trigger if trigger else "",
-                        "termination": termination if termination else ""
-                    }
-                else:
-                    print(f"Warning: Invalid state generation response for {drive.text}")
+            if term and urgency:
+                self.state[term] = {
+                    "drive": drive,
+                    "goal": term,
+                    "urgency": urgency,
+                    "trigger": trigger if trigger else "",
+                    "termination": termination if termination else ""
+                }
+            else:
+                 print(f"Warning: Invalid state generation response for {drive.text}")
                     
-            except Exception as e:
-                print(f"Error parsing state generation response: {e}")
-                traceback.print_exc()
+        except Exception as e:
+            print(f"Error parsing state generation response: {e}")
+            traceback.print_exc()
                 
-        print(f'{self.name} generated states: ' + str({k: {**v, 'drive': v['drive'].text} for k,v in self.state.items()}))
-        return self.state
+        print(f'{self.name} generated state: ' + term + '; ' + urgency + '; ' + trigger + '; ' + termination)
+        return self.state[term]
 
 
     def test_state_termination(self, state, consequences, updates=''):
@@ -880,14 +900,14 @@ End your response with:
             print(f'State {state} Satisfied!')
         return satisfied
 
-    def map_state(self):
+    def map_goals(self):
         """ map state for llm input """
         mapped = []
         for key, item in self.state.items():
-            trigger = item['drive'].text
-            value = item['state']
+            trigger = item['trigger']
+            urgency = item['urgency']
             termination = item['termination']
-            mapped.append(f"- Goal: {termination}; Urgency: {value}")
+            mapped.append(f"- Goal: {key}; Urgency: {urgency}; Trigger: {trigger}; Termination: {termination}")
         return '\n'.join(mapped)
 
 
@@ -1032,14 +1052,18 @@ End response with:
                     new_intentions.append(intention)
             self.intentions = new_intentions
 
-            if self.active_task.peek() is None and len(self.priorities) == 0:
+            if self.active_task.peek() is None and len(self.priorities) < 2:
                 # Should never happen, but just in case
+                self.update_goals()
                 self.update_priorities()
+        return satisfied
 
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         """Execute an action and record results"""
         # Create action record with state before action
+        if act_name not in Mode:
+            raise ValueError(f'Invalid action name: {act_name}')
         mode = Mode(act_name)
         self.act_result = ''
         record = create_action_record(
@@ -1059,9 +1083,9 @@ End response with:
          # Update thought display
         if act_name == 'Think':
             self.thought = act_arg
-            self.show += f"*{self.thought}*"
+            self.show += f"...{self.thought}..."
         else:
-            self.thought =  self.reason
+            self.thought =  "..." + self.reason + "..."
 
         # Update active task if needed
         if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
@@ -1104,7 +1128,7 @@ End response with:
 
         if act_name == 'Think' or act_name == 'Say':
             # Update intentions based on thought
-            self.update_intentions_wrt_say_think(source, act_arg, reason) 
+            self.update_intentions_wrt_say_think(source, act_name, act_arg, reason, target) 
             self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
 
         # After action completes, update record with results
@@ -1116,7 +1140,8 @@ End response with:
                         if actor != target:
                             actor_model = self.actor_models.get_actor_model(actor.name)
                             if actor_model != None and actor_model.visible:
-                                actor.add_perceptual_input(f"You hear {self.name}: '{act_arg}'", percept=False, mode='visual')
+                                percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
+                                actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         elif act_name == 'Say':# must be a say
             self.show = f"'{act_arg}'"
             for actor in self.context.actors:
@@ -1127,10 +1152,12 @@ End response with:
                             actor.add_perceptual_input(f"You hear {self.name}: '{act_arg}'", percept=False, mode='auditory')
                         elif actor == target:
                             actor.hear(self, act_arg, source)
+            # in this case 'self' is speaking
+            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, act_arg)
 
         record.context_feedback = self.show
         record.state_after = StateSnapshot(
-            values={term: info["state"] 
+            values={term: info["urgency"] 
                 for term, info in self.state.items()},
             timestamp=time.time()
         )
@@ -1142,17 +1169,32 @@ End response with:
         self.action_memory.add_record(record)
         
 
+    def update_goals(self, events=''):
+        """Update goals based on termination conditions"""
+        # Create a list from the keys to avoid modifying dict during iteration
+        for goal in list(self.state.keys()):
+            test = self.test_priority_termination(self.state[goal]['termination'], events)
+            if test:
+                new_goal = self.generate_goal(self.state[goal]['drive'])
+                del self.state[goal]
+                self.state[new_goal['goal']] = new_goal
+
+
     def update_priorities(self):
         """Update task priorities based on current state and drives"""
-        prompt = [UserMessage(content="""Given your character, drives and current state assessments, and recent memories, create a prioritized set of plans.
+        prompt = [UserMessage(content="""Given your character, drives and current goals, and recent memories, create a prioritized set of plans.
 
 <character>
 {{$character}}
 </character>
 
-<state>
-{{$state}}
-</state>
+<situation>
+{{$situation}}
+</situation>
+
+<goals>
+{{$goals}}
+</goals>
 
 <recent_memories>
 {{$memories}}
@@ -1163,18 +1205,21 @@ Consider:
 1. Your current state assessments
 2. Recent memories and events
 3. Your basic drives and needs
+                              
+The three plans should be distinct, and jointly cover all the important aspects of the current situation and your goals.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #plan
-#name brief action name
-#description terse statement of the action to be taken
-#reason>5-7 words on why this action is important now
-#termination 5-7 word condition test which, if met, would satisfy the goal of this action
+#name brief (4-6 words) action name
+#description terse (6-8 words) statement of the action to be taken
+#reason (6-7 words) on why this action is important now
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
 ##
 
-In refering to other actors, use their name, without other labels like 'Agent'.
+In refering to other actors, always use their name, without other labels like 'Agent', 
+and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with three plans in hash-formatted-text format and each ending with ## as shown above.
 Order plans from highest to lowest priority.
 End response with:
@@ -1186,11 +1231,12 @@ End response with:
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
         # Format state for LLM
-        state_text = self.map_state()
+        goal_text = self.map_goals()
         print("Update Priorities")
         response = self.llm.ask({
             'character': self.character,
-            'state': state_text,
+            'situation': self.context.current_state,
+            'goals': goal_text,
             'memories': memory_text
         }, prompt, temp=0.7, stops=['<end/>'])
 
@@ -1210,6 +1256,10 @@ Consider these factors in determining task completion:
 - Environmental or time constraints
 - "Good enough" vs perfect completion
                     
+<situation>
+{{$situation}}
+</situation>
+
 <history>
 {{$history}}
 </history>
@@ -1236,11 +1286,8 @@ Respond with both completion status and progress indication:
 <completion>
   <status>complete|partial|insufficient</status>
   <progress>0-100</progress>
-  <reason>terse reason for this assessment</reason>
+  <reason>terse (5-7 words or less) reason for this assessment</reason>
 </completion>
-
-the 'Level' above should be True if the termination check is met in Events or recent History, 
-Unknown if the Events do not support a definitive assessment, or False if Events provide little or no evidence for task completion.  
 
 Respond ONLY with the above XML
 Do not include any introductory, explanatory, or discursive text.
@@ -1269,7 +1316,62 @@ End your response with:
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'Priority {termination_check} Satisfied!')
             return True
+        elif satisfied != None and satisfied.lower().strip() == 'partial':
+            progress = xml.find('<progress>', response)
+            if progress != None:
+                try:
+                    progress = int(progress.strip())
+                    if progress/100.0 > random.random():
+                        return True
+                except:
+                    pass
         return False
+
+    def refine_say_act(self, act_name, act_arg):
+        """Refine a say act to be more natural and concise"""
+        target_name = self.say_target(act_name, act_arg)
+        if target_name is None:
+            return act_arg
+        
+        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(10)
+        prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
+
+<previous_dialog>
+{{$dialog}}
+</previous_dialog>
+
+<proposed_text>
+{{$act_arg}}
+</proposed_text>  
+
+<relationship>
+{{$relationship}}
+</relationship>
+
+<character>
+{{$character}}
+</character>
+
+Respond ONLY with the revised text to say.
+Your revised text should be about the same length as the proposed text, and naturally extend the previous dialog.
+Speak in the first person, using the character's voice.
+Do not repeat the previous dialog.
+Do not include any introductory, explanatory, formative, or discursive text.
+End response with:
+<end/>
+""")]
+
+        relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
+        response = self.llm.ask({
+            "act_name": act_name,
+            "act_arg": act_arg,
+            "dialog": '\n'.join(dialog),
+            "target": target_name,
+            "relationship": relationship,
+            "character": self.character
+        }, prompt, temp=0.6, stops=['<end/>'])
+
+        return response
 
     def actualize_task(self, n, task_hash):
         task_name = hash_utils.find('name', task_hash)
@@ -1291,11 +1393,11 @@ Your current situation is:
 {{$situation}}
 </situation>
 
-Your state is:
+Your current goals are:
 
-<state>
-{{$state}}
-</state>
+<goals>
+{{$goals}}
+</goals>
 
 Your recent memories include:
 
@@ -1360,7 +1462,13 @@ When describing an action:
 - Indicate progress toward goal (starting/continuing/nearly complete)
 - Note changes in context or action details
 - Describe progress toward goal
-                              
+
+Consider the previous act. E.G.:
+- If the previous act was a Move, are you now at your destination? If not, do you want to keep moving towards it?
+    If you are at your destination, what do you want to Do there? 
+    Gather or use a resource? Talk to someone there? Do something else at your new location?
+- If the previous act was a Look, what did you learn?
+
 Respond in XML:
 <actionable>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
@@ -1439,7 +1547,7 @@ End your response with:
         print(f'{self.name} act_result: {self.act_result}')
         act = None
         tries = 0
-        mapped_state = self.map_state()
+        mapped_goals = self.map_goals()
         duplicative_insert = ''
         temp = 0.6
 
@@ -1456,7 +1564,7 @@ End your response with:
                 'history': self.narrative.get_summary('medium'),
                 'name': self.name,
                 "situation": self.context.current_state + '\n\n' + self.format_look(),
-                "state": mapped_state,
+                "goals": mapped_goals,
                 "task": task_hash,
                 "reason": reason,
                 "lastAct": last_act,
@@ -1480,6 +1588,7 @@ End your response with:
 
             # test for dup act
             if mode == 'Say':
+                act = self.refine_say_act(mode, act)
                 dup = self.repetitive(mode+': '+act, last_act, self.format_history(6))
                 if dup:
                     print(f'\n*****Duplicate test failed*****\n  {act}\n')
@@ -1529,16 +1638,21 @@ End your response with:
             print(f'No intention constructed, presumably duplicate')
             return None
 
-    def update_intentions_wrt_say_think(self, source, text, reason):
+    def update_intentions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
         """Update intentions based on speech or thought"""
-        target = self.say_target(source)
+        if target is None:
+            target_name = self.say_target(act_name, act_arg)
+        elif hasattr(target, 'name'):  # Check if target has name attribute instead of type
+            target_name = target.name
+        else:
+            target_name = target
         # Skip intention processing during active dialogs
-        if self.actor_models.get_actor_model(target, create_if_missing=True).dialog.active and source == 'dialog':
+        if target is not None and self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.active and source == 'dialog':
             print(f' in active dialog, no intention updates')
             return
         
         # Rest of the existing function remains unchanged
-        print(f'Update intentions from say or think\n {text}\n{reason}')
+        print(f'Update intentions from say or think\n {act_name} {act_arg}\n  {reason}')
         
         if source == 'watcher':  # Still skip watcher
             print(f' source is watcher, no intention updates')
@@ -1610,7 +1724,7 @@ Respond only with the intention analysis in XML as shown above.
 End your response with:
 </end>
 """)]
-        response = self.llm.ask({"text":text}, prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+        response = self.llm.ask({"text":f'{act_name} {act_arg}'}, prompt, temp=0.1, stops=['</end>'], max_tokens=100)
         act = xml.find('<act>', response)
         if act is None or act.strip() != 'True':
             print(f'no intention in say or think')
@@ -1621,15 +1735,18 @@ End your response with:
             return
         mode = str(xml.find('<mode>', response))
         
-        self.actor_models.get_actor_model(target, create_if_missing=True).dialog.active = True
-        print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
+        if target is not None:
+            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active = True
+            print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
+        else:
+            print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
         new_intentions = []
         for candidate in self.intentions:
             candidate_source = xml.find('<source>', candidate)
             if candidate_source != source:
                 new_intentions.append(candidate)
         self.intentions = new_intentions
-        self.intentions.append(f'<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>')
+        self.intentions.insert(0, f'<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>')
         if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
             self.active_task.push(source)
@@ -1672,13 +1789,17 @@ End your response with:
             self.watcher_message_pending = True
             return
 
+        self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
+        self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
             self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
-            self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(from_actor, message)
+        elif self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > random.randint(4,8):
+            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+            # should we provide some kind of nominal response?
+            return
 
         # Add perceptual input
-        self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
-        
+         
         if not respond:
             return
         
@@ -1691,8 +1812,11 @@ End your response with:
             character_desc=self.character,
             relationsOnly=True
         )
+       
+      
         duplicative_insert = ''
-        prompt = [UserMessage(content="""Given the following character description, current situation, goals, memories, and recent history, generate a response to the statement below.
+        prompt = [UserMessage(content="""Given the following character description, current situation, goals, memories, and recent history, 
+generate a response to the statement below.
 
 {{$character}}.
 
@@ -1701,7 +1825,7 @@ End your response with:
 </situation>
 
 <goals>
-{{$state}}
+{{$goals}}
 </goals>
 
 <memories>
@@ -1717,7 +1841,19 @@ Your last action was:
 {{$activity}}
 {{$last_act}}
                               
-Generate a response to the statement below:
+Your dialog with the speaker up to this point has been:
+                              
+<dialog>
+{{$dialog}}
+</dialog>
+                              
+and your beliefs about your relationship with the speaker are:
+
+<relationship>
+{{$relationship}}
+</relationship>
+
+Given all the above, generate a response to the statement below:
                               
 <statement>
 {{$statement}}
@@ -1725,16 +1861,9 @@ Generate a response to the statement below:
                               
 Use the following XML template in your response:
                               
-<reason>terse reason for this answer</reason>
 <response>response to this statement</response>
-<unique>True if you want to respond, False otherwise</unique>
-
-
-Your dialog with this character has been:
-                              
-<dialog>
-{{$dialog}}
-</dialog>
+<reason>terse reason for this answer</reason>
+<unique>True if you in fact want to respond and have something to say, False otherwise</unique>
 
 {{$duplicative_insert}}
 
@@ -1751,7 +1880,7 @@ End your response with:
 </end>
 """)]
 
-        mapped_state = self.map_state()
+        mapped_goals = self.map_goals()
         last_act = ''
         if source in self.last_acts:
             last_act = self.last_acts[source]
@@ -1772,12 +1901,13 @@ End your response with:
                 'statement': f'{from_actor.name} says {message}',
                 "situation": self.context.current_state,
                 "name": self.name,
-                "state": mapped_state,
+                "goals": mapped_goals,
                 "memories": memory_text,  # Updated from 'memory'
                 "activity": activity,
                 "last_act": self.last_acts,
                 'history': self.narrative.get_summary('medium'),
                 'dialog': '\n'.join(self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript()),
+                'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
             response = xml.find('<response>', answer_xml)
@@ -1796,8 +1926,8 @@ End your response with:
 
  
         unique = xml.find('<unique>', answer_xml)
-        if unique is None or 'false' in unique.lower() or self.actor_models.get_actor_model(from_actor.name).dialog.turn_count>4:
-            self.actor_models.get_actor_model(from_actor.name).dialog.end_dialog()
+        if unique is None or 'false' in unique.lower():
+            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
             return 
 
         reason = xml.find('<reason>', answer_xml)
@@ -1811,14 +1941,8 @@ End your response with:
 
         # Create intention for response
         intention = f'<intention> <mode>Say</mode> <act>{response}</act> <target>{from_actor.name}</target><reason>{str(reason)}</reason> <source>{response_source}</source></intention>'
-        self.intentions.append(intention)
-
-        # End dialog if turn limit reached
-        if (self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active and 
-            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.turn_count > 1 and 
-            not self.always_respond):
-            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.end_dialog()
-
+        # a 'hear' overrides previous intentions, we need to re-align with our response
+        self.intentions = [intention]
 
         return response + '\n ' + reason
     
@@ -1832,16 +1956,10 @@ Your current situation is:
 {{$situation}}
 </situation>
 
-Your fundamental needs / drives include:
-
-<drives>
-{{$drives}}
-</drives> 
-
 Your goals are:
 
 <goals>
-{{$state}}
+{{$goals}}
 </goals>
 
 Your recent memories include:
@@ -1849,6 +1967,10 @@ Your recent memories include:
 <recent_memories>
 {{$memories}}
 </recent_memories>
+
+Especially relevant to your goals, you remember:
+                              
+{{$goal_memories}}
 
 Recent conversation has been:
 <recent_history>
@@ -1861,7 +1983,7 @@ Your current priorities include:
 </priorities>
 
 Your action options are provided in the labelled list below.
-Labels are Greek letters (Alpha, Beta, Gamma, Delta, Epsilon).
+Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
 
 <actions>
 {{$actions}}
@@ -1884,7 +2006,7 @@ End your response with:
 """
                               )]
 
-        mapped_state = self.map_state()
+        mapped_goals = self.map_goals()
         labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon']
         random.shuffle(labels)
         action_choices = [f'{labels[n]} - {action}' for n, action in enumerate(action_choices)]
@@ -1893,21 +2015,36 @@ End your response with:
         recent_memories = self.structured_memory.get_recent(5)  # Get 5 most recent memories
         memory_text = '\n'.join(memory.text for memory in recent_memories)
         
+        # Change from dict to set for collecting memory texts
+        goal_memories = set()  # This is correct
+        for priority in self.priorities:
+            priority_memories = self.memory_retrieval.get_by_text(
+                memory=self.structured_memory,
+                search_text=hash_utils.find('name', priority)+': '+hash_utils.find('description', priority) + ' ' + hash_utils.find('reason', priority),
+                threshold=0.1,
+                max_results=5
+            )
+            # More explicit memory text collection
+            for memory in priority_memories:
+                goal_memories.add(memory.text)  # Add each memory text individually
+                
+        goal_memories = '\n'.join(goal_memories)  # Join at the end
         print("Choose",end=' ')
         response = self.llm.ask({
             'input': sense_data + self.sense_input, 
             'history': self.narrative.get_summary('medium'),
             "memories": memory_text,
             "situation": self.context.current_state,
-            "state": mapped_state, 
+            "goals": mapped_goals, 
             "drives": '\n'.join(drive.text for drive in self.drives),
             "priorities": '\n'.join([str(hash_utils.find('name', task)) for task in self.priorities]),
+            "goal_memories": goal_memories,
             "actions": '\n'.join(action_choices)
         }, prompt, temp=0.0, stops=['</end>'], max_tokens=100)
         # print(f'sense\n{response}\n')
         index = -1
         for n, label in enumerate(labels):
-            if label in response:
+            if label in response and n < len(action_choices):
                 index = n
                 break
         if index > -1:
@@ -1943,7 +2080,7 @@ End your response with:
         
         # Check for critical state changes
         for state_term, info in self.state.items():
-            if info["state"] == "very low" or info["state"] == "very high":
+            if info["urgency"] == "high":
                 return "full"
                 
         # Check action progress
@@ -1963,7 +2100,7 @@ End your response with:
         return "none"
     
     def senses_minimal(self):
-        """Perform minimal state updates without full cognitive processing."""
+        """OBSOLETE!!!Perform minimal state updates without full cognitive processing."""
         # Check for and process any direct messages
         if self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.current_dialog:  # Use DialogManager instead of dialog_status
             for actor in self.context.actors:
@@ -2023,8 +2160,14 @@ End your response with:
                                                   self.context.simulation_time, 
                                                   self.character.strip(),
                                                   relationsOnly=True )
+        satisfied = False
         for task in self.priorities.copy():
-            self.clear_task_if_satisfied(task, '', self.act_result)
+            satisfied = self.clear_task_if_satisfied(task, '', self.act_result)
+            if satisfied:
+                break
+        if satisfied:
+            self.update_goals()
+            self.update_priorities()
        
 
     def decides(self, sense_data='', ui_queue=None):
@@ -2040,7 +2183,7 @@ End your response with:
 
         if self.wakeup:
             self.wakeup = False
-            self.generate_state()
+            self.generate_goals()
             self.update_priorities()
  
         print(f'\n\nshould_process_senses: {self.should_process_senses()}\n\n')
@@ -2053,14 +2196,20 @@ End your response with:
             if source == 'dialog' or source =='watcher' or source == self.active_task.peek():
                 # if the source is the current task, or a dialog, or a watcher, we can use this intention
                 intention = candidate
+                self.intentions.remove(candidate)
+                #self.active_task.pop()
+                break
+            else:
+                print(f'{self.name} ignoring intention from {source}')
 
         if intention is None and my_active_task != None and my_active_task != 'dialog' and my_active_task != 'watcher':
             full_task = self.get_task_xml(my_active_task)
-            if full_task is not None:
+            if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
                 intention = self.actualize_task(0, full_task)
                 print(f'Found active_task {my_active_task}')
-            else:
-                print(f'Active_task gone! {my_active_task}')
+            elif full_task is not None:
+                self.active_task.pop()
+            print(f'Active_task decayed or not found! {my_active_task}')
 
         if intention is None:
             intention_choices = []
@@ -2090,6 +2239,7 @@ End your response with:
 
         print(f'Intention: {intention}')
         self.intentions = [] # start anew next time
+        self.intention = intention
         act_name = xml.find('<mode>', intention)
         if act_name is not None:
             self.act_name = act_name.strip()
@@ -2120,7 +2270,7 @@ End your response with:
             #responses, at least, explicitly name target of speech.
             target_name = xml.find('<target>', intention)
             if target_name is None or target_name == '':
-                target_name = self.say_target(act_arg)
+                target_name = self.say_target(act_name, act_arg)
             if target_name != None:
                 target = self.context.get_actor_by_name(target_name)
 
@@ -2136,14 +2286,18 @@ End your response with:
 
     
     def format_thought_for_UI (self):
+        #<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>'
+        intent = self.intention if self.intention is not None else ''
+        if len(intent) > 0 and xml.find('mode', intent) is not None:
+            intent = ': '+xml.find('act', intent)
         if self.thought is None:
-            return ''
+            return intent
         if self.active_task.peek() is None:
-            return self.thought.strip()
+            return self.thought.strip()+'. '+intent
         name = self.active_task.peek()
         if name is None or name == '':
-            return self.thought.strip()
-        return name + ': '+self.thought.strip()
+            return self.thought.strip()+'. '+intent
+        return name + ': '+self.thought.strip()+'. '+intent
     
     def format_priorities(self):
         return [hash_utils.find('name', task) for task in self.priorities]

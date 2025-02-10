@@ -30,7 +30,7 @@ class PerceptualState:
             mode: [] for mode in SensoryMode
         }
         self.attention_focus: Optional[SensoryMode] = None
-        self.attention_threshold = 0.3  # Minimum intensity to notice
+        self.attention_threshold = 0.0  # Minimum intensity to notice
         
     def add_input(self, sensory_input: PerceptualInput) -> None:
         """Add new sensory input and manage attention"""
@@ -44,9 +44,9 @@ class PerceptualState:
                 self.attention_focus = sensory_input.mode
                 
             # Add to agent's memory if significant
-            if self.owner and sensory_input.intensity > 0.4:
+            if self.owner:
                 self.owner.add_to_history(
-                    f"You {sensory_input.mode.value}: {sensory_input.content}"
+                    f"{sensory_input.mode.value}: {sensory_input.content}"
                 )
     
     def get_current_percepts(self, mode: Optional[SensoryMode] = None) -> List[PerceptualInput]:

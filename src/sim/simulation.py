@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 
 import os, json, math, time, requests, sys
@@ -118,7 +119,7 @@ class Simulation:
                          print(f"Error generating image for {char.name}: {e}")
                         
                 #now handle context
-                if self.steps_since_last_update > 4:    
+                if self.steps_since_last_update > random.randint(1, 3):    
                     self.context.senses('')
                     if char_update_callback:
                         context_data = self.context.to_json()
@@ -157,27 +158,36 @@ class Simulation:
         
     def load_world(self, filename):
         """Load saved world state"""
-        return self.context.load_world(filename)
-        
+        try:
+            return self.context.load_world(filename)
+        except Exception as e:
+            logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            self.is_running = False
+            raise  # Re-raise to maintain existing error handling
+         
     async def inject(self, target_name, text, update_callback=None):
         """Route inject command using watcher pattern from worldsim"""
-        if self.watcher is None:
-            self.watcher = Human('Watcher', "Human user representative", None)
-            self.watcher.context = self.context
-
-
-        if target_name == 'World':
-            # Stub for now
-            return
-            
-        # Format message as "character-name, message" like worldsim
-        formatted_message = f"{target_name}, {text}"
-        self.watcher.inject(formatted_message)
-        target = self.context.get_actor_by_name(target_name)
-        if update_callback and target:
-            await update_callback(target_name, target.to_json())
-            await asyncio.sleep(0.1)
-            target.show = ''
+        try:
+            if self.watcher is None:
+                self.watcher = Human('Watcher', "Human user representative", None)
+                self.watcher.context = self.context
+            if target_name == 'World':
+                # Stub for now
+                return
+            # Format message as "character-name, message" like worldsim
+            formatted_message = f"{target_name}, {text}"
+            self.watcher.inject(formatted_message)
+            target = self.context.get_actor_by_name(target_name)
+            if update_callback and target:
+                await update_callback(target_name, target.to_json())
+                await asyncio.sleep(0.1)
+                target.show = ''
+        except Exception as e:
+            logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            self.is_running = False
+            raise  # Re-raise to maintain existing error handling
         
     def get_character_status(self):
         """Get current character states"""
