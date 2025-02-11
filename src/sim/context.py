@@ -1,6 +1,7 @@
 import json
 import traceback
 import random
+from queue import Queue
 from sim import map
 from utils import llm_api
 from utils.Messages import UserMessage
@@ -24,6 +25,7 @@ class Context():
         self.output_buffer = []
         self.widget_refs = {}  # Keep track of widget references for PyQt UI
         self.force_sense = False # force full sense for all actors
+        self.message_queue = Queue()  # Queue for messages to be sent to the UI
         for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
@@ -362,16 +364,11 @@ End your response with:
         for listener in self.state_listeners:
             listener(update_type, data)
 
-    # Modify existing display method
-    def display_output(self, text):
-        """UI-independent output handling"""
-        self.output_buffer.append({
-            'text': text,
-            'timestamp': self.simulation_time
-        })
-        self._notify_listeners('output', {'text': text})
+    def show(self, message):
+        """Queue message for websocket transmission"""
+        self.message_queue.put(message)
+        self._notify_listeners('output', message)
 
-    # Modify existing display update
     def update_display(self):
         """UI-independent state update"""
         state = {

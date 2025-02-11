@@ -113,7 +113,7 @@ class Simulation:
                                     image_data = base64.b64encode(f.read()).decode()
                                     char_data['image'] = image_data
                                     if char_update_callback:
-                                        await char_update_callback(char.name, char_data)
+                                        await char_update_callback(self.context, char.name, char_data)
                                         await asyncio.sleep(0.1)
                     except Exception as e:
                          print(f"Error generating image for {char.name}: {e}")

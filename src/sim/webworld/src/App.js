@@ -56,17 +56,17 @@ function App() {
                   type: data.type
                 }
               }));
-              if (data.data.show) {
-                setLogText(prev => {
-                  const newEntry = `${data.name}: ${data.data.show}`;
-                  return prev ? `${prev}\n\n${newEntry}` : newEntry;
-                });
-              }
+            break;
+            case 'show_update':
+              setLogText(prev => {
+                const newEntry = data.text;
+                return prev ? `${prev} \n${newEntry}` : newEntry;
+              });
               break;
             case 'context_update':
               setLogText(prev => {
                 const newEntry = data.text; 
-                return prev ? `${prev}\n\n${newEntry}` : newEntry;
+                return prev ? `${prev} \n\n ${newEntry} \n\n` : newEntry;
               });
               break;
             case 'status_update':

@@ -113,3 +113,7 @@ class KnownActorManager:
         for actor in self.known_actors.values():
             relationships[actor.name] = actor.relationship
         return relationships
+
+    def format_relationships(self):
+        relationships = self.get_known_relationships()
+        return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])

@@ -58,6 +58,25 @@ async def create_session():
     sessions[session_id] = None
     return {"session_id": session_id}
 
+async def process_messages(websocket, context):
+    """Process messages from context queue in background"""
+    print("Message processor started for context:", id(context))  # Debug
+    while True:
+        try:
+            while not context.message_queue.empty():
+                message = context.message_queue.get()
+                print(f"Sending websocket message: {message}")  # Debug
+                await websocket.send_text(json.dumps({
+                    'type': 'show_update',
+                    'text': f"{message['name']}: {message['text']}\n"
+                }))
+                print("Message sent successfully")  # Debug
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"Error processing messages: {e}")
+            traceback.print_exc()
+            break
+
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
@@ -76,30 +95,73 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 'name': 'World',
                 'data': context_data
             }))
+            await websocket.send_text(json.dumps({
+                'type': 'context_update',
+                'text': context_data['show']
+            }))
 
-    async def update_character(name, char_data):
-                        # Send character update
-                        await websocket.send_text(json.dumps({
-                            'type': 'character_update',
-                            'name': name,
-                            'data': char_data
-                        }))
-                        # Send show text to middle panel
-                        if char_data.get('show'):
-                            await websocket.send_text(json.dumps({
-                                'type': 'show_update',
-                                'text': f"{name}: {char_data['show']}\n"
-                            }))
- 
 
+    async def update_character(context, name, char_data):
+        # Send character update only
+        await websocket.send_text(json.dumps({
+            'type': 'character_update',
+            'name': name,
+            'data': char_data
+        }))
 
     async def run_simulation(sim):
         if sim is None:
             return
-        while sim.simulation.running and not sim.simulation.paused:
-            await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
-            await asyncio.sleep(0.1)
+        print(f"Starting simulation run with context id: {id(sim.simulation.context)}")  # Debug
+        message_task = asyncio.create_task(
+            process_messages(websocket, sim.simulation.context)
+        )
+        print(f"Created message task: {message_task}")  # Debug
+        try:
+            while sim.simulation.running and not sim.simulation.paused:
+                await sim.simulation.step(
+                    char_update_callback=update_character,
+                    world_update_callback=update_world
+                )
+                await asyncio.sleep(0.1)
+        finally:
+            print("Cancelling message task")  # Debug
+            message_task.cancel()
     
+    async def load_and_start_play(websocket, play_path):
+        """Helper to load play and start message processor"""
+        sessions[session_id] = SimulationWrapper(play_path)
+        sim = sessions[session_id]
+        
+        # Start message processor
+        message_task = asyncio.create_task(
+            process_messages(websocket, sim.simulation.context)
+        )
+        
+        # Store task reference so we can cancel it later
+        sim.simulation.message_task = message_task
+        
+        await websocket.send_text(json.dumps({
+            'type': 'play_loaded',
+            'name': play_name
+        }))
+        
+        # Rest of initialization...
+        context_data = sim.simulation.context.to_json()
+        image_path = context_data['image']
+        if image_path:
+            with open(image_path, 'rb') as f:
+                image_data = f.read()
+                context_data['image'] = base64.b64encode(image_data).decode()
+        await websocket.send_text(json.dumps({
+            'type': 'world_update',
+            'name': 'World',
+            'data': context_data
+        }))
+        await asyncio.sleep(0.1)
+        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
+        await asyncio.sleep(0.1)
+
     try:
         while True:
             data = json.loads(await websocket.receive_text())
@@ -139,40 +201,19 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
                 elif action == 'load_play':
                     play_name = data.get('play')
-                    if sim is not None and sim.simulation:  # If simulation exists
+                    if sim is not None and sim.simulation:
                         await websocket.send_text(json.dumps({
                             'type': 'confirm_reload',
                             'message': 'This will reset the current simulation. Continue?'
                         }))
-                    else:  # No existing simulation
+                    else:
                         try:
                             main_dir = Path(__file__).parent
                             play_path = (main_dir / '../../../plays' / play_name).resolve()
-                            sessions[session_id] = SimulationWrapper(play_path)
-                            sim = sessions[session_id]
-                            await websocket.send_text(json.dumps({
-                                'type': 'play_loaded',
-                                'name': play_name
-                            }))
-                            await asyncio.sleep(0.1)
-                            #image_path = sim.simulation.context.image(filepath='worldsim.png')
-                            context_data = sim.simulation.context.to_json()
-                            image_path = context_data['image']
-                            if image_path:
-                                with open(image_path, 'rb') as f:
-                                    image_data = f.read()
-                                    context_data['image'] = base64.b64encode(image_data).decode()
-                            await websocket.send_text(json.dumps({
-                                'type': 'world_update',
-                                'name': 'World',
-                                'data': context_data
-                            }))
-                            await asyncio.sleep(0.1)
-                            await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
-                            await asyncio.sleep(0.1)
+                            await load_and_start_play(websocket, play_path)
                         except Exception as e:
-                            print(f"Error in simulation step: {e}")
-                            print(f"Traceback:\n{traceback.format_exc()}")
+                            print(f"Error loading play: {e}")
+                            traceback.print_exc()
                             await websocket.send_text(json.dumps({
                                 'type': 'play_error',
                                 'error': f'Failed to load play: {str(e)}'
@@ -183,26 +224,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     try:
                         main_dir = Path(__file__).parent
                         play_path = (main_dir / '../../../plays' / play_name).resolve()
-                        sim = SimulationWrapper(play_path, world_update_callback=update_world)
-                        sessions[session_id] = sim
-                        await websocket.send_text(json.dumps({
-                            'type': 'play_loaded',
-                            'name': play_name
-                        }))
-                        context_data = sim.simulation.context.to_json()
-                        image_path = context_data['image']
-                        if image_path:
-                            with open(image_path, 'rb') as f:
-                                image_data = f.read()
-                                context_data['image'] = base64.b64encode(image_data).decode()
-                        await websocket.send_text(json.dumps({
-                            'type': 'world_update',
-                            'name': 'World',
-                            'data': context_data
-                        }))
-                        await asyncio.sleep(0.1)
-                        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
-                        await asyncio.sleep(0.1)
+                        await load_and_start_play(websocket, play_path)
                     except Exception as e:
                         sim = None
                         await websocket.send_text(json.dumps({
@@ -266,4 +288,4 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         # Clean up on other errors too
         if session_id in sessions:
             del sessions[session_id]
-        
+                
