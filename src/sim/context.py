@@ -200,12 +200,6 @@ End your response with:
     def senses(self, sense_data='', ui_task_queue=None):
         """ This is where the world advances the timeline in the scenario """
         # Debug prints
-        for actor in self.actors:
-            print(f"Actor {actor.name} type: {type(actor)}")
-            print(f"Actor {actor.name} has cognitive_processor: {hasattr(actor, 'cognitive_processor')}")
-
-        # since at the moment there are only two chars, each with complete dialog, we can take it from either.
-        # not really true, since each is ignorant of the others thoughts
         history = self.history()
         if self.step == 'static': # static world, nothing changes!
             prompt = [UserMessage(content="""You are a static world. Your task is to update the environment description. 

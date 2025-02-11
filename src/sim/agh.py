@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
+import re
 
 def find_first_digit(s):
     for char in s:
@@ -62,7 +63,7 @@ class Stack:
     def is_empty(self):
         return len(self.stack) == 0
 
-    def ize(self):
+    def size(self):
         return len(self.stack)
 
 
@@ -723,10 +724,11 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         """Generate states to track, derived from drives and current memory context"""
         self.state = {}
         for drive in self.drives:
-            goal = self.generate_goal(drive)
+            former_goal_name = next((self.state[key]['goal'] for key in self.state if self.state[key]['drive'] == drive), None)
+            goal = self.generate_goal(drive, former_goal_name=former_goal_name)
             self.state[goal['goal']] = goal
 
-    def generate_goal(self, drive):
+    def generate_goal(self, drive, former_goal_name=None, progress=None):
         """Generate states to track, derived from drives and current memory context"""
         
         prompt = [UserMessage(content="""Given a Drive and related memories, assess the current state relative to that drive.
@@ -735,10 +737,16 @@ Respond only with a single choice of mode. Do not include any introductory, disc
 {{$drive}}
 </drive>
 
+<former_goal>
+{{$former_goal}}
+</former_goal>
+
+<progress>
+{{$progress}}
+</progress>
+
 <recent_memories>
 {{$recent_memories}}
-</recent_memories>
-
 <drive_memories>
 {{$drive_memories}}
 </drive_memories>
@@ -759,6 +767,7 @@ Consider:
 3. The importance scores of relevant memories
 4. Any patterns or trends in the memories
 
+If a former goal is provided above, consider the associated progress. Do not repeat a former goal unless the urgency is very high now.
 Respond with a goal, in four parts: a terse (5-6 words) description of the goal, an urgency assessment (1 word), 
     a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
     and a termination condition (5-6 words) that would reduce its urgency.
@@ -804,6 +813,8 @@ End response with:
         # Generate state assessment
         response = self.llm.ask({
             "drive": drive.text,
+            "former_goal": former_goal_name,
+            "progress": progress,
             "recent_memories": recent_memories_text,
             "drive_memories": drive_memories_text,
             "situation": self.context.current_state if self.context else "",
@@ -1030,7 +1041,7 @@ End response with:
             return
 
         # Test completion through cognitive processor's state system
-        satisfied = self.test_priority_termination(
+        satisfied, progress = self.test_priority_termination(
             termination_check, 
             consequences,
             world_updates
@@ -1046,9 +1057,15 @@ End response with:
             except Exception as e:
                 print(str(e))
 
+            # should we indeed delete all queued steps for a satisfied task? 
             new_intentions = []
             for intention in self.intentions:
-                if xml.find('<source>', intention) != task_name:
+                if task_name != 'dialog': # dialog steps are not deleted
+                    if xml.find('name', intention) != task_name:
+                        new_intentions.append(intention)
+                    else:
+                        print('deleting intention for satisfied task!')
+                else:
                     new_intentions.append(intention)
             self.intentions = new_intentions
 
@@ -1083,9 +1100,9 @@ End response with:
          # Update thought display
         if act_name == 'Think':
             self.thought = act_arg
-            self.show += f"...{self.thought}..."
+            self.show += f" \n...{self.thought}..."
         else:
-            self.thought =  "..." + self.reason + "..."
+            self.thought +=  "\n..." + self.reason + "..."
 
         # Update active task if needed
         if (act_name == 'Do' or act_name == 'Say') and source != 'dialog' and source != 'watcher':
@@ -1103,7 +1120,7 @@ End response with:
             task_xml = self.get_task_xml(source) if source != None else None
         
             # Update displays
-            self.show =  act_arg+'\n Resulting in ' + consequences.strip()
+            self.show +=  ' \n\n'+act_arg+'\n Resulting in ' + consequences.strip()
             self.add_perceptual_input(f"You observe {world_updates}", mode='visual')
             self.act_result = world_updates
         
@@ -1122,7 +1139,7 @@ End response with:
                 self.add_perceptual_input(f"\nYou {act_name}: {act_arg}\n  {percept}", mode='visual')
         elif act_name == 'Look':
             percept = self.look()
-            self.show += ' looks *' + act_arg + '*.\n  *' + percept + '*'
+            self.show += ' \n\n looks *' + act_arg + '*.\n  *' + percept + '*'
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
         self.previous_action = act_name
 
@@ -1143,7 +1160,10 @@ End response with:
                                 percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
                                 actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         elif act_name == 'Say':# must be a say
-            self.show = f"'{act_arg}'"
+            if act_arg in self.show:
+                print('Dup!')
+            else:
+                self.show += f"\n\n'{act_arg}'"
             for actor in self.context.actors:
                 if actor != self:
                     if source != 'watcher':  # when talking to watcher, others don't hear it
@@ -1153,7 +1173,10 @@ End response with:
                         elif actor == target:
                             actor.hear(self, act_arg, source)
             # in this case 'self' is speaking
-            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, act_arg)
+            # Remove text between ellipses - thoughts 
+            content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
+            # below done in hear
+            # self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
 
         record.context_feedback = self.show
         record.state_after = StateSnapshot(
@@ -1173,9 +1196,9 @@ End response with:
         """Update goals based on termination conditions"""
         # Create a list from the keys to avoid modifying dict during iteration
         for goal in list(self.state.keys()):
-            test = self.test_priority_termination(self.state[goal]['termination'], events)
-            if test:
-                new_goal = self.generate_goal(self.state[goal]['drive'])
+            satisfied, progress = self.test_priority_termination(self.state[goal]['termination'], events)
+            if satisfied:
+                new_goal = self.generate_goal(self.state[goal]['drive'], former_goal_name=goal, progress=progress)
                 del self.state[goal]
                 self.state[new_goal['goal']] = new_goal
 
@@ -1313,19 +1336,20 @@ End your response with:
         }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
 
         satisfied = xml.find('<status>', response)
+        progress = xml.find('<progress>', response)
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'Priority {termination_check} Satisfied!')
-            return True
+            return True, progress
         elif satisfied != None and satisfied.lower().strip() == 'partial':
             progress = xml.find('<progress>', response)
             if progress != None:
                 try:
                     progress = int(progress.strip())
                     if progress/100.0 > random.random():
-                        return True
+                        return True, progress
                 except:
                     pass
-        return False
+        return False, progress
 
     def refine_say_act(self, act_name, act_arg):
         """Refine a say act to be more natural and concise"""
@@ -1334,6 +1358,8 @@ End your response with:
             return act_arg
         
         dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(10)
+        if dialog is None or len(dialog) == 0:
+            return act_arg
         prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
 
 <previous_dialog>
@@ -1735,18 +1761,19 @@ End your response with:
             return
         mode = str(xml.find('<mode>', response))
         
-        if target is not None:
-            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active = True
-            print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
-        else:
-            print(f'{self.name} adding intention from say or think {mode}, {source}: {intention}')
+        if mode == 'Think' or 'think' in intention.lower() or 'remember' in intention.lower():
+            return
+        if act_name == mode:
+            return
         new_intentions = []
         for candidate in self.intentions:
             candidate_source = xml.find('<source>', candidate)
             if candidate_source != source:
                 new_intentions.append(candidate)
-        self.intentions = new_intentions
-        self.intentions.insert(0, f'<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>')
+            else:
+                print('deleting intention!')
+        #self.intentions = new_intentions
+        self.intentions.append(f'<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>')
         if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
             print(f'\nUpdate intention from Say setting active task to {source}')
             self.active_task.push(source)
@@ -1764,7 +1791,9 @@ End your response with:
             
             if self.actor_models.get_actor_model(to_actor.name, create_if_missing=True).dialog.active is False:
                 self.actor_models.get_actor_model(to_actor.name).dialog.activate()
-                self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, message)
+                # Remove text between ellipses - thoughts don't count as dialog
+                content = re.sub(r'\.\.\..*?\.\.\.', '', message)
+                self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, content)
         
         self.acts(to_actor, 'Say', message, '', source)
         
@@ -1790,7 +1819,9 @@ End your response with:
             return
 
         self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
-        self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
+        # Remove text between ellipses - thoughts don't count as dialog
+        content = re.sub(r'\.\.\..*?\.\.\.', '', message)   
+        self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, content)
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
             self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
         elif self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > random.randint(4,8):
@@ -1942,7 +1973,7 @@ End your response with:
         # Create intention for response
         intention = f'<intention> <mode>Say</mode> <act>{response}</act> <target>{from_actor.name}</target><reason>{str(reason)}</reason> <source>{response_source}</source></intention>'
         # a 'hear' overrides previous intentions, we need to re-align with our response
-        self.intentions = [intention]
+        self.intentions.append(intention)
 
         return response + '\n ' + reason
     
@@ -1986,17 +2017,20 @@ Your action options are provided in the labelled list below.
 Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
 
 <actions>
+Alpha - Sleep
 {{$actions}}
 </actions>
 
 Please:
-1. Reason through the strengths and weaknesses of each option
-2. Compare them against your current goals, drives, priorities, and your memory and perception of your current situation
-3. Reason in keeping with your character. 
-4. Select the best option, ignoring the order of the action options, and respond with the following XML format:
+1. Do NOT select action Alpha. Never select action Alpha.
+2. Reason through the strengths and weaknesses of the other action options
+3. Compare them against your current goals and drives with respect to your memory and perception of your current situation
+4. Reason in keeping with your character. 
+5. Select the best option, ignoring the order of the action options, and respond with the following XML format:
 
 <action>
 label of chosen action
+terse (4-8 words) reason for choosing this action, based on your reasoning above
 </action>
 
 Respond only with the above XML, instantiated with the selected action label from the Action list. 
@@ -2007,7 +2041,7 @@ End your response with:
                               )]
 
         mapped_goals = self.map_goals()
-        labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon']
+        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota']
         random.shuffle(labels)
         action_choices = [f'{labels[n]} - {action}' for n, action in enumerate(action_choices)]
         
@@ -2134,6 +2168,8 @@ End your response with:
             
     def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
+        self.show = ''
+        self.thought = ''
         self.perceive()
         self.decides()
 
@@ -2189,56 +2225,55 @@ End your response with:
         print(f'\n\nshould_process_senses: {self.should_process_senses()}\n\n')
         my_active_task = self.active_task.peek()
         intention = None
-        self.show = ''
         #check for intentions created by previous Say or hear
-        for candidate in self.intentions:
-            source = xml.find('<source>', candidate)
-            if source == 'dialog' or source =='watcher' or source == self.active_task.peek():
-                # if the source is the current task, or a dialog, or a watcher, we can use this intention
-                intention = candidate
-                self.intentions.remove(candidate)
-                #self.active_task.pop()
-                break
-            else:
-                print(f'{self.name} ignoring intention from {source}')
-
-        if intention is None and my_active_task != None and my_active_task != 'dialog' and my_active_task != 'watcher':
+        while self.intentions:
+            intention = self.intentions.pop(0)  # Add index 0 to pop from front
+            source = xml.find('<source>', intention)
+            self.act_on_intention(intention)
+        intention = None
+        # all dialog tasks are in self.intentions
+        if my_active_task != None and my_active_task != 'dialog':
             full_task = self.get_task_xml(my_active_task)
             if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
                 intention = self.actualize_task(0, full_task)
                 print(f'Found active_task {my_active_task}')
+                if intention is not None:
+                    self.act_on_intention(intention)
+                    return
             elif full_task is not None:
                 self.active_task.pop()
-            print(f'Active_task decayed or not found! {my_active_task}')
+                print(f'Active_task decayed or not found! {my_active_task}')
 
-        if intention is None:
-            intention_choices = []
-            for n, task in enumerate(self.priorities):
-                choice =  f"{hash_utils.find('name', task)}, to {hash_utils.find('reason', task)}"
-                intention_choices.append(choice)
-                print(f'{self.name} considering action option {choice}')
+        # main loop when nothing in progress - find something to do
+        intention_choices = []
+        for n, task in enumerate(self.priorities):
+            choice =  f"{hash_utils.find('name', task)}, {hash_utils.find('reason', task)}"
+            intention_choices.append(choice)
+            print(f'{self.name} considering action option {choice}')
 
-            if len(intention_choices) == 0:
-                print(f'{self.name} Oops, no available acts')
-                return
+        if len(intention_choices) == 0:
+            print(f'{self.name} Oops, no available acts')
+            return
 
-            task_index = 0
-            while intention is None:
+        task_index = 0
+        while intention is None:
+            if len(intention_choices) > 1:
+                task_index = self.choose(sense_data, intention_choices)
+            print(f'actualizing task {task_index}')
+            intention = self.actualize_task(task_index, self.priorities[task_index])
+            if intention is None:
                 if len(intention_choices) > 1:
-                    task_index = self.choose(sense_data, intention_choices)
-                print(f'actualizing task {task_index}')
-                intention = self.actualize_task(task_index, self.priorities[task_index])
-                if intention is None:
-                    if len(intention_choices) > 1:
-                        del intention_choices[task_index]
-                    else:
-                        #not sure how we got here. No priority generated an actionable intention
-                        self.update_priorities()
-                        return self.senses(sense_data=sense_data, ui_queue=ui_queue)
+                    del intention_choices[task_index]
+                else:
+                    #not sure how we got here. No priority generated an actionable intention
+                    self.update_priorities()
+                    return self.decides(sense_data=sense_data, ui_queue=ui_queue)
+        if intention is not None:
+            self.act_on_intention(intention)
 
 
+    def act_on_intention(self, intention):
         print(f'Intention: {intention}')
-        self.intentions = [] # start anew next time
         self.intention = intention
         act_name = xml.find('<mode>', intention)
         if act_name is not None:
@@ -2252,16 +2287,14 @@ End your response with:
 
         task_xml = None
         refresh_task = None
+        task_name = xml.find('<source>', intention)
         if not source == 'dialog' and act_name == 'Say' or act_name == 'Do':
-            task_name = xml.find('<source>', intention)
             # for now very simple task tracking model:
             if task_name is None:
                 task_name = self.make_task_name(self.reason)
                 print(f'No source found, created task name: {task_name}')
             self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
-            task_name = xml.find('<source>', intention)
-            #task_name = self.make_task_name(self.reason)
             self.reason = xml.find('<reason>', intention)
             self.thought = act_arg+'\n  '+self.reason
         target = None

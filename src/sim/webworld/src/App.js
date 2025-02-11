@@ -66,7 +66,7 @@ function App() {
             case 'context_update':
               setLogText(prev => {
                 const newEntry = data.text; 
-                return prev ? `${prev}<br><br>${newEntry}` : newEntry;
+                return prev ? `${prev}\n\n${newEntry}` : newEntry;
               });
               break;
             case 'status_update':
