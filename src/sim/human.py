@@ -95,6 +95,6 @@ class Human(Character):
                 break
                 
         if target:
-            self.tell(target, message)
+            self.tell(target, message, source='dialog with watcher')
         else:
             print(f"Character {target_name} not found")
