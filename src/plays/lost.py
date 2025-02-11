@@ -28,7 +28,7 @@ S.set_drives([
     #"evaluation of Joe. Can I trust him?",
     #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     #"finding a way out of the forest.",
-    "solving the mystery of how they ended up in the forest with no memory.",
+    "solve the mystery of how they ended up in the forest with no memory.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
@@ -49,11 +49,10 @@ You speak in informally.
 """, server=server)
 
 J.set_drives([
-    "communication and coordination with Samantha, gaining Samantha's trust.",
-    #"safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
-    #"finding a way out of the forest.",
-    "solving the mystery of how they ended up in the forest with no memory.",
-    #"love and belonging, including home, acceptance, friendship, trust, intimacy.",
+    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
+    "companionship, community, family, acceptance, trust, intimacy.",
+    "finding a way out of the forest.",
+    "solve the mystery of how they ended up in the forest with no memory.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
 
