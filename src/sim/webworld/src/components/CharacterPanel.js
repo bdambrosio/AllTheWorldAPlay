@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import CharacterNarrative from './CharacterNarrative';
+import ExplorerModal from './ExplorerModal';
 import './CharacterPanel.css';
 
-function CharacterPanel({ character }) {
+function CharacterPanel({ character, sessionId }) {
   const [showNarrative, setShowNarrative] = useState(false);
+  const [showExplorer, setShowExplorer] = useState(false);
 
   if (!character) {
     return <div className="character-panel">Loading...</div>;
@@ -53,6 +55,21 @@ function CharacterPanel({ character }) {
           {character.thoughts}
         </div>
       </div>
+
+      <button 
+        className="explore-button"
+        onClick={() => setShowExplorer(true)}
+      >
+        Explore Character State
+      </button>
+
+      {showExplorer && (
+        <ExplorerModal
+          character={character}
+          sessionId={sessionId}
+          onClose={() => setShowExplorer(false)}
+        />
+      )}
     </div>
   );
 }

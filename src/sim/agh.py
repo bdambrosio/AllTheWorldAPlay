@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from enum import Enum
 import json
 import random
 import string
@@ -17,13 +18,6 @@ from sim.memoryStream import MemoryStream
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.map as map
-from sim.ActionRecord import (
-    ActionMemory, 
-    ActionRecord,
-    StateSnapshot,
-    Mode,
-    create_action_record
-)
 import utils.hash_utils as hash_utils
 
 from sim.cognitive.DialogManager import Dialog
@@ -33,6 +27,14 @@ import numpy as np
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
+
+class Mode(Enum):
+    THINK = "Think"
+    SAY = "Say"
+    DO = "Do" 
+    MOVE = "Move"
+    LOOK = "Look"
+    LISTEN = "Listen"
 
 def find_first_digit(s):
     for char in s:
@@ -77,7 +79,7 @@ class Character:
         self.context = None
         self.priorities = []  # displayed by main thread at top in character intentions widget
         self.show = ''  # to be displayed by main thread in UI public text widget
-        self.state = {}
+        self.goals = {}
         self.intentions = []
         self.previous_action = ''
         self.reason = ''  # reason for action
@@ -206,30 +208,8 @@ class Character:
         # Reset new memory counter
         self.new_memory_cnt = 0
 
-    # Task management methods
-    def get_task_last_acts_key(self, term):
-        """Checks for name in Last_acts"""
-        for task in list(self.last_acts.keys()):
-            match = self.synonym_check(task, term)
-            if match:
-                return task
-        return None
 
-    def set_task_last_act(self, term, act):
-        task = self.get_task_last_acts_key(term)
-        if task is None:
-            self.last_acts[term] = act
-        else:
-            self.last_acts[task] = act
-
-    def get_task_last_act(self, term):
-        task = self.get_task_last_acts_key(term)
-        if task is None:
-            return 'None'
-        else:
-            return self.last_acts[task]
-
-    def get_task_xml(self, task_name):
+    def get_task(self, task_name):
         for candidate in self.priorities:
             if task_name == hash_utils.find('name', candidate):
                 print(f'found existing task\n  {task_name}')
@@ -237,10 +217,12 @@ class Character:
         return None
 
     def find_or_make_task_xml(self, task_name, reason):
-        candidate = self.get_task_xml(task_name)
+        candidate = self.get_task(task_name)
         if candidate is not None:
             return candidate
-        new_task = f'#plan\n#name {task_name}\n#description {task_name}\n#reason> {reason}##'
+        new_task = f'#plan\n#name {task_name}\n#description {task_name}\n#reason> {reason}\n#actors {self.name}\n#committed False\n##'
+        if self.get_task(task_name) != None:
+            self.priorities.remove(self.get_task(task_name))
         self.priorities.append(new_task)
         print(f'created new task to reflect {task_name}\n {reason}')
         return new_task
@@ -539,7 +521,6 @@ class Agh(Character):
         # Action tracking
         self.previous_action = ''
         self.act_result = ''
-        self.action_memory = ActionMemory()
 
         # Update narrative with drives (drives are strings)
         self.narrative.active_drives = self.drives  # Direct assignment, no name attribute needed
@@ -550,7 +531,7 @@ class Agh(Character):
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
         self.watcher_message_pending = False
-
+        self.next_task = None  # Add this line
     def set_llm(self, llm):
         self.llm = llm
         if self.memory_consolidator is not None:
@@ -602,6 +583,10 @@ class Agh(Character):
 {{$description}}
 </description>
             
+<recent_memories>
+{{$recent_memories}}
+</recent_memories>
+
 Extract from this description two or three words that each describe an aspect of the character's emotional state.
 Use common adjectives like happy, sad, frightened, worried, angry, curious, aroused, cold, hungry, tired, disoriented, etc.
 The words should each describe a different aspect of the character's emotional state, and should be distinct from each other.
@@ -617,8 +602,12 @@ adjective, adjective, adjective
                 concern = hash_utils.find('name', priority) + '. '+hash_utils.find('reason', priority)
                 concerns = concerns + '; '+concern
             state = description + '.\n '+concerns +'\n'+ context
+            recent_memories = self.structured_memory.get_recent(8)
+            recent_memories = '\n'.join(memory.text for memory in recent_memories)
+
+
             print("Char generate image description", end=' ')
-            response = self.llm.ask({ "description": state}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
+            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
             if response:
                 description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. '+context
             else:
@@ -737,13 +726,16 @@ Respond only with a single choice of mode. Do not include any introductory, disc
     
     def generate_goals(self):
         """Generate states to track, derived from drives and current memory context"""
-        self.state = {}
+        self.goals = {}
         for drive in self.drives:
-            former_goal_name = next((self.state[key]['goal'] for key in self.state if self.state[key]['drive'] == drive), None)
-            goal = self.generate_goal(drive, former_goal_name=former_goal_name)
-            self.state[goal['goal']] = goal
+            former_goal_name = next((self.goals[key]['name'] for key in self.goals if self.goals[key]['drive'] == drive), None)
+            goal = self.generate_goal(drive)
+            if goal:
+                if former_goal_name:
+                    del self.goals[former_goal_name]
+                self.goals[goal['name']] = goal
 
-    def generate_goal(self, drive, former_goal_name=None, progress=None):
+    def generate_goal(self, drive, progress=None):
         """Generate states to track, derived from drives and current memory context"""
         
         prompt = [UserMessage(content="""Given a Drive and related memories, assess the current state relative to that drive.
@@ -751,14 +743,6 @@ Respond only with a single choice of mode. Do not include any introductory, disc
 <drive>
 {{$drive}}
 </drive>
-
-<former_goal>
-{{$former_goal}}
-</former_goal>
-
-<progress>
-{{$progress}}
-</progress>
 
 <recent_memories>
 {{$recent_memories}}
@@ -788,7 +772,6 @@ Consider:
 3. The importance scores of relevant memories
 4. Any patterns or trends in the memories
 
-If a former goal is provided above, consider the associated progress. Do not repeat a former goal unless the urgency is very high now.
 Respond with a goal, in four parts: a terse (5-6 words) description of the goal, an urgency assessment (1 word), 
     a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
     and a termination condition (5-6 words) that would reduce its urgency.
@@ -796,7 +779,7 @@ Respond using the following hash-formatted text, where each tag is preceded by a
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #goal 
-#term terse (5-6 words) description of this goal
+#name terse (5-6 words) description of this goal
 #urgency high/medium/low
 #trigger terse (4-7 words) restatement of primary situation or memory that most relates to this goal
 #termination> 5-6 word statement of condition that would somewhat satisfy this goal
@@ -834,39 +817,38 @@ End response with:
         # Generate state assessment
         response = self.llm.ask({
             "drive": drive.text,
-            "former_goal": former_goal_name,
             "progress": progress,
             "recent_memories": recent_memories_text,
             "drive_memories": drive_memories_text,
-            "relationships": self.actor_models.format_relationships(),
+            "relationships": self.actor_models.format_relationships(include_transcript=True),
             "situation": self.context.current_state if self.context else "",
             "character": self.character
         }, prompt, temp=0.3, stops=['<end/>'])     
             
         # Parse response
         try:
-            term = hash_utils.find('term', response)
+            name = hash_utils.find('name', response)
             urgency = hash_utils.find('urgency', response)
             trigger = hash_utils.find('trigger', response)
             termination = hash_utils.find('termination', response)
                 
-            if term and urgency:
-                self.state[term] = {
+            if name and urgency:
+                self.goals[name] = {
                     "drive": drive,
-                    "goal": term,
+                    "name": name,
                     "urgency": urgency,
                     "trigger": trigger if trigger else "",
                     "termination": termination if termination else ""
                 }
             else:
-                 print(f"Warning: Invalid state generation response for {drive.text}")
+                 print(f"Warning: Invalid goal generation response for {drive.text}")
                     
         except Exception as e:
-            print(f"Error parsing state generation response: {e}")
+            print(f"Error parsing goal generation response: {e}")
             traceback.print_exc()
                 
-        print(f'{self.name} generated state: ' + term + '; ' + urgency)
-        return self.state[term]
+        print(f'{self.name} generated goal: ' + name + '; ' + urgency)
+        return self.goals[name]
 
 
     def test_state_termination(self, state, consequences, updates=''):
@@ -936,7 +918,7 @@ End your response with:
     def map_goals(self):
         """ map state for llm input """
         mapped = []
-        for key, item in self.state.items():
+        for key, item in self.goals.items():
             trigger = item['trigger']
             urgency = item['urgency']
             termination = item['termination']
@@ -988,22 +970,6 @@ End your response with:
         response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['<end/>'], max_tokens=12)
         return xml.find('<name>', response)
                     
-    def get_task_xml(self, task_name):
-        for candidate in self.priorities:
-            #print(f'find_or_make testing\n {candidate}\nfor name {task_name}')
-            if task_name == hash_utils.find('name', candidate):
-                print(f'found existing task\n  {task_name}')
-                return candidate
-        return None
-    
-    def find_or_make_task_xml(self, task_name, reason):
-        candidate = self.get_task_xml(task_name)
-        if candidate != None:
-            return candidate
-        new_task = f'#plan\n#name {task_name}\n#description {task_name}\n#reason> {reason}##'
-        self.priorities.append(new_task)
-        print(f'created new task to reflect {task_name}\n {reason}')
-        return new_task
 
     def repetitive(self, new_response, last_response, source):
         """Check if response is repetitive considering wider context"""
@@ -1054,9 +1020,9 @@ End response with:
         else:
             return False
 
-    def clear_task_if_satisfied(self, task_hash, consequences, world_updates):
+    def clear_task_if_satisfied(self, task, consequences, world_updates):
         """Check if task is complete and update state"""
-        termination_check = hash_utils.find('termination', task_hash) if task_hash != None else None
+        termination_check = hash_utils.find('termination', task) if task != None else None
         if termination_check is None or termination_check == '':
             return
 
@@ -1068,12 +1034,12 @@ End response with:
         )
 
         if satisfied:
-            task_name = hash_utils.find('name', task_hash)
+            task_name = hash_utils.find('name', task)
             if task_name == self.active_task.peek():
                 self.active_task.pop()
 
             try:
-                self.priorities.remove(task_hash)
+                self.priorities.remove(task)
             except Exception as e:
                 print(str(e))
 
@@ -1089,10 +1055,6 @@ End response with:
                     new_intentions.append(intention)
             self.intentions = new_intentions
 
-            if self.active_task.peek() is None and len(self.priorities) < 2:
-                # Should never happen, but just in case
-                self.update_goals()
-                self.update_priorities()
         return satisfied
 
 
@@ -1103,13 +1065,6 @@ End response with:
             raise ValueError(f'Invalid action name: {act_name}')
         mode = Mode(act_name)
         self.act_result = ''
-        record = create_action_record(
-            agent=self,
-            mode=mode,
-            action_text=act_arg,
-            task_name=source if source else self.active_task.peek(),
-            target=target.name if target else None
-        )
     
         # Store current state and reason
         self.reason = reason
@@ -1121,7 +1076,8 @@ End response with:
         if act_name == 'Think':
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
-            self.context.message_queue.put({'name':self.name, 'text':f"...{self.thought}..."})  
+            self.context.message_queue.put({'name':self.name, 'text':f"{self.show}"})  
+            self.show = '' # has been added to message queue!
         else:
             self.thought +=  "\n..." + self.reason + "..."
 
@@ -1138,12 +1094,13 @@ End response with:
         
             if source == None:
                 source = self.active_task.peek()
-            task_xml = self.get_task_xml(source) if source != None else None
+            task = self.get_task(source) if source != None else None
         
             # Update displays
 
             self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"You observe {world_updates}", mode='visual')
             self.act_result = world_updates
         
@@ -1160,6 +1117,7 @@ End response with:
                 percept = self.look(interest=act_arg)
                 self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.show = '' # has been added to message queue!
                 self.add_perceptual_input(f"\nYou {act_name}: {act_arg}\n  {percept}", mode='visual')
         elif act_name == 'Look':
             percept = self.look(interest=act_arg)
@@ -1191,6 +1149,11 @@ End response with:
                 self.show += f"{act_arg}'"
                 print(f"Queueing message for {self.name}: {act_arg}")  # Debug
                 self.context.message_queue.put({'name':self.name, 'text':act_arg})
+            
+            content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
+            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
+            target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
+
             for actor in self.context.actors:
                 if actor != self:
                     if source != 'watcher':  # when talking to watcher, others don't hear it
@@ -1202,18 +1165,18 @@ End response with:
             # in this case 'self' is speaking
             # Remove text between ellipses - thoughts 
             # below done in hear
-            # self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
-
+ 
 
     def update_goals(self, events=''):
         """Update goals based on termination conditions"""
         # Create a list from the keys to avoid modifying dict during iteration
-        for goal in list(self.state.keys()):
-            satisfied, progress = self.test_priority_termination(self.state[goal]['termination'], events)
+        for goal in list(self.goals.keys()):
+            satisfied, progress = self.test_priority_termination(self.goals[goal]['termination'], events)
             if satisfied:
-                new_goal = self.generate_goal(self.state[goal]['drive'], former_goal_name=goal, progress=progress)
-                del self.state[goal]
-                self.state[new_goal['goal']] = new_goal
+                drive = self.goals[goal]['drive']
+                del self.goals[goal]
+                new_goal = self.generate_goal(drive, progress=progress)
+                self.goals[new_goal['term']] = new_goal
 
 
     def update_priorities(self):
@@ -1249,6 +1212,8 @@ Consider:
 1. Your current state assessments
 2. Recent memories and events
 3. Your basic drives and needs
+4. Your goals
+5. Your relationships
                               
 The three plans should be distinct, and jointly cover all the important aspects of the current situation and your goals.
 
@@ -1259,10 +1224,12 @@ be careful to insert line breaks only where shown, separating a value from the n
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
+#actors {self.name}
+#committed False
 #termination (5-7 words) condition test which, if met, would satisfy the goal of this action
 ##
 
-In refering to other actors, always use their name, without other labels like 'Agent', 
+In refering to other actors. always use their name, without other labels like 'Agent', 
 and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with three plans in hash-formatted-text format and each ending with ## as shown above.
 Order plans from highest to lowest priority.
@@ -1283,13 +1250,18 @@ End response with:
             'goals': goal_text,
             'memories': memory_text,
             'recent_events': self.narrative.get_summary('medium'),
-            'relationships': self.actor_models.format_relationships()
+            'relationships': self.actor_models.format_relationships(include_transcript=True)
         }, prompt, temp=0.7, stops=['<end/>'])
 
         # Extract plans from response
-        self.priorities = []
+        # keep 'committed' tasks
+        self.priorities = [task for task in self.priorities if hash_utils.find('committed', task)=='True']
         for plan in hash_utils.findall('plan', response):
             if hash_utils.find('name', plan):
+                task_name = hash_utils.find('name', plan)
+                reason = hash_utils.find('reason', plan)
+                if self.get_task(task_name) != None:
+                    self.priorities.remove(self.get_task(task_name))
                 self.priorities.append(plan)
 
     def test_priority_termination(self, termination_check, consequences, updates=''):
@@ -1341,7 +1313,6 @@ End your response with:
 <end/>
 """)]
 
-        print(f'{self.name} testing priority termination_check: {termination_check}')
 
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(5)
@@ -1359,6 +1330,7 @@ End your response with:
         }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
 
         satisfied = xml.find('<status>', response)
+        print(f'{self.name} testing priority termination_check: {termination_check}: {satisfied}')
         progress = xml.find('<progress>', response)
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'Priority {termination_check} Satisfied!')
@@ -1414,7 +1386,7 @@ End response with:
         response = self.llm.ask({
             "act_name": act_name,
             "act_arg": act_arg,
-            "dialog": '\n'.join(dialog),
+            "dialog": dialog,
             "target": target_name,
             "relationship": relationship,
             "character": self.character
@@ -1422,12 +1394,12 @@ End response with:
 
         return response
 
-    def actualize_task(self, n, task_hash):
-        task_name = hash_utils.find('name', task_hash)
-        if task_hash is None or task_name is None:
-            raise ValueError(f'Invalid task {n}, {task_hash}')
+    def actualize_task(self, n, task):
+        task_name = hash_utils.find('name', task)
+        if task is None or task_name is None:
+            raise ValueError(f'Invalid task {n}, {task}')
         last_act = self.get_task_last_act(task_name)
-        reason = hash_utils.find('reason', task_hash)
+        reason = hash_utils.find('reason', task)
 
         prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the next step of the following task.
@@ -1614,7 +1586,7 @@ End your response with:
                 'name': self.name,
                 "situation": self.context.current_state + '\n\n' + self.format_look(),
                 "goals": mapped_goals,
-                "task": task_hash,
+                "task": task,
                 "reason": reason,
                 "lastAct": last_act,
                 "lastActResult": self.act_result
@@ -1693,6 +1665,9 @@ End your response with:
 
     def update_intentions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
         """Update intentions based on speech or thought"""
+        if source.startswith('dialog'):
+            print(f' in dialog, no intention updates')
+            return
         if target is None:
             target_name = self.say_target(act_name, act_arg, source)
         elif hasattr(target, 'name'):  # Check if target has name attribute instead of type
@@ -1717,96 +1692,388 @@ End your response with:
 {{$text}}
 </text>
 
-Does it include an intention for 'I' to act? 
+<name>
+{{$name}}
+</name>
+
+<active_task>
+{{$active_task}}
+</active_task>
+
+<all_tasks>
+{{$all_tasks}}
+</all_tasks>
+
+<reason>
+{{$reason}}
+</reason>
+
+Does it include an intention for 'I' to act, that is, a new task being committed to? 
 An action can be physical or verbal.
 Thought, e.g. 'reflect on my situation', should NOT be reported as an intent to act.
-Respond using the following XML form:
+Consider the current task and action reason in determining if there is a new task being committed to.
 
-<analysis>
-<act>False if there is no intention to act, True if there is an intention to act</act>
-<intention>stated intention to say or act</intention>
-<mode>'say' - if intention is to say something, 'do' - if intention is to perform a physical act</mode>
-</analysis>
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#plan
+#name brief (4-6 words) action name
+#description terse (6-8 words) statement of the action to be taken
+#reason (6-7 words) on why this action is important now
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#actors {{$name}}
+#committed True
+##
+
+In refering to other actors, always use their name, without other labels like 'Agent', 
+and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
+                            
 
 ===Examples===
 
 Text:
 'Good morning Annie. I'm heading to the office for the day. Call maintenance about the disposal noise please.'
 
+<name>
+Madam
+</name>
+
 Response:
-<analysis>
-<act>True</act>
-<intention>Head to the office for the day.</intention>
-<mode>Do</mode>
-</analysis>
+#plan
+#name Head to the office for the day.
+#description Head to the office for the day.
+#reason Need to go to work.
+#termination Leave for the office
+#actors {{$name}}
+#committed True
+##
 
 Text:
 'I really should reassure annie.'
 
+<name>
+Hank
+</name>
+
 Response:
-<analysis>
-<act>True</act>
-<intention>Annie, you have been performing wonderfully!</intention>
-<mode>Say</mode>
-</analysis>
+#plan
+#name Reassure Annie
+#description Reassure Annie
+#reason Need to reassure Annie
+#termination Reassured Annie
+#actors {{$name}}
+#committed True
+##
 
 Text:
 'Good morning Annie. Call maintenance about the disposal noise please.'
 
+<name>
+Annie
+</name>
+
 Response:
-<analysis>
-<act>False</act>
-<intention>None</intention>
-<mode>NA</mode>
-</analysis>
+#plan
+#name Call maintenance about the disposal noise
+#description Call maintenance about the disposal noise
 
 Text:
 'Reflect on my thoughts and feelings to gain clarity and understanding, which will ultimately guide me towards finding my place in the world.'
 
 Response:
-<analysis>
-<act>False</act>
-<intention>None</intention>
-<mode>NA</mode>
-</analysis>
+#plan
+#name Reflect on my thoughts and feelings
+#description Reflect on my thoughts and feelings
+#reason Gain clarity and understanding
+#termination Gained clarity and understanding
+#actors Annie
+#committed True
+##
 
 ===End Examples===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the intention analysis in XML as shown above.
+Respond only with the intention analysis in hash-formatted text as shown above.
 End your response with:
 </end>
 """)]
-        response = self.llm.ask({"text":f'{act_name} {act_arg}'}, prompt, temp=0.1, stops=['</end>'], max_tokens=100)
-        act = xml.find('<act>', response)
-        if act is None or act.strip() != 'True':
-            print(f'no intention in say or think')
+        response = self.llm.ask({"text":f'{act_name} {act_arg}',
+                                 "active_task":self.active_task.peek(),
+                                 "reason":reason,
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "name":self.name}, 
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+        tasks = hash_utils.findall('plan', response)
+        if len(tasks) == 0:
+            print(f'no new tasks in say or think')
             return
-        intention = xml.find('<intention>', response)
-        if intention is None or intention=='None':
-            print(f'no intention in say or think')
-            return
-        mode = str(xml.find('<mode>', response))
-        
-        if mode == 'Think' or 'think' in intention.lower() or 'remember' in intention.lower():
-            return
-        if act_name == mode:
-            return
-        new_intentions = []
-        for candidate in self.intentions:
-            candidate_source = xml.find('<source>', candidate)
-            if candidate_source != source:
-                new_intentions.append(candidate)
-            else:
-                print('deleting intention!')
-        #self.intentions = new_intentions
-        self.intentions.append(f'<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>')
-        if source != None and self.active_task.peek() is None: # do we really want to take a spoken intention as definitive?
-            print(f'\nUpdate intention from Say setting active task to {source}')
-            self.active_task.push(source)
-        #ins = '\n'.join(self.intentions)
-        #print(f'Intentions\n{ins}')
+        for task in tasks:
+            name = hash_utils.find('name', task)
+            description = hash_utils.find('description', task)
+            reason = hash_utils.find('reason', task)
+            termination = hash_utils.find('termination', task)
+            if name is None or description is None or reason is None or termination is None:
+                print(f'misformed task in say or think')
+                continue
+            print(f'new task: {name} {description} {reason} {termination}')
+            if self.get_task(name) != None:
+                self.priorities.remove(self.get_task(name))
+            self.priorities.append(task)
 
+    def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=None):
+        """Update individual commitments after closing a dialog"""
+        
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog.
+
+
+<transcript>
+{{$transcript}}
+</transcript>
+
+<all_tasks> 
+{{$all_tasks}}
+</all_tasks>
+
+<active_task>
+{{$active_task}}
+</active_task>
+
+<reason>
+{{$reason}}
+</reason>
+
+<self>
+{{$name}}
+</self>
+
+<other>
+{{$target_name}}
+</other>
+
+<joint_tasks>
+{{$joint_tasks}}
+</joint_tasks>
+
+Extract from this transcript new commitments to act made by self, {{$name}}, to other, {{$target_name}}.
+
+Extract only commitments made by self that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
+Note that the joint_tasks, as listed above, are commitments made by both self and other to work together, and should not be reported as new commitments here.
+                            
+Does the transcript include an intention for 'I' to act alone, that is, a new task being committed to individually? 
+An action can be physical or verbal.
+Thought, e.g. 'reflect on my situation', should NOT be reported as an intent to act.
+Consider the all_tasks pendingand current task and action reason in determining if a candidate task is in fact new.
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#plan
+#name brief (4-6 words) action name
+#description terse (6-8 words) statement of the action to be taken
+#actors {{$name}}
+#reason (6-7 words) on why this action is important now
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#committed True
+##
+
+In refering to other actors, always use their name, without other labels like 'Agent', 
+and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
+                            
+
+===Examples===
+
+<transcript>
+Jean says: Hey Francoise, what needs doin' on the farm today?
+Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched. We should check the wheat too, make sure it's not gettin' too ripe.
+Jean says: Aye, let's get the waterin' done first, then we can take a gander at the wheat. I'll grab the buckets and meet you by the well.
+Francoise says: I'll meet you by the well then, Jean. Don't forget to check the bucket handles, we don't want 'em breakin' on us.
+Jean says: Aye, I'll give 'em a good check. See you by the well, Francoise. I'll bring the ropes too, just in case.
+</transcript>
+
+<self>
+Francoise
+</self>
+
+<other>
+Jean
+</other>
+
+Response:
+#plan
+#name bring ropes
+#description bring ropes to meeting with Jean
+#reason in case the well handle breaks
+#termination Met Jean by the well
+#actors Francoise
+#committed True
+##
+
+
+===End Examples===
+
+Do NOT include any introductory, explanatory, or discursive text.
+Respond only with the intention analysis in hash-formatted text as shown above.
+End your response with:
+</end>
+""")]
+        response = self.llm.ask({"transcript":transcript, 
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "active_task":self.active_task.peek(),
+                                 "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
+                                 "reason":xml.find('<reason>', self.intention),
+                                 "name":self.name, 
+                                 "target_name":target.name}, 
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+        source = 'dialog with '+target.name
+        tasks = hash_utils.findall('plan', response)
+        if len(tasks) == 0:
+            print(f'no new tasks in say or think')
+            return
+        for task in tasks:
+            name = hash_utils.find('name', task)
+            description = hash_utils.find('description', task)
+            reason = hash_utils.find('reason', task)
+            termination = hash_utils.find('termination', task)
+            if name is None or description is None or reason is None or termination is None:
+                print(f'misformed task in say or think')
+                continue
+            print(f'new task: {name} {description} {reason} {termination}')
+            if self.get_task(name) != None:
+                self.priorities.remove(self.get_task(name))
+            self.priorities.append(task)
+        return tasks
+  
+    def update_joint_commitments_following_conversation(self, target, transcript):
+        """Update individual commitments after closing a dialog"""
+        
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog.
+
+<all_tasks> 
+{{$all_tasks}}
+</all_tasks>
+
+<active_task>
+{{$active_task}}
+</active_task>
+
+<reason>
+{{$reason}}
+</reason>
+
+<transcript>
+{{$transcript}}
+</transcript>
+
+<self>
+{{$name}}
+</self>
+
+<other>
+{{$target_name}}
+</other>
+
+
+Extract from this transcript new commitments to act jointly made by self, {{$name}} and other, {{$target_name}}.
+
+Extract only new joint actions that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
+                            
+An action can be physical or verbal.
+Thought, e.g. 'reflect on our situation', should NOT be reported as a commitment to act.
+Consider the all_tasks and current task and action reason in determining if there is a new task being committed to.
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#plan
+#name brief (4-6 words) action name
+#description terse (6-8 words) statement of the action to be taken
+#actors {{$name}}, {{$target_name}}
+#reason (6-7 words) on why this action is important now
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#committed True
+##
+
+In refering to other actors, always use their name, without other labels like 'Agent', 
+and do not use pronouns or referents like 'he', 'she', 'that guy', 'other', etc.
+                            
+
+===Examples===
+
+<transcript>
+Jean says: Hey Francoise, what needs doin' on the farm today?
+Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched. We should check the wheat too, make sure it's not gettin' too ripe.
+Jean says: Aye, let's get the waterin' done first, then we can take a gander at the wheat. I'll grab the buckets and meet you by the well.
+Francoise says: I'll meet you by the well then, Jean. Don't forget to check the bucket handles, we don't want 'em breakin' on us.
+Jean says: Aye, I'll give 'em a good check. See you by the well, Francoise. I'll bring the ropes too, just in case.
+</transcript>
+
+<self>
+Francoise
+</self>
+
+<other>
+Jean
+</other>
+
+Response:
+#plan
+#name Meet by the well
+#description Meet by the well  
+#actors Jean, Francoise
+#reason get water for the south field
+#termination water bucket is full
+#committed True
+##
+#plan
+#name Water south field
+#description Water the south field
+#actors Jean, Francoise
+#reason crops are getting parched
+#committed True
+#termination south field is watered
+##
+#plan
+#name Check the wheat
+#description Check the wheat
+#actors Jean, Francoise
+#reason To ensure it's not getting too ripe
+#termination wheat condition is checked
+#committed True
+##
+
+===End Examples===
+
+Do NOT include any introductory, explanatory, or discursive text.
+Respond only with the intention analysis in hash-formatted text as shown above.
+End your response with:
+</end>
+""")]
+        response = self.llm.ask({"transcript":transcript, 
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "active_task":self.active_task.peek(),
+                                 "reason":xml.find('<reason>', self.intention),
+                                 "name":self.name, 
+                                 "target_name":target.name}, 
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+        source = 'dialog with '+target.name
+        tasks = hash_utils.findall('plan', response)
+        if len(tasks) == 0:
+            print(f'no new tasks in say or think')
+            return
+        for task in tasks:
+            name = hash_utils.find('name', task)
+            description = hash_utils.find('description', task)
+            reason = hash_utils.find('reason', task)
+            termination = hash_utils.find('termination', task)
+            if name is None or description is None or reason is None or termination is None:
+                print(f'misformed task in say or think')
+                continue
+            print(f'new task: {name} {description} {reason} {termination}')
+            if self.get_task(name) != None:
+                self.priorities.remove(self.get_task(name))
+            self.priorities.append(task)
+        return tasks
+    
     def random_string(self, length=8):
         """Generate a random string of fixed length"""
         letters = string.ascii_lowercase
@@ -1837,9 +2104,12 @@ End your response with:
 #name {new_task_name}
 #description {message}
 #termination_check Responded
-#target {from_actor.name}
+#actors {self.name}
+#committed True
 #reason engaging with Doc: completing his assignments.
 """
+            if self.get_task(new_task_name) != None:
+                self.priorities.remove(self.get_task(new_task_name))
             self.priorities.append(new_task)
             self.active_task.push(new_task_name)
             self.watcher_message_pending = True
@@ -1848,12 +2118,26 @@ End your response with:
         self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
         # Remove text between ellipses - thoughts don't count as dialog
         content = re.sub(r'\.\.\..*?\.\.\.', '', message)   
-        self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, content)
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
-            self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
+            if source.startswith('dialog'):
+                # don't reactivate a closed dialog, let it quietly expire
+                return
+            else:
+                self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
+
         elif self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > random.randint(4,8):
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            # should we provide some kind of nominal response?
+            self.active_task.pop()
+            joint_tasks = self.update_joint_commitments_following_conversation(self, 
+                                                                               from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript())
+            my_tasks = self.update_individual_commitments_following_conversation(from_actor, 
+                                                                      self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
+                                                                      joint_tasks)
+            from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
+            from_actor.active_task.pop()
+            from_tasks = from_actor.update_individual_commitments_following_conversation(self, 
+                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(),
+                                                                              joint_tasks)
             return
 
          # Generate response using existing prompt-based method
@@ -1941,7 +2225,7 @@ End your response with:
             last_act = self.last_acts[source]
         activity = ''
         if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
-            activity = f'You are currently actively engaged in {self.get_task_xml(self.active_task.peek())}'
+            activity = f'You are currently actively engaged in {self.get_task(self.active_task.peek())}'
 
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(6)
@@ -1961,7 +2245,7 @@ End your response with:
                 "activity": activity,
                 "last_act": self.last_acts,
                 'history': self.narrative.get_summary('medium'),
-                'dialog': '\n'.join(self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript()),
+                'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
@@ -2050,6 +2334,7 @@ Alpha - Sleep
 Please:
 1. Do NOT select action Alpha. Never select action Alpha.
 2. Reason through the strengths and weaknesses of the other action options
+3. Reason carefully about dependencies among action options, timing of action options, and the order of execution.
 3. Compare them against your current goals and drives with respect to your memory and perception of your current situation
 4. Reason in keeping with your character. 
 5. Select the best option, ignoring the order of the action options, and respond with the following XML format:
@@ -2139,16 +2424,10 @@ End your response with:
             return "full"
         
         # Check for critical state changes
-        for state_term, info in self.state.items():
+        for state_term, info in self.goals.items():
             if info["urgency"] == "high":
                 return "full"
-                
-        # Check action progress
-        if self.previous_action:
-            effectiveness = self.action_memory.get_task_effectiveness(self.active_task.peek())
-            if effectiveness < 0.3:
-                return "full"
-                
+         
         # Check for significant perceptual changes
         if self.perceptual_state.recent_significant_change():
             return "medium"
@@ -2177,19 +2456,9 @@ End your response with:
                 self.add_to_history("You notice changes in your surroundings")
 
         # Update action record without full analysis
-        if self.previous_action:
-            record = create_action_record(
-                agent=self,
-                mode=Mode(self.previous_action),
-                action_text=self.act_result,
-                task_name=self.active_task.peek(),
-                target=None
-            )
-            self.action_memory.add_record(record)
-
         # Add any obvious state changes to memory
-        for key, info in self.state.items():
-            if info["state"] in ["very high", "very low"]:
+        for key, info in self.goals.items():
+            if info["urgency"] in ["very high", "very low"]:
                 self.add_to_history(f"You are acutely aware of your {key} state")    
             
     def cognitive_cycle(self, sense_data='', ui_queue=None):
@@ -2225,8 +2494,6 @@ End your response with:
         satisfied = False
         for task in self.priorities.copy():
             satisfied = self.clear_task_if_satisfied(task, '', self.act_result)
-            if satisfied:
-                break
         if satisfied:
             self.update_goals()
             self.update_priorities()
@@ -2234,14 +2501,6 @@ End your response with:
 
     def decides(self, sense_data='', ui_queue=None):
         print(f'\n*********decides***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
-        all_actions={
-            "Act": """Act as follows: '{action}'\n  because: '{reason}'""",
-            "Move": """Move in direction: '{direction}'\n because: '{reason}'""",
-            "Answer": """ Answer the following question: '{question}'""",
-            "Say": """Say: '{text}',\n  because: '{reason}'""",
-            "Think": """Think: '{text}\n  because" '{reason}'""",
-            "Listen": """Listen attentively to others,\n  because: '{reason}'"""  # Removed Discuss, kept Listen
-        }
 
         if self.wakeup:
             self.wakeup = False
@@ -2250,16 +2509,21 @@ End your response with:
  
         print(f'should_process_senses: {self.should_process_senses()}')
         my_active_task = self.active_task.peek()
-        intention = None
-        #check for intentions created by previous Say or hear
-        while self.intentions:
-            intention = self.intentions.pop(0)  # Add index 0 to pop from front
-            source = xml.find('<source>', intention)
+        if self.next_task:
+            intention = self.actualize_task(0, self.next_task)
             self.act_on_intention(intention)
-        intention = None
-        # all dialog tasks are in self.intentions
-        if my_active_task != None and not my_active_task.startswith('dialog'):
-            full_task = self.get_task_xml(my_active_task)
+            self.next_task = None
+            return
+
+        # first see if any committed goals
+        task_options = []
+        for task in self.priorities:
+            if hash_utils.find('committed', task) == 'True':
+                task_options.append(task)
+
+        # continue with active task if it is committed or there are no other committed options
+        if my_active_task != None and (hash_utils.find('committed', my_active_task)=='True' or len(task_options) == 0):
+            full_task = self.get_task(my_active_task)
             if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
                 intention = self.actualize_task(0, full_task)
                 print(f'Found active_task {my_active_task}')
@@ -2271,31 +2535,28 @@ End your response with:
                 print(f'Active_task decayed or not found! {my_active_task}')
 
         # main loop when nothing in progress - find something to do
-        intention_choices = []
-        for n, task in enumerate(self.priorities):
-            choice =  f"{hash_utils.find('name', task)}, {hash_utils.find('reason', task)}"
-            intention_choices.append(choice)
-            print(f'{self.name} considering action option {choice}')
-
-        if len(intention_choices) == 0:
-            print(f'{self.name} Oops, no available acts')
-            return
+        if len(task_options) == 0:
+            for n, task in enumerate(self.priorities):
+                task_options.append(task)
+            if len(task_options) == 0:
+                self.update_priorities()
+                return self.decides(sense_data=sense_data, ui_queue=ui_queue)
 
         task_index = 0
-        while intention is None:
-            if len(intention_choices) > 1:
-                task_index = self.choose(sense_data, intention_choices)
+        if len(task_options) > 0:
+            if len(task_options) > 1:
+                task_index = self.choose(sense_data, task_options)
+            else:
+                task_index = 0
             print(f'actualizing task {task_index}')
-            intention = self.actualize_task(task_index, self.priorities[task_index])
-            if intention is None:
-                if len(intention_choices) > 1:
-                    del intention_choices[task_index]
-                else:
-                    #not sure how we got here. No priority generated an actionable intention
-                    self.update_priorities()
-                    return self.decides(sense_data=sense_data, ui_queue=ui_queue)
-        if intention is not None:
+            intention = self.actualize_task(task_index, task_options[task_index])
+        if intention:
             self.act_on_intention(intention)
+            return
+        else:
+            del task_options[task_index]
+            self.update_priorities()
+            return self.decides(sense_data=sense_data, ui_queue=ui_queue)
 
 
     def act_on_intention(self, intention):
@@ -2335,13 +2596,6 @@ End your response with:
 
         #this will affect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
-
-        # maybe we should do this at start of next sense?
-        if refresh_task is not None and not task_name.startswith('dialog'):
-            for task in self.priorities:
-                if refresh_task == task:
-                    #print(f"refresh task just before actualize_task call {xml.find('text>', refresh_task)}")
-                    self.actualize_task('refresh', refresh_task) # regenerate intention
 
     
     def format_thought_for_UI (self):
@@ -2415,4 +2669,71 @@ end your response with:
         
         result = self.llm.ask({}, prompt, max_tokens=100, stops=['</end>'])
         return result or ""
+
+    def get_explorer_state(self):
+        """Return detailed state for explorer UI"""
+        return {
+            'currentTask': self.active_task.peek() or 'idle',
+            'intentions': self.intentions or [],  # List[str]
+            'lastAction': {
+                'name': self.previous_action or '',
+                'result': self.act_result or '',
+                'reason': self.reason or ''
+            },
+            'drives': [{'text': drive.text or ''} for drive in (self.drives or [])],
+            'emotional_state': [
+                {
+                    'text': percept.content or '',
+                    'mode': percept.mode.name if percept.mode else 'unknown',
+                    'time': percept.timestamp.isoformat() if percept.timestamp else datetime.now().isoformat()
+                }
+                for percept in (self.perceptual_state.get_current_percepts() or [])
+            ],
+            'memories': [
+                {
+                    'text': memory.text or '',
+                    'timestamp': memory.timestamp.isoformat() if memory.timestamp else datetime.now().isoformat()
+                } 
+                for memory in (self.structured_memory.get_recent(5) or [])
+            ],
+            'narrative': {
+                'recent_events': self.narrative.recent_events if self.narrative else '',
+                'ongoing_activities': self.narrative.ongoing_activities if self.narrative else ''
+            },
+            'social': {
+                'known_actors': [
+                    {
+                        'name': model.name or '',
+                        'relationship': model.relationship or '',
+                        'dialog': {
+                            'active': bool(model.dialog.active) if model.dialog else False,
+                            'transcript': model.dialog.get_transcript() or '' if model.dialog else ''
+                        } if model.dialog else None
+                    }
+                    for model in (self.actor_models.known_actors.values() if self.actor_models else [])
+                ]
+            },
+            'cognitive': {
+                'goals': [
+                    {
+                        'name': goal_name,
+                        'urgency': goal_data.get('urgency', ''),
+                        'trigger': goal_data.get('trigger', ''),
+                        'termination': goal_data.get('termination', ''),
+                        'drive': goal_data['drive'].text if 'drive' in goal_data and goal_data['drive'] else ''
+                    }
+                    for goal_name, goal_data in (self.goals or {}).items()
+                ],
+                'priorities': [
+                    {
+                        'name': hash_utils.find('name', p) or '',
+                        'description': hash_utils.find('description', p) or '',
+                        'reason': hash_utils.find('reason', p) or '',
+                        'actors': hash_utils.find('actors', p) or '',
+                        'committed': hash_utils.find('committed', p) == 'True'
+                    } for p in (self.priorities or [])
+                ],
+                'intentions': self.intentions or []  # List[str]
+            }
+        }
 

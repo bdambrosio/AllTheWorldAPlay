@@ -83,8 +83,8 @@ class StructuredMemory:
         return self.concrete_memories
         
     def get_recent(self, n: int) -> List[MemoryEntry]:
-        """Get n most recent memories"""
-        return sorted(self.concrete_memories, key=lambda x: x.timestamp, reverse=True)[:n]
+        """Get n most recent memories in chronological order (oldest first)"""
+        return sorted(self.concrete_memories, key=lambda x: x.timestamp, reverse=False)[-n:]
     
     def get_by_id(self, memory_id: int) -> Optional[MemoryEntry]:
         """Get specific memory by ID"""
@@ -92,6 +92,7 @@ class StructuredMemory:
             if memory.memory_id == memory_id:
                 return memory
         return None
+        
     
     def link_memories(self, id1: int, id2: int) -> bool:
         """Create bidirectional link between memories"""

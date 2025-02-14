@@ -32,6 +32,7 @@ function App() {
       try {
         const response = await fetch('http://localhost:8000/api/session/new');
         const data = await response.json();
+        setSessionId(data.session_id);
         
         websocket.current = new WebSocket(`ws://localhost:8000/ws/${data.session_id}`);
         
@@ -175,6 +176,7 @@ function App() {
           <CharacterPanel 
             key={character.name} 
             character={character}
+            sessionId={sessionId}
           />
         ))}
       </div>

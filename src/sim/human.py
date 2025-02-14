@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import List
 from sim.memory.core import MemoryEntry, StructuredMemory
-from sim.agh import Character, Stack
+from sim.agh import Agh, Character, Stack
 
 from PyQt5.QtWidgets import QDialog
-class Human(Character):
+class Human(Agh):
     def __init__(self, name, character_description, ui=None):
         super().__init__(name, character_description)
         self.structured_memory = StructuredMemory()
@@ -13,34 +13,18 @@ class Human(Character):
         self.active_task = Stack()
 
     def hear(self, from_actor, message, source='dialog', respond=True):
-        if from_actor.name != 'Watcher':
-            # Don't display messages the user types!
-            self.add_to_history(f"You hear {from_actor.name} say: {message}")
-            if self.ui is not None:
-                self.ui.display(f"\n{from_actor.name}: {message}\n")
-        if respond:
-            response = self.generate_response(from_actor, message, source)
-            if response:
-                self.intentions.append(response)
+        pass
 
     def generate_response(self, from_actor, message, source):
-        self.senses(message)
+        pass
     
     def tell(self, to_actor, message, source='inject', respond=True):
-        if source == "init":
-            # special case, reset context
-            self.active_task = to_actor.name
-        if source != 'inject':
-            self.add_to_history(f'You say to {to_actor.name}: {message}')
-        # user has no task management!
-        print(f'telling {to_actor.name} {message}')
-        self.acts(to_actor, 'Say', message, '', source)
-
+        pass
  
     def format_history(self, n=2):
-        """Get n most recent memories"""
-        recent_memories = self.structured_memory.get_recent(n)
-        return '\n\n'.join(memory.text for memory in recent_memories)
+            """Get n most recent memories"""
+            recent_memories = self.structured_memory.get_recent(n)
+            return '\n\n'.join(memory.text for memory in recent_memories)
 
 
     def add_to_history(self, message):
@@ -55,27 +39,14 @@ class Human(Character):
         """Humans don't need autonomous updates"""
         pass
 
-    def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
-        """Humans don't use autonomous task management"""
+    def acts(self, target, act_name, act_arg='', reason='', source=''):
+        pass                       
+    def senses(self, sense_data = None):
+        pass  
+
+    def cognitive_cycle(self):
         pass
 
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
-        """Process human actions"""
-        if act_name == 'Say':
-            if source != 'inject':
-                # Not user input - system generated
-                self.show += f"\n{self.name}: '{act_arg}'"
-            if target:
-                target.hear(self, act_arg, source)
-                    
-    def senses(self, sense_data = None):
-        """Humans don't use senses"""
-        from sim.worldsim import InputWidget       
-        input_widget = InputWidget("Character-name, message:")
-        if input_widget.exec_() == QDialog.Accepted:
-            user_input = input_widget.get_user_input()
-            self.inject(user_input)
-    
     def inject(self, input_text):
         """Process user input from UI"""
         # Parse "Character name, message" format
@@ -95,6 +66,6 @@ class Human(Character):
                 break
                 
         if target:
-            self.tell(target, message, source='dialog with watcher')
+            target.hear(self, message, source='dialog with watcher')
         else:
             print(f"Character {target_name} not found")

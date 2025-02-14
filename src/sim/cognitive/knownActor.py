@@ -33,6 +33,9 @@ End with:
         response = self.manager.owner.llm.ask({}, prompt, max_tokens=20, stops=["</end>"])
         if response:
             self.goal = response.strip()
+
+    def format_transcript(self, include_transcript=False):
+        return self.dialog.get_transcript(10) if include_transcript else ''
     
     def update_relationship(self, all_texts):
         """self is An instance of a model of another actor 
@@ -108,12 +111,16 @@ class KnownActorManager:
             #actor is a KnownActor instance, a model of the owner's relationship to this actor
             actor.update_relationship(all_texts)
 
-    def get_known_relationships(self):
+    def get_known_relationships(self, include_transcript=False):
         relationships = {}
         for actor in self.known_actors.values():
-            relationships[actor.name] = actor.relationship
+            if actor == self:
+                continue
+            relationship = actor.relationship
+            transcript = actor.format_transcript(include_transcript)
+            relationships[actor.name] = relationship + '\n\n' + transcript
         return relationships
 
-    def format_relationships(self):
-        relationships = self.get_known_relationships()
+    def format_relationships(self, include_transcript=False):
+        relationships = self.get_known_relationships(include_transcript)
         return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])

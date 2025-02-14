@@ -15,6 +15,7 @@ from collections import deque
 from typing import Dict, Any
 import logging
 import traceback  # Add at top if not already imported
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -99,29 +100,29 @@ class Simulation:
                 await self._process_inject(inject)
 
             if self.initialized:
-                for char in self.characters:
-                    # Process character step
-                    char.cognitive_cycle()
-                    # Generate and send image update
-                    char_data = char.to_json()
-                    try:
-                        description = char.generate_image_description()
-                        if description:
-                            image_path = generate_image(self.context.llm, description, char.name+'.png')
-                            if image_path:
-                                with open(image_path, 'rb') as f:
-                                    image_data = base64.b64encode(f.read()).decode()
-                                    char_data['image'] = image_data
-                                    if char_update_callback:
-                                        await char_update_callback(self.context, char.name, char_data)
-                                        await asyncio.sleep(0.1)
-                    except Exception as e:
-                         print(f"Error generating image for {char.name}: {e}")
+                char = self.context.next_actor()
+                # Process character step
+                char.cognitive_cycle()
+                # Generate and send image update
+                char_data = char.to_json()
+                try:
+                    description = char.generate_image_description()
+                    if description:
+                        image_path = generate_image(self.context.llm, description, char.name+'.png')
+                        if image_path:
+                            with open(image_path, 'rb') as f:
+                                image_data = base64.b64encode(f.read()).decode()
+                                char_data['image'] = image_data
+                                if char_update_callback:
+                                    await char_update_callback(self.context, char.name, char_data)
+                                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    print(f"Error generating image for {char.name}: {e}")
                         
                 #now handle context
-                if self.steps_since_last_update > random.randint(1, 3):    
+                if self.steps_since_last_update > random.randint(3, 5):    
                     self.context.senses('')
-                    if char_update_callback:
+                    if world_update_callback:
                         context_data = self.context.to_json()
                         await world_update_callback('World', context_data)
                         await asyncio.sleep(0.1)
@@ -130,7 +131,7 @@ class Simulation:
                     self.steps_since_last_update += 1
 
                 # Yield control briefly to allow other tasks
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.1)
 
         except Exception as e:
             logger.error(f"Error in simulation step: {e}")
@@ -171,7 +172,8 @@ class Simulation:
         try:
             if self.watcher is None:
                 self.watcher = Human('Watcher', "Human user representative", None)
-                self.watcher.context = self.context
+                self.watcher.set_context(self.context)
+                self.context.actors.append(self.watcher)
             if target_name == 'World':
                 # Stub for now
                 return
@@ -223,6 +225,11 @@ class Simulation:
         self.websocket = None
         # Optionally pause simulation
         self.is_paused = True
+
+    def get_character_details(self, char_name):
+        """Get detailed character state"""
+        char = self.context.get_actor_by_name(char_name)
+        return char.get_explorer_state()
 
 # Add a simple test character class
 class TestCharacter:
