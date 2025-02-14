@@ -3,7 +3,7 @@ import traceback
 import random
 from queue import Queue
 from sim import map
-from utils import llm_api
+from utils import hash_utils, llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 from datetime import datetime, timedelta
@@ -26,6 +26,7 @@ class Context():
         self.widget_refs = {}  # Keep track of widget references for PyQt UI
         self.force_sense = False # force full sense for all actors
         self.message_queue = Queue()  # Queue for messages to be sent to the UI
+        self.current_actor_index = 0  # Add this line to track position in actors list
         for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
@@ -103,8 +104,9 @@ class Context():
         return filepath
 
     def get_actor_by_name(self, name):
+        """Helper to find actor by name"""
         for actor in self.actors:
-            if actor.name == name:
+            if actor.name == name or actor.name in name:
                 return actor
         return None
 
@@ -142,7 +144,7 @@ End your response with:
                                 prompt, temp=0.5, stops=['</end>'], max_tokens=60)
         updates = xml.find('<updates>', response)
         if updates is not None:
-            self.current_state += '\n' + updates
+            self.current_state += '\n' + updates.strip()
         else:
             updates = ''
         return updates
@@ -335,7 +337,7 @@ End your response with:
         new_situation = xml.find('<situation>', response)
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
-            self.current_state = new_situation
+            self.current_state = new_situation.replace('\n\n','\n')
             self.show = '\n-----scene-----\n' + new_situation
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
@@ -394,3 +396,31 @@ End your response with:
             'show': self.current_state,
             'image': self.image('worldsim.png')
         }
+
+    def next_actor(self):
+        """Pick next actor in round-robin fashion and return it"""
+        if not self.actors:
+            return None
+        
+        # first see if any committed goals
+        committed_tasks = []
+        for actor in self.actors:
+            for task in actor.priorities:
+                if hash_utils.find('committed', task)=='True':
+                    committed_tasks.append(task)
+        if committed_tasks:
+            actor_names = hash_utils.find('actors', committed_tasks[0])
+            if actor_names:
+                actor_names = actor_names.strip().split(', ')
+                actor = self.get_actor_by_name(actor_names[0])
+                if actor:
+                    actor.next_task = committed_tasks[0]
+                    return actor
+                
+        # else Get next actor
+        actor = self.actors[self.current_actor_index]
+        
+        # Update index for next time
+        self.current_actor_index = (self.current_actor_index + 1) % len(self.actors)
+        
+        return actor

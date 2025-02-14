@@ -289,3 +289,40 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         if session_id in sessions:
             del sessions[session_id]
                 
+@app.get("/api/character/{name}/details")
+async def get_character_details(name: str, session_id: str):
+    """Get detailed character state for explorer"""
+    try:
+        if not session_id or session_id == 'undefined':
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid or missing session ID"
+            )
+            
+        if session_id not in sessions:
+            raise HTTPException(
+                status_code=404, 
+                detail="Session not found"
+            )
+            
+        sim = sessions[session_id]
+        if not sim:
+            raise HTTPException(
+                status_code=404, 
+                detail="No active simulation"
+            )
+            
+        # Now this is a direct call, not a coroutine
+        details = sim.simulation.get_character_details(name)
+        return details
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting character details: {e}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+                

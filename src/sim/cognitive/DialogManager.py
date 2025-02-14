@@ -53,7 +53,7 @@ class Dialog:
         return time.time() - self.start_time
             
     def get_transcript(self, max_turns=10):
-        return self.transcript[-max_turns:]
+        return '\n'.join(self.transcript[-max_turns:])
         
     def deactivate_dialog(self):
         """End current dialog with fatigue consideration"""

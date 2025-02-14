@@ -1,0 +1,292 @@
+.explorer-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #333;
+  border-radius: 5px;
+  padding: 20px;
+  width: 80%;
+  max-width: 800px;
+  max-height: 80vh;
+  z-index: 1000;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff;
+}
+
+.modal-header button {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.modal-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.modal-tabs button {
+  padding: 8px 16px;
+  background-color: #444;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.modal-tabs button.active {
+  background-color: #666;
+}
+
+.modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  background-color: #2b2b2b;
+  border-radius: 4px;
+}
+
+.core-state h4 {
+  color: #fff;
+  margin: 15px 0 10px;
+}
+
+.intentions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.intention {
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.debug-view {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #aaa;
+  font-family: monospace;
+}
+
+/* Add overlay behind modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 999;
+}
+
+.drives-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drive-item {
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.drive-strength {
+  font-size: 0.9em;
+  color: #aaa;
+  margin-top: 4px;
+}
+
+.memories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memory-item {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.memory-time {
+  font-size: 0.8em;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.narrative-summary {
+  margin-top: 20px;
+}
+
+.narrative-section {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+  margin: 8px 0;
+  white-space: pre-wrap;
+}
+
+h5 {
+  color: #aaa;
+  margin: 12px 0 4px;
+}
+
+.percept-item {
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.percept-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.percept-mode {
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.percept-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.perceptions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Social tab styles */
+.actors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.actor-item {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.actor-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.actor-name {
+  font-weight: bold;
+}
+
+.actor-relationship {
+  color: #aaa;
+}
+
+.dialog-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #555;
+}
+
+.dialog-transcript {
+  margin-top: 8px;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+/* Cognitive tab styles */
+.goals-list,
+.priorities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.goal-item {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.goal-name {
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.goal-details {
+  font-size: 0.9em;
+  color: #ddd;
+}
+
+.goal-details > div {
+  margin: 4px 0;
+}
+
+.goal-urgency {
+  color: #ff9;
+}
+
+.goal-drive {
+  color: #9ff;
+}
+
+.priority-item {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.priority-name {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.priority-description {
+  margin-bottom: 4px;
+}
+
+.priority-reason {
+  color: #aaa;
+  font-size: 0.9em;
+}
+
+.priority-actors {
+  color: #9ff;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.priority-committed {
+  color: #9f9;
+  font-size: 0.9em;
+  margin-top: 4px;
+} 

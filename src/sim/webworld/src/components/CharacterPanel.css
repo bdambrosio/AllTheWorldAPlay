@@ -169,4 +169,20 @@
 .priorities-pane, .history-pane {
   min-width: 0;
   padding: 10px;
+}
+
+.explore-button {
+  width: 100%;
+  padding: 8px;
+  margin-top: 10px;
+  background-color: #444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.explore-button:hover {
+  background-color: #555;
 } 
