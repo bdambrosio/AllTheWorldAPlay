@@ -36,6 +36,10 @@ class Context():
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
+        for actor in self.actors:
+            actor.generate_goals()
+            actor.update_tasks()
+            actor.wakeup = False
 
     def set_llm(self, llm):
         self.llm = llm
@@ -397,30 +401,166 @@ End your response with:
             'image': self.image('worldsim.png')
         }
 
-    def next_actor(self):
+    def format_tasks(self, tasks, labels):
+        task_list = []
+        for task, label in zip(tasks, labels):
+            task_text = f'{label} - {hash_utils.find("name", task)} ({hash_utils.find("description", task)}), {hash_utils.find("reason", task)}; ' 
+            task_dscp= task_text + f' Needs: {hash_utils.find("needs", task)}; committed: {hash_utils.find("committed", task)}'
+            task_actor_names = hash_utils.find('actors', task).split(',')
+            task_memories = set()  
+            for actor_name in task_actor_names:
+                actor = self.get_actor_by_name(actor_name.strip())
+                if actor is None:
+                    print(f'Actor {actor_name.strip()} not found')
+                    continue
+                else:
+                    memories = actor.memory_retrieval.get_by_text(
+                        memory=actor.structured_memory,
+                        search_text=task_text,
+                        threshold=0.1,
+                        max_results=5
+                    )
+                # More explicit memory text collection
+                for memory in memories:
+                    task_memories.add(memory.text)  # Add each memory text individually
+
+            task_memories = '\n\t'.join(task_memories)
+            task_list.append(task_dscp + '\n\t' + task_memories)
+        return '\n'.join(task_list)
+    
+
+    def map_actor(self, actor):
+        mapped_actor = f"""<actor>
+        <name>{actor.name}</name>
+        <character>{actor.character}</character>
+        <goals>
+        {'\n'.join([hash_utils.find('text', goal) for goal in actor.goals])}
+        </goals>
+        <tasks>
+        {'\n'.join([hash_utils.find('name', task) for task in actor.priorities])}   
+        </tasks>
+        <memories>
+        {'\n'.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
+        </memories>
+        </actor>"""
+        return mapped_actor
+
+    def map_actors(self):
+        mapped_actors = '\n'.join([self.map_actor(actor) for actor in self.actors])
+        return mapped_actors
+
+    def choose(self, task_choices):
+        if len(task_choices) == 1:
+            return 0
+        prompt = [UserMessage(content="""The task is to order the execution of a set of task options, listed under <tasks> below.
+Your current situation is:
+
+<situation>
+{{$situation}}
+</situation>
+
+the actors you are managing include:
+                              
+<actors>
+{{$actors}}
+</actors>
+
+
+Your task options are provided in the labelled list below.
+Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
+
+<tasks>
+{{$tasks}}
+</tasks>
+
+Please:
+1. Reason through the importance, urgency, dependencies, and strengths and weaknesses of the task options
+2. Order committed tasks early, especially if they are important and urgent or needed by other committed tasks.
+3. Reason carefully about dependencies among task options, timing of task options, and the order of execution.
+4. Compare them against your current goals and drives with respect to your memory and perception of your current situation
+5. Reason in keeping with your character. 
+6. Assign an execution order to each task option, ranging from 1 (execute as soon as possible) to {{$num_options}} (execute last), 
+    and respond with the following XML format:
+
+<task><label>label of chosen task</label><order>execution order (an int, 1-{{$num_options}})</order></task>
+<task>...</task>
+
+Review to ensure the assigned execution order is consistent with the task option dependencies, urgency, and importance.
+Respond only with the above XML, instantiated with the selected task label from the Task list. 
+Do not include any introductory, explanatory, or discursive text, 
+End your response with:
+</end>
+"""
+                              )]
+
+        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega']
+        random.shuffle(labels)
+        # Change from dict to set for collecting memory texts
+                
+        print("Choose",end=' ')
+        response = self.llm.ask({
+            "situation": self.current_state,
+            "actors": self.map_actors(), 
+            "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
+            "num_options": len(task_choices)
+        }, prompt, temp=0.0, stops=['</end>'], max_tokens=150)
+        # print(f'sense\n{response}\n')
+        index = -1
+        ordering = xml.findall('<task>', response)
+        min_order = 1000
+        task_to_execute = None
+        for item in ordering:
+            if xml.find('<order>', item) is not None:
+                try:
+                    index = int(xml.find('<order>', item)) - 1
+                    label = xml.find('<label>', item).strip()
+                    task = task_choices[labels.index(label)]
+                    if index < min_order:
+                        min_order = index
+                        task_to_execute = task
+                except:
+                    print(f'Error parsing order {item}')
+ 
+        if task_to_execute is not None:
+            return task_choices[min_order]
+        else:
+            return task_choices[0]
+        
+    def next_act(self):
         """Pick next actor in round-robin fashion and return it"""
         if not self.actors:
             return None
         
-        # first see if any committed goals
+        # first see if any committed goals without needs
         committed_tasks = []
         for actor in self.actors:
             for task in actor.priorities:
+                # if task has a need, and the need is in the actor's priorities(ie, not yet complete), skip
                 if hash_utils.find('committed', task)=='True':
-                    committed_tasks.append(task)
+                    #do we have to check for a needs task across all actors? O rmaybe joint tasks sb on all participants priority list?
+                    if hash_utils.find('needs', task)=="" or not actor.get_task(hash_utils.find('needs', task)):
+                        committed_tasks.append(task)
+        if len(committed_tasks) == 0:
+            # oh oh, something went wrong, see if any committed tasks without needs
+            for actor in self.actors:
+                for task in actor.priorities:
+                    if hash_utils.find('committed', task)=='True':
+                        committed_tasks.append(task)
         if committed_tasks:
-            actor_names = hash_utils.find('actors', committed_tasks[0])
+            next_task = self.choose(committed_tasks)
+            actor_names = hash_utils.find('actors', next_task)
             if actor_names:
                 actor_names = actor_names.strip().split(', ')
-                actor = self.get_actor_by_name(actor_names[0])
-                if actor:
-                    actor.next_task = committed_tasks[0]
-                    return actor
+                actors = [self.get_actor_by_name(actor_name.strip()) for actor_name in actor_names]
+                if actors:
+                    for actor in actors:
+                        actor.next_task = next_task
+                    return next_task, actors #agh.acts will need to handle multiple actors
                 
         # else Get next actor
         actor = self.actors[self.current_actor_index]
-        
         # Update index for next time
         self.current_actor_index = (self.current_actor_index + 1) % len(self.actors)
         
-        return actor
+        actor.next_task=None
+        return None, [actor]

@@ -107,6 +107,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             'type': 'character_update',
             'name': name,
             'data': char_data
+        })) 
+
+    async def log_callback(message):
+        await websocket.send_text(json.dumps({
+            'type': 'show_update',
+            'text': message
         }))
 
     async def run_simulation(sim):
@@ -159,7 +165,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             'data': context_data
         }))
         await asyncio.sleep(0.1)
-        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
+        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world, log_callback=log_callback)
         await asyncio.sleep(0.1)
 
     try:

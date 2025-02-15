@@ -91,7 +91,7 @@ class Simulation:
         except Exception as e:
             return f"Error: {str(e)}"
             
-    async def step(self, char_update_callback=None, world_update_callback=None):
+    async def step(self, char_update_callback=None, world_update_callback=None, log_callback=None):
         """Perform one simulation step with optional character update callback"""
         try:
             # Process any queued injects before the step
@@ -100,27 +100,33 @@ class Simulation:
                 await self._process_inject(inject)
 
             if self.initialized:
-                char = self.context.next_actor()
+                task, chars = self.context.next_act()
                 # Process character step
-                char.cognitive_cycle()
-                # Generate and send image update
-                char_data = char.to_json()
-                try:
-                    description = char.generate_image_description()
-                    if description:
-                        image_path = generate_image(self.context.llm, description, char.name+'.png')
-                        if image_path:
+                for char in chars:
+                    if char:
+                        char.cognitive_cycle()
+                        break # only execute for first available actor
+
+                for actor in self.context.actors:
+                    actor_data = actor.to_json()
+                    try:
+                        description = actor.generate_image_description()
+                        if description:
+                            image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
                             with open(image_path, 'rb') as f:
                                 image_data = base64.b64encode(f.read()).decode()
-                                char_data['image'] = image_data
+                                actor_data['image'] = image_data
                                 if char_update_callback:
-                                    await char_update_callback(self.context, char.name, char_data)
+                                    await char_update_callback(self.context, actor.name, actor_data)
                                     await asyncio.sleep(0.1)
-                except Exception as e:
-                    print(f"Error generating image for {char.name}: {e}")
+                    except Exception as e:
+                        print(f"Error generating image for {actor.name}: {e}")
                         
                 #now handle context
                 if self.steps_since_last_update > random.randint(3, 5):    
+                    if log_callback:
+                        await log_callback('*** updating world ***')
+                        await asyncio.sleep(0.1)
                     self.context.senses('')
                     if world_update_callback:
                         context_data = self.context.to_json()

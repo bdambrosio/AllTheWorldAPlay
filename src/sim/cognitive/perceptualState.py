@@ -49,7 +49,7 @@ class PerceptualState:
                     f"{sensory_input.mode.value}: {sensory_input.content}"
                 )
     
-    def get_current_percepts(self, mode: Optional[SensoryMode] = None) -> List[PerceptualInput]:
+    def get_current_percepts(self, mode: Optional[SensoryMode] = None, chronological: bool = False) -> List[PerceptualInput]:
         """Get current percepts, optionally filtered by mode"""
         if mode:
             return self.current_inputs[mode]
@@ -57,7 +57,10 @@ class PerceptualState:
         all_percepts = []
         for mode_inputs in self.current_inputs.values():
             all_percepts.extend(mode_inputs)
-        return sorted(all_percepts, key=lambda x: x.timestamp, reverse=True)
+        if chronological:
+            return sorted(all_percepts, key=lambda x: x.timestamp, reverse=True)
+        else:
+            return all_percepts
     
     def get_focused_percepts(self) -> List[PerceptualInput]:
         """Get percepts for current attention focus"""

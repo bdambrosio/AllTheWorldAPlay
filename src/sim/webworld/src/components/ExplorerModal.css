@@ -289,4 +289,10 @@ h5 {
   color: #9f9;
   font-size: 0.9em;
   margin-top: 4px;
+}
+
+.priority-needs {
+  color: #ff9;  /* Light yellow */
+  font-size: 0.9em;
+  margin-top: 4px;
 } 
