@@ -76,7 +76,7 @@ if 'Llama-3.1-70B' in model_name.lower() or 'llama-3-70b' in model_name.lower():
 
 elif 'Mistral-Small-24B' in model_name or 'Llama-3.3-70B-Instruct' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
-    model.load([32, 42])
+    model.load([31, 42])
 
 elif 'qwen' in model_name.lower():
     print(f"Loading model: {model_name}\n context {context_size}")

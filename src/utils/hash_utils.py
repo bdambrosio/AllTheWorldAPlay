@@ -53,6 +53,21 @@ def findall(tag, text):
             if stripped.startswith(tag_marker):
                 results.append(line.strip()[len(tag_marker):])
     return results
+
+def hasKey(tag, text):
+    """Check if tag is present in text.
+    Args:
+        tag: Tag name (letters a-zA-Z only)
+        text: String containing hash-formatted text
+    Returns:
+        True if tag is present, False otherwise
+    """
+    if not text or not isinstance(text, str):
+        return False
+        
+    tag = _validate_tag(tag)
+    return tag in text
+
 def find(tag, text):
     """Find content of first occurrence of tag in text.
     Args:

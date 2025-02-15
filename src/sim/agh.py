@@ -203,7 +203,7 @@ class Character:
 
         # Update state and priorities
         self.generate_goals()
-        self.update_priorities()
+        self.update_tasks()
 
         # Reset new memory counter
         self.new_memory_cnt = 0
@@ -1176,12 +1176,21 @@ End response with:
                 drive = self.goals[goal]['drive']
                 del self.goals[goal]
                 new_goal = self.generate_goal(drive, progress=progress)
-                self.goals[new_goal['term']] = new_goal
+                self.goals[new_goal['name']] = new_goal
 
 
-    def update_priorities(self):
-        """Update task priorities based on current state and drives"""
-        prompt = [UserMessage(content="""Given your character, drives and current goals, and recent memories, create a prioritized set of plans.
+    def update_tasks(self):
+        """Update task priorities based on current state and drives
+            attempts to ensure there are always at least 2 uncommitted tasks"""
+        
+
+        uncommitted_tasks = [task for task in self.priorities if not hash_utils.find('committed', task)=='True']
+        committed_tasks = [task for task in self.priorities if hash_utils.find('committed', task)=='True']
+        n_new_tasks = max(0, 2-len(uncommitted_tasks))
+        if n_new_tasks <= 0:
+            return
+
+        prompt = [UserMessage(content="""Given your character, drives and goals, committed tasks, and recent memories, create up to {{$n_new_tasks}} uncommitted tasks.
 
 <character>
 {{$character}}
@@ -1195,6 +1204,14 @@ End response with:
 {{$goals}}
 </goals>
 
+<uncommitted_tasks>
+{{$uncommitted_tasks}}
+</uncommitted_tasks>
+
+<committed_tasks>
+{{$committed_tasks}}
+</committed_tasks>
+
 <recent_memories>
 {{$memories}}
 </recent_memories>
@@ -1207,15 +1224,17 @@ End response with:
 {{$recent_events}}
 </recent_events>
 
-Create three specific, actionable plans that address your current needs and situation.
+Create up to {{$n_new_tasks}} specific, actionable tasks that address your current needs and situation.
 Consider:
 1. Your current state assessments
 2. Recent memories and events
 3. Your basic drives and needs
 4. Your goals
 5. Your relationships
+6. The uncommitted tasks
+7. The committed tasks
                               
-The three plans should be distinct, and jointly cover all the important aspects of the current situation and your goals.
+The new tasks should be distinct, and jointly with existing committed and uncommitted tasks, cover all important aspects of the current situation and your goals.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1224,7 +1243,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
-#actors {self.name}
+#actors {{$name}}
 #committed False
 #termination (5-7 words) condition test which, if met, would satisfy the goal of this action
 ##
@@ -1238,7 +1257,7 @@ End response with:
 """)]
 
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(5)
+        recent_memories = self.structured_memory.get_recent(8)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
         # Format state for LLM
@@ -1248,14 +1267,16 @@ End response with:
             'character': self.character,
             'situation': self.context.current_state,
             'goals': goal_text,
-            'memories': memory_text,
+            'memories': memory_text,    
+            'committed_tasks': [f'{hash_utils.find('name', task)} - description {hash_utils.find('description', task)}. reason {hash_utils.find('reason', task)}\n' for task in committed_tasks],
+            'uncommitted_tasks': [f'{hash_utils.find('name', task)} - description {hash_utils.find('description', task)}. reason {hash_utils.find('reason', task)}\n' for task in uncommitted_tasks],
+            'name': self.name,
             'recent_events': self.narrative.get_summary('medium'),
-            'relationships': self.actor_models.format_relationships(include_transcript=True)
+            'relationships': self.actor_models.format_relationships(include_transcript=True),
+            'n_new_tasks': n_new_tasks
         }, prompt, temp=0.7, stops=['<end/>'])
 
-        # Extract plans from response
-        # keep 'committed' tasks
-        self.priorities = [task for task in self.priorities if hash_utils.find('committed', task)=='True']
+        # add each new tasl, but first check for and delete any existing task with the same name
         for plan in hash_utils.findall('plan', response):
             if hash_utils.find('name', plan):
                 task_name = hash_utils.find('name', plan)
@@ -1335,15 +1356,13 @@ End your response with:
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'Priority {termination_check} Satisfied!')
             return True, progress
-        elif satisfied != None and satisfied.lower().strip() == 'partial':
-            progress = xml.find('<progress>', response)
-            if progress != None:
-                try:
-                    progress = int(progress.strip())
-                    if progress/100.0 > random.random():
-                        return True, progress
-                except:
-                    pass
+        elif satisfied != None and 'partial' in satisfied.lower() or 'insufficient' in satisfied.lower():
+            try:
+                progress = int(progress.strip())
+                if progress/100.0 > random.random():
+                    return True, progress
+            except:
+                pass
         return False, progress
 
     def refine_say_act(self, act_name, act_arg):
@@ -1394,10 +1413,10 @@ End response with:
 
         return response
 
-    def actualize_task(self, n, task):
+    def actualize_task(self, task):
         task_name = hash_utils.find('name', task)
         if task is None or task_name is None:
-            raise ValueError(f'Invalid task {n}, {task}')
+            raise ValueError(f'Invalid task  {task}')
         last_act = self.get_task_last_act(task_name)
         reason = hash_utils.find('reason', task)
 
@@ -1452,7 +1471,8 @@ In choosing an Actionable (see format below), you can choose from three Mode val
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-- Do - perform an act (other than move) with physical consequences in the world.
+- Do - perform an act (other than move) with physical consequences in the world. 
+    This is often appropriate when the task involves interacting with a resource or actor, particularly when the actor is not in {{$known_actor_names}}.
 
 Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
 
@@ -1589,7 +1609,8 @@ End your response with:
                 "task": task,
                 "reason": reason,
                 "lastAct": last_act,
-                "lastActResult": self.act_result
+                "lastActResult": self.act_result,
+                "known_actor_names": ', '.join(actor.name for actor in self.context.actors)
             }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=180)
 
             # Rest of existing while loop...
@@ -1816,8 +1837,9 @@ End your response with:
                 print(f'misformed task in say or think')
                 continue
             print(f'new task: {name} {description} {reason} {termination}')
-            if self.get_task(name) != None:
-                self.priorities.remove(self.get_task(name))
+            if self.get_task(name):
+                print(f'task {name} already exists, skipping')
+                continue
             self.priorities.append(task)
 
     def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=None):
@@ -1974,8 +1996,9 @@ End your response with:
 
 
 Extract from this transcript new commitments to act jointly made by self, {{$name}} and other, {{$target_name}}.
-
 Extract only new joint actions that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
+If more than one joint action is found, and they are similar, combine them into a single commitment.
+If more than one joint action is found, and they are different, and there are dependencies among them, use the 'needs' tag to indicate the dependencies.
                             
 An action can be physical or verbal.
 Thought, e.g. 'reflect on our situation', should NOT be reported as a commitment to act.
@@ -2027,6 +2050,7 @@ Response:
 #plan
 #name Water south field
 #description Water the south field
+#needs Meet by the well
 #actors Jean, Francoise
 #reason crops are getting parched
 #committed True
@@ -2054,7 +2078,7 @@ End your response with:
                                  "reason":xml.find('<reason>', self.intention),
                                  "name":self.name, 
                                  "target_name":target.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=240)
         source = 'dialog with '+target.name
         tasks = hash_utils.findall('plan', response)
         if len(tasks) == 0:
@@ -2179,6 +2203,12 @@ Your last action was:
                               
 {{$activity}}
 {{$last_act}}
+
+Your relationship with the speaker is:
+                              
+<relationship>
+{{$relationship}}
+</relationship>
                               
 Your dialog with the speaker up to this point has been:
                               
@@ -2186,11 +2216,12 @@ Your dialog with the speaker up to this point has been:
 {{$dialog}}
 </dialog>
                               
-and your beliefs about your relationship with the speaker are:
+your commitments at present are (possibly as a result of this dialog) are:
 
-<relationship>
-{{$relationship}}
-</relationship>
+<commitments>
+{{$commitments}}
+</commitments>
+
 
 Given all the above, generate a response to the statement below:
                               
@@ -2247,6 +2278,10 @@ End your response with:
                 'history': self.narrative.get_summary('medium'),
                 'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
+                'commitments': '\n'.join([str(hash_utils.find('name', task)) 
+                                          + ' - ' + str(hash_utils.find('description', task)) 
+                                          + ' - ' + str(hash_utils.find('reason', task)) 
+                                          for task in self.priorities if hash_utils.find('committed', task) == 'True']),
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
             response = xml.find('<response>', answer_xml)
@@ -2287,10 +2322,19 @@ End your response with:
 
         return response + '\n ' + reason
     
-    def choose(self, sense_data, action_choices):
-        if len(action_choices) == 1:
+    def format_tasks(self, tasks, labels):
+        task_list = []
+        for label, task in zip(labels, tasks):
+            task_dscp = f'{label} - {hash_utils.find("name", task)} ({hash_utils.find("description", task)}), {hash_utils.find("reason", task)}.' 
+            task_dscp += f'needs: {hash_utils.find("needs", task)}. committed: {hash_utils.find("committed", task)}'
+            task_list.append(task_dscp)
+        return '\n'.join(task_list)
+    
+    
+    def choose(self, sense_data, task_choices):
+        if len(task_choices) == 1:
             return 0
-        prompt = [UserMessage(content=self.character + """The task is to decide on your next action.
+        prompt = [UserMessage(content=self.character + """The task is to order the execution of a set of task options, listed under <tasks> below.
 Your current situation is:
 
 <situation>
@@ -2309,11 +2353,11 @@ Your recent memories include:
 {{$memories}}
 </recent_memories>
 
-Especially relevant to your goals, you remember:
+Especially relevant to your task options, you remember:
                               
-{{$goal_memories}}
+{{$tasks_memories}}
 
-Recent conversation has been:
+A summary of recent events is:
 <recent_history>
 {{$history}}
 </recent_history>
@@ -2323,28 +2367,27 @@ Your current priorities include:
 {{$priorities}}
 </priorities>
 
-Your action options are provided in the labelled list below.
+Your task options are provided in the labelled list below.
 Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
 
-<actions>
-Alpha - Sleep
-{{$actions}}
-</actions>
+<tasks>
+{{$tasks}}
+</tasks>
 
 Please:
-1. Do NOT select action Alpha. Never select action Alpha.
-2. Reason through the strengths and weaknesses of the other action options
-3. Reason carefully about dependencies among action options, timing of action options, and the order of execution.
-3. Compare them against your current goals and drives with respect to your memory and perception of your current situation
-4. Reason in keeping with your character. 
-5. Select the best option, ignoring the order of the action options, and respond with the following XML format:
+1. Reason through the importance, urgency, dependencies, and strengths and weaknesses of the task options
+2. Order committed tasks early, especially if they are important and urgent or needed by other committed tasks.
+3. Reason carefully about dependencies among task options, timing of task options, and the order of execution.
+4. Compare them against your current goals and drives with respect to your memory and perception of your current situation
+5. Reason in keeping with your character. 
+6. Assign an execution order to each task option, ranging from 1 (execute as soon as possible) to {{$num_options}} (execute last), 
+    and respond with the following XML format:
 
-<action>
-label of chosen action
-terse (4-8 words) reason for choosing this action, based on your reasoning above
-</action>
+<task><label>label of chosen task</label><order>execution order (an int, 1-{{$num_options}})</order></task>
+<task>...</task>
 
-Respond only with the above XML, instantiated with the selected action label from the Action list. 
+Review to ensure the assigned execution order is consistent with the task option dependencies, urgency, and importance.
+Respond only with the above XML, instantiated with the selected task label from the Task list. 
 Do not include any introductory, explanatory, or discursive text, 
 End your response with:
 </end>
@@ -2352,28 +2395,27 @@ End your response with:
                               )]
 
         mapped_goals = self.map_goals()
-        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota']
+        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega']
         random.shuffle(labels)
-        action_choices = [f'{labels[n]} - {action}' for n, action in enumerate(action_choices)]
         
         # Get recent memories from structured memory
-        recent_memories = self.structured_memory.get_recent(5)  # Get 5 most recent memories
+        recent_memories = self.structured_memory.get_recent(8)  # Get 5 most recent memories
         memory_text = '\n'.join(memory.text for memory in recent_memories)
         
         # Change from dict to set for collecting memory texts
-        goal_memories = set()  # This is correct
-        for priority in self.priorities:
-            priority_memories = self.memory_retrieval.get_by_text(
+        tasks_memories = set()  # This is correct
+        for task in task_choices:
+            memories = self.memory_retrieval.get_by_text(
                 memory=self.structured_memory,
-                search_text=hash_utils.find('name', priority)+': '+hash_utils.find('description', priority) + ' ' + hash_utils.find('reason', priority),
+                search_text=hash_utils.find('name', task)+': '+hash_utils.find('description', task) + ' ' + hash_utils.find('reason', task),
                 threshold=0.1,
                 max_results=5
             )
             # More explicit memory text collection
-            for memory in priority_memories:
-                goal_memories.add(memory.text)  # Add each memory text individually
+            for memory in memories:
+                tasks_memories.add(memory.text)  # Add each memory text individually
                 
-        goal_memories = '\n'.join(goal_memories)  # Join at the end
+        tasks_memories = '\n'.join(tasks_memories)  # Join at the end
         print("Choose",end=' ')
         response = self.llm.ask({
             'input': sense_data + self.sense_input, 
@@ -2383,134 +2425,65 @@ End your response with:
             "goals": mapped_goals, 
             "drives": '\n'.join(drive.text for drive in self.drives),
             "priorities": '\n'.join([str(hash_utils.find('name', task)) for task in self.priorities]),
-            "goal_memories": goal_memories,
-            "actions": '\n'.join(action_choices)
-        }, prompt, temp=0.0, stops=['</end>'], max_tokens=100)
+            "tasks_memories": tasks_memories,
+            "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
+            "num_options": len(task_choices)
+        }, prompt, temp=0.0, stops=['</end>'], max_tokens=150)
         # print(f'sense\n{response}\n')
         index = -1
-        for n, label in enumerate(labels):
-            if label in response and n < len(action_choices):
-                index = n
-                break
-        if index > -1:
-            return index
+        ordering = xml.findall('<task>', response)
+        min_order = 1000
+        task_to_execute = None
+        for item in ordering:
+            if xml.find('<order>', item) is not None:
+                try:
+                    index = int(xml.find('<order>', item)) - 1
+                    label = xml.find('<label>', item).strip()
+                    task = task_choices[labels.index(label)]
+                    if index < min_order:
+                        min_order = index
+                        task_to_execute = task
+                except:
+                    print(f'Error parsing order {item}')
+ 
+        if task_to_execute is not None:
+            return task_choices[min_order]
         else:
-            return 0
-        
-    def analyze_action_result(self):
-        # Terms that indicate we need to choose a new action
-        completion_terms = ['complete', 'success', 'finished', 'done']
+            return task_choices[0]
 
-        if self.act_result and any(term in self.act_result.lower() for term in completion_terms):
-            return "full"  # Need full processing to choose next action
-
-        # Terms that might indicate continuing is appropriate
-        progress_terms = ['progress', 'continuing', 'ongoing', 'partial']
-
-        if self.act_result and any(term in self.act_result.lower() for term in progress_terms):
-            return "continue"
-        return "none"
-    
-    
-    
-    def should_process_senses(self):
-        """Determine if senses(), which is expensive, should be called in full or not"""
-        # Quick checks first
-        if self.wakeup or self.context.force_sense:
-            return "full"
-            
-        time_since_last = self.context.simulation_time - self.last_sense_time
-        if time_since_last > self.sense_threshold:
-            return "full"
-        
-        # Check for critical state changes
-        for state_term, info in self.goals.items():
-            if info["urgency"] == "high":
-                return "full"
-         
-        # Check for significant perceptual changes
-        if self.perceptual_state.recent_significant_change():
-            return "medium"
-            
-        # Continue current action if making progress
-        if self.previous_action and self.analyze_action_result() == "continue":
-            return "continue"
-            
-        return "none"
-    
-    def senses_minimal(self):
-        """OBSOLETE!!!Perform minimal state updates without full cognitive processing."""
-        # Check for and process any direct messages
-        if self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.current_dialog:  # Use DialogManager instead of dialog_status
-            for actor in self.context.actors:
-                if actor != self and actor.name in self.actor_models.keys() and self.actor_models[actor.name].visible:
-                    recent_dialog = actor.show.strip()
-                    if recent_dialog:
-                        self.add_perceptual_input(f"You hear {actor.name} say: {recent_dialog}", percept=False, mode='auditory')
-
-        # Quick look check - just note major changes
-        if self.mapAgent:
-            current_view = self.mapAgent.look()
-            if current_view != self.my_map[self.x][self.y]:
-                self.my_map[self.x][self.y] = current_view
-                self.add_to_history("You notice changes in your surroundings")
-
-        # Update action record without full analysis
-        # Add any obvious state changes to memory
-        for key, info in self.goals.items():
-            if info["urgency"] in ["very high", "very low"]:
-                self.add_to_history(f"You are acutely aware of your {key} state")    
-            
     def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         self.show = ''
         self.thought = ''
-        self.perceive()
-        self.decides()
-
-    def perceive(self):
-        """test satisfaction of current task"""
-        # first make sure we have a previous action result
-        match self.previous_action.lower():
-            case 'say':
-                self.act_result = self.find_say_result()
-            case 'think':
-                self.act_result = self.intentions[0] if self.intentions and isinstance(self.intentions, list) else ''
-            case 'move':
-                pass  # handled in move
-            case 'do':
-                pass  # handled in do
-            case 'look':
-                pass  # handled in look
-            case _:  # Default case
-                pass
-        print("Update Narrative (senses)")
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
                                                   self.narrative, 
                                                   self.actor_models,
                                                   self.context.simulation_time, 
                                                   self.character.strip(),
                                                   relationsOnly=True )
+
+        self.decides()
         satisfied = False
+
         for task in self.priorities.copy():
             satisfied = self.clear_task_if_satisfied(task, '', self.act_result)
         if satisfied:
             self.update_goals()
-            self.update_priorities()
-       
+            self.update_tasks()
+        self.memory_consolidator.update_cognitive_model(self.structured_memory, 
+                                                  self.narrative, 
+                                                  self.actor_models,
+                                                  self.context.simulation_time, 
+                                                  self.character.strip(),
+                                                  relationsOnly=True )
 
+       
     def decides(self, sense_data='', ui_queue=None):
         print(f'\n*********decides***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
-
-        if self.wakeup:
-            self.wakeup = False
-            self.generate_goals()
-            self.update_priorities()
  
-        print(f'should_process_senses: {self.should_process_senses()}')
         my_active_task = self.active_task.peek()
         if self.next_task:
-            intention = self.actualize_task(0, self.next_task)
+            intention = self.actualize_task(self.next_task)
             self.act_on_intention(intention)
             self.next_task = None
             return
@@ -2525,13 +2498,14 @@ End your response with:
         if my_active_task != None and (hash_utils.find('committed', my_active_task)=='True' or len(task_options) == 0):
             full_task = self.get_task(my_active_task)
             if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
-                intention = self.actualize_task(0, full_task)
+                intention = self.actualize_task(full_task)
                 print(f'Found active_task {my_active_task}')
                 if intention is not None:
                     self.act_on_intention(intention)
                     return
             elif full_task is not None:
                 self.active_task.pop()
+                self.priorities.remove(full_task)
                 print(f'Active_task decayed or not found! {my_active_task}')
 
         # main loop when nothing in progress - find something to do
@@ -2539,23 +2513,23 @@ End your response with:
             for n, task in enumerate(self.priorities):
                 task_options.append(task)
             if len(task_options) == 0:
-                self.update_priorities()
+                self.update_tasks()
                 return self.decides(sense_data=sense_data, ui_queue=ui_queue)
 
         task_index = 0
         if len(task_options) > 0:
             if len(task_options) > 1:
-                task_index = self.choose(sense_data, task_options)
+                task = self.choose(sense_data, task_options)
             else:
-                task_index = 0
-            print(f'actualizing task {task_index}')
-            intention = self.actualize_task(task_index, task_options[task_index])
+                task = task_options[0]
+            print(f'actualizing task {task}')
+            intention = self.actualize_task(task)
         if intention:
             self.act_on_intention(intention)
             return
         else:
             del task_options[task_index]
-            self.update_priorities()
+            self.update_tasks()
             return self.decides(sense_data=sense_data, ui_queue=ui_queue)
 
 
@@ -2687,7 +2661,7 @@ end your response with:
                     'mode': percept.mode.name if percept.mode else 'unknown',
                     'time': percept.timestamp.isoformat() if percept.timestamp else datetime.now().isoformat()
                 }
-                for percept in (self.perceptual_state.get_current_percepts() or [])
+                for percept in (self.perceptual_state.get_current_percepts(chronological=True) or [])
             ],
             'memories': [
                 {
@@ -2730,6 +2704,7 @@ end your response with:
                         'description': hash_utils.find('description', p) or '',
                         'reason': hash_utils.find('reason', p) or '',
                         'actors': hash_utils.find('actors', p) or '',
+                        'needs': hash_utils.find('needs', p) or '',
                         'committed': hash_utils.find('committed', p) == 'True'
                     } for p in (self.priorities or [])
                 ],
