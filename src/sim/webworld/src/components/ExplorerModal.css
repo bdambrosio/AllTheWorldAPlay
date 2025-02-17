@@ -224,7 +224,7 @@ h5 {
 
 /* Cognitive tab styles */
 .goals-list,
-.priorities-list {
+.tasks-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -259,39 +259,39 @@ h5 {
   color: #9ff;
 }
 
-.priority-item {
+.task-item {
   background-color: #444;
   padding: 12px;
   border-radius: 4px;
 }
 
-.priority-name {
+.task-name {
   font-weight: bold;
   margin-bottom: 4px;
 }
 
-.priority-description {
+.task-description {
   margin-bottom: 4px;
 }
 
-.priority-reason {
+.task-reason {
   color: #aaa;
   font-size: 0.9em;
 }
 
-.priority-actors {
+.task-actors {
   color: #9ff;
   font-size: 0.9em;
   margin-top: 4px;
 }
 
-.priority-committed {
+.task-committed {
   color: #9f9;
   font-size: 0.9em;
   margin-top: 4px;
 }
 
-.priority-needs {
+.task-needs {
   color: #ff9;  /* Light yellow */
   font-size: 0.9em;
   margin-top: 4px;

@@ -104,6 +104,7 @@ class Simulation:
                 # Process character step
                 for char in chars:
                     if char:
+                        print(f'{char.name} cognitive cycle')   
                         char.cognitive_cycle()
                         break # only execute for first available actor
 

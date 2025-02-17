@@ -30,11 +30,11 @@ function CharacterPanel({ character, sessionId }) {
       
       <div className="middle-section">
         <div className="section-container">
-          <h4>Priorities</h4>
-          <div className="priorities-area">
-            {character.priorities?.map((priority, index) => (
-              <div key={index} className="priority-item">
-                {priority}
+          <h4>Tasks</h4>
+          <div className="tasks-area">
+            {character.tasks?.map((task, index) => (
+              <div key={index} className="task-item">
+                {task}
               </div>
             ))}
           </div>

@@ -51,7 +51,7 @@ function App() {
                   image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
                   narrative: data.data.narrative,
                   relationships: data.data.relationships,
-                  priorities: data.data.priorities,
+                  tasks: data.data.tasks,
                   show: data.data.show,
                   thoughts: data.data.thoughts,
                   type: data.type

@@ -411,7 +411,7 @@ End your response with:
             for actor_name in task_actor_names:
                 actor = self.get_actor_by_name(actor_name.strip())
                 if actor is None:
-                    print(f'Actor {actor_name.strip()} not found')
+                    print(f'\n** Context format_tasks: Actor {actor_name.strip()} not found**')
                     continue
                 else:
                     memories = actor.memory_retrieval.get_by_text(
@@ -437,7 +437,7 @@ End your response with:
         {'\n'.join([hash_utils.find('text', goal) for goal in actor.goals])}
         </goals>
         <tasks>
-        {'\n'.join([hash_utils.find('name', task) for task in actor.priorities])}   
+        {'\n'.join([hash_utils.find('name', task) for task in actor.tasks])}   
         </tasks>
         <memories>
         {'\n'.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
@@ -497,7 +497,7 @@ End your response with:
         random.shuffle(labels)
         # Change from dict to set for collecting memory texts
                 
-        print("Choose",end=' ')
+        print(f'\nWorld Choose: {'\n - '.join([hash_utils.find('name', task) for task in task_choices])}')
         response = self.llm.ask({
             "situation": self.current_state,
             "actors": self.map_actors(), 
@@ -522,6 +522,7 @@ End your response with:
                     print(f'Error parsing order {item}')
  
         if task_to_execute is not None:
+            print(f'\nWorld Choose: {task_to_execute.replace('\n', '; ')}')
             return task_choices[min_order]
         else:
             return task_choices[0]
@@ -534,20 +535,21 @@ End your response with:
         # first see if any committed goals without needs
         committed_tasks = []
         for actor in self.actors:
-            for task in actor.priorities:
-                # if task has a need, and the need is in the actor's priorities(ie, not yet complete), skip
+            for task in actor.tasks:
+                # if task has a need, and the need is in the actor's tasks(ie, not yet complete), skip
                 if hash_utils.find('committed', task)=='True':
-                    #do we have to check for a needs task across all actors? O rmaybe joint tasks sb on all participants priority list?
+                    #do we have to check for a needs task across all actors? O rmaybe joint tasks sb on all participants tasks list?
                     if hash_utils.find('needs', task)=="" or not actor.get_task(hash_utils.find('needs', task)):
                         committed_tasks.append(task)
         if len(committed_tasks) == 0:
             # oh oh, something went wrong, see if any committed tasks without needs
             for actor in self.actors:
-                for task in actor.priorities:
+                for task in actor.tasks:
                     if hash_utils.find('committed', task)=='True':
                         committed_tasks.append(task)
         if committed_tasks:
             next_task = self.choose(committed_tasks)
+            print(f'\nWorld Next Act: {next_task.replace('\n', '; ')}')
             actor_names = hash_utils.find('actors', next_task)
             if actor_names:
                 actor_names = actor_names.strip().split(', ')

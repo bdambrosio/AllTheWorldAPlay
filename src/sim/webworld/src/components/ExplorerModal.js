@@ -194,18 +194,18 @@ function ExplorerModal({ character, sessionId, onClose }) {
             </div>
 
             <h4>Tasks</h4>
-            <div className="priorities-list">
-              {explorerState.cognitive.priorities.map((priority, i) => (
-                <div key={i} className="priority-item">
-                  <div className="priority-name">{priority.name}</div>
-                  <div className="priority-description">{priority.description}</div>
-                  <div className="priority-reason">{priority.reason}</div>
-                  <div className="priority-actors">Actors: {priority.actors}</div>
-                  {priority.needs && (
-                    <div className="priority-needs">Needs: {priority.needs}</div>
+            <div className="tasks-list">
+              {explorerState.cognitive.tasks.map((task, i) => (
+                <div key={i} className="task-item">
+                  <div className="task-name">{task.name}</div>
+                  <div className="task-description">{task.description}</div>
+                  <div className="task-reason">{task.reason}</div>
+                  <div className="task-actors">Actors: {task.actors}</div>
+                  {task.needs && (
+                    <div className="task-needs">Needs: {task.needs}</div>
                   )}
-                  <div className="priority-committed">
-                    {priority.committed ? '✓ Committed' : '○ Not committed'}
+                  <div className="task-committed">
+                    {task.committed ? '✓ Committed' : '○ Not committed'}
                   </div>
                 </div>
               ))}
