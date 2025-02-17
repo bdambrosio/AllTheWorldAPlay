@@ -47,7 +47,7 @@
             ],
             "jinja": true,
             "justMyCode": true,
-            "cwd": "${workspaceFolder}/sim/webworld/src",
+            "cwd": "${workspaceFolder}/sim/",
             "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}",
@@ -95,58 +95,7 @@
             },
             "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
         },
-        {
-            "name": "Python Debugger: homeAlone",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "plays/homeAlone.py",
-            "console": "integratedTerminal",
-            "env": {
-                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
-                "CUDA_VISIBLE_DEVICES": "1"
-            },
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
-        },
-        {
-            "name": "Python Debugger: Kittens",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "plays/kittens.py",
-            "console": "integratedTerminal",
-            "env": {
-                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
-                "CUDA_VISIBLE_DEVICES": "1"
-            },
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python"
-        },
-        {
-            "name": "Python Debugger: Team",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "plays/team.py",
-            "console": "integratedTerminal",
-            "env": {
-                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
-                "CUDA_VISIBLE_DEVICES": "1"
-            },
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
-        },
-        {
-            "name": "Python Debugger: Lost",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "plays/lost.py",
-            "console": "integratedTerminal",
-            "env": {
-                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
-                "CUDA_VISIBLE_DEVICES": "1"
-            },
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
-        },
+
         {
             "name": "Python Debugger: FastAPI",
             "type": "debugpy",

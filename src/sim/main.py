@@ -65,12 +65,12 @@ async def process_messages(websocket, context):
         try:
             while not context.message_queue.empty():
                 message = context.message_queue.get()
-                print(f"Sending websocket message: {message}")  # Debug
+                #print(f"Sending websocket message: {message}")  # Debug
                 await websocket.send_text(json.dumps({
                     'type': 'show_update',
                     'text': f"{message['name']}: {message['text']}\n"
                 }))
-                print("Message sent successfully")  # Debug
+                #print("Message sent successfully")  # Debug
             await asyncio.sleep(0.1)
         except Exception as e:
             print(f"Error processing messages: {e}")
@@ -189,7 +189,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     try:
                         # Get path to plays directory relative to main.py
                         main_dir = Path(__file__).parent
-                        plays_dir = (main_dir / '../../../plays').resolve()
+                        plays_dir = (main_dir / '../plays').resolve()
                         
                         # List .py files, excluding system files
                         play_files = [f.name for f in plays_dir.glob('*.py') 
@@ -215,7 +215,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     else:
                         try:
                             main_dir = Path(__file__).parent
-                            play_path = (main_dir / '../../../plays' / play_name).resolve()
+                            play_path = (main_dir / '../plays' / play_name).resolve()
                             await load_and_start_play(websocket, play_path)
                         except Exception as e:
                             print(f"Error loading play: {e}")

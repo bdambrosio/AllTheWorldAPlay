@@ -9,8 +9,6 @@ class Human(Agh):
         super().__init__(name, character_description)
         self.structured_memory = StructuredMemory()
         self.ui = ui
-        self.priority_task = None
-        self.active_task = Stack()
 
     def hear(self, from_actor, message, source='dialog', respond=True):
         pass

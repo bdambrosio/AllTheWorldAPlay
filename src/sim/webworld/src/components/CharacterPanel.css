@@ -93,7 +93,7 @@
   color: #ccc;
 }
 
-.priorities-area, .history-area {
+.tasks-area, .history-area {
   background: rgba(0, 0, 0, 0.3);
   padding: 10px;
   border-radius: 4px;
@@ -134,7 +134,7 @@
   color: #d0d0d0;
 }
 
-.character-priorities {
+.character-tasks {
   margin-bottom: 6px;
   font-size: 0.75em;
 }
@@ -148,7 +148,7 @@
   margin: 3px 0;
 }
 
-.priority-item, .history-item {
+.task-item, .history-item {
   margin-bottom: 8px;
   font-size: 0.9em;
 }
@@ -166,7 +166,7 @@
   margin-top: 10px;
 }
 
-.priorities-pane, .history-pane {
+.tasks-pane, .history-pane {
   min-width: 0;
   padding: 10px;
 }

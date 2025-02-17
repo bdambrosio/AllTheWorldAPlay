@@ -47,7 +47,7 @@ class Stack:
     def __init__(self):
         """Simple stack implementation"""
         self.stack = []
-        print("Stack initialized")  # Debug print
+        #print("Stack initialized")  # Debug print
 
     def push(self, item):
         self.stack.append(item)
@@ -77,7 +77,7 @@ class Character:
         self.character = character_description
         self.llm = llm_api.LLM(server)
         self.context = None
-        self.priorities = []  # displayed by main thread at top in character intentions widget
+        self.tasks = []  # displayed by main thread at top in character intentions widget
         self.show = ''  # to be displayed by main thread in UI public text widget
         self.goals = {}
         self.intentions = []
@@ -89,9 +89,8 @@ class Character:
         
         # Initialize active_task stack
         self.active_task = Stack()
-        print(f"Character {name} active_task initialized: {self.active_task}")  # Debug print
         
-        self.last_acts = {}  # priorities for which actions have been started, and their states
+        self.last_acts = {}  # tasks for which actions have been started, and their states
         self.act_result = ''
         self.wakeup = True
         # Memory system initialization - will be set up by derived classes
@@ -201,7 +200,7 @@ class Character:
         recent_memories = self.structured_memory.get_recent(self.new_memory_cnt)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
-        # Update state and priorities
+        # Update state and tasks
         self.generate_goals()
         self.update_tasks()
 
@@ -210,9 +209,9 @@ class Character:
 
 
     def get_task(self, task_name):
-        for candidate in self.priorities:
+        for candidate in self.tasks:
             if task_name == hash_utils.find('name', candidate):
-                print(f'found existing task\n  {task_name}')
+                #print(f'found existing task\n  {task_name}')
                 return candidate
         return None
 
@@ -222,9 +221,9 @@ class Character:
             return candidate
         new_task = f'#plan\n#name {task_name}\n#description {task_name}\n#reason> {reason}\n#actors {self.name}\n#committed False\n##'
         if self.get_task(task_name) != None:
-            self.priorities.remove(self.get_task(task_name))
-        self.priorities.append(new_task)
-        print(f'created new task to reflect {task_name}\n {reason}')
+            self.tasks.remove(self.get_task(task_name))
+        self.tasks.append(new_task)
+        print(f'\n{self.name} created new task to reflect {task_name}\n {reason}')
         return new_task
 
     # Action methods
@@ -289,7 +288,7 @@ Respond using the following XML format:
 End your response with:
 </end>
 """)]
-        print('say target')
+        #print('say target')
         response = self.llm.ask({
             'character': self.character,
             'history': self.narrative.get_summary('medium'),
@@ -355,11 +354,11 @@ End your response with:
 {{$state}}
 </state>
 
-And your priorities are:
+And your tasks are:
 
-<priorities>
-{{$priorities}}
-</priorities>
+<tasks>
+{{$tasks}}
+</tasks>
 
 You see the following:
 
@@ -367,7 +366,7 @@ You see the following:
 {{$view}}
 </view>
 
-Provide a concise description of what you notice, highlighting the most important features given your current interests, state and priorities. 
+Provide a concise description of what you notice, highlighting the most important features given your current interests, state and tasks. 
 Respond using the following XML format:
 
 <perception>a concise (30 words or less) description of perceptual content</perception>
@@ -375,11 +374,11 @@ Respond using the following XML format:
 End your response with:
 <end/>
 """)]
-        print("Look",end=' ')
+        #print("Look",end=' ')
         response = self.llm.ask({"view": text_view, 
                                  "interests": interest,
                                  "state": self.narrative.get_summary(), 
-                                 "priorities": self.priorities}, 
+                                 "tasks": '\n'.join([str(hash_utils.find('name', task)) for task in self.tasks])}, 
                                 prompt, temp=0.2, stops=['<end/>'], max_tokens=100)
         percept = xml.find('<perception>', response)
         perceptual_input = PerceptualInput(
@@ -495,7 +494,7 @@ water: the water resources visible
 
 class Agh(Character):
     def __init__(self, name, character_description, server='local', mapAgent=True, always_respond=False):
-        print(f"Initializing Agh {name}")  # Debug print
+        print(f"\nInitializing {name}")  # Debug print
         super().__init__(name, character_description, server)
         self.llm = llm_api.LLM(server)
                 
@@ -598,15 +597,15 @@ adjective, adjective, adjective
 """)]
 
             concerns = ''
-            for priority in self.priorities:
-                concern = hash_utils.find('name', priority) + '. '+hash_utils.find('reason', priority)
+            for task in self.tasks:
+                concern = hash_utils.find('name', task) + '. '+hash_utils.find('reason', task)
                 concerns = concerns + '; '+concern
             state = description + '.\n '+concerns +'\n'+ context
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.text for memory in recent_memories)
 
 
-            print("Char generate image description", end=' ')
+            #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
             if response:
                 description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. '+context
@@ -657,7 +656,7 @@ mode
 
 Respond only with a single choice of mode. Do not include any introductory, discursive, or explanatory text.
 """)]
-            print("Perceptual input",end=' ')
+            #print("Perceptual input",end=' ')
             response = self.llm.ask({"message": message}, prompt, temp=0, stops=['<end/>'], max_tokens=150)
             if response:
                 mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
@@ -790,7 +789,7 @@ End response with:
 <end/>
 """)]
 
-        print(f'{self.name} generating state for drive: {drive.text}')
+        print(f'\n{self.name} generating goal for drive: {drive.text}, progress: {progress}')
             
         # Get relevant memories
         drive_memories = self.memory_retrieval.get_by_drive(
@@ -847,73 +846,9 @@ End response with:
             print(f"Error parsing goal generation response: {e}")
             traceback.print_exc()
                 
-        print(f'{self.name} generated goal: ' + name + '; ' + urgency)
+        print(f'   generated goal: ' + name + '; ' + urgency)
         return self.goals[name]
 
-
-    def test_state_termination(self, state, consequences, updates=''):
-        """Generate a state to track, derived from basic drives"""
-        prompt = [UserMessage(content="""An instantiated state for a basic drive is provided below 
-Your task is to test whether the instantiated state for this Drive has been satisfied as a result of recent events.
-
-<state>
-{{$state}}
-</state>
-
-<situation>
-{{$situation}}
-</situation>
-
-<character>
-{{$character}}
-</character>
-
-<recent_memories>
-{{$memories}}
-</recent_memories>
-
-<history>
-{{$history}}
-</history>
- 
-<events>
-{{$events}}
-</events>
-
-<termination_check>
-{{$termination_check}}
-</termination_check>
-
-Respond using this XML format:
-
-<level>True / False</level>
-
-The 'level' above should be True if the termination test is met in Events or recent History, and False otherwise.  
-
-Respond ONLY with the above XML.
-Do not include any introductory, explanatory, or discursive text.
-End your response with:
-<end/>
-""")]
-
-        # Get recent memories
-        recent_memories = self.structured_memory.get_recent(5)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-
-        response = self.llm.ask({
-            "state": state,
-            "situation": self.context.current_state,
-            "memories": memory_text,  # Updated from 'memory'
-            "character": self.character,
-            "history": self.format_history(),
-            "events": consequences + '\n' + updates,
-            "termination_check": state
-        }, prompt, temp=0.3, stops=['<end/>'], max_tokens=60)
-
-        satisfied = xml.find('<level>', response)
-        if satisfied or satisfied.lower().strip() == 'true':
-            print(f'State {state} Satisfied!')
-        return satisfied
 
     def map_goals(self):
         """ map state for llm input """
@@ -938,10 +873,10 @@ End your response with:
         # pbly don't need this, at set we have canonical task
         task = self.get_task_last_acts_key(term)
         if task == None:
-            print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
+            #print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
             self.last_acts[term] = act
         else:
-            print(f'SET_TASK_LAST_ACT {self.name} match found: term {term}, task {task}\n  {act}')
+            #print(f'SET_TASK_LAST_ACT {self.name} match found: term {term}, task {task}\n  {act}')
             self.last_acts[task] = act
 
     def get_task_last_act(self, term):
@@ -1009,7 +944,7 @@ Respond with only 'True' if repetitive or 'False' if the response adds something
 End response with:
 <end/>""")]
 
-        print("Repetitive")
+        #print("Repetitive")
         result = self.llm.ask({
             'history': history,
             'response': new_response
@@ -1027,10 +962,11 @@ End response with:
             return
 
         # Test completion through cognitive processor's state system
-        satisfied, progress = self.test_priority_termination(
+        satisfied, progress = self.test_termination(
             termination_check, 
             consequences,
-            world_updates
+            world_updates, 
+            type='task'
         )
 
         if satisfied:
@@ -1039,7 +975,7 @@ End response with:
                 self.active_task.pop()
 
             try:
-                self.priorities.remove(task)
+                self.tasks.remove(task)
             except Exception as e:
                 print(str(e))
 
@@ -1050,7 +986,7 @@ End response with:
                     if xml.find('name', intention) != task_name:
                         new_intentions.append(intention)
                     else:
-                        print('deleting intention for satisfied task!')
+                        print('   deleting intention for satisfied task!')
                 else:
                     new_intentions.append(intention)
             self.intentions = new_intentions
@@ -1144,10 +1080,11 @@ End response with:
                                 actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         elif act_name == 'Say':# must be a say
             if False: #act_arg in self.show:
-                print('Duplicate Say!')
+                #print('Duplicate Say!')
+                pass
             else:
                 self.show += f"{act_arg}'"
-                print(f"Queueing message for {self.name}: {act_arg}")  # Debug
+                #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
                 self.context.message_queue.put({'name':self.name, 'text':act_arg})
             
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
@@ -1171,7 +1108,7 @@ End response with:
         """Update goals based on termination conditions"""
         # Create a list from the keys to avoid modifying dict during iteration
         for goal in list(self.goals.keys()):
-            satisfied, progress = self.test_priority_termination(self.goals[goal]['termination'], events)
+            satisfied, progress = self.test_termination(self.goals[goal]['termination'], events, type='goal')
             if satisfied:
                 drive = self.goals[goal]['drive']
                 del self.goals[goal]
@@ -1180,12 +1117,12 @@ End response with:
 
 
     def update_tasks(self):
-        """Update task priorities based on current state and drives
+        """Update tasks based on current state and drives
             attempts to ensure there are always at least 2 uncommitted tasks"""
         
 
-        uncommitted_tasks = [task for task in self.priorities if not hash_utils.find('committed', task)=='True']
-        committed_tasks = [task for task in self.priorities if hash_utils.find('committed', task)=='True']
+        uncommitted_tasks = [task for task in self.tasks if not hash_utils.find('committed', task)=='True']
+        committed_tasks = [task for task in self.tasks if hash_utils.find('committed', task)=='True']
         n_new_tasks = max(0, 2-len(uncommitted_tasks))
         if n_new_tasks <= 0:
             return
@@ -1262,7 +1199,7 @@ End response with:
 
         # Format state for LLM
         goal_text = self.map_goals()
-        print("Update Priorities")
+        #print("Update Tasks")
         response = self.llm.ask({
             'character': self.character,
             'situation': self.context.current_state,
@@ -1276,17 +1213,19 @@ End response with:
             'n_new_tasks': n_new_tasks
         }, prompt, temp=0.7, stops=['<end/>'])
 
-        # add each new tasl, but first check for and delete any existing task with the same name
+        # add each new task, but first check for and delete any existing task with the same name
         for plan in hash_utils.findall('plan', response):
+            print(f'\n{self.name} new task: {plan.replace('\n', '; ')}')
             if hash_utils.find('name', plan):
                 task_name = hash_utils.find('name', plan)
                 reason = hash_utils.find('reason', plan)
                 if self.get_task(task_name) != None:
-                    self.priorities.remove(self.get_task(task_name))
-                self.priorities.append(plan)
+                    print(f'{self.name} deleting existing task: {task_name}')
+                    self.tasks.remove(self.get_task(task_name))
+                self.tasks.append(plan)
 
-    def test_priority_termination(self, termination_check, consequences, updates=''):
-        """Test if recent acts, events, or world update have satisfied priority"""
+    def test_termination(self, termination_check, consequences, updates='', type=''):
+        """Test if recent acts, events, or world update have satisfied termination"""
         prompt = [UserMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
 Reason step-by-step using the CompletionCriterion as a guide for this assessment.
 Consider these factors in determining task completion:
@@ -1351,15 +1290,16 @@ End your response with:
         }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
 
         satisfied = xml.find('<status>', response)
-        print(f'{self.name} testing priority termination_check: {termination_check}: {satisfied}')
         progress = xml.find('<progress>', response)
+        print(f'\n{self.name} testing {type} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
         if satisfied != None and satisfied.lower().strip() == 'complete':
-            print(f'Priority {termination_check} Satisfied!')
+            print(f' **{termination_check} Satisfied!**')
             return True, progress
         elif satisfied != None and 'partial' in satisfied.lower() or 'insufficient' in satisfied.lower():
             try:
                 progress = int(progress.strip())
                 if progress/100.0 > random.random():
+                    print(f' **{termination_check} Satisfied!**')
                     return True, progress
             except:
                 pass
@@ -1419,7 +1359,7 @@ End response with:
             raise ValueError(f'Invalid task  {task}')
         last_act = self.get_task_last_act(task_name)
         reason = hash_utils.find('reason', task)
-
+        print(f'\n{self.name} actualizing task: {task.replace('\n', '; ')}')
         prompt = [UserMessage(content="""You are {{$character}}.
 Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the next step of the following task.
 
@@ -1585,7 +1525,7 @@ Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]
-        print(f'{self.name} act_result: {self.act_result}')
+        #print(f'{self.name} act_result: {self.act_result}')
         act = None
         tries = 0
         mapped_goals = self.map_goals()
@@ -1596,7 +1536,7 @@ End your response with:
         recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
-        print("Actualize Task",end=' ')
+        #print("Actualize Task",end=' ')
         while act is None and tries < 2:
             response = self.llm.ask({
                 'character': self.character,
@@ -1619,8 +1559,6 @@ End your response with:
                 mode = xml.find('<mode>', response)
                 if mode not in ['Say', 'Think', 'Move', 'Look', 'Do']:
                     print(f'Invalid mode {mode} in actualize_task')
-                else:
-                    print(f'Action: {mode} {act}')
             except Exception as e:
                 print(f"Error parsing XML: {e}")
                 act = None
@@ -1633,7 +1571,7 @@ End your response with:
             if mode == 'Say':
                 dup = self.repetitive(mode+': '+act, last_act, self.format_history(6))
                 if dup:
-                    print(f'\n*****Duplicate test failed*****\n  {act}\n')
+                    #print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
                     duplicative_insert = f"""\n****\nResponse:\n{mode+': '+act}\n is repetitive. Try something new\n****"""
                     if tries == 0:
                         act = None  # force redo
@@ -1645,7 +1583,8 @@ End your response with:
             elif mode == 'Do' or mode == 'Move':
                 dup = self.repetitive(mode+': '+act, last_act, self.format_history(4))
                 if dup:
-                    print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
+                    print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
+                    #print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
                     if tries < 1:
                         #act = None  # force redo
                         temp += .3
@@ -1655,7 +1594,8 @@ End your response with:
             elif mode ==  self.previous_action:
                 dup = self.repetitive(mode+': '+act, last_act, self.format_history(4))
                 if dup:
-                    print(f'\n*****Repetitive act test failed*****\n  {act}\n')
+                    print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
+                    #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert = f"""\n****\nResponse:\n{mode+': '+act}\n is repetitive. Try something new\n****\n"""
                     if tries < 1:
                         act = None  # force redo
@@ -1670,19 +1610,43 @@ End your response with:
             act = self.refine_say_act(mode, act)
         
         if act is not None:
-            print(f'actionable found: task_name {task_name}\n  {act}')
-            print(f'adding intention {mode}, {task_name}')
-            for candidate in self.intentions.copy():
-                candidate_source = xml.find('<source>', candidate)
-                if candidate_source == task_name:
-                    self.intentions.remove(candidate)
-                elif candidate_source is None or candidate_source == 'None':
-                    self.intentions.remove(candidate)
-
+            print(f'actualized task: {mode}, act: {act}, reason: {reason}, source: {task_name}')
             return f'<intent> <mode>{mode}</mode> <act>{act}</act> <reason>{reason}</reason> <source>{task_name}</source> </intent>'
         else:
             print(f'No intention constructed, presumably duplicate')
             return None
+
+    def validate_task(self, task):
+        """Validate a task"""
+        if task is None:
+            return False
+        name = hash_utils.find('name', task)
+        if name is None or len(name) < 3:
+            return False
+        description = hash_utils.find('description', task)
+        if description is None or len(description) < 3:
+            return False
+        reason = hash_utils.find('reason', task)
+        if reason is None or len(reason) < 3:
+            return False
+        termination = hash_utils.find('termination', task)
+        if termination is None or len(termination) < 3:
+            return False
+        actors = hash_utils.find('actors', task)
+        if actors is None :
+            return False
+        actors = actors.split(',')
+        if len(actors) == 0:
+            return False
+        for actor in actors:
+            if self.context.get_actor_by_name(actor.strip()) is None:
+                # not an actor in the context, try to resolve reference?
+                pass
+        committed = hash_utils.find('committed', task)
+        #committed is optional, but if present, must be true
+        if not (committed is None or committed.lower().strip() == 'true' or committed.lower().strip() == 'false'):
+            return False
+        return True
 
     def update_intentions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
         """Update intentions based on speech or thought"""
@@ -1701,7 +1665,7 @@ End your response with:
             return
         
         # Rest of the existing function remains unchanged
-        print(f'Update intentions from say or think\n {act_name} {act_arg}\n  {reason}')
+        print(f'\n{self.name} Update intentions from say or think\n {act_name}, {act_arg};  reason: {reason}')
         
         if source == 'watcher':  # Still skip watcher
             print(f' source is watcher, no intention updates')
@@ -1816,12 +1780,11 @@ Response:
 Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the intention analysis in hash-formatted text as shown above.
 End your response with:
-</end>
-""")]
+</end>""")]
         response = self.llm.ask({"text":f'{act_name} {act_arg}',
                                  "active_task":self.active_task.peek(),
                                  "reason":reason,
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "name":self.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=100)
         tasks = hash_utils.findall('plan', response)
@@ -1829,19 +1792,16 @@ End your response with:
             print(f'no new tasks in say or think')
             return
         for task in tasks:
-            name = hash_utils.find('name', task)
-            description = hash_utils.find('description', task)
-            reason = hash_utils.find('reason', task)
-            termination = hash_utils.find('termination', task)
-            if name is None or description is None or reason is None or termination is None:
-                print(f'misformed task in say or think')
-                continue
-            print(f'new task: {name} {description} {reason} {termination}')
-            if self.get_task(name):
-                print(f'task {name} already exists, skipping')
-                continue
-            self.priorities.append(task)
-
+            if self.validate_task(task):
+                print(f'  New task from say or think: {task.replace('\n', '; ')}')
+                name = hash_utils.find('name', task)
+                if self.get_task(name) != None:
+                    self.tasks.remove(self.get_task(name))
+                self.tasks.append(task)
+            else:
+                print(f'misformed new task from say or think: {task.replace('\n', '; ')}')
+        return tasks
+    
     def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=None):
         """Update individual commitments after closing a dialog"""
         
@@ -1939,7 +1899,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "active_task":self.active_task.peek(),
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
                                  "reason":xml.find('<reason>', self.intention),
@@ -1952,17 +1912,14 @@ End your response with:
             print(f'no new tasks in say or think')
             return
         for task in tasks:
-            name = hash_utils.find('name', task)
-            description = hash_utils.find('description', task)
-            reason = hash_utils.find('reason', task)
-            termination = hash_utils.find('termination', task)
-            if name is None or description is None or reason is None or termination is None:
-                print(f'misformed task in say or think')
-                continue
-            print(f'new task: {name} {description} {reason} {termination}')
-            if self.get_task(name) != None:
-                self.priorities.remove(self.get_task(name))
-            self.priorities.append(task)
+            if self.validate_task(task):
+                print(f'\n{self.name} new individual committed task: {task.replace('\n', '; ')}')
+                name = hash_utils.find('name', task)
+                if self.get_task(name) != None:
+                    self.tasks.remove(self.get_task(name))
+                self.tasks.append(task)
+            else:
+                print(f'misformed new individual committed task: {task.replace('\n', '; ')}')
         return tasks
   
     def update_joint_commitments_following_conversation(self, target, transcript):
@@ -2073,7 +2030,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.priorities),
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "active_task":self.active_task.peek(),
                                  "reason":xml.find('<reason>', self.intention),
                                  "name":self.name, 
@@ -2085,17 +2042,12 @@ End your response with:
             print(f'no new tasks in say or think')
             return
         for task in tasks:
-            name = hash_utils.find('name', task)
-            description = hash_utils.find('description', task)
-            reason = hash_utils.find('reason', task)
-            termination = hash_utils.find('termination', task)
-            if name is None or description is None or reason is None or termination is None:
-                print(f'misformed task in say or think')
-                continue
-            print(f'new task: {name} {description} {reason} {termination}')
-            if self.get_task(name) != None:
-                self.priorities.remove(self.get_task(name))
-            self.priorities.append(task)
+            if self.validate_task(task):
+                print(f'\n{self.name} new joint task: {task.replace('\n', '; ')}')
+                name = hash_utils.find('name', task)
+                if self.get_task(name) != None:
+                    self.tasks.remove(self.get_task(name))
+                self.tasks.append(task)
         return tasks
     
     def random_string(self, length=8):
@@ -2119,6 +2071,7 @@ End your response with:
     def hear(self, from_actor, message: str, source='dialog', respond=True):
         """ called from acts when a character says something to this character """
         # Initialize dialog manager if needed
+        print(f'\n{self.name} hears from {from_actor.name}: {message}')
        
         # Special case for Owl-Doc interactions
         if self.name == 'Owl' and from_actor.name == 'Doc':
@@ -2133,8 +2086,8 @@ End your response with:
 #reason engaging with Doc: completing his assignments.
 """
             if self.get_task(new_task_name) != None:
-                self.priorities.remove(self.get_task(new_task_name))
-            self.priorities.append(new_task)
+                self.tasks.remove(self.get_task(new_task_name))
+            self.tasks.append(new_task)
             self.active_task.push(new_task_name)
             self.watcher_message_pending = True
             return
@@ -2262,7 +2215,7 @@ End your response with:
         recent_memories = self.structured_memory.get_recent(6)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
         
-        print("Hear",end=' ')
+        #print("Hear",end=' ')
         duplicative_insert = ''
         trying = 0
         while trying < 1: # don't bother with duplicate test
@@ -2281,7 +2234,7 @@ End your response with:
                 'commitments': '\n'.join([str(hash_utils.find('name', task)) 
                                           + ' - ' + str(hash_utils.find('description', task)) 
                                           + ' - ' + str(hash_utils.find('reason', task)) 
-                                          for task in self.priorities if hash_utils.find('committed', task) == 'True']),
+                                          for task in self.tasks if hash_utils.find('committed', task) == 'True']),
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
             response = xml.find('<response>', answer_xml)
@@ -2295,7 +2248,7 @@ End your response with:
                 break
             else:
                 trying += 1
-                print(f'*****Duplicate test failed in hear, retrying*****')
+                print(f'  Duplicate test failed in hear response, retrying')
                 duplicative_insert = f"""\n****\nResponse:\n{response}\n is repetitive of an earlier statement. Try something new\n****"""
 
  
@@ -2362,10 +2315,10 @@ A summary of recent events is:
 {{$history}}
 </recent_history>
 
-Your current priorities include:
-<priorities>
-{{$priorities}}
-</priorities>
+Your current tasks include:
+<tasks>
+{{$tasks}}
+</tasks>
 
 Your task options are provided in the labelled list below.
 Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
@@ -2416,7 +2369,7 @@ End your response with:
                 tasks_memories.add(memory.text)  # Add each memory text individually
                 
         tasks_memories = '\n'.join(tasks_memories)  # Join at the end
-        print("Choose",end=' ')
+        #print("Choose",end=' ')
         response = self.llm.ask({
             'input': sense_data + self.sense_input, 
             'history': self.narrative.get_summary('medium'),
@@ -2424,7 +2377,7 @@ End your response with:
             "situation": self.context.current_state,
             "goals": mapped_goals, 
             "drives": '\n'.join(drive.text for drive in self.drives),
-            "priorities": '\n'.join([str(hash_utils.find('name', task)) for task in self.priorities]),
+            "tasks": '\n'.join([str(hash_utils.find('name', task)) for task in self.tasks]),
             "tasks_memories": tasks_memories,
             "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
             "num_options": len(task_choices)
@@ -2465,7 +2418,7 @@ End your response with:
         self.decides()
         satisfied = False
 
-        for task in self.priorities.copy():
+        for task in self.tasks.copy():
             satisfied = self.clear_task_if_satisfied(task, '', self.act_result)
         if satisfied:
             self.update_goals()
@@ -2479,7 +2432,7 @@ End your response with:
 
        
     def decides(self, sense_data='', ui_queue=None):
-        print(f'\n*********decides***********\nCharacter: {self.name}, active task {self.active_task.peek()}')
+        print(f'\n{self.name} decides, active task {self.active_task.peek()}')
  
         my_active_task = self.active_task.peek()
         if self.next_task:
@@ -2490,7 +2443,7 @@ End your response with:
 
         # first see if any committed goals
         task_options = []
-        for task in self.priorities:
+        for task in self.tasks:
             if hash_utils.find('committed', task) == 'True':
                 task_options.append(task)
 
@@ -2505,12 +2458,12 @@ End your response with:
                     return
             elif full_task is not None:
                 self.active_task.pop()
-                self.priorities.remove(full_task)
+                self.tasks.remove(full_task)
                 print(f'Active_task decayed or not found! {my_active_task}')
 
         # main loop when nothing in progress - find something to do
         if len(task_options) == 0:
-            for n, task in enumerate(self.priorities):
+            for n, task in enumerate(self.tasks):
                 task_options.append(task)
             if len(task_options) == 0:
                 self.update_tasks()
@@ -2522,7 +2475,7 @@ End your response with:
                 task = self.choose(sense_data, task_options)
             else:
                 task = task_options[0]
-            print(f'actualizing task {task}')
+            print(f'\n{self.name} actualizing task {task.replace('\n', '; ')}')
             intention = self.actualize_task(task)
         if intention:
             self.act_on_intention(intention)
@@ -2539,7 +2492,7 @@ End your response with:
         if act_name is not None:
             self.act_name = act_name.strip()
         act_arg = xml.find('<act>', intention)
-        print(f'Intention: {act_name} {act_arg}')
+        print(f'\n{self.name} act_on_intention: {act_name} {act_arg}')
         self.reason = xml.find('<reason>', intention)
         source = xml.find('<source>', intention)
         #print(f'{self.name} choose {intention}')
@@ -2586,8 +2539,8 @@ End your response with:
             return self.thought.strip()+'. '+intent
         return name + ': '+self.thought.strip()+'. '+intent
     
-    def format_priorities(self):
-        return [hash_utils.find('name', task) for task in self.priorities]
+    def format_tasks_for_UI(self):
+        return [hash_utils.find('name', task) for task in self.tasks]
     
     #def format_history(self):
     #    return '\n'.join([xml.find('<text>', memory) for memory in self.history])
@@ -2598,7 +2551,7 @@ End your response with:
             'name': self.name,
             'show': self.show.strip(),  # Current visible state
             'thoughts': self.format_thought_for_UI(),  # Current thoughts
-            'priorities': self.format_priorities(),
+            'tasks': self.format_tasks_for_UI(),
             'description': self.character.strip(),  # For image generation
             'history': self.format_history().strip(), # Recent history, limited to last 5 entries
             'narrative': {
@@ -2630,7 +2583,7 @@ End your response with:
             return ""
             
         # Call LLM to analyze influence (stub for now)
-        print("Find Say Result",end=' ')
+        #print("Find Say Result",end=' ')
         prompt = [UserMessage(content=f"""
 Analyze if these percepts show influence from the say action:
  - {'\n - '.join(say_and_after)}
@@ -2698,7 +2651,7 @@ end your response with:
                     }
                     for goal_name, goal_data in (self.goals or {}).items()
                 ],
-                'priorities': [
+                'tasks': [  # Add empty list as default
                     {
                         'name': hash_utils.find('name', p) or '',
                         'description': hash_utils.find('description', p) or '',
@@ -2706,7 +2659,7 @@ end your response with:
                         'actors': hash_utils.find('actors', p) or '',
                         'needs': hash_utils.find('needs', p) or '',
                         'committed': hash_utils.find('committed', p) == 'True'
-                    } for p in (self.priorities or [])
+                    } for p in (self.tasks or [])
                 ],
                 'intentions': self.intentions or []  # List[str]
             }
