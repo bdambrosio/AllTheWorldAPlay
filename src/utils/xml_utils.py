@@ -62,8 +62,20 @@ def find(key, xml_str):
     # Strip angle brackets from search key
     tag = keyl.strip('<>')
     
-    # Find start of tag
-    start = xml_strl.find(f'<{tag}')
+    # Find start of tag, ensuring it's a complete tag match
+    start = -1
+    i = 0
+    while i < len(xml_strl):
+        i = xml_strl.find(f'<{tag}', i)
+        if i == -1:
+            return ""
+        # Check if it's a complete tag by looking at next char
+        next_char = xml_strl[i + len(tag) + 1] if i + len(tag) + 1 < len(xml_strl) else None
+        if next_char in ['>', ' ', '/']:  # Valid tag endings
+            start = i
+            break
+        i += 1
+    
     if start == -1:
         return ""
         
@@ -77,10 +89,21 @@ def find(key, xml_str):
     if tag_content.endswith('/') or xml_strl[tag_end-1] == '/':
         return ""
         
-    # Find closing tag
-    end = xml_strl.find(f'</{tag}>', tag_end)
+    # Find closing tag, ensuring exact match
+    end = -1
+    i = tag_end
+    while i < len(xml_strl):
+        i = xml_strl.find(f'</{tag}', i)
+        if i == -1:
+            return xml_str[tag_end + 1:]  # No closing tag found
+        # Check if it's a complete closing tag
+        next_char = xml_strl[i + len(tag) + 2] if i + len(tag) + 2 < len(xml_strl) else None
+        if next_char == '>':
+            end = i
+            break
+        i += 1
+    
     if end == -1:
-        # run on tag_end + 1 to end of string
         return xml_str[tag_end + 1:]
         
     return xml_str[tag_end + 1:end]

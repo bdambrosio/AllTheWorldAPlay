@@ -111,6 +111,12 @@
   min-height: 60px;
 }
 
+.thoughts-content {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
 .character-block h3 {
   margin: 0;
   color: #ffffff;

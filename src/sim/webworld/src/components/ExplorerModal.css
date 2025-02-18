@@ -67,13 +67,13 @@
   margin: 15px 0 10px;
 }
 
-.intentions-list {
+.actions-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.intention {
+.action-item {
   background-color: #444;
   padding: 10px;
   border-radius: 4px;

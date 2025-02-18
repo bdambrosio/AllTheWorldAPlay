@@ -119,7 +119,7 @@ class Context():
         prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
 It may be there are no significant updates to report.
 Limit your changes to the consequences for elements in the existing state or new elements added to the state.
-Most important are those consequences that might activate or inactive tasks or intentions by actors.
+Most important are those consequences that might activate or inactive tasks or actions by actors.
 
 <actionEffects>
 {{$consequences}}
@@ -426,23 +426,25 @@ End your response with:
 
             task_memories = '\n\t'.join(task_memories)
             task_list.append(task_dscp + '\n\t' + task_memories)
-        return '\n'.join(task_list)
+        return '\n\n'.join(task_list)
     
 
     def map_actor(self, actor):
         mapped_actor = f"""<actor>
-        <name>{actor.name}</name>
-        <character>{actor.character}</character>
-        <goals>
-        {'\n'.join([hash_utils.find('text', goal) for goal in actor.goals])}
-        </goals>
-        <tasks>
-        {'\n'.join([hash_utils.find('name', task) for task in actor.tasks])}   
-        </tasks>
-        <memories>
-        {'\n'.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
-        </memories>
-        </actor>"""
+    <name>{actor.name}</name>
+    <character>
+        {actor.character.replace('\n', ' ')}
+    </character>
+    <goals>
+    {'\n'+'\n        '.join([actor.goals[goal]['name'] for goal in actor.goals])}
+    </goals>
+    <tasks>
+        {'\n        '.join([hash_utils.find('name', task) for task in actor.tasks])}   
+    </tasks>
+    <memories>
+        {'\n        '.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
+    </memories>
+</actor>"""
         return mapped_actor
 
     def map_actors(self):
@@ -451,7 +453,7 @@ End your response with:
 
     def choose(self, task_choices):
         if len(task_choices) == 1:
-            return 0
+            return task_choices[0]
         prompt = [UserMessage(content="""The task is to order the execution of a set of task options, listed under <tasks> below.
 Your current situation is:
 
@@ -480,13 +482,18 @@ Please:
 4. Compare them against your current goals and drives with respect to your memory and perception of your current situation
 5. Reason in keeping with your character. 
 6. Assign an execution order to each task option, ranging from 1 (execute as soon as possible) to {{$num_options}} (execute last), 
-    and respond with the following XML format:
 
-<task><label>label of chosen task</label><order>execution order (an int, 1-{{$num_options}})</order></task>
-<task>...</task>
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#task\n#label label of chosen task\n#order execution order (an int, 1-{{$num_options}})\n##
+#task\n#label ...\n#order ...\n##
+...
+##
 
 Review to ensure the assigned execution order is consistent with the task option dependencies, urgency, and importance.
-Respond only with the above XML, instantiated with the selected task label from the Task list. 
+Respond only with the above hash-formatted information, 
+    instantiated with the selected task label from the Task list and execution order determined by your reasoning.
 Do not include any introductory, explanatory, or discursive text, 
 End your response with:
 </end>
@@ -497,7 +504,7 @@ End your response with:
         random.shuffle(labels)
         # Change from dict to set for collecting memory texts
                 
-        print(f'\nWorld Choose: {'\n - '.join([hash_utils.find('name', task) for task in task_choices])}')
+        print(f'\nWorld Choose: {'\n - '+'\n - '.join([hash_utils.find('name', task) for task in task_choices])}')
         response = self.llm.ask({
             "situation": self.current_state,
             "actors": self.map_actors(), 
@@ -506,24 +513,26 @@ End your response with:
         }, prompt, temp=0.0, stops=['</end>'], max_tokens=150)
         # print(f'sense\n{response}\n')
         index = -1
-        ordering = xml.findall('<task>', response)
+        ordering = hash_utils.findall('task', response)
         min_order = 1000
         task_to_execute = None
+        best_label = None
         for item in ordering:
-            if xml.find('<order>', item) is not None:
+            if hash_utils.find('order', item) is not None:
                 try:
-                    index = int(xml.find('<order>', item)) - 1
-                    label = xml.find('<label>', item).strip()
+                    index = int(hash_utils.find('order', item)) - 1
+                    label = hash_utils.find('label', item).strip()
                     task = task_choices[labels.index(label)]
                     if index < min_order:
                         min_order = index
                         task_to_execute = task
+                        best_label = label
                 except:
                     print(f'Error parsing order {item}')
  
         if task_to_execute is not None:
-            print(f'\nWorld Choose: {task_to_execute.replace('\n', '; ')}')
-            return task_choices[min_order]
+            print(f'  Chosen label: {best_label} task: {task_to_execute.replace('\n', '; ')}')
+            return task_to_execute
         else:
             return task_choices[0]
         

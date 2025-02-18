@@ -108,11 +108,11 @@ function ExplorerModal({ character, sessionId, onClose }) {
               <div>Reason: {explorerState.lastAction.reason}</div>
             </div>
 
-            <h4>Current Intentions</h4>
-            <div className="intentions-list">
-              {explorerState.intentions.map((intention, i) => (
-                <div key={i} className="intention">
-                  {intention}
+            <h4>Current Actions</h4>
+            <div className="actions-list">
+              {explorerState.actions.map((action, i) => (
+                <div key={i} className="action-item">
+                  {action}
                 </div>
               ))}
             </div>
@@ -211,10 +211,10 @@ function ExplorerModal({ character, sessionId, onClose }) {
               ))}
             </div>
 
-            <h4>Intentions</h4>
-            <div className="intentions-list">
-              {explorerState.cognitive.intentions.map((intention, i) => (
-                <div key={i} className="intention-item">{intention}</div>
+            <h4>Actions</h4>
+            <div className="actions-list">
+              {explorerState.cognitive.actions.map((action, i) => (
+                <div key={i} className="action-item">{action}</div>
               ))}
             </div>
           </div>
