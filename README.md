@@ -1,16 +1,38 @@
 # AllTheWorldAPlay[^1] (ATWAP)
 
 ## A simple toy to test the Humanity of your LLM
-1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
-major overhaul of the cognitive architecture of characters.
 
-Anyway, if you see something like 'Southwest' in the main dialog, that means a character took a move on the map in that direction.
+Alpha candidate for next version. Major changes 
+- the UI is now a separate js (React) job, so you can view in a browser.
+- sketch of expanded exploration of character innards - try explore button in character panel!
+     (but don't click anything when a step is in progress! fix tbd)
+- scenarios can now define terrain types and resource.
+- refined cognitive cycle
+- 'conversations' - much more useful conversations between agents (but warning, this can really slow down a step, each character takes a turn till the conversation is over, all within a single step, no output in UI till its done.
+to run this version, 
+
+- run npm start in src/sim/webworld/src/
+- run main in src/sim (or better, use the 'webworld' launch config if you use vscode -I'm developing in cursor now.
+
+It needs an llm backend, specify that in the new config file in src/plays, and launch the appropriate server from src/utils if you specify 'local' - for local I don't recommend less than Llama-3.3-70B
+
+It also needs an image server. again in utils I have sd3 (local) and hive (cloud, you will need an account).
+
+load / save aren't working yet, or at least I haven't tried them, but I doubt it very very much.
+Also, might be bugs in some pre-loaded plays, but lost, bellona, laTerre, kittens, work. Others pbly need minor updating.
+
+
+
+
+Sorry, its *really*, *really* slow. I'm working on that. However, it's also much better, cognitively. 
 
 To use one of the other built-in scenarios, move it to the main src dir before you try to execute it.
 
 ### 
 ![Play screenshot](images/lost.jpg)
 
+- 1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
+major overhaul of the cognitive architecture of characters.
 - 12/30/2024 - 'Lost' basic scenario now runs, and by default uses DeepSeek. Haven't run it long enough to see where it breaks down.
 Recap: there is now a simple initialized grid-world map of the terrain, modelling hills, streams, and simple food resources. Not sure where this will go, but I was running into too many boundaries without it. Maybe it should just be a 'my dinner with Andre' like locationless discussion-12/14/2024 - Work in progress - restoring the original Owl functionality (smart reasoning personal chatbot with internet and library access).
 - 6/29/2004 - Work in progress - integrating a procedurally generated initial worldmap. Many other changes in agent architecture also in progress. 
