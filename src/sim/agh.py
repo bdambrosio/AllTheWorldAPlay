@@ -29,12 +29,12 @@ from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
 
 class Mode(Enum):
-    THINK = "Think"
-    SAY = "Say"
-    DO = "Do" 
-    MOVE = "Move"
-    LOOK = "Look"
-    LISTEN = "Listen"
+    Think = "Think"
+    Say = "Say"
+    Do = "Do" 
+    Move = "Move"
+    Look = "Look"
+    Listen = "Listen"
 
 def find_first_digit(s):
     for char in s:
@@ -77,10 +77,10 @@ class Character:
         self.character = character_description
         self.llm = llm_api.LLM(server)
         self.context = None
-        self.tasks = []  # displayed by main thread at top in character intentions widget
+        self.tasks = []  # displayed by main thread at top in character actions widget
         self.show = ''  # to be displayed by main thread in UI public text widget
         self.goals = {}
-        self.intentions = []
+        self.actions = []
         self.previous_action = ''
         self.reason = ''  # reason for action
         self.thought = ''  # thoughts - displayed in character thoughts window
@@ -116,7 +116,7 @@ class Character:
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
         self.sense_threshold = timedelta(hours=4)
-        self.intention = None
+        self.action = None
 
     def set_context(self, context):
         self.context = context
@@ -771,9 +771,10 @@ Consider:
 3. The importance scores of relevant memories
 4. Any patterns or trends in the memories
 
-Respond with a goal, in four parts: a terse (5-6 words) description of the goal, an urgency assessment (1 word), 
-    a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
-    and a termination condition (5-6 words) that would reduce its urgency.
+Evaluate the urgency of unmet needs of the drive. Importance is a combination of immediacy and severity, and ranges over low/medium/high.
+if urgency is not low, respond with a goal, in four parts: name - a terse (5-6 words) description of the goal, urgency - an urgency assessment (1 word), 
+    trigger - a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
+    and termination  - a condition (5-6 words) that would reduce its urgency.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
@@ -959,10 +960,11 @@ End response with:
         """Check if task is complete and update state"""
         termination_check = hash_utils.find('termination', task) if task != None else None
         if termination_check is None or termination_check == '':
-            return
+            return False
 
         # Test completion through cognitive processor's state system
         satisfied, progress = self.test_termination(
+            task,
             termination_check, 
             consequences,
             world_updates, 
@@ -973,23 +975,10 @@ End response with:
             task_name = hash_utils.find('name', task)
             if task_name == self.active_task.peek():
                 self.active_task.pop()
-
             try:
                 self.tasks.remove(task)
             except Exception as e:
                 print(str(e))
-
-            # should we indeed delete all queued steps for a satisfied task? 
-            new_intentions = []
-            for intention in self.intentions:
-                if not task_name.startswith('dialog'): # dialog steps are not deleted
-                    if xml.find('name', intention) != task_name:
-                        new_intentions.append(intention)
-                    else:
-                        print('   deleting intention for satisfied task!')
-                else:
-                    new_intentions.append(intention)
-            self.intentions = new_intentions
 
         return satisfied
 
@@ -997,9 +986,10 @@ End response with:
     def acts(self, target, act_name, act_arg='', reason='', source=''):
         """Execute an action and record results"""
         # Create action record with state before action
-        if act_name not in Mode:
+        try:
+            mode = Mode(act_name.capitalize())
+        except ValueError:
             raise ValueError(f'Invalid action name: {act_name}')
-        mode = Mode(act_name)
         self.act_result = ''
     
         # Store current state and reason
@@ -1063,8 +1053,8 @@ End response with:
         self.previous_action = act_name
 
         if act_name == 'Think' or act_name == 'Say':
-            # Update intentions based on thought
-            self.update_intentions_wrt_say_think(source, act_name, act_arg, reason, target) 
+            # Update actions based on thought
+            self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
             self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
 
         # After action completes, update record with results
@@ -1108,12 +1098,13 @@ End response with:
         """Update goals based on termination conditions"""
         # Create a list from the keys to avoid modifying dict during iteration
         for goal in list(self.goals.keys()):
-            satisfied, progress = self.test_termination(self.goals[goal]['termination'], events, type='goal')
+            satisfied, progress = self.test_termination(self.goals[goal], self.goals[goal]['termination'], events, type='goal')
             if satisfied:
                 drive = self.goals[goal]['drive']
                 del self.goals[goal]
                 new_goal = self.generate_goal(drive, progress=progress)
-                self.goals[new_goal['name']] = new_goal
+                if new_goal:
+                    self.goals[new_goal['name']] = new_goal
 
 
     def update_tasks(self):
@@ -1221,10 +1212,13 @@ End response with:
                 reason = hash_utils.find('reason', plan)
                 if self.get_task(task_name) != None:
                     print(f'{self.name} deleting existing task: {task_name}')
-                    self.tasks.remove(self.get_task(task_name))
+                    try:
+                        self.tasks.remove(self.get_task(task_name))
+                    except:
+                        print(f'Error removing task {task_name}')
                 self.tasks.append(plan)
 
-    def test_termination(self, termination_check, consequences, updates='', type=''):
+    def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
         prompt = [UserMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
 Reason step-by-step using the CompletionCriterion as a guide for this assessment.
@@ -1258,16 +1252,13 @@ Consider these factors in determining task completion:
 {{$termination_check}}
 </completion_criterion>
 
-Respond using this XML format:
+Respond using this hash-formatted text:
 
-Respond with both completion status and progress indication:
-<completion>
-  <status>complete|partial|insufficient</status>
-  <progress>0-100</progress>
-  <reason>terse (5-7 words or less) reason for this assessment</reason>
-</completion>
+#status complete/partial/insufficient
+#progress>0-100
+##
 
-Respond ONLY with the above XML
+Respond ONLY with the above hash-formatted text.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 <end/>
@@ -1289,20 +1280,25 @@ End your response with:
             "relationships": self.narrative.get_summary('medium')
         }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
 
-        satisfied = xml.find('<status>', response)
-        progress = xml.find('<progress>', response)
-        print(f'\n{self.name} testing {type} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
+        satisfied = hash_utils.find('status', response)
+        progress = hash_utils.find('progress', response)
+        print(f'\n{self.name} testing {type} {hash_utils.find('name', object)} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
+        try:
+            progress = int(progress.strip())
+        except:
+            progress = 50
         if satisfied != None and satisfied.lower().strip() == 'complete':
-            print(f' **{termination_check} Satisfied!**')
-            return True, progress
-        elif satisfied != None and 'partial' in satisfied.lower() or 'insufficient' in satisfied.lower():
-            try:
-                progress = int(progress.strip())
-                if progress/100.0 > random.random():
-                    print(f' **{termination_check} Satisfied!**')
-                    return True, progress
-            except:
-                pass
+            print(f'  **Satisfied!**')
+            return True, 100
+        elif satisfied != None and 'partial' in satisfied.lower():
+            if progress/100.0 > 0.67 * random.random():
+                print(f'  **Satisfied partially! {satisfied}, {progress}%**')
+                return True, progress
+        elif satisfied != None and 'insufficient' in satisfied.lower():
+            if progress/100.0 > random.random():
+                print(f'  **Satisfied partially! {satisfied}, {progress}%**')
+                return True, progress
+            
         return False, progress
 
     def refine_say_act(self, act_name, act_arg):
@@ -1611,9 +1607,9 @@ End your response with:
         
         if act is not None:
             print(f'actualized task: {mode}, act: {act}, reason: {reason}, source: {task_name}')
-            return f'<intent> <mode>{mode}</mode> <act>{act}</act> <reason>{reason}</reason> <source>{task_name}</source> </intent>'
+            return f'<action> <mode>{mode}</mode> <act>{act}</act> <reason>{reason}</reason> <source>{task_name}</source> </action>'
         else:
-            print(f'No intention constructed, presumably duplicate')
+            print(f'No action constructed, presumably duplicate')
             return None
 
     def validate_task(self, task):
@@ -1648,10 +1644,10 @@ End your response with:
             return False
         return True
 
-    def update_intentions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
-        """Update intentions based on speech or thought"""
+    def update_actions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
+        """Update actions based on speech or thought"""
         if source.startswith('dialog'):
-            print(f' in dialog, no intention updates')
+            print(f' in dialog, no action updates')
             return
         if target is None:
             target_name = self.say_target(act_name, act_arg, source)
@@ -1659,16 +1655,16 @@ End your response with:
             target_name = target.name
         else:
             target_name = target
-        # Skip intention processing during active dialogs
+        # Skip action processing during active dialogs
         if target is not None and self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.active and source.startswith('dialog'):
-            print(f' in active dialog, no intention updates')
+            print(f' in active dialog, no action updates')
             return
         
         # Rest of the existing function remains unchanged
-        print(f'\n{self.name} Update intentions from say or think\n {act_name}, {act_arg};  reason: {reason}')
+        print(f'\n{self.name} Update actions from say or think\n {act_name}, {act_arg};  reason: {reason}')
         
         if source == 'watcher':  # Still skip watcher
-            print(f' source is watcher, no intention updates')
+            print(f' source is watcher, no action updates')
             return
         
         prompt=[UserMessage(content="""Your task is to analyze the following text.
@@ -1778,7 +1774,7 @@ Response:
 ===End Examples===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the intention analysis in hash-formatted text as shown above.
+Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>""")]
         response = self.llm.ask({"text":f'{act_name} {act_arg}',
@@ -1786,7 +1782,7 @@ End your response with:
                                  "reason":reason,
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "name":self.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=150)
         tasks = hash_utils.findall('plan', response)
         if len(tasks) == 0:
             print(f'no new tasks in say or think')
@@ -1796,7 +1792,13 @@ End your response with:
                 print(f'  New task from say or think: {task.replace('\n', '; ')}')
                 name = hash_utils.find('name', task)
                 if self.get_task(name) != None:
-                    self.tasks.remove(self.get_task(name))
+                    try:
+                        self.tasks.remove(self.get_task(name))
+                    except:
+                        print(f'Error removing task {name}')
+                    if act_name == 'Say':
+                        #next iter s/b a Do! how do we record that?
+                        continue  # if the intent is to say the same thing, don't add the task, we just did 
                 self.tasks.append(task)
             else:
                 print(f'misformed new task from say or think: {task.replace('\n', '; ')}')
@@ -1843,7 +1845,7 @@ Note that the joint_tasks, as listed above, are commitments made by both self an
                             
 Does the transcript include an intention for 'I' to act alone, that is, a new task being committed to individually? 
 An action can be physical or verbal.
-Thought, e.g. 'reflect on my situation', should NOT be reported as an intent to act.
+Thought, e.g. 'reflect on my situation', should NOT be reported as an action.
 Consider the all_tasks pendingand current task and action reason in determining if a candidate task is in fact new.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
@@ -1894,7 +1896,7 @@ Response:
 ===End Examples===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the intention analysis in hash-formatted text as shown above.
+Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>
 """)]
@@ -1902,10 +1904,10 @@ End your response with:
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "active_task":self.active_task.peek(),
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
-                                 "reason":xml.find('<reason>', self.intention),
+                                 "reason":self.reason,
                                  "name":self.name, 
                                  "target_name":target.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=100)
+                                 prompt, temp=0.1, stops=['</end>'], max_tokens=180)
         source = 'dialog with '+target.name
         tasks = hash_utils.findall('plan', response)
         if len(tasks) == 0:
@@ -1916,7 +1918,13 @@ End your response with:
                 print(f'\n{self.name} new individual committed task: {task.replace('\n', '; ')}')
                 name = hash_utils.find('name', task)
                 if self.get_task(name) != None:
-                    self.tasks.remove(self.get_task(name))
+                    try:
+                        self.tasks.remove(self.get_task(name))
+                    except:
+                        print(f'Error removing task {name}')
+                    if random.random() < 0.67:
+                        print(f'{self.name} removing individual task {name} because repetitious')
+                        continue
                 self.tasks.append(task)
             else:
                 print(f'misformed new individual committed task: {task.replace('\n', '; ')}')
@@ -2025,14 +2033,14 @@ Response:
 ===End Examples===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the intention analysis in hash-formatted text as shown above.
+Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
                                  "active_task":self.active_task.peek(),
-                                 "reason":xml.find('<reason>', self.intention),
+                                 "reason":xml.find('<reason>', self.active_task.peek()),
                                  "name":self.name, 
                                  "target_name":target.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=240)
@@ -2046,7 +2054,13 @@ End your response with:
                 print(f'\n{self.name} new joint task: {task.replace('\n', '; ')}')
                 name = hash_utils.find('name', task)
                 if self.get_task(name) != None:
-                    self.tasks.remove(self.get_task(name))
+                    try:
+                        self.tasks.remove(self.get_task(name))
+                    except:
+                        print(f'Error removing task {name}')
+                    if random.random() < 0.67:
+                        print(f'{self.name} removing joint task {name} because repetitious')
+                        continue
                 self.tasks.append(task)
         return tasks
     
@@ -2086,7 +2100,10 @@ End your response with:
 #reason engaging with Doc: completing his assignments.
 """
             if self.get_task(new_task_name) != None:
-                self.tasks.remove(self.get_task(new_task_name))
+                try:
+                    self.tasks.remove(self.get_task(new_task_name))
+                except:
+                    print(f'Error removing task {new_task_name}')
             self.tasks.append(new_task)
             self.active_task.push(new_task_name)
             self.watcher_message_pending = True
@@ -2267,12 +2284,9 @@ End your response with:
             if from_actor.name == 'Watcher':
                 return response
 
-        # Create intention for response
-        intention = f'<intention> <mode>Say</mode> <act>{response}</act> <target>{from_actor.name}</target><reason>{str(reason)}</reason> <source>{response_source}</source></intention>'
-        # a 'hear' overrides previous intentions, we need to re-align with our response
-        #self.intentions.append(intention)
-        self.acts(target=from_actor, act_name='Say', act_arg=response, reason=str(reason), source=response_source)
-
+        # Create action for response
+        action = f'<action> <mode>Say</mode> <act>{response}</act> <target>{from_actor.name}</target><reason>{str(reason)}</reason> <source>{response_source}</source></action>'
+        self.act_on_action(action, None)
         return response + '\n ' + reason
     
     def format_tasks(self, tasks, labels):
@@ -2387,6 +2401,7 @@ End your response with:
         ordering = xml.findall('<task>', response)
         min_order = 1000
         task_to_execute = None
+        best_label = None
         for item in ordering:
             if xml.find('<order>', item) is not None:
                 try:
@@ -2396,11 +2411,13 @@ End your response with:
                     if index < min_order:
                         min_order = index
                         task_to_execute = task
+                        best_label = label
                 except:
                     print(f'Error parsing order {item}')
  
         if task_to_execute is not None:
-            return task_choices[min_order]
+            print(f'  Chosen label: {best_label} task: {task_to_execute.replace('\n', '; ')}')
+            return task_to_execute
         else:
             return task_choices[0]
 
@@ -2417,9 +2434,10 @@ End your response with:
 
         self.decides()
         satisfied = False
-
+        # clear tasks that are satisfied - a temporary hack to check if others actions satisfied a task.
         for task in self.tasks.copy():
-            satisfied = self.clear_task_if_satisfied(task, '', self.act_result)
+            task_satisfied = self.clear_task_if_satisfied(task, '', '')
+            satisfied = satisfied or task_satisfied
         if satisfied:
             self.update_goals()
             self.update_tasks()
@@ -2436,8 +2454,8 @@ End your response with:
  
         my_active_task = self.active_task.peek()
         if self.next_task:
-            intention = self.actualize_task(self.next_task)
-            self.act_on_intention(intention)
+            action = self.actualize_task(self.next_task)
+            self.act_on_action(action, self.next_task)
             self.next_task = None
             return
 
@@ -2451,14 +2469,17 @@ End your response with:
         if my_active_task != None and (hash_utils.find('committed', my_active_task)=='True' or len(task_options) == 0):
             full_task = self.get_task(my_active_task)
             if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
-                intention = self.actualize_task(full_task)
+                action = self.actualize_task(full_task)
                 print(f'Found active_task {my_active_task}')
-                if intention is not None:
-                    self.act_on_intention(intention)
+                if action is not None:
+                    self.act_on_action(action, full_task)
                     return
             elif full_task is not None:
                 self.active_task.pop()
-                self.tasks.remove(full_task)
+                try:
+                    self.tasks.remove(full_task)
+                except:
+                    print(f'Error removing task {full_task}')
                 print(f'Active_task decayed or not found! {my_active_task}')
 
         # main loop when nothing in progress - find something to do
@@ -2476,9 +2497,9 @@ End your response with:
             else:
                 task = task_options[0]
             print(f'\n{self.name} actualizing task {task.replace('\n', '; ')}')
-            intention = self.actualize_task(task)
-        if intention:
-            self.act_on_intention(intention)
+            action = self.actualize_task(task)
+        if action:
+            self.act_on_action(action, task)
             return
         else:
             del task_options[task_index]
@@ -2486,22 +2507,22 @@ End your response with:
             return self.decides(sense_data=sense_data, ui_queue=ui_queue)
 
 
-    def act_on_intention(self, intention):
-        self.intention = intention
-        act_name = xml.find('<mode>', intention)
+    def act_on_action(self, action, task):
+        self.action = action
+        act_name = xml.find('<mode>', action)
         if act_name is not None:
             self.act_name = act_name.strip()
-        act_arg = xml.find('<act>', intention)
-        print(f'\n{self.name} act_on_intention: {act_name} {act_arg}')
-        self.reason = xml.find('<reason>', intention)
-        source = xml.find('<source>', intention)
-        #print(f'{self.name} choose {intention}')
-        task_name = xml.find('<source>', intention)
-        refresh_task = None # will be set to task intention to be refreshed if task is chosen for action
+        act_arg = xml.find('<act>', action)
+        print(f'\n{self.name} act_on_action: {act_name} {act_arg}')
+        self.reason = xml.find('<reason>', action)
+        source = xml.find('<source>', action)
+        #print(f'{self.name} choose {action}')
+        task_name = xml.find('<source>', action)
+        refresh_task = None # will be set to task to be refreshed if task is chosen for action
 
         task_xml = None
         refresh_task = None
-        task_name = xml.find('<source>', intention)
+        task_name = xml.find('<source>', action)
         if not source.startswith('dialog') and (act_name == 'Say' or act_name == 'Do'):
             # for now very simple task tracking model:
             if task_name is None:
@@ -2509,13 +2530,13 @@ End your response with:
                 print(f'No source found, created task name: {task_name}')
             self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
         if act_name == 'Think':
-            self.reason = xml.find('<reason>', intention)
+            self.reason = xml.find('<reason>', action)
             self.thought = act_arg+'\n  '+self.reason
         target = None
 
         if act_name == 'Say':
             #responses, at least, explicitly name target of speech.
-            target_name = xml.find('<target>', intention)
+            target_name = xml.find('<target>', action)
             if target_name is None or target_name == '':
                 target_name = self.say_target(act_name, act_arg, source)
             if target_name != None:
@@ -2523,21 +2544,23 @@ End your response with:
 
         #this will affect selected act and determine consequences
         self.acts(target, act_name, act_arg, self.reason, source)
+        if task is not None:
+            self.clear_task_if_satisfied(task, '', self.act_result)
 
     
     def format_thought_for_UI (self):
-        #<intention> <mode>{mode}</mode> <act>{intention}</act> <reason>{reason}</reason> <source>{source}</source></intention>'
-        intent = self.intention if self.intention is not None else ''
-        if len(intent) > 0 and xml.find('mode', intent) is not None:
-            intent = ': '+xml.find('act', intent)
+        #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'
+        action = self.action if self.action is not None else ''
+        if len(action) > 0 and xml.find('mode', action) is not None:
+            action = ': '+xml.find('act', action)
         if self.thought is None:
-            return intent
+            return action
         if self.active_task.peek() is None:
-            return self.thought.strip()+'. '+intent
+            return self.thought.strip()+'. '+action
         name = self.active_task.peek()
         if name is None or name == '':
-            return self.thought.strip()+'. '+intent
-        return name + ': '+self.thought.strip()+'. '+intent
+            return self.thought.strip()+'. '+action
+        return name + ': '+self.thought.strip()+'. '+action
     
     def format_tasks_for_UI(self):
         return [hash_utils.find('name', task) for task in self.tasks]
@@ -2601,7 +2624,7 @@ end your response with:
         """Return detailed state for explorer UI"""
         return {
             'currentTask': self.active_task.peek() or 'idle',
-            'intentions': self.intentions or [],  # List[str]
+            'actions': self.actions or [],  # List[str]
             'lastAction': {
                 'name': self.previous_action or '',
                 'result': self.act_result or '',
@@ -2661,7 +2684,7 @@ end your response with:
                         'committed': hash_utils.find('committed', p) == 'True'
                     } for p in (self.tasks or [])
                 ],
-                'intentions': self.intentions or []  # List[str]
+                'actions': self.actions or []  # List[str]
             }
         }
 

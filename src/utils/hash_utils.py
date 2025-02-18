@@ -25,33 +25,34 @@ def findall(tag, text):
     current_section = []
     in_section = False
     
-    # Handle both full sections (#plan...##) and individual tags (#name etc)
-    if tag == 'plan':
-        # Look for full plan sections
-        for line in lines:
-            stripped = line.strip()
-            if stripped.lower() == '#' + tag:  # Start of new plan
-                if in_section:  # Previous plan wasn't terminated with ##
-                    results.append('\n'.join(current_section))
-                in_section = True
+    # First try to find multi-line sections
+    for line in lines:
+        stripped = line.strip()
+        if stripped == f'#{tag}':  # Start of new section
+            if in_section:  # Previous section wasn't terminated
+                results.append('\n'.join(current_section))
+            in_section = True
+            current_section = []
+        elif stripped == '##':  # End of current section
+            if in_section:
+                results.append('\n'.join(current_section))
                 current_section = []
-            elif stripped == '##':  # End of current plan
-                if in_section:
-                    results.append('\n'.join(current_section))
-                    current_section = []
-                in_section = False
-            elif in_section:
-                current_section.append(line.rstrip())
-        # Handle case where last section isn't terminated
-        if in_section and current_section:
-            results.append('\n'.join(current_section))
-    else:
-        # Look for specific tags anywhere
+            in_section = False
+        elif in_section:
+            current_section.append(line)
+            
+    # Handle case where last section isn't terminated
+    if in_section and current_section:
+        results.append('\n'.join(current_section))
+
+    # If no multi-line sections found, look for single-line tags
+    if not results:
         tag_marker = f'#{tag} '
         for line in lines:
-            stripped = line.strip().lower()
+            stripped = line.strip()
             if stripped.startswith(tag_marker):
-                results.append(line.strip()[len(tag_marker):])
+                results.append(stripped[len(tag_marker):])
+                
     return results
 
 def hasKey(tag, text):
