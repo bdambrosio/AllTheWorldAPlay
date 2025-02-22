@@ -26,8 +26,13 @@ function App() {
   const websocket = useRef(null);
   const [showInjectDialog, setShowInjectDialog] = useState(false);
   const logRef = useRef(null);
+  const initialized = useRef(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     async function initSession() {
       try {
         const response = await fetch('http://localhost:8000/api/session/new');
@@ -95,6 +100,9 @@ function App() {
             case 'world_update':
               setWorldState(data.data);
               break;
+            case 'command_complete':
+              setIsProcessing(false);  // Clear processing state on completion
+              break;
             default:
               console.log('Unknown message type:', data.type);
           }
@@ -125,21 +133,36 @@ function App() {
   };
 
   const handleStep = async () => {
-    if (websocket.current?.readyState === WebSocket.OPEN) {
-      websocket.current.send(JSON.stringify({
-        type: 'command',
-        action: 'step'
-      }));
+    if (isProcessing) return;
+    setIsProcessing(true);
+    
+    try {
+      if (websocket.current?.readyState === WebSocket.OPEN) {
+        websocket.current.send(JSON.stringify({
+          type: 'command',
+          action: 'step'
+        }));
+        // Keep timeout as safety net
+        setTimeout(() => setIsProcessing(false), 30000);
+      }
+    } catch (error) {
+      setIsProcessing(false);
     }
-    setSimState({ running: true, paused: false });
   };
 
   const handleRun = async () => {
-    if (websocket.current?.readyState === WebSocket.OPEN) {
-      websocket.current.send(JSON.stringify({
-        type: 'command',
-        action: 'run'
-      }));
+    if (isProcessing) return;
+    setIsProcessing(true);
+    
+    try {
+      if (websocket.current?.readyState === WebSocket.OPEN) {
+        websocket.current.send(JSON.stringify({
+          type: 'command',
+          action: 'run'
+        }));
+      }
+    } catch (error) {
+      setIsProcessing(false);
     }
   };
 
@@ -149,6 +172,7 @@ function App() {
         type: 'command',
         action: 'pause'
       }));
+      setIsProcessing(false);
     }
   };
 
@@ -197,8 +221,8 @@ function App() {
       </div>
       <div className="control-panel">
         <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
-        <button className="control-button" onClick={handleRun}>Run</button>
-        <button className="control-button" onClick={handleStep}>Step</button>
+        <button className="control-button" onClick={handleRun} disabled={isProcessing}>Run</button>
+        <button className="control-button" onClick={handleStep} disabled={isProcessing}>Step</button>
         <button className="control-button" onClick={handlePause}>Pause</button>
         <button className="control-button" onClick={() => setShowInjectDialog(true)}>Inject</button>
         <button className="control-button">Refresh</button>
@@ -206,7 +230,7 @@ function App() {
         <button className="control-button">Save World</button>
         <div className="status-area">
           {currentPlay && <div>Play: {currentPlay}</div>}
-          <div>Status: {simState.running ? 'Running' : simState.paused ? 'Paused' : 'Paused'}</div>
+          <div>Status: {isProcessing ? 'Processing...' : simState.running ? 'Running' : 'Paused'}</div>
         </div>
       </div>
 
@@ -219,6 +243,7 @@ function App() {
             ))}
           </select>
           <button onClick={() => {
+            setIsProcessing(true);
             sendCommand('load_play', { play: selectedPlay });
             setShowPlayDialog(false);
           }}>Load</button>

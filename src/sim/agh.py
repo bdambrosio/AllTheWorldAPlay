@@ -8,6 +8,7 @@ import time
 from typing import List, Dict, Optional
 from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
+from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory, Drive
 from sim.memory.core import MemoryRetrieval
@@ -19,7 +20,7 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.map as map
 import utils.hash_utils as hash_utils
-
+import utils.choice as choice   
 from sim.cognitive.DialogManager import Dialog
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -27,7 +28,7 @@ import numpy as np
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
-
+import asyncio
 class Mode(Enum):
     Think = "Think"
     Say = "Say"
@@ -68,41 +69,76 @@ class Stack:
     def size(self):
         return len(self.stack)
 
+class Goal:
+    def __init__(self, name, actors, description, termination, signalCluster, drives):
+        self.name = name
+        self.actors = actors
+        self.description = description
+        self.termination = termination
+        self.drives = drives
+        self.signalCluster = signalCluster
+        self.progress = 0
+        self.tasks = []
+
+    def to_string(self):
+        return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; signals: {self.signalCluster.text}; termination: {self.termination}'
+    
+    def test_termination(self, events=''):
+        """Test if recent acts, events, or world update have satisfied termination"""
+        pass
+
+class Task:
+    def __init__(self, name, description, reason, termination, goal, actors):
+        self.name = name
+        self.description = description
+        self.reason = reason
+        self.termination = termination
+        self.actors = actors
+        self.goal = goal
+        self.acts = []
+        self.progress = 0
+
+    def to_string(self):
+        return f'Task {self.name}: {self.description}; actors: {[actor.name for actor in self.actors]}; reason: {self.reason}; termination: {self.termination}'
+    
+    def test_termination(self, events=''):
+        """Test if recent acts, events, or world update have satisfied termination"""
+        pass
+    
+class Act:
+    def __init__(self, name, mode, action, actors, reason, source, target=None, result=''):
+        self.name = name
+        self.mode = mode
+        self.action = action
+        self.actors = actors
+        self.reason = reason
+        self.source = source # a task
+        self.target = target # an actor
+        self.result = result
+
+    def to_string(self):
+        return f'Act {self.name}: {self.action}; reason: {self.reason}; result: {self.result}'
 
 # Character base class
 class Character:
-    def __init__(self, name, character_description, server='local'):
+    def __init__(self, name, character_description, server='local', mapAgent=True):
         print(f"Initializing Character {name}")  # Debug print
         self.name = name
         self.character = character_description
         self.llm = llm_api.LLM(server)
         self.context = None
-        self.tasks = []  # displayed by main thread at top in character actions widget
+
         self.show = ''  # to be displayed by main thread in UI public text widget
-        self.goals = {}
-        self.actions = []
-        self.previous_action = ''
         self.reason = ''  # reason for action
         self.thought = ''  # thoughts - displayed in character thoughts window
         self.sense_input = ''
         self.widget = None
         
-        # Initialize active_task stack
-        self.active_task = Stack()
-        
-        self.last_acts = {}  # tasks for which actions have been started, and their states
+        # Initialize focus_task stack
+        self.focus_task = Stack()
+        self.action_history = []
         self.act_result = ''
         self.wakeup = True
-        # Memory system initialization - will be set up by derived classes
-        self.structured_memory = StructuredMemory(owner=self)
-        self.memory_consolidator = MemoryConsolidator(self.llm)
-        self.memory_retrieval = MemoryRetrieval()
-        # Map integration
-        self.mapAgent = None
-        self.world = None
-        self.my_map = [[{} for i in range(100)] for i in range(100)]
-        self.x = 50
-        self.y = 50
 
         # Initialize narrative
         self.narrative = NarrativeSummary(
@@ -111,21 +147,118 @@ class Character:
             last_update=datetime.now(),  # Will be updated to simulation time
             active_drives=[]
         )
-
-        self.drives: List[Drive] = []  # Initialize empty drive list
+     
+        # World integration attributes
+        if mapAgent:
+            self.mapAgent = None  # Will be set later
+            self.world = None
+            self.my_map = [[{} for i in range(100)] for i in range(100)]
+            self.x = 50
+            self.y = 50
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
         self.sense_threshold = timedelta(hours=4)
-        self.action = None
+        self.act = None
+        self.previous_action = None
+        self.look_percept = ''
+        self.driveSignalManager = None
+       # Initialize drives
+        self.drives = [
+            Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
+            Drive("safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events."),
+            Drive("assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance)."),
+            Drive("love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.")
+        ]
+            
+        self.always_respond = True
+        
+        # Initialize memory systems
+        self.structured_memory = StructuredMemory(owner=self)
+        self.memory_consolidator = MemoryConsolidator(self.llm)
+        self.memory_retrieval = MemoryRetrieval()
+        self.new_memory_cnt = 0
+        self.watcher_message_pending = False
+        self.next_task = None  # Add this line
+        self.driveSignalManager = DriveSignalManager(self.llm)
+        self.driveSignalManager.set_context(self.context)
+        self.focus_goal = None
+        self.focus_task = Stack()
+        self.goals = []
+        self.tasks = [] 
+        self.intensions = []
 
     def set_context(self, context):
         self.context = context
         self.actor_models = KnownActorManager(self, context)
+        if self.driveSignalManager:
+            self.driveSignalManager.context = context
+ 
+    def validate_and_create_task(self, task_hash, goal=None):
+        """Validate a task hash and create a task object
         
-    # Required memory system methods that must be implemented by derived classes
-    def add_to_history(self, message: str):
-        """Base method for adding memories - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement add_to_history")
+        Args:
+            task_hash: Hash-formatted task definition
+            goal: Goal this task is for
+        """
+        name = hash_utils.find('name', task_hash)
+        description = hash_utils.find('description', task_hash)
+        reason = hash_utils.find('reason', task_hash)
+        termination = hash_utils.find('termination', task_hash)
+        try:
+            actor_names = hash_utils.find('actors', task_hash)
+            if actor_names:
+                actor_names = actor_names.strip().split()
+            else:
+                actor_names = []
+        except Exception as e:
+            print(f"Warning: invalid actors field in {task_hash}") 
+            actor_names = []
+        actors = [self.resolve_reference(actor_name, None) for actor_name in actor_names if actor_name]
+        actors = [actor for actor in actors if actor is not None]
+        if not self in actors:
+            actors =  [self] + actors
+
+        if name and description and reason and termination and actor_names:
+            task = Task(name, description, reason, termination, goal, actors)
+            return task
+        else:
+            print(f"Warning: Invalid task generation response for {task_hash}") 
+            return None
+        
+    def validate_and_create_act(self, xml_string, task):
+        """Validate an XML actionable and create an Act object
+        
+        Args:
+            xml_string: XML-formatted actionable definition
+            task: Task this act is for
+        """
+        mode = xml.find('<mode>', xml_string)
+        action = xml.find('<specificAct>', xml_string)
+        target = xml.find('<target>', xml_string)
+        if target:
+            target = self.resolve_reference(target, task)
+        # Clean up mode string and validate against Mode enum
+        if mode:
+            mode = mode.strip().capitalize()
+            try:
+                mode_enum = Mode[mode]  # This validates against the enum
+                mode = mode_enum.value  # Get standardized string value
+            except KeyError:
+                raise ValueError(f'Invalid mode {mode} in actionable. Must be one of: {", ".join(m.value for m in Mode)}')
+        
+        if mode and action:
+            act = Act(
+                name=mode,
+                mode=mode, 
+                action=action,
+                actors=task.actors,
+                reason=task.reason,
+                source=task,
+                target=target
+            )
+            return act
+        else:
+            raise ValueError(f"Invalid actionable XML: {xml_string}")
 
     def format_history(self, n=2):
         """Get memory context including both concrete and abstract memories"""
@@ -196,13 +329,12 @@ class Character:
                 relationsOnly=False
             )
 
-        # Get recent memory content from structured_memory
-        recent_memories = self.structured_memory.get_recent(self.new_memory_cnt)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-
         # Update state and tasks
-        self.generate_goals()
-        self.update_tasks()
+        self.focus_goal = None
+        self.goals = []
+        self.focus_task = None
+        self.tasks = []
+
 
         # Reset new memory counter
         self.new_memory_cnt = 0
@@ -215,45 +347,26 @@ class Character:
                 return candidate
         return None
 
-    def find_or_make_task_xml(self, task_name, reason):
-        candidate = self.get_task(task_name)
-        if candidate is not None:
-            return candidate
-        new_task = f'#plan\n#name {task_name}\n#description {task_name}\n#reason> {reason}\n#actors {self.name}\n#committed False\n##'
-        if self.get_task(task_name) != None:
-            self.tasks.remove(self.get_task(task_name))
-        self.tasks.append(new_task)
-        print(f'\n{self.name} created new task to reflect {task_name}\n {reason}')
-        return new_task
 
-    # Action methods
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
-        """Execute an action with tracking and consequences - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement acts")
+    def resolve_reference(self, reference, task):
+        """Resolve a reference to an actor"""
+        candidates = reference.strip().split()
+        for candidate in candidates:
+            actor = self.context.get_actor_by_name(candidate.strip())
+            if actor:
+                return actor
 
-    def clear_task_if_satisfied(self, task_xml, consequences, world_updates):
-        """Check if task is complete and update state - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement clear_task_if_satisfied")
-
-    # Dialog methods
-    def tell(self, to_actor, message, source='dialog', respond=True):
-        """Initiate or continue dialog - must be implemented by derived classes"""
-        raise NotImplementedError("Derived classes must implement tell")
-
-    def hear(self, from_actor, message: str, source='dialog', respond=True):
-        """Process incoming message"""
-        raise NotImplementedError("Derived classes must implement hear")
-        self.add_perceptual_input(f"You hear {from_actor.name} say: {message}")
-
+        #actor = self.say_target('', reference, task)
+        return None
+        
     def say_target(self, act_name, text, source=None):
         """Determine the intended recipient of a message"""
-        if source == 'inject' or source == 'watcher':
-            return 'watcher'
         if len(self.context.actors) == 2:
             for actor in self.context.actors:
                 if actor.name != self.name:
-                    return actor.name
-        elif 'dialog with' in source:
+                    if actor.name.lower() in text.lower():
+                        return actor.name
+        elif 'dialog with' in source.name:
             return source.strip().split('dialog with ')[1].strip()
         
         prompt = [UserMessage(content="""Determine the intended hearer of the following message spoken by you.
@@ -278,7 +391,7 @@ The message is an {{$action_type}} and its content is:
 </Message>
 
 If the message is an internal thought, respond with the name of the actor the thought is about.
-If the message is a spoken message, respond with the name of the intended recipient.
+If the message is a spoken message, respond with the name of the intended recipient. An intended recipient may be another known actor or 
 Respond using the following XML format:
 
 <target>
@@ -388,6 +501,7 @@ End your response with:
             intensity=0.7,  # Medium-high for direct observation
         )       
         self.perceptual_state.add_input(perceptual_input)    
+        self.look_percept = percept
         return percept
 
     def format_look(self):
@@ -492,49 +606,14 @@ water: the water resources visible
         """Get drive texts for backward compatibility"""
         return [drive.text for drive in self.drives]
 
-class Agh(Character):
-    def __init__(self, name, character_description, server='local', mapAgent=True, always_respond=False):
-        print(f"\nInitializing {name}")  # Debug print
-        super().__init__(name, character_description, server)
-        self.llm = llm_api.LLM(server)
-                
-        # Initialize drives
-        self.drives = [
-            Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
-            Drive("safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events."),
-            Drive("assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance)."),
-            Drive("love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.")
-        ]
 
-        # Initialize dialog management        
-        # World integration attributes
-        if mapAgent:
-            self.mapAgent = None  # Will be set later
-            self.world = None
-            self.my_map = [[{} for i in range(100)] for i in range(100)]
-            self.x = 50
-            self.y = 50
-            
-        self.always_respond = always_respond
-        
-        # Action tracking
-        self.previous_action = ''
-        self.act_result = ''
 
-        # Update narrative with drives (drives are strings)
-        self.narrative.active_drives = self.drives  # Direct assignment, no name attribute needed
-        
-        # Initialize memory systems
-        self.structured_memory = StructuredMemory(owner=self)
-        self.memory_consolidator = MemoryConsolidator(self.llm)
-        self.memory_retrieval = MemoryRetrieval()
-        self.new_memory_cnt = 0
-        self.watcher_message_pending = False
-        self.next_task = None  # Add this line
     def set_llm(self, llm):
         self.llm = llm
         if self.memory_consolidator is not None:
             self.memory_consolidator.set_llm(llm)
+        if self.driveSignalManager is not None:
+            self.driveSignalManager.set_llm(llm)
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -677,6 +756,11 @@ Respond only with a single choice of mode. Do not include any introductory, disc
             intensity=intensity
         )
         self.perceptual_state.add_input(perceptual_input)
+        if self.context:
+            input_time = self.context.simulation_time
+        else:
+            input_time = datetime.now()
+        self.driveSignalManager.analyze_text(message, self.drives, input_time)
         return perceptual_input
     
     def add_to_history(self, message: str):
@@ -723,169 +807,17 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         recent_memories = self.structured_memory.get_recent(n)
         return '\n'.join(memory.text for memory in recent_memories)
     
-    def generate_goals(self):
-        """Generate states to track, derived from drives and current memory context"""
-        self.goals = {}
-        for drive in self.drives:
-            former_goal_name = next((self.goals[key]['name'] for key in self.goals if self.goals[key]['drive'] == drive), None)
-            goal = self.generate_goal(drive)
-            if goal:
-                if former_goal_name:
-                    del self.goals[former_goal_name]
-                self.goals[goal['name']] = goal
-
-    def generate_goal(self, drive, progress=None):
-        """Generate states to track, derived from drives and current memory context"""
-        
-        prompt = [UserMessage(content="""Given a Drive and related memories, assess the current state relative to that drive.
-
-<drive>
-{{$drive}}
-</drive>
-
-<recent_memories>
-{{$recent_memories}}
-</recent_memories>
-
-<drive_memories>
-{{$drive_memories}}
-</drive_memories>
-
-<situation>
-{{$situation}}
-</situation>
-
-<character>
-{{$character}}
-</character>
-
-<relationships>
-{{$relationships}}
-</relationships>
-
-Consider this drive and and your memories, situation, and character, paying special attention to drive_memories, 
-and determine your current state relative to this drive.  
-Consider:
-1. How well the drive's needs are being met
-2. Recent events that affect the drive
-3. The importance scores of relevant memories
-4. Any patterns or trends in the memories
-
-Evaluate the urgency of unmet needs of the drive. Importance is a combination of immediacy and severity, and ranges over low/medium/high.
-if urgency is not low, respond with a goal, in four parts: name - a terse (5-6 words) description of the goal, urgency - an urgency assessment (1 word), 
-    trigger - a terse (4-7 words) statement of how the interaction among drive, character, and situation created this goal, 
-    and termination  - a condition (5-6 words) that would reduce its urgency.
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#goal 
-#name terse (5-6 words) description of this goal
-#urgency high/medium/low
-#trigger terse (4-7 words) restatement of primary situation or memory that most relates to this goal
-#termination> 5-6 word statement of condition that would somewhat satisfy this goal
-##
-
-Respond ONLY with the above hash-formatted text.
-End response with:
-<end/>
-""")]
-
-        print(f'\n{self.name} generating goal for drive: {drive.text}, progress: {progress}')
-            
-        # Get relevant memories
-        drive_memories = self.memory_retrieval.get_by_drive(
-            memory=self.structured_memory,
-            drive=drive,
-            threshold=0.1,
-            max_results=5
-        )
-            
-            # Get recent memories regardless of drive
-        recent_memories = self.structured_memory.get_recent(5)
-            
-        # Format memories for LLM
-        drive_memories_text = "\n".join([
-            f"(importance: {mem.importance:.1f}): {mem.text}"
-            for mem in drive_memories
-        ])
-            
-        recent_memories_text = "\n".join([
-            f"(importance: {mem.importance:.1f}): {mem.text}"
-            for mem in recent_memories
-        ])
-            
-        # Generate state assessment
-        response = self.llm.ask({
-            "drive": drive.text,
-            "progress": progress,
-            "recent_memories": recent_memories_text,
-            "drive_memories": drive_memories_text,
-            "relationships": self.actor_models.format_relationships(include_transcript=True),
-            "situation": self.context.current_state if self.context else "",
-            "character": self.character
-        }, prompt, temp=0.3, stops=['<end/>'])     
-            
-        # Parse response
-        try:
-            name = hash_utils.find('name', response)
-            urgency = hash_utils.find('urgency', response)
-            trigger = hash_utils.find('trigger', response)
-            termination = hash_utils.find('termination', response)
-                
-            if name and urgency:
-                self.goals[name] = {
-                    "drive": drive,
-                    "name": name,
-                    "urgency": urgency,
-                    "trigger": trigger if trigger else "",
-                    "termination": termination if termination else ""
-                }
-            else:
-                 print(f"Warning: Invalid goal generation response for {drive.text}")
-                    
-        except Exception as e:
-            print(f"Error parsing goal generation response: {e}")
-            traceback.print_exc()
-                
-        print(f'   generated goal: ' + name + '; ' + urgency)
-        return self.goals[name]
-
-
     def map_goals(self):
-        """ map state for llm input """
-        mapped = []
-        for key, item in self.goals.items():
-            trigger = item['trigger']
-            urgency = item['urgency']
-            termination = item['termination']
-            mapped.append(f"- Goal: {key}; Urgency: {urgency}; Trigger: {trigger}; Termination: {termination}")
+        """ map goals for llm input """
+        header = """A goal is a terse description of a need or desire the character has.  
+Each goal has an urgency and a trigger.  A goal is satisfied when the termination condition is met.
+Here are this character's goals:
+"""
+        mapped = [header]
+        for goal in self.goals:
+            mapped.append(goal.to_string())
         return '\n'.join(mapped)
 
-
-    def get_task_last_acts_key(self, term):
-        """ checks for name in Last_acts!"""
-        for task in list(self.last_acts.keys()):
-            match=self.synonym_check(task, term)
-            if match:
-                return task
-        return None
-            
-    def set_task_last_act(self, term, act):
-        # pbly don't need this, at set we have canonical task
-        task = self.get_task_last_acts_key(term)
-        if task == None:
-            #print(f'SET_TASK_LAST_ACT {self.name} no match found for term: {term}, {act}')
-            self.last_acts[term] = act
-        else:
-            #print(f'SET_TASK_LAST_ACT {self.name} match found: term {term}, task {task}\n  {act}')
-            self.last_acts[task] = act
-
-    def get_task_last_act(self, term):
-        task = self.get_task_last_acts_key(term)
-        if task == None:
-            return 'None'
-        else:
-            return self.last_acts[task]
 
     def make_task_name(self, reason):
         instruction=[UserMessage(content="""Generate a concise, 2-5 word task name from the motivation to act provided below.
@@ -956,11 +888,11 @@ End response with:
         else:
             return False
 
-    def clear_task_if_satisfied(self, task, consequences, world_updates):
+    def clear_task_if_satisfied(self, task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
-        termination_check = hash_utils.find('termination', task) if task != None else None
+        termination_check = task.termination if task != None else None
         if termination_check is None or termination_check == '':
-            return False
+            return True
 
         # Test completion through cognitive processor's state system
         satisfied, progress = self.test_termination(
@@ -972,18 +904,34 @@ End response with:
         )
 
         if satisfied:
-            task_name = hash_utils.find('name', task)
-            if task_name == self.active_task.peek():
-                self.active_task.pop()
-            try:
-                self.tasks.remove(task)
-            except Exception as e:
-                print(str(e))
+            if task == self.focus_task.peek():
+                self.focus_task.pop()
+
+        return satisfied
+
+    def clear_goal_if_satisfied(self, goal, consequences='', world_updates=''):
+        """Check if goal is complete and update state"""
+        termination_check = goal.termination if goal != None else None
+        if termination_check is None or termination_check == '':
+            return True
+
+        # Test completion through cognitive processor's state system
+        satisfied, progress = self.test_termination(
+            goal,
+            termination_check, 
+            consequences,
+            world_updates, 
+            type='goal'
+        )
+
+        if satisfied:
+            if goal == self.focus_goal:
+                self.focus_goal = None
 
         return satisfied
 
 
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
+    async def acts(self, target, act_name, act_arg='', reason='', source=None):
         """Execute an action and record results"""
         # Create action record with state before action
         try:
@@ -1003,15 +951,10 @@ End response with:
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
             self.context.message_queue.put({'name':self.name, 'text':f"{self.show}"})  
+            await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
         else:
             self.thought +=  "\n..." + self.reason + "..."
-
-        # Update active task if needed
-        if (act_name == 'Do' or act_name == 'Say') and not source.startswith('dialog'):
-            if self.active_task.peek() != source and source not in self.active_task.stack:
-                 # if we are not already on this task, push it onto the stack. 
-                 self.active_task.push(source)
 
         # Handle world interaction
         if act_name == 'Do':
@@ -1019,13 +962,14 @@ End response with:
             consequences, world_updates = self.context.do(self, act_arg)
         
             if source == None:
-                source = self.active_task.peek()
-            task = self.get_task(source) if source != None else None
+                source = self.focus_task.peek()
+            task = source
         
             # Update displays
 
             self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"You observe {world_updates}", mode='visual')
             self.act_result = world_updates
@@ -1043,6 +987,7 @@ End response with:
                 percept = self.look(interest=act_arg)
                 self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
+                await asyncio.sleep(0.1)
                 self.show = '' # has been added to message queue!
                 self.add_perceptual_input(f"\nYou {act_name}: {act_arg}\n  {percept}", mode='visual')
         elif act_name == 'Look':
@@ -1050,75 +995,204 @@ End response with:
             self.show += act_arg + '.\n  sees ' + percept + '. '
             self.context.message_queue.put({'name':self.name, 'text':self.show})
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
-        self.previous_action = act_name
+            await asyncio.sleep(0.1)
 
         if act_name == 'Think' or act_name == 'Say':
             # Update actions based on thought
             self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
             self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
-
+            await asyncio.sleep(0.1)
         # After action completes, update record with results
         # Notify other actors of action
         if act_name != 'Say' and act_name != 'Look' and act_name != 'Think':  # everyone you do or move or look if they are visible
             for actor in self.context.actors:
                 if actor != self:
-                    if source != 'watcher':  # when talking to watcher, others don't hear it
+                    if source.name != 'dialog with watcher':  # when talking to watcher, others don't hear it
                         if actor != target:
                             actor_model = self.actor_models.get_actor_model(actor.name)
                             if actor_model != None and actor_model.visible:
                                 percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
                                 actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         elif act_name == 'Say':# must be a say
-            if False: #act_arg in self.show:
-                #print('Duplicate Say!')
-                pass
-            else:
-                self.show += f"{act_arg}'"
-                #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-                self.context.message_queue.put({'name':self.name, 'text':act_arg})
-            
+            self.show += f"{act_arg}'"
+            #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
+            self.context.message_queue.put({'name':self.name, 'text':act_arg})
+            await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
-            self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
-            target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
+            if target != None: #target can be an NPC or an NPC-like object
+                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
+                target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
 
             for actor in self.context.actors:
                 if actor != self:
-                    if source != 'watcher':  # when talking to watcher, others don't hear it
+                    if source.name != 'dialog with watcher':  # when talking to watcher, others don't hear it
                         if actor != target and self.actor_models.get_actor_model(actor.name) != None\
                             and self.actor_models.get_actor_model(actor.name).visible:
                             actor.add_perceptual_input(f"You hear {self.name}: '{act_arg}'", percept=False, mode='auditory')
                         elif actor == target:
-                            actor.hear(self, act_arg, source)
-            # in this case 'self' is speaking
-            # Remove text between ellipses - thoughts 
-            # below done in hear
- 
+                            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'):
+                                # initiating a dialog
+                                dialog_task = Task('dialog with '+actor.name, 
+                                                    description=self.name + ' says ' + act_arg, 
+                                                    reason=reason, 
+                                                    termination='natural end of dialog', 
+                                                    goal=None,
+                                                    actors=[self, actor])
+                                self.focus_task.push(dialog_task)
+                            await actor.hear(self, act_arg, source)
 
-    def update_goals(self, events=''):
-        """Update goals based on termination conditions"""
-        # Create a list from the keys to avoid modifying dict during iteration
-        for goal in list(self.goals.keys()):
-            satisfied, progress = self.test_termination(self.goals[goal], self.goals[goal]['termination'], events, type='goal')
-            if satisfied:
-                drive = self.goals[goal]['drive']
-                del self.goals[goal]
-                new_goal = self.generate_goal(drive, progress=progress)
-                if new_goal:
-                    self.goals[new_goal['name']] = new_goal
+        self.previous_action = act_name           
 
-
-    def update_tasks(self):
-        """Update tasks based on current state and drives
-            attempts to ensure there are always at least 2 uncommitted tasks"""
+    def generate_goal_alternatives(self):
+        """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=3, n=3) if len(ranked_signalClusters) > 0 else []
+        goals = []
+        scores = []
+        for signalCluster in focus_signalClusters:
+            goal = self.generate_goal(signalCluster)
+            goals.append(goal)
+            scores.append(signalCluster.score)
+        self.goals = goals
         
+        """Choose the best goals to focus on based on the goal alternatives ranked by signalCluster ranking and choose three stochastically"""
 
-        uncommitted_tasks = [task for task in self.tasks if not hash_utils.find('committed', task)=='True']
-        committed_tasks = [task for task in self.tasks if hash_utils.find('committed', task)=='True']
-        n_new_tasks = max(0, 2-len(uncommitted_tasks))
-        if n_new_tasks <= 0:
-            return
+        options = [(goal, score) for goal, score in zip(goals,scores)]
+        self.focus_goal = choice.pick_weighted(options, weight=2, n=1) if len(options) > 0 else None
+        return self.focus_goal
 
-        prompt = [UserMessage(content="""Given your character, drives and goals, committed tasks, and recent memories, create up to {{$n_new_tasks}} uncommitted tasks.
+    def generate_goal(self, signalCluster):
+        """Generate a goal for a signalCluster"""
+        drives = signalCluster.drives
+        
+        prompt = [UserMessage(content="""Given a signalCluster, generate a goal to achieve the opportunity or ameliorate the issue.
+
+<signalCluster>
+{{$signalCluster}}
+</signalCluster>
+
+<drives>
+{{$drives}}
+</drives>
+
+<situation>
+{{$situation}}
+</situation>
+
+<character>
+{{$character}}
+</character>
+
+<relationships>
+{{$relationships}}
+</relationships>
+                              
+<recent_memories>
+{{$recent_memories}}
+</recent_memories>
+
+<drive_related_memories>
+{{$drive_memories}}
+</drive_related_memories>
+
+
+Consider this signal and and your drives, memories, situation, and character, paying special attention to drive_memories.
+Consider:
+1. How well the drive's needs are being met
+2. Recent events that affect the drive
+3. The importance scores of relevant memories
+4. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
+
+Respond with a goal, in four parts: 
+    name - a terse (3-4 words) name for the goal, 
+    description - a concise (5-8 words) description of the goal, 
+    other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
+    and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#goal 
+#name terse (3-4 words) name for this goal
+#description concise (5-8 words) description of this goal
+#otherActorName name of the other actor involved in this goal, or None if no other actor is involved
+#termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+##
+
+Respond ONLY with the above hash-formatted text.
+End response with:
+<end/>
+""")]
+
+        print(f'\n{self.name} generating goal for signalCluster: {signalCluster.to_string()}')
+            
+        # Get relevant memories
+        drive_memories = set()
+        for drive in signalCluster.drives:
+            drive_memories.update([m.text for m in self.memory_retrieval.get_by_drive(
+                memory=self.structured_memory,
+                drive=drive,
+                threshold=0.1,
+                max_results=5
+            )])
+            
+            # Get recent memories regardless of drive
+        recent_memories = self.structured_memory.get_recent(5)
+            
+        # Format memories for LLM
+        drive_memories_text = "\n".join(drive_memories)
+            
+        recent_memories_text = "\n".join([mem.text for mem in recent_memories])
+            
+        # Generate state assessment
+        response = self.llm.ask({
+            "signalCluster": signalCluster.to_string(),
+            "drives": "\n".join([d.text for d in signalCluster.drives]),
+            "recent_memories": recent_memories_text,
+            "drive_memories": drive_memories_text,
+            "relationships": self.actor_models.format_relationships(include_transcript=True),
+            "situation": self.context.current_state if self.context else "",
+            "character": self.character
+        }, prompt, temp=0.3, stops=['<end/>'])     
+            
+        # Parse response
+        try:
+            name = hash_utils.find('name', response)
+            description = hash_utils.find('description', response)
+            other_actor_name = hash_utils.find('otherActorName', response)
+            termination = hash_utils.find('termination', response)
+                
+            if other_actor_name:
+                other_actor = self.resolve_reference(other_actor_name, None)
+                if other_actor is None:
+                    actors = [self]
+                else:
+                    actors = [self, other_actor]
+            else:
+                actors = [self]
+            if name and description and termination:
+                goal = Goal(name=name, 
+                            actors=[self],
+                            description=description, 
+                            termination=termination, 
+                            signalCluster=signalCluster, 
+                            drives=signalCluster.drives)
+                print(f'   generated goal: '+goal.to_string())
+                return goal
+            else:
+                print(f"Warning: Invalid goal generation response for {signalCluster.to_string()}")
+                return None
+        except Exception as e:
+            print(f"Error parsing goal generation response: {e}")
+            traceback.print_exc()
+                
+        return None
+
+    def generate_task_alternatives(self):
+        if not self.focus_goal:
+            raise ValueError(f'No focus goal for {self.name}')
+        """generate task alternatives to achieve a focus goal"""
+        prompt = [UserMessage(content="""Given your character, drives, current goal, intensions, and recent memories, create up to {{$n_new_tasks}} task alternatives.
 
 <character>
 {{$character}}
@@ -1132,37 +1206,40 @@ End response with:
 {{$goals}}
 </goals>
 
-<uncommitted_tasks>
-{{$uncommitted_tasks}}
-</uncommitted_tasks>
+While you would like to achieve all goals, you have chosen to focus on:
+                              
+<focus_goal>
+{{$focus_goal}}
+</focus_goal>
 
-<committed_tasks>
-{{$committed_tasks}}
-</committed_tasks>
+In thinking about how to act to achieve this, bear in mind any intensions you have expressed in previous thought or conversation:
+                              
+<intensions>
+{{$intensions}}
+</intensions>
 
+Also bear in mind your recent memories:
+                              
 <recent_memories>
 {{$memories}}
 </recent_memories>
 
+The relationships you have with other actors:
+                              
 <relationships>
 {{$relationships}}
 </relationships>
 
+And the recent events in the world:
+                              
 <recent_events>
 {{$recent_events}}
 </recent_events>
 
-Create up to {{$n_new_tasks}} specific, actionable tasks that address your current needs and situation.
-Consider:
-1. Your current state assessments
-2. Recent memories and events
-3. Your basic drives and needs
-4. Your goals
-5. Your relationships
-6. The uncommitted tasks
-7. The committed tasks
+
+Create up to {{$n_new_tasks}} specific, actionable tasks.
                               
-The new tasks should be distinct, and jointly with existing committed and uncommitted tasks, cover all important aspects of the current situation and your goals.
+The new tasks should be distinct from one another, and jointly cover both the focus goal and as many of your intensions as possible.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1171,8 +1248,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
-#actors {{$name}}
-#committed False
+#actors the names of any other actors involved in this task. if no other actors, use None
 #termination (5-7 words) condition test which, if met, would satisfy the goal of this action
 ##
 
@@ -1188,35 +1264,35 @@ End response with:
         recent_memories = self.structured_memory.get_recent(8)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
-        # Format state for LLM
-        goal_text = self.map_goals()
         #print("Update Tasks")
         response = self.llm.ask({
-            'character': self.character,
-            'situation': self.context.current_state,
-            'goals': goal_text,
+            'character': self.character.replace('\n', ' '),
+            'situation': self.context.current_state.replace('\n', ' '),
+            'goals': '\n'.join([goal.to_string() for goal in self.goals]),
+            'focus_goal': self.focus_goal.to_string(),
             'memories': memory_text,    
-            'committed_tasks': [f'{hash_utils.find('name', task)} - description {hash_utils.find('description', task)}. reason {hash_utils.find('reason', task)}\n' for task in committed_tasks],
-            'uncommitted_tasks': [f'{hash_utils.find('name', task)} - description {hash_utils.find('description', task)}. reason {hash_utils.find('reason', task)}\n' for task in uncommitted_tasks],
+            'intensions': '\n'.join([intension.to_string() for intension in self.intensions]),
             'name': self.name,
             'recent_events': self.narrative.get_summary('medium'),
             'relationships': self.actor_models.format_relationships(include_transcript=True),
-            'n_new_tasks': n_new_tasks
+            'n_new_tasks': 3
         }, prompt, temp=0.7, stops=['<end/>'])
 
         # add each new task, but first check for and delete any existing task with the same name
-        for plan in hash_utils.findall('plan', response):
-            print(f'\n{self.name} new task: {plan.replace('\n', '; ')}')
-            if hash_utils.find('name', plan):
-                task_name = hash_utils.find('name', plan)
-                reason = hash_utils.find('reason', plan)
-                if self.get_task(task_name) != None:
-                    print(f'{self.name} deleting existing task: {task_name}')
-                    try:
-                        self.tasks.remove(self.get_task(task_name))
-                    except:
-                        print(f'Error removing task {task_name}')
-                self.tasks.append(plan)
+        task_alternatives = []
+        for task_hash in hash_utils.findall_forms(response):
+            print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
+            task = self.validate_and_create_task(task_hash, self.focus_goal)
+            if task:
+                task_alternatives.append(task)
+        focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=2, n=1)
+        self.focus_task = Stack()
+        self.focus_task.push(focus_task)
+        return focus_task
+
+    def choose_task_to_activate(self):
+        """Choose the best task to activate based on the task alternatives"""
+        pass
 
     def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
@@ -1282,34 +1358,37 @@ End your response with:
 
         satisfied = hash_utils.find('status', response)
         progress = hash_utils.find('progress', response)
-        print(f'\n{self.name} testing {type} {hash_utils.find('name', object)} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
+        print(f'\n{self.name} testing {type} {object.name} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
         try:
             progress = int(progress.strip())
         except:
             progress = 50
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'  **Satisfied!**')
+            self.add_perceptual_input(f"You realize {object.name} is complete: {termination_check}", mode='internal')
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > 0.67 * random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
+                self.add_perceptual_input(f"You observe {object.name} is pretty much complete: {termination_check}", mode='internal')
                 return True, progress
         elif satisfied != None and 'insufficient' in satisfied.lower():
             if progress/100.0 > random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
+                self.add_perceptual_input(f"You observe {object.name} is sufficiently complete: {termination_check}", mode='internal')
                 return True, progress
             
         return False, progress
 
-    def refine_say_act(self, act_name, act_arg):
+    def refine_say_act(self, act, task):
         """Refine a say act to be more natural and concise"""
-        target_name = self.say_target(act_name, act_arg)
+        target_name = self.say_target(act.name, act.action, task)
         if target_name is None:
-            return act_arg
+            return act
         
         dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(10)
         if dialog is None or len(dialog) == 0:
-            return act_arg
+            return act
         prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
 
 <previous_dialog>
@@ -1339,25 +1418,21 @@ End response with:
 
         relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
         response = self.llm.ask({
-            "act_name": act_name,
-            "act_arg": act_arg,
+            "act_name": act.name,
+            "act_arg": act.action,
             "dialog": dialog,
             "target": target_name,
             "relationship": relationship,
             "character": self.character
         }, prompt, temp=0.6, stops=['<end/>'])
 
-        return response
+        return act
 
     def actualize_task(self, task):
-        task_name = hash_utils.find('name', task)
-        if task is None or task_name is None:
-            raise ValueError(f'Invalid task  {task}')
-        last_act = self.get_task_last_act(task_name)
-        reason = hash_utils.find('reason', task)
-        print(f'\n{self.name} actualizing task: {task.replace('\n', '; ')}')
+
+        print(f'\n{self.name} actualizing task: {task.to_string()}')
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') to advance the next step of the following task.
+Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') for the next step of the following task.
 
 <task>
 {{$task}}
@@ -1374,6 +1449,12 @@ Your current goals are:
 <goals>
 {{$goals}}
 </goals>
+                              
+And in particular, you are focusing on:
+
+<focus_goal>
+{{$focus_goal}}
+</focus_goal>
 
 Your recent memories include:
 
@@ -1388,9 +1469,9 @@ Recent history includes:
 
 The previous specific act for this task, if any, was:
 
-<previous_specific_act>
+<previousSpecificAct>
 {{$lastAct}}
-</previous_specific_act>
+</previousSpecificAct>
 
 And the observed result of that was:
 <observed_result>
@@ -1399,11 +1480,11 @@ And the observed result of that was:
 
 Respond with an Actionable, including its Mode and SpecificAct. 
 
-In choosing an Actionable (see format below), you can choose from three Mode values:
+In choosing an Actionable (see format below), you can choose from these Modes:
 - Think - reason about the current situation wrt your state and the task.
 - Say - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
     Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
-    For example, if you want to build a shelter with Samantha, it might be effective to Say 'Samantha, let's build a shelter.'
+    For example, if you want to build a shelter with Samantha, it might be effective to Say: 'Samantha, let's build a shelter.'
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
@@ -1413,7 +1494,8 @@ In choosing an Actionable (see format below), you can choose from three Mode val
 Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
 
 A SpecificAct is one which:
-- Can be described in terms of specific thoughts, words, physical movements or actions.
+- Is a specific thought, spoken text, physical movement or action.
+- Includes only the actual thoughts, spoken words, physical movement, or action.
 - Has a clear beginning and end point.
 - Can be performed or acted out by a person.
 - Can be easily visualized or imagined as a film clip.
@@ -1429,6 +1511,7 @@ Prioritize actions that lead to meaningful progress in the narrative.
 
 Dialog guidance:
 - If speaking (mode is Say), then:
+- The specificAct must contain only the actual words to be spoken.
 - Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language. Speak in the first person.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
@@ -1449,7 +1532,8 @@ Consider the previous act. E.G.:
 Respond in XML:
 <actionable>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
-  <specific_act>thoughts, words to speak, DIRECTION (if Move mode), or physical action description</specific_act>
+  <specificAct>thoughts, words to speak, direction to move, or physical action</specificAct>
+  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise None</target>
 </actionable>
 
 ===Examples===
@@ -1460,7 +1544,8 @@ Situation: increased security measures; State: fear of losing Annie
 Response:
 <actionable>
   <mode>Do</mode>
-  <specific_act>Call a meeting with the building management to discuss increased security measures for Annie and the household.</specific_act>
+  <specificAct>Call a meeting with the building management to discuss increased security measures for Annie and the household.</specificAct>
+  <target>building management</target>
 </actionable>
 
 ----
@@ -1471,7 +1556,8 @@ Establish connection with Joe given RecentHistory element: "Who is this guy?"
 Response:
 <actionable>
   <mode>Say</mode>
-  <specific_act>Hi, who are you?</specific_act>
+  <specificAct>Hi, who are you?</specificAct>
+  <target>Joe</target>
 </actionable>
 
 ----
@@ -1482,7 +1568,8 @@ Find out where I am given Situation element: "This is very very strange. Where a
 Response:
 <actionable>
   <mode>Look</mode>
-  <specific_act>Samantha starts to look around for any landmarks or signs of civilization</specific_act>
+  <specificAct>look around for landmarks or signs of civilization</specificAct>
+  <target>Samantha</target>
 </actionable>
 
 ----
@@ -1494,8 +1581,8 @@ Find food.
 Response:
 <actionable>
   <mode>Move</mode>
-  <specific_act>SouthWest</specific_act>
-  <reason>I need to find food, and my previous Look showed berries one move SouthWest.</reason>
+  <specificAct>SouthWest</specificAct>
+  <target>Samantha</target>
 </actionable>
 
 ===End Examples===
@@ -1504,7 +1591,8 @@ Use the XML format:
 
 <actionable> 
   <mode>Think, Say, Do, Look, Move</mode>
-  <specific_act>terse (40 words or less) statement of specific thoughts, words, action</specific_act> 
+  <specificAct>thoughts, words to say, direction to move, or physical action</specificAct> 
+  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of ,if applicable. Otherwise None</target>
 </actionable>
 
 Respond ONLY with the above XML.
@@ -1514,7 +1602,7 @@ Ensure you do not duplicate content of a previous specific act.
 
 Again, the task to translate into an Actionable is:
 <task>
-{{$task}} given {{$reason}}
+{{$task}} 
 </task>
 
 Do not include any introductory, explanatory, or discursive text.
@@ -1535,40 +1623,32 @@ End your response with:
         #print("Actualize Task",end=' ')
         while act is None and tries < 2:
             response = self.llm.ask({
-                'character': self.character,
+                'character': self.character.replace('\n', ' '),
                 'memories': memory_text,  # Updated from 'memory'
                 'duplicative': duplicative_insert,
                 'history': self.narrative.get_summary('medium'),
                 'name': self.name,
-                "situation": self.context.current_state + '\n\n' + self.format_look(),
+                "situation": self.context.current_state.replace('\n', ' ') + '\n\n' + self.look_percept + '\n',
                 "goals": mapped_goals,
-                "task": task,
-                "reason": reason,
-                "lastAct": last_act,
-                "lastActResult": self.act_result,
-                "known_actor_names": ', '.join(actor.name for actor in self.context.actors)
+                "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
+                "task": task.to_string(),
+                "reason": task.reason,
+                "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
+                "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
+                "known_actor_names": ', '.join(actor.name for actor in task.actors)
             }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=180)
 
             # Rest of existing while loop...
             try:
-                act = xml.find('<specific_act>', response)
-                mode = xml.find('<mode>', response)
-                if mode not in ['Say', 'Think', 'Move', 'Look', 'Do']:
-                    print(f'Invalid mode {mode} in actualize_task')
+                act = self.validate_and_create_act(response, task)
             except Exception as e:
-                print(f"Error parsing XML: {e}")
-                act = None
-                mode = None
-
-            if mode is None: 
-                mode = 'Do'
-
+                raise Exception(f"Error parsing XML, Invalid Act: {e}")
             # test for dup act
-            if mode == 'Say':
-                dup = self.repetitive(mode+': '+act, last_act, self.format_history(6))
+            if act.mode == 'Say':
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(6))
                 if dup:
                     #print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
-                    duplicative_insert = f"""\n****\nResponse:\n{mode+': '+act}\n is repetitive. Try something new\n****"""
+                    duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****"""
                     if tries == 0:
                         act = None  # force redo
                         temp += .3
@@ -1576,10 +1656,10 @@ End your response with:
                         act = None  # skip task, nothing interesting to do
                         pass
 
-            elif mode == 'Do' or mode == 'Move':
-                dup = self.repetitive(mode+': '+act, last_act, self.format_history(4))
+            elif act.mode == 'Do' or act.mode == 'Move':
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
                 if dup:
-                    print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
+                    print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ""}\n    candidate act: {act}\n')
                     #print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
                     if tries < 1:
                         #act = None  # force redo
@@ -1587,12 +1667,12 @@ End your response with:
                     else:
                         #act = None #skip task, nothing interesting to do
                         pass
-            elif mode ==  self.previous_action:
-                dup = self.repetitive(mode+': '+act, last_act, self.format_history(4))
+            elif act.mode == self.previous_action:
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
                 if dup:
-                    print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
+                    print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
                     #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert = f"""\n****\nResponse:\n{mode+': '+act}\n is repetitive. Try something new\n****\n"""
+                    duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****\n"""
                     if tries < 1:
                         act = None  # force redo
                         temp += .3
@@ -1602,12 +1682,12 @@ End your response with:
             tries += 1
 
         
-        if mode is not None and mode == 'Say':
-            act = self.refine_say_act(mode, act)
+        if act.mode is not None and act.mode == 'Say':
+            act = self.refine_say_act(act, task)
         
         if act is not None:
-            print(f'actualized task: {mode}, act: {act}, reason: {reason}, source: {task_name}')
-            return f'<action> <mode>{mode}</mode> <act>{act}</act> <reason>{reason}</reason> <source>{task_name}</source> </action>'
+            print(f'actualized task: {act.to_string()}')
+            return act
         else:
             print(f'No action constructed, presumably duplicate')
             return None
@@ -1640,13 +1720,13 @@ End your response with:
                 pass
         committed = hash_utils.find('committed', task)
         #committed is optional, but if present, must be true
-        if not (committed is None or committed.lower().strip() == 'true' or committed.lower().strip() == 'false'):
+        if not (committed is None or committed=='' or committed.lower().strip() == 'true' or committed.lower().strip() == 'false'):
             return False
         return True
 
     def update_actions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
-        if source.startswith('dialog'):
+        if source.name.startswith('dialog'):
             print(f' in dialog, no action updates')
             return
         if target is None:
@@ -1656,14 +1736,14 @@ End your response with:
         else:
             target_name = target
         # Skip action processing during active dialogs
-        if target is not None and self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.active and source.startswith('dialog'):
+        if target is not None and self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.active and source.name.startswith('dialog'):
             print(f' in active dialog, no action updates')
             return
         
         # Rest of the existing function remains unchanged
         print(f'\n{self.name} Update actions from say or think\n {act_name}, {act_arg};  reason: {reason}')
         
-        if source == 'watcher':  # Still skip watcher
+        if 'watcher' in source.name:  # Still skip watcher
             print(f' source is watcher, no action updates')
             return
         
@@ -1677,22 +1757,26 @@ End your response with:
 {{$name}}
 </name>
 
-<active_task>
-{{$active_task}}
-</active_task>
+<focus_task>
+{{$focus_task}}
+</focus_task>
 
-<all_tasks>
-{{$all_tasks}}
-</all_tasks>
+You have already formed the following intensions:
+<intensions>
+{{$intensions}}
+</intensions>
 
 <reason>
 {{$reason}}
 </reason>
 
-Does it include an intention for 'I' to act, that is, a new task being committed to? 
+Does it include an intension for 'I' to act, that is, a new task being committed to? 
 An action can be physical or verbal.
-Thought, e.g. 'reflect on my situation', should NOT be reported as an intent to act.
+Thought, e.g. 'reflect on my situation', should NOT be reported as an intension to act.
 Consider the current task and action reason in determining if there is a new task being committed to.
+
+Do not include any intensions that are similar to those already formed.
+Do not include any intensions that are similar to the focus task.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1778,31 +1862,20 @@ Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>""")]
         response = self.llm.ask({"text":f'{act_name} {act_arg}',
-                                 "active_task":self.active_task.peek(),
+                                 "focus_task":self.focus_task.peek(),
                                  "reason":reason,
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
+                                 "intensions":'\n'.join(task.to_string() for task in self.intensions[-5:]),
                                  "name":self.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=150)
-        tasks = hash_utils.findall('plan', response)
-        if len(tasks) == 0:
+        intension_hashes = hash_utils.findall('plan', response)
+        if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
             return
-        for task in tasks:
-            if self.validate_task(task):
-                print(f'  New task from say or think: {task.replace('\n', '; ')}')
-                name = hash_utils.find('name', task)
-                if self.get_task(name) != None:
-                    try:
-                        self.tasks.remove(self.get_task(name))
-                    except:
-                        print(f'Error removing task {name}')
-                    if act_name == 'Say':
-                        #next iter s/b a Do! how do we record that?
-                        continue  # if the intent is to say the same thing, don't add the task, we just did 
-                self.tasks.append(task)
-            else:
-                print(f'misformed new task from say or think: {task.replace('\n', '; ')}')
-        return tasks
+        for intension_hash in intension_hashes:
+            intension = self.validate_and_create_task(intension_hash)
+            if intension:
+                print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
+                self.intensions.append(intension)
     
     def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=None):
         """Update individual commitments after closing a dialog"""
@@ -1818,9 +1891,9 @@ End your response with:
 {{$all_tasks}}
 </all_tasks>
 
-<active_task>
-{{$active_task}}
-</active_task>
+<focus_task>
+{{$focus_task}}
+</focus_task>
 
 <reason>
 {{$reason}}
@@ -1843,7 +1916,7 @@ Extract from this transcript new commitments to act made by self, {{$name}}, to 
 Extract only commitments made by self that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
 Note that the joint_tasks, as listed above, are commitments made by both self and other to work together, and should not be reported as new commitments here.
                             
-Does the transcript include an intention for 'I' to act alone, that is, a new task being committed to individually? 
+Does the transcript include an intension for 'I' to act alone, that is, a new task being committed to individually? 
 An action can be physical or verbal.
 Thought, e.g. 'reflect on my situation', should NOT be reported as an action.
 Consider the all_tasks pendingand current task and action reason in determining if a candidate task is in fact new.
@@ -1902,46 +1975,40 @@ End your response with:
 """)]
         response = self.llm.ask({"transcript":transcript, 
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
-                                 "active_task":self.active_task.peek(),
+                                 "focus_task":self.focus_task.peek(),
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
-                                 "reason":self.reason,
+                                 "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
                                  "target_name":target.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=180)
-        source = 'dialog with '+target.name
-        tasks = hash_utils.findall('plan', response)
-        if len(tasks) == 0:
+        source = Task('dialog with '+target.name, 
+                      description='dialog with '+target.name, 
+                      reason='dialog with '+target.name, 
+                      termination='natural end of dialog', 
+                      goal=None,
+                      actors=[self, target])    
+        intension_hashes = hash_utils.findall('plan', response)
+        if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
             return
-        for task in tasks:
-            if self.validate_task(task):
-                print(f'\n{self.name} new individual committed task: {task.replace('\n', '; ')}')
-                name = hash_utils.find('name', task)
-                if self.get_task(name) != None:
-                    try:
-                        self.tasks.remove(self.get_task(name))
-                    except:
-                        print(f'Error removing task {name}')
-                    if random.random() < 0.67:
-                        print(f'{self.name} removing individual task {name} because repetitious')
-                        continue
-                self.tasks.append(task)
-            else:
-                print(f'misformed new individual committed task: {task.replace('\n', '; ')}')
-        return tasks
+        for intension_hash in intension_hashes:
+            intension = self.validate_and_create_task(intension_hash)
+            if intension:
+                print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
+                self.intensions.append(intension)
   
     def update_joint_commitments_following_conversation(self, target, transcript):
         """Update individual commitments after closing a dialog"""
         
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog.
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}}.
 
 <all_tasks> 
 {{$all_tasks}}
 </all_tasks>
 
-<active_task>
-{{$active_task}}
-</active_task>
+<focus_task>
+{{$focus_task}}
+</focus_task>
 
 <reason>
 {{$reason}}
@@ -1950,14 +2017,6 @@ End your response with:
 <transcript>
 {{$transcript}}
 </transcript>
-
-<self>
-{{$name}}
-</self>
-
-<other>
-{{$target_name}}
-</other>
 
 
 Extract from this transcript new commitments to act jointly made by self, {{$name}} and other, {{$target_name}}.
@@ -2010,7 +2069,6 @@ Response:
 #actors Jean, Francoise
 #reason get water for the south field
 #termination water bucket is full
-#committed True
 ##
 #plan
 #name Water south field
@@ -2018,7 +2076,6 @@ Response:
 #needs Meet by the well
 #actors Jean, Francoise
 #reason crops are getting parched
-#committed True
 #termination south field is watered
 ##
 #plan
@@ -2027,7 +2084,7 @@ Response:
 #actors Jean, Francoise
 #reason To ensure it's not getting too ripe
 #termination wheat condition is checked
-#committed True
+
 ##
 
 ===End Examples===
@@ -2039,39 +2096,36 @@ End your response with:
 """)]
         response = self.llm.ask({"transcript":transcript, 
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
-                                 "active_task":self.active_task.peek(),
-                                 "reason":xml.find('<reason>', self.active_task.peek()),
+                                 "focus_task":self.focus_task.peek(),
+                                 "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
                                  "target_name":target.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=240)
-        source = 'dialog with '+target.name
-        tasks = hash_utils.findall('plan', response)
-        if len(tasks) == 0:
-            print(f'no new tasks in say or think')
+        source = Task('dialog with '+target.name, 
+                      description='dialog with '+target.name, 
+                      reason='dialog with '+target.name, 
+                      termination='natural end of dialog', 
+                      goal=None,
+                      actors=[self, target])    
+        intension_hashes = hash_utils.findall('plan', response)
+        if len(intension_hashes) == 0:
+            print(f'no new joint intensions in turn')
             return
-        for task in tasks:
-            if self.validate_task(task):
-                print(f'\n{self.name} new joint task: {task.replace('\n', '; ')}')
-                name = hash_utils.find('name', task)
-                if self.get_task(name) != None:
-                    try:
-                        self.tasks.remove(self.get_task(name))
-                    except:
-                        print(f'Error removing task {name}')
-                    if random.random() < 0.67:
-                        print(f'{self.name} removing joint task {name} because repetitious')
-                        continue
-                self.tasks.append(task)
-        return tasks
+        for intension_hash in intension_hashes:
+            intension = self.validate_and_create_task(intension_hash)
+            if intension:
+                print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
+            self.intensions.append(intension)
+        return intension_hashes
     
     def random_string(self, length=8):
         """Generate a random string of fixed length"""
         letters = string.ascii_lowercase
         return self.name+''.join(random.choices(letters, k=length))
 
-    def tell(self, to_actor, message, source='dialog', respond=True):
+    def tell(self, to_actor, message, source=None, respond=True):
         """Initiate or continue dialog with dialog context tracking"""
-        if source.startswith('dialog'):
+        if source.name.startswith('dialog'):
             
             if self.actor_models.get_actor_model(to_actor.name, create_if_missing=True).dialog.active is False:
                 self.actor_models.get_actor_model(to_actor.name).dialog.activate()
@@ -2082,7 +2136,28 @@ End your response with:
         self.acts(to_actor, 'Say', message, '', source)
         
 
-    def hear(self, from_actor, message: str, source='dialog', respond=True):
+    def natural_dialog_end(self, from_actor):
+        """ called from acts when a character says something to this character """
+        #if self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > 10):
+        #    return True
+        prompt = [UserMessage(content="""Given the following dialog transcript, determine if the dialog has reached a natural end.
+
+<transcript>
+{{$transcript}}
+</transcript>
+                              
+Respond only with True or False.
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</end>
+""")]   
+        response = self.llm.ask({"transcript":self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript()}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+        if response is None:
+            return False
+        
+        return response.lower().strip() == 'true'
+    
+    async def hear(self, from_actor, message: str, source=None, respond=True):
         """ called from acts when a character says something to this character """
         # Initialize dialog manager if needed
         print(f'\n{self.name} hears from {from_actor.name}: {message}')
@@ -2099,42 +2174,50 @@ End your response with:
 #committed True
 #reason engaging with Doc: completing his assignments.
 """
-            if self.get_task(new_task_name) != None:
-                try:
-                    self.tasks.remove(self.get_task(new_task_name))
-                except:
-                    print(f'Error removing task {new_task_name}')
-            self.tasks.append(new_task)
-            self.active_task.push(new_task_name)
+            self.focus_task.push(new_task_name)
             self.watcher_message_pending = True
             return
 
         self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
         # Remove text between ellipses - thoughts don't count as dialog
-        content = re.sub(r'\.\.\..*?\.\.\.', '', message)   
+        message = re.sub(r'\.\.\..*?\.\.\.', '', message)   
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
-            if source.startswith('dialog'):
-                # don't reactivate a closed dialog, let it quietly expire
-                return
-            else:
-                self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
-
-        elif self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > random.randint(4,8):
+            if self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog'):
+                print(f'{self.name} already has a dialog task, assertion error')
+                self.focus_task.pop()
+                raise Exception(f'{self.name} already has a dialog task, assertion error')
+            # we don't have a dialog task, so we activate a new one
+            self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
+            dialog_task = Task('dialog with '+from_actor.name, 
+                                description='dialog with '+from_actor.name, 
+                                reason=from_actor.name+' says '+message, 
+                                termination='natural end of dialog', 
+                                goal=None,
+                                actors=[self, from_actor])
+            self.focus_task.push(dialog_task)
+        # otherwise, we have an active dialog in progress, close it or continue it
+        elif self.natural_dialog_end(from_actor):
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            self.active_task.pop()
-            joint_tasks = self.update_joint_commitments_following_conversation(self, 
+            self.focus_task.pop()
+            joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
                                                                                from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript())
-            my_tasks = self.update_individual_commitments_following_conversation(from_actor, 
+            self.update_individual_commitments_following_conversation(from_actor, 
                                                                       self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
                                                                       joint_tasks)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
-            from_actor.active_task.pop()
-            from_tasks = from_actor.update_individual_commitments_following_conversation(self, 
+            if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
+                from_actor.focus_task.pop()
+            from_actor.update_individual_commitments_following_conversation(self, 
                                                                               from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(),
                                                                               joint_tasks)
+            self.driveSignalManager.recluster()
+            from_actor.driveSignalManager.recluster()
             return
 
-         # Generate response using existing prompt-based method
+        action, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        await self.act_on_action(action, response_source)
+
+    def generate_dialog_turn(self, from_actor, message, source=None):
         self.memory_consolidator.update_cognitive_model(
             memory=self.structured_memory,
             narrative=self.narrative,
@@ -2143,10 +2226,9 @@ End your response with:
             character_desc=self.character,
             relationsOnly=True
         )
-    
-        if not respond:
-            return
-        
+            
+        if not self.focus_task.peek():
+            raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
         prompt = [UserMessage(content="""Given the following character description, current situation, goals, memories, and recent history, 
 generate a response to the statement below.
@@ -2172,7 +2254,6 @@ generate a response to the statement below.
 Your last action was:
                               
 {{$activity}}
-{{$last_act}}
 
 Your relationship with the speaker is:
                               
@@ -2202,7 +2283,7 @@ Given all the above, generate a response to the statement below:
 Use the following XML template in your response:
                               
 <response>response to this statement</response>
-<reason>terse reason for this answer</reason>
+<reason>terse (4-6 words) reason for this answer</reason>
 <unique>True if you in fact want to respond and have something to say, False otherwise</unique>
 
 {{$duplicative_insert}}
@@ -2221,12 +2302,9 @@ End your response with:
 """)]
 
         mapped_goals = self.map_goals()
-        last_act = ''
-        if source in self.last_acts:
-            last_act = self.last_acts[source]
         activity = ''
-        if self.active_task.peek() != None and self.active_task.peek() != 'dialog':
-            activity = f'You are currently actively engaged in {self.get_task(self.active_task.peek())}'
+        if self.focus_task.peek() != None and self.focus_task.peek().name.startswith('dialog'):
+            activity = f'You are currently actively engaged in {self.focus_task.peek().name}'
 
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(6)
@@ -2244,7 +2322,6 @@ End your response with:
                 "goals": mapped_goals,
                 "memories": memory_text,  # Updated from 'memory'
                 "activity": activity,
-                "last_act": self.last_acts,
                 'history': self.narrative.get_summary('medium'),
                 'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
@@ -2260,7 +2337,7 @@ End your response with:
                 self.actor_models.get_actor_model(from_actor.name).dialog.end_dialog()
                 return
 
-            dup = self.repetitive(response, last_act, self.format_history(6))
+            dup = self.repetitive(response, self.focus_task.peek().acts[-1].name if self.focus_task.peek() and len(self.focus_task.peek().acts) > 0 else '', self.format_history(6))
             if not dup:
                 break
             else:
@@ -2275,19 +2352,23 @@ End your response with:
             return 
 
         reason = xml.find('<reason>', answer_xml)
-        if source != 'watcher' and source != 'inject':
-            response_source = 'dialog with ' + from_actor.name
+        if not source:
+            response_source = Task('dialog with '+from_actor.name, 
+                                   description='dialog with '+from_actor.name, 
+                                   reason='dialog with '+from_actor.name, 
+                                   termination='natural end of dialog', 
+                                   goal=None,
+                                   actors=[self, from_actor])
         else:
-            response_source = 'dialog with watcher'
-            self.show = response
-            self.context.message_queue.put({'name':self.name, 'text':response})
+            response_source = source
+            # self.show = response
             if from_actor.name == 'Watcher':
+                self.context.message_queue.put({'name':self.name, 'text':response})
                 return response
 
         # Create action for response
-        action = f'<action> <mode>Say</mode> <act>{response}</act> <target>{from_actor.name}</target><reason>{str(reason)}</reason> <source>{response_source}</source></action>'
-        self.act_on_action(action, None)
-        return response + '\n ' + reason
+        action = Act(name='Say', mode='Say', action=response, actors=[self, from_actor], reason=reason, source=response_source, target=from_actor)
+        return action, response_source
     
     def format_tasks(self, tasks, labels):
         task_list = []
@@ -2301,7 +2382,7 @@ End your response with:
     def choose(self, sense_data, task_choices):
         if len(task_choices) == 1:
             return 0
-        prompt = [UserMessage(content=self.character + """The task is to order the execution of a set of task options, listed under <tasks> below.
+        prompt = [UserMessage(content=self.character.replace('\n', ' ') + """The task is to order the execution of a set of task options, listed under <tasks> below.
 Your current situation is:
 
 <situation>
@@ -2399,31 +2480,17 @@ End your response with:
         # print(f'sense\n{response}\n')
         index = -1
         ordering = xml.findall('<task>', response)
-        min_order = 1000
-        task_to_execute = None
-        best_label = None
-        for item in ordering:
-            if xml.find('<order>', item) is not None:
-                try:
-                    index = int(xml.find('<order>', item)) - 1
-                    label = xml.find('<label>', item).strip()
-                    task = task_choices[labels.index(label)]
-                    if index < min_order:
-                        min_order = index
-                        task_to_execute = task
-                        best_label = label
-                except:
-                    print(f'Error parsing order {item}')
- 
-        if task_to_execute is not None:
-            print(f'  Chosen label: {best_label} task: {task_to_execute.replace('\n', '; ')}')
-            return task_to_execute
-        else:
-            return task_choices[0]
+        pairs = [(xml.find('<label>', item).strip(), xml.find('<order>', item).strip()) for item in ordering]
+        sorted_pairs = sorted(pairs, key=lambda x: x[1])
+        label_choice = choice.exp_weighted_choice(sorted_pairs, 0.75)
+        task_to_execute = task_choices[labels.index(label_choice[0])]
+        print(f'  Chosen label: {label_choice} task: {task_to_execute.replace('\n', '; ')}')
+        return task_to_execute
 
-    def cognitive_cycle(self, sense_data='', ui_queue=None):
+    async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
-        self.show = ''
+        self.context.message_queue.put({'name':self.name, 'text':f'cognitive cycle'})
+        await asyncio.sleep(0.1)
         self.thought = ''
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
                                                   self.narrative, 
@@ -2432,138 +2499,102 @@ End your response with:
                                                   self.character.strip(),
                                                   relationsOnly=True )
 
-        self.decides()
-        satisfied = False
-        # clear tasks that are satisfied - a temporary hack to check if others actions satisfied a task.
-        for task in self.tasks.copy():
-            task_satisfied = self.clear_task_if_satisfied(task, '', '')
-            satisfied = satisfied or task_satisfied
-        if satisfied:
-            self.update_goals()
-            self.update_tasks()
+
+        # clear intension tasks that are satisfied - a temporary hack to check if others actions satisfied a task.
+        for task in self.intensions[-5:].copy():
+            task_satisfied = self.clear_task_if_satisfied(task) 
+            if task_satisfied:
+                self.intensions.remove(task)
+
+        if self.focus_goal:
+            focus_goal_satisfied = self.clear_goal_if_satisfied(self.focus_goal)
+            if focus_goal_satisfied:
+                self.driveSignalManager.recluster()
+                self.generate_goal_alternatives()
+                self.generate_task_alternatives()
+
+        if self.focus_task.peek():
+            self.clear_task_if_satisfied(self.focus_task.peek())
+            
+        if not self.focus_task.peek():
+            self.generate_task_alternatives()
+
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
                                                   self.narrative, 
                                                   self.actor_models,
                                                   self.context.simulation_time, 
                                                   self.character.strip(),
                                                   relationsOnly=True )
+        await self.step_task()
 
        
-    def decides(self, sense_data='', ui_queue=None):
-        print(f'\n{self.name} decides, active task {self.active_task.peek()}')
- 
-        my_active_task = self.active_task.peek()
-        if self.next_task:
-            action = self.actualize_task(self.next_task)
-            self.act_on_action(action, self.next_task)
-            self.next_task = None
-            return
+    async def step_task(self, sense_data='', ui_queue=None):
+  
+        # if I have an active task, keep on with it.
+        if not self.focus_task.peek():
+            raise Exception(f'No focus task')
 
-        # first see if any committed goals
-        task_options = []
-        for task in self.tasks:
-            if hash_utils.find('committed', task) == 'True':
-                task_options.append(task)
-
-        # continue with active task if it is committed or there are no other committed options
-        if my_active_task != None and (hash_utils.find('committed', my_active_task)=='True' or len(task_options) == 0):
-            full_task = self.get_task(my_active_task)
-            if full_task is not None and random.random() < 0.67: # poisson distribution of task decay
-                action = self.actualize_task(full_task)
-                print(f'Found active_task {my_active_task}')
-                if action is not None:
-                    self.act_on_action(action, full_task)
-                    return
-            elif full_task is not None:
-                self.active_task.pop()
-                try:
-                    self.tasks.remove(full_task)
-                except:
-                    print(f'Error removing task {full_task}')
-                print(f'Active_task decayed or not found! {my_active_task}')
-
-        # main loop when nothing in progress - find something to do
-        if len(task_options) == 0:
-            for n, task in enumerate(self.tasks):
-                task_options.append(task)
-            if len(task_options) == 0:
-                self.update_tasks()
-                return self.decides(sense_data=sense_data, ui_queue=ui_queue)
-
-        task_index = 0
-        if len(task_options) > 0:
-            if len(task_options) > 1:
-                task = self.choose(sense_data, task_options)
-            else:
-                task = task_options[0]
-            print(f'\n{self.name} actualizing task {task.replace('\n', '; ')}')
-            action = self.actualize_task(task)
+        print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
+        task = self.focus_task.peek()
+        action = self.actualize_task(task)
         if action:
-            self.act_on_action(action, task)
+            await self.act_on_action(action, self.focus_task.peek())
+            self.clear_task_if_satisfied(task)
             return
         else:
-            del task_options[task_index]
-            self.update_tasks()
-            return self.decides(sense_data=sense_data, ui_queue=ui_queue)
+            print(f'No action for task {task.name}')
+            self.generate_task_alternatives()
+        return
 
 
-    def act_on_action(self, action, task):
-        self.action = action
-        act_name = xml.find('<mode>', action)
+    async def act_on_action(self, action, task):
+        self.act = action
+        task.acts.append(action)
+        act_name = action.name
         if act_name is not None:
             self.act_name = act_name.strip()
-        act_arg = xml.find('<act>', action)
+        act_arg = action.action
         print(f'\n{self.name} act_on_action: {act_name} {act_arg}')
-        self.reason = xml.find('<reason>', action)
-        source = xml.find('<source>', action)
+        self.reason = action.reason
+        source = action.source
         #print(f'{self.name} choose {action}')
-        task_name = xml.find('<source>', action)
-        refresh_task = None # will be set to task to be refreshed if task is chosen for action
-
-        task_xml = None
-        refresh_task = None
-        task_name = xml.find('<source>', action)
-        if not source.startswith('dialog') and (act_name == 'Say' or act_name == 'Do'):
-            # for now very simple task tracking model:
-            if task_name is None:
-                task_name = self.make_task_name(self.reason)
-                print(f'No source found, created task name: {task_name}')
-            self.last_acts[task_name] = act_arg # this should pbly be in acts, where we actually perform
-        if act_name == 'Think':
-            self.reason = xml.find('<reason>', action)
-            self.thought = act_arg+'\n  '+self.reason
         target = None
 
-        if act_name == 'Say':
-            #responses, at least, explicitly name target of speech.
-            target_name = xml.find('<target>', action)
-            if target_name is None or target_name == '':
-                target_name = self.say_target(act_name, act_arg, source)
-            if target_name != None:
-                target = self.context.get_actor_by_name(target_name)
+        #responses, at least, explicitly name target of speech.
+        if action.target and action.target != self:
+            target_name = action.target.name
+        else:
+            target_name = self.say_target(act_name, act_arg, source)
+        if target_name != None:
+            target = self.context.get_actor_by_name(target_name)
 
         #this will affect selected act and determine consequences
-        self.acts(target, act_name, act_arg, self.reason, source)
+        if self.context:
+            self.context.simulation_time += timedelta(minutes=15)
+        await self.acts(target, act_name, act_arg, self.reason, source)
         if task is not None:
             self.clear_task_if_satisfied(task, '', self.act_result)
 
     
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'
-        action = self.action if self.action is not None else ''
-        if len(action) > 0 and xml.find('mode', action) is not None:
-            action = ': '+xml.find('act', action)
+        if self.act:
+            action = f'{self.act.name}: {self.act.action}'
+        else:
+            action = ''
         if self.thought is None:
-            return action
-        if self.active_task.peek() is None:
-            return self.thought.strip()+'. '+action
-        name = self.active_task.peek()
-        if name is None or name == '':
-            return self.thought.strip()+'. '+action
-        return name + ': '+self.thought.strip()+'. '+action
-    
+            return ''
+        else:
+            return self.thought.strip()
+   
     def format_tasks_for_UI(self):
-        return [hash_utils.find('name', task) for task in self.tasks]
+        """Format tasks for UI display as array of strings"""
+        tasks = []
+        if self.focus_goal:
+            tasks.append(f"Goal: {self.focus_goal.to_string()}")
+        if self.focus_task.peek():
+            tasks.append(f"Task: {self.focus_task.peek().to_string()}")
+        return tasks
     
     #def format_history(self):
     #    return '\n'.join([xml.find('<text>', memory) for memory in self.history])
@@ -2622,13 +2653,16 @@ end your response with:
 
     def get_explorer_state(self):
         """Return detailed state for explorer UI"""
+        focus_task = self.focus_task.peek()
+        last_act = self.action_history[-1] if self.action_history and len(self.action_history) > 0 else None
+
         return {
-            'currentTask': self.active_task.peek() or 'idle',
-            'actions': self.actions or [],  # List[str]
+            'currentTask': focus_task.to_string() if focus_task else 'idle',
+            'actions': [act.to_string() for act in (focus_task.acts if focus_task else [])],  # List[str]
             'lastAction': {
-                'name': self.previous_action or '',
-                'result': self.act_result or '',
-                'reason': self.reason or ''
+                'name': last_act.name if last_act else '',
+                'result': last_act.result if last_act else '',
+                'reason': last_act.reason if last_act else ''
             },
             'drives': [{'text': drive.text or ''} for drive in (self.drives or [])],
             'emotional_state': [
@@ -2666,25 +2700,35 @@ end your response with:
             'cognitive': {
                 'goals': [
                     {
-                        'name': goal_name,
-                        'urgency': goal_data.get('urgency', ''),
-                        'trigger': goal_data.get('trigger', ''),
-                        'termination': goal_data.get('termination', ''),
-                        'drive': goal_data['drive'].text if 'drive' in goal_data and goal_data['drive'] else ''
+                        'name': goal.name,
+                        'description': goal.description,
+                        'termination': goal.termination,
+                        'progress': goal.progress,
+                        'drives': [d.text for d in goal.drives]  # Send as array
                     }
-                    for goal_name, goal_data in (self.goals or {}).items()
+                    for goal in self.goals
                 ],
                 'tasks': [  # Add empty list as default
                     {
-                        'name': hash_utils.find('name', p) or '',
-                        'description': hash_utils.find('description', p) or '',
-                        'reason': hash_utils.find('reason', p) or '',
-                        'actors': hash_utils.find('actors', p) or '',
-                        'needs': hash_utils.find('needs', p) or '',
-                        'committed': hash_utils.find('committed', p) == 'True'
+                        'name': p.name,
+                        'description': p.description,
+                        'reason': p.reason,
+                        'actors': [a.name for a in p.actors],
+                        'needs': [n for n in p.needs],
                     } for p in (self.tasks or [])
                 ],
-                'actions': self.actions or []  # List[str]
-            }
+                'actions': [intension.name for intension in self.intensions]  # List[str]
+            },
+            'signals': [
+                {
+                    'text': cluster_pair[0].text,
+                    'drives': [d.text for d in cluster_pair[0].drives],  # Changed from single drive to list
+                    'is_opportunity': cluster_pair[0].is_opportunity,
+                    'signals': [s.text for s in cluster_pair[0].signals],
+                    'score': cluster_pair[1],
+                    'last_seen': cluster_pair[0].get_latest_timestamp().isoformat()
+                }
+                for cluster_pair in self.driveSignalManager.get_scored_clusters()
+            ]
         }
 

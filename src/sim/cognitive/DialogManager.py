@@ -21,19 +21,18 @@ class Dialog:
         self.active: bool = True
         self.transcript: List[str] = []
     
-    def activate(self, source='dialog'):
+    def activate(self, source=None):
         """Initialize a new dialog context"""
         if self.active:
             # Already in a dialog - could add logic here to handle multiple conversations
             return
             
-        # Store current task if being interrupted
+        # Store current task if being interrupted, but don't try to stack dialogs
+        #  we store interrupted task, but don't push dialog task here, read only on character
         self.turn_count = 0
-        interrupted_task = None
-        if self.actor.active_task.peek() not in (None, 'dialog', source):
-            self.interrupted_task = self.actor.active_task.peek()
-        # Push dialog task
-        self.actor.active_task.push('dialog')
+        self.interrupted_task = None
+        if self.actor.focus_task.peek() and not self.actor.focus_task.peek().name.startswith('dialog'):
+            self.interrupted_task = self.actor.focus_task.peek()
 
     def add_turn(self, speaker, message):
         """Record a new turn in the conversation and increase fatigue"""
@@ -71,18 +70,19 @@ class Dialog:
         interrupted_task = self.interrupted_task
         self.actor.intentions = []
         
-        if self.actor.active_task.peek() == 'dialog':
-            self.actor.active_task.pop()
+        # again, read only on actor, let actor manage focus task stack
+        # if self.actor.focus_task.peek().startswith('dialog'):
+        #    self.actor.focus_task.pop()
            
-        if self.interrupted_task and self.interrupted_task != self.actor.active_task.peek():
+        if self.interrupted_task and self.interrupted_task != self.actor.focus_task.peek():
             if self._is_task_still_relevant(self.interrupted_task):
                 # If the interrupted task is not the current task, push it onto the stack 
                 # to resume it after the dialog ends
-                self.actor.active_task.push(self.interrupted_task)   
-        elif self.interrupted_task and self.actor.active_task.peek() == self.interrupted_task:
+                self.actor.focus_task.push(self.interrupted_task)   
+        elif self.interrupted_task and self.actor.focus_task.peek() == self.interrupted_task:
             if not self._is_task_still_relevant(self.interrupted_task):
                 # If the interrupted task is the current task, and no longer relevant, remove it
-                self.actor.active_task.pop()
+                self.actor.focus_task.pop()
             
     def _is_task_still_relevant(self, task_name: str) -> bool:
         """Check if a task is still relevant and should be resumed"""

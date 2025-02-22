@@ -7,8 +7,8 @@ from utils import hash_utils, llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
 from datetime import datetime, timedelta
-
-
+import utils.choice as choice
+import asyncio
 class Context():
     def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server='local'):
         self.initial_state = situation
@@ -37,8 +37,9 @@ class Context():
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
         for actor in self.actors:
-            actor.generate_goals()
-            actor.update_tasks()
+            actor.driveSignalManager.recluster() # recluster drive signals after actor initialization, including
+            actor.generate_goal_alternatives()
+            actor.generate_task_alternatives()
             actor.wakeup = False
 
     def set_llm(self, llm):
@@ -205,7 +206,7 @@ End your response with:
         print(f' Context Do world_update:\n {world_updates}\n')
         return consequences, world_updates
 
-    def senses(self, sense_data='', ui_task_queue=None):
+    async def senses(self, sense_data='', ui_task_queue=None):
         """ This is where the world advances the timeline in the scenario """
         # Debug prints
         history = self.history()
@@ -255,14 +256,15 @@ End your response with:
                 updates = self.world_updates_from_act_consequences(new_situation)
                 self.current_state = new_situation
                 self.show = '\n-----scene-----\n' + new_situation
+                self.message_queue.put({'name':self.name, 'text':self.show})
+                await asyncio.sleep(0.1)
             # self.current_state += '\n'+updates
             print(f'World updates:\n{updates}')
             for actor in self.actors:
                 actor.add_to_history(f"you notice {updates}\n")
                 actor.forward(self.step)  # forward three hours and update history, etc
             return response
-            self.show = '\n-----scene-----\n' + self.current_state
-            return
+
 
         if random.randint(1, 7) == 1:
             event = """
@@ -343,6 +345,8 @@ End your response with:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation.replace('\n\n','\n')
             self.show = '\n-----scene-----\n' + new_situation
+            self.message_queue.put({'name':self.name, 'text':self.show})
+            await asyncio.sleep(0.1)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
         for actor in self.actors:
@@ -370,10 +374,10 @@ End your response with:
         for listener in self.state_listeners:
             listener(update_type, data)
 
-    def show(self, message):
+    async def show(self, message):
         """Queue message for websocket transmission"""
-        self.message_queue.put(message)
-        self._notify_listeners('output', message)
+        self.message_queue.put({'name':self.name, 'text':message})
+        await asyncio.sleep(0.1)
 
     def update_display(self):
         """UI-independent state update"""
@@ -517,24 +521,13 @@ End your response with:
         min_order = 1000
         task_to_execute = None
         best_label = None
-        for item in ordering:
-            if hash_utils.find('order', item) is not None:
-                try:
-                    index = int(hash_utils.find('order', item)) - 1
-                    label = hash_utils.find('label', item).strip()
-                    task = task_choices[labels.index(label)]
-                    if index < min_order:
-                        min_order = index
-                        task_to_execute = task
-                        best_label = label
-                except:
-                    print(f'Error parsing order {item}')
- 
-        if task_to_execute is not None:
-            print(f'  Chosen label: {best_label} task: {task_to_execute.replace('\n', '; ')}')
-            return task_to_execute
-        else:
-            return task_choices[0]
+        ordering = hash_utils.findall('task', response)
+        pairs = [(hash_utils.find('label', item).strip(), hash_utils.find('order', item).strip()) for item in ordering]
+        sorted_pairs = sorted(pairs, key=lambda x: x[1])
+        label_choice = choice.exp_weighted_choice(sorted_pairs, 0.75)
+        task_to_execute = task_choices[labels.index(label_choice[0])]
+        print(f'  Chosen label: {label_choice} task: {task_to_execute.replace('\n', '; ')}')
+        return task_to_execute
         
     def next_act(self):
         """Pick next actor in round-robin fashion and return it"""

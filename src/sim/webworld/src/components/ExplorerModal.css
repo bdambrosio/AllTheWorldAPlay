@@ -13,6 +13,7 @@
   box-shadow: 0 0 20px rgba(0,0,0,0.5);
   display: flex;
   flex-direction: column;
+  overflow: auto;
 }
 
 .modal-header {
@@ -22,70 +23,183 @@
   margin-bottom: 20px;
 }
 
-.modal-header h3 {
+.modal-header h2 {
   margin: 0;
   color: #fff;
 }
 
-.modal-header button {
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-.modal-tabs {
+.tab-bar {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
 }
 
-.modal-tabs button {
+.tab-bar button {
   padding: 8px 16px;
-  background-color: #444;
+  background: #444;
   border: none;
   border-radius: 4px;
-  color: #fff;
+  color: #ccc;
   cursor: pointer;
 }
 
-.modal-tabs button.active {
-  background-color: #666;
+.tab-bar button.active {
+  background: #666;
+  color: #fff;
 }
 
-.modal-content {
-  flex: 1;
+.tab-content {
   overflow-y: auto;
   padding: 10px;
-  background-color: #2b2b2b;
+}
+
+.state-section {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #444;
   border-radius: 4px;
 }
 
-.core-state h4 {
-  color: #fff;
-  margin: 15px 0 10px;
+.state-section h3 {
+  margin-top: 0;
+  color: #9ff;
 }
 
-.actions-list {
+.current-task {
+  color: #fff;
+  font-size: 1.1em;
+  margin: 10px 0;
+}
+
+.last-action {
+  color: #ddd;
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-item {
+  color: #ddd;
+  padding: 4px 8px;
+  background: #555;
+  border-radius: 3px;
+}
+
+.emotional-state {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.action-item {
-  background-color: #444;
-  padding: 10px;
+.emotional-item {
+  padding: 8px;
+  background: #555;
   border-radius: 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
-.debug-view {
-  white-space: pre-wrap;
-  word-break: break-word;
+.percept-text {
+  color: #fff;
+}
+
+.percept-meta {
+  color: #999;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.goals-list, .tasks-list, .signals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.goal-item, .task-item, .signal-cluster {
+  background: #555;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.goal-name, .task-name {
+  color: #9ff;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.goal-description, .task-description {
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.goal-termination, .goal-progress, .goal-drives,
+.task-reason, .task-actors, .task-needs {
+  color: #ccc;
+  font-size: 0.9em;
+  margin: 4px 0;
+}
+
+.cluster-text {
+  color: #9ff;
+  font-weight: bold;
+}
+
+.cluster-type {
+  color: #fff;
+  margin: 4px 0;
+}
+
+.cluster-drives {
+  color: #ccc;
+  margin: 4px 0;
+}
+
+.cluster-metrics {
   color: #aaa;
-  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.cluster-time {
+  color: #888;
+  font-size: 0.8em;
+  margin-top: 8px;
+}
+
+.actors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.actor-item {
+  background: #555;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.actor-name {
+  color: #9ff;
+  font-weight: bold;
+}
+
+.actor-relationship {
+  color: #fff;
+  margin: 8px 0;
+}
+
+.actor-dialog {
+  color: #ccc;
+  margin-top: 8px;
+}
+
+.dialog-transcript {
+  margin-top: 8px;
+  padding: 8px;
+  background: #444;
+  border-radius: 3px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* Add overlay behind modal */
@@ -155,7 +269,7 @@ h5 {
 .percept-item {
   background-color: #444;
   padding: 10px;
-  border-radius: 4px;
+  border-color: 4px;
   margin-bottom: 8px;
 }
 
@@ -295,4 +409,57 @@ h5 {
   color: #ff9;  /* Light yellow */
   font-size: 0.9em;
   margin-top: 4px;
+}
+
+.signals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.signal-cluster {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.cluster-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cluster-type {
+  font-weight: bold;
+}
+
+.cluster-metrics {
+  color: #aaa;
+  font-size: 0.9em;
+}
+
+.cluster-text {
+  font-size: 1.1em;
+  margin-bottom: 8px;
+}
+
+.cluster-drive {
+  color: #9ff;
+  margin-bottom: 8px;
+}
+
+.cluster-signals {
+  font-size: 0.9em;
+  margin-left: 12px;
+}
+
+.signal-item {
+  color: #ddd;
+  margin: 4px 0;
+}
+
+.cluster-time {
+  color: #888;
+  font-size: 0.8em;
+  margin-top: 8px;
 } 

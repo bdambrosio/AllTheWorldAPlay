@@ -20,7 +20,7 @@ class RuralResource(Enum):
     Tree = 4       # Rest spots
 
 
-J = agh.Agh("Jean", """You are Jean Macquart, a hardworking young peasant farmer. 
+J = agh.Character("Jean", """You are Jean Macquart, a hardworking young peasant farmer. 
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.
 You speak plainly and directly, in the style of a 19th century french peasant speaking to an acquaintance.
@@ -32,9 +32,9 @@ Drive("gaining your rightful inheritance - justice and fairness in how the land 
 Drive("finding love and a wife to build a family with"),
 Drive("immediate needs of survival - food, shelter, health, rest from backbreaking labor")
 ]
-#J.add_to_history("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.")
-J.add_to_history("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.")
-F = agh.Agh("Francoise", """You are Francoise Fouan, an attractive young woman from a neighboring peasant family.
+J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", 'internal')
+J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", 'internal')
+F = agh.Character("Francoise", """You are Francoise Fouan, an attractive young woman from a neighboring peasant family.
 You are hardworking and stoic, accustomed to the unending labor required on a farm.
 You conceal your feelings and speak carefully, knowing every word will be gossiped about in the village.
 You dream of marrying and having a farm of your own to manage one day.
@@ -46,7 +46,7 @@ Drive("avoiding scandal and protecting your reputation"),
 Drive("helping your family with the endless chores"),
 Drive("brief moments of rest and simple joys amid the hardships")
 ]
-F.add_to_history("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.")
+F.add_perceptual_input("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.", 'internal')
 
 
 W =Context([J, F],
