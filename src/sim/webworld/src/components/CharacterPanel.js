@@ -7,13 +7,33 @@ function CharacterPanel({ character, sessionId }) {
   const [showNarrative, setShowNarrative] = useState(false);
   const [showExplorer, setShowExplorer] = useState(false);
   const [lastExplorerState, setLastExplorerState] = useState(null);
+  const [explorerStatus, setExplorerStatus] = useState('idle');
 
-  // Update explorer state when character updates
+  // Update cached explorer state whenever character updates
   useEffect(() => {
     if (character?.explorer_state) {
       setLastExplorerState(character.explorer_state);
     }
   }, [character]);
+
+  // Handle explorer modal open
+  const handleExplorerOpen = async () => {
+    setShowExplorer(true);
+    
+    // Only fetch fresh state if simulation is paused
+    if (!character.status || character.status !== 'processing') {
+      setExplorerStatus('loading');
+      try {
+        const res = await fetch(`http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`);
+        const data = await res.json();
+        setLastExplorerState(data);
+        setExplorerStatus('idle');
+      } catch (err) {
+        console.error('Error fetching explorer state:', err);
+        setExplorerStatus('error');
+      }
+    }
+  };
 
   if (!character) {
     return <div className="character-panel">Loading...</div>;
@@ -66,7 +86,7 @@ function CharacterPanel({ character, sessionId }) {
 
       <button 
         className="explore-button"
-        onClick={() => setShowExplorer(true)}
+        onClick={handleExplorerOpen}
       >
         Explore Character State
       </button>
