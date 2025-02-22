@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import List
 from sim.memory.core import MemoryEntry, StructuredMemory
-from sim.agh import Agh, Character, Stack
+from sim.agh import Character, Stack
 
 from PyQt5.QtWidgets import QDialog
-class Human(Agh):
+class Human(Character):
     def __init__(self, name, character_description, ui=None):
         super().__init__(name, character_description)
         self.structured_memory = StructuredMemory()

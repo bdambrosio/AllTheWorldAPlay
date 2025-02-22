@@ -13,8 +13,8 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from utils.llm_api import generate_image
 from pathlib import Path
+from utils.llm_api import LLM
 from utils.llm_api import IMAGE_PATH
-
 import asyncio
 
 app = FastAPI()
@@ -58,30 +58,26 @@ async def create_session():
     sessions[session_id] = None
     return {"session_id": session_id}
 
-async def process_messages(websocket, context):
-    """Process messages from context queue in background"""
-    print("Message processor started for context:", id(context))  # Debug
+async def process_messages(websocket, sim):
     while True:
         try:
-            while not context.message_queue.empty():
-                message = context.message_queue.get()
-                #print(f"Sending websocket message: {message}")  # Debug
-                await websocket.send_text(json.dumps({
-                    'type': 'show_update',
-                    'text': f"{message['name']}: {message['text']}\n"
-                }))
-                #print("Message sent successfully")  # Debug
+            if not sim.simulation.context.message_queue.empty():
+                message = sim.simulation.context.message_queue.get_nowait()
+                await websocket.send_json({
+                    "type": "show_update",
+                    "text": f"{message['name']}: {message['text']}"  # Format as string
+                })
             await asyncio.sleep(0.1)
         except Exception as e:
             print(f"Error processing messages: {e}")
-            traceback.print_exc()
             break
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     sessions[session_id] = None
-    
+    message_task = None
+
     async def update_world(name, world_data):
             # Send character update
             context_data = sim.simulation.context.to_json()
@@ -101,13 +97,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             }))
 
 
-    async def update_character(context, name, char_data):
+    async def update_character(name, char_data):
         # Send character update only
         await websocket.send_text(json.dumps({
             'type': 'character_update',
             'name': name,
             'data': char_data
-        })) 
+        }))
 
     async def log_callback(message):
         await websocket.send_text(json.dumps({
@@ -119,10 +115,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         if sim is None:
             return
         print(f"Starting simulation run with context id: {id(sim.simulation.context)}")  # Debug
-        message_task = asyncio.create_task(
-            process_messages(websocket, sim.simulation.context)
-        )
-        print(f"Created message task: {message_task}")  # Debug
         try:
             while sim.simulation.running and not sim.simulation.paused:
                 await sim.simulation.step(
@@ -132,20 +124,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 await asyncio.sleep(0.1)
         finally:
             print("Cancelling message task")  # Debug
-            message_task.cancel()
+            if message_task:
+                message_task.cancel()
     
     async def load_and_start_play(websocket, play_path):
-        """Helper to load play and start message processor"""
+        nonlocal message_task  # Access outer message_task
         sessions[session_id] = SimulationWrapper(play_path)
         sim = sessions[session_id]
         
-        # Start message processor
+        # Create message task after sim exists
         message_task = asyncio.create_task(
-            process_messages(websocket, sim.simulation.context)
+            process_messages(websocket, sim)
         )
-        
-        # Store task reference so we can cancel it later
-        sim.simulation.message_task = message_task
         
         await websocket.send_text(json.dumps({
             'type': 'play_loaded',
@@ -165,7 +155,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             'data': context_data
         }))
         await asyncio.sleep(0.1)
-        await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world, log_callback=log_callback)
+        await sim.simulation.update_actors(char_update_callback=update_character, world_update_callback=update_world, log_callback=log_callback)
         await asyncio.sleep(0.1)
 
     try:
@@ -217,20 +207,29 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             main_dir = Path(__file__).parent
                             play_path = (main_dir / '../plays' / play_name).resolve()
                             await load_and_start_play(websocket, play_path)
+                            # Add completion message
+                            await websocket.send_text(json.dumps({
+                            'type': 'command_complete',
+                                'command': 'load_play'
+                            }))
                         except Exception as e:
-                            print(f"Error loading play: {e}")
                             traceback.print_exc()
                             await websocket.send_text(json.dumps({
                                 'type': 'play_error',
                                 'error': f'Failed to load play: {str(e)}'
                             }))
-  
+                
                 elif action == 'confirm_load_play':
                     play_name = data.get('play')
                     try:
                         main_dir = Path(__file__).parent
-                        play_path = (main_dir / '../../../plays' / play_name).resolve()
+                        play_path = (main_dir / '../plays' / play_name).resolve()
                         await load_and_start_play(websocket, play_path)
+                        # Add completion message here too
+                        await websocket.send_text(json.dumps({
+                            'type': 'command_complete',
+                            'command': 'load_play'
+                        }))
                     except Exception as e:
                         sim = None
                         await websocket.send_text(json.dumps({
@@ -239,14 +238,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         }))
                 
                 elif action == 'step':
-                    # Create callback for character updates
                     if sim is None:
                         return
-                  
+                    
                     # Pass callback to step
                     await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
                     
-                    # Send final status
+                    # Send completion status
+                    await websocket.send_text(json.dumps({
+                        'type': 'command_complete',
+                        'command': 'step'
+                    }))
+                    
                     await websocket.send_text(json.dumps({
                         'type': 'status_update',
                         'status': {
@@ -254,31 +257,36 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'paused': sim.simulation.paused
                         }
                     }))
-                    await asyncio.sleep(0.1)
                     
                 elif action == 'inject':
-                    target = data.get('target')
+                    target_name = data.get('target')
                     text = data.get('text')
                     try:
-                        await sim.simulation.inject(target, text, update_callback=update_character)
+                        if target_name == 'World':
+                            # Stub for now
+                            return
+                        # Format message as "character-name, message" like worldsim
+                        formatted_message = f"{target_name}, {text}"
+                        sim.simulation.inject(target_name, text, update_callback=update_character)
+                        await websocket.send_text(json.dumps({
+                            'type': 'command_complete',
+                            'command': 'inject'
+                        }))
+                        await asyncio.sleep(0.1)
                     except Exception as e:
                         print(f"Error handling inject: {e}")
                 
                 # Send updated state
                 if sim is not None:
-                    state = {
-                        'type': 'state_update',
-                        'characters': {
-                            char.name: char.to_json() for char in sim.simulation.characters
-                        },
-                        'status': {
-                            'running': sim.simulation.running,
-                            'paused': sim.simulation.paused
-                        }
-                    }
-                    await websocket.send_text(json.dumps(state))
+                    char_states = sim.simulation.get_character_states()
+                    await websocket.send_json({
+                        "type": "character_update",
+                        "data": char_states
+                    })
                     await asyncio.sleep(0.1)
     except WebSocketDisconnect:
+        if message_task:
+            message_task.cancel()
         print(f"Client disconnected: {session_id}")
         # Stop simulation if running
         if session_id in sessions:
@@ -290,6 +298,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             del sessions[session_id]
             
     except Exception as e:
+        if message_task:
+            message_task.cancel()
         print(f"Error in websocket handler: {e}")
         # Clean up on other errors too
         if session_id in sessions:

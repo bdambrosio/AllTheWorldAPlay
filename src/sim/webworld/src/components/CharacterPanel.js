@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CharacterNarrative from './CharacterNarrative';
 import ExplorerModal from './ExplorerModal';
 import './CharacterPanel.css';
@@ -6,6 +6,14 @@ import './CharacterPanel.css';
 function CharacterPanel({ character, sessionId }) {
   const [showNarrative, setShowNarrative] = useState(false);
   const [showExplorer, setShowExplorer] = useState(false);
+  const [lastExplorerState, setLastExplorerState] = useState(null);
+
+  // Update explorer state when character updates
+  useEffect(() => {
+    if (character?.explorer_state) {
+      setLastExplorerState(character.explorer_state);
+    }
+  }, [character]);
 
   if (!character) {
     return <div className="character-panel">Loading...</div>;
@@ -67,6 +75,7 @@ function CharacterPanel({ character, sessionId }) {
         <ExplorerModal
           character={character}
           sessionId={sessionId}
+          lastState={lastExplorerState}
           onClose={() => setShowExplorer(false)}
         />
       )}

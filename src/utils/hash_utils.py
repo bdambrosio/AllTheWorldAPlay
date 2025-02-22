@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 def _validate_tag(tag):
     """Validate tag contains only letters a-zA-Z"""
@@ -55,7 +56,7 @@ def findall(tag, text):
                 
     return results
 
-def hasKey(tag, text):
+def hasTag(tag, text):
     """Check if tag is present in text.
     Args:
         tag: Tag name (letters a-zA-Z only)
@@ -67,7 +68,7 @@ def hasKey(tag, text):
         return False
         
     tag = _validate_tag(tag)
-    return tag in text
+    return f'#{tag} ' in text.lower()
 
 def find(tag, text):
     """Find content of first occurrence of tag in text.
@@ -156,3 +157,64 @@ def get_text(text):
             content.append(stripped)
             
     return ' '.join(content).strip()
+
+def add(tag, text, value):
+    """Add new tag and value to text.
+    Args:
+        tag: Tag name (letters a-zA-Z only)
+        text: Original hash-formatted text
+        value: Value for new tag
+    Returns:
+        Updated text with new tag-value pair
+    """
+    if not text:
+        return f'#{tag} {value}\n##'
+        
+    tag = _validate_tag(tag)
+    
+    # If text ends with ##, insert new tag before it
+    if text.strip().endswith('##'):
+        base = text.strip()[:-2].rstrip()
+        return f'{base}\n#{tag} {value}\n##'
+    
+    # Otherwise just append tag and ##
+    return f'{text}\n#{tag} {value}\n##'
+
+def findall_forms(text: str) -> List[str]:
+    """Find all hash-formatted forms in text.
+    A form starts with a #key and ends with ##.
+    Args:
+        text: String containing hash-formatted text
+    Returns:
+        List of form strings including start tag and ## terminator
+    """
+    if not text or not isinstance(text, str):
+        return []
+        
+    forms = []
+    current_form = []
+    in_form = False
+    
+    lines = text.split('\n')
+    for line in lines:
+        stripped = line.strip()
+        if not in_form and stripped.startswith('#'):
+            # Start of new form
+            in_form = True
+            current_form = [stripped]
+        elif in_form:
+            if stripped == '##':
+                # End of current form
+                current_form.append(stripped)
+                forms.append('\n'.join(current_form))
+                current_form = []
+                in_form = False
+            else:
+                current_form.append(stripped)
+                
+    # Handle case where last form isn't terminated
+    if in_form and current_form:
+        current_form.append('##')
+        forms.append('\n'.join(current_form))
+        
+    return forms

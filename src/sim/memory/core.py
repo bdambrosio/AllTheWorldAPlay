@@ -7,26 +7,7 @@ from sentence_transformers import SentenceTransformer
 
 # At module level
 _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-@dataclass(frozen=True)
-class Drive:
-    """Represents a character drive with semantic embedding"""
-    text: str
-    embedding: Optional[np.ndarray] = None
-    
-    def __post_init__(self):
-        if self.embedding is None:
-            # Use object.__setattr__ to set field of frozen instance
-            object.__setattr__(self, 'embedding', 
-                _embedding_model.encode(self.text))
-    
-    def __hash__(self):
-        return hash(self.text)
-    
-    def __eq__(self, other):
-        if not isinstance(other, Drive):
-            return False
-        return self.text == other.text
+from sim.cognitive.driveSignal import Drive
 
 @dataclass
 class MemoryEntry:

@@ -5,7 +5,7 @@ import os, json, math, time, requests, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sim.agh import Agh
+from sim.agh import Character
 from sim.context import Context
 from utils.llm_api import LLM, generate_image
 import base64
@@ -91,6 +91,24 @@ class Simulation:
         except Exception as e:
             return f"Error: {str(e)}"
             
+    async def update_actors(self, char_update_callback=None, world_update_callback=None, log_callback=None):
+        """Perform one simulation step with optional character update callback"""
+        for actor in self.context.actors:
+            actor_data = actor.to_json()
+            try:
+                description = actor.generate_image_description()
+                if description:
+                    image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
+                    with open(image_path, 'rb') as f:
+                        image_data = base64.b64encode(f.read()).decode()
+                        actor_data['image'] = image_data
+                        if char_update_callback:
+                            await char_update_callback(actor.name, actor_data)
+                            await asyncio.sleep(0.1)
+            except Exception as e:
+                print(f"Error generating image for {actor.name}: {e}")
+
+
     async def step(self, char_update_callback=None, world_update_callback=None, log_callback=None):
         """Perform one simulation step with optional character update callback"""
         try:
@@ -105,23 +123,10 @@ class Simulation:
                 for char in chars:
                     if char:
                         print(f'{char.name} cognitive cycle')   
-                        char.cognitive_cycle()
+                        await char.cognitive_cycle()
                         break # only execute for first available actor
-
-                for actor in self.context.actors:
-                    actor_data = actor.to_json()
-                    try:
-                        description = actor.generate_image_description()
-                        if description:
-                            image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
-                            with open(image_path, 'rb') as f:
-                                image_data = base64.b64encode(f.read()).decode()
-                                actor_data['image'] = image_data
-                                if char_update_callback:
-                                    await char_update_callback(self.context, actor.name, actor_data)
-                                    await asyncio.sleep(0.1)
-                    except Exception as e:
-                        print(f"Error generating image for {actor.name}: {e}")
+            
+                await self.update_actors(char_update_callback, world_update_callback, log_callback)
                         
                 #now handle context
                 if self.steps_since_last_update > random.randint(3, 5):    
@@ -237,6 +242,15 @@ class Simulation:
         """Get detailed character state"""
         char = self.context.get_actor_by_name(char_name)
         return char.get_explorer_state()
+
+    def get_character_states(self):
+        """Get current state of all characters including explorer state"""
+        states = {}
+        for char in self.context.actors:
+            state = char.to_json()
+            state['explorer_state'] = char.get_explorer_state()  # Add explorer state
+            states[char.name] = state
+        return states
 
 # Add a simple test character class
 class TestCharacter:
