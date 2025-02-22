@@ -248,7 +248,7 @@ class Simulation:
         states = {}
         for char in self.context.actors:
             state = char.to_json()
-            state['explorer_state'] = char.get_explorer_state()  # Add explorer state
+            state['explorer_state'] = char.get_explorer_state()  # Added here
             states[char.name] = state
         return states
 
