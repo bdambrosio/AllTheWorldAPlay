@@ -90,7 +90,7 @@ def pick_weighted(scored_items: List[Tuple[T, float]], weight: float = 1.0, norm
             chosen.append(remaining_items[-1][0])
             remaining_items.pop()
             
-    return chosen[0] if n == 1 else chosen
+    return chosen
 
 if __name__ == "__main__":
     items = [('a', 100), ('b', 50), ('c', 25), ('d', 10)]

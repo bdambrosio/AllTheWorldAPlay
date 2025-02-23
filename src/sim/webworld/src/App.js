@@ -50,19 +50,13 @@ function App() {
               setCharacters(prev => ({
                 ...prev,
                 [data.name]: {
-                  name: data.name,
-                  description: data.data.description,
-                  history: data.data.history,
+                  ...data.data,
                   image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
-                  narrative: data.data.narrative,
-                  relationships: data.data.relationships,
-                  tasks: data.data.tasks,
-                  show: data.data.show,
-                  thoughts: data.data.thoughts,
-                  type: data.type
+                  status: isProcessing ? 'processing' : 'idle',
+                  explorer_state: data.data.explorer_state
                 }
               }));
-            break;
+              break;
             case 'show_update':
               setLogText(prev => {
                 const newEntry = data.text;
@@ -76,7 +70,8 @@ function App() {
               });
               break;
             case 'status_update':
-              setSimState(data.status);  // Expecting { running: bool, paused: bool }
+              setSimState(data.status);
+              setIsProcessing(data.status.running && !data.status.paused);
               break;
             case 'output':
               setMessages(prev => [...prev, data.text]);
@@ -101,7 +96,17 @@ function App() {
               setWorldState(data.data);
               break;
             case 'command_complete':
-              setIsProcessing(false);  // Clear processing state on completion
+              if (data.command === 'step' || data.command === 'refresh') {
+                setIsProcessing(false);
+              }
+              break;
+            case 'command_ack':
+              setIsProcessing(false);
+              setSimState(prev => ({
+                ...prev,
+                running: false,
+                paused: true
+              }));
               break;
             default:
               console.log('Unknown message type:', data.type);
@@ -133,47 +138,28 @@ function App() {
   };
 
   const handleStep = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    
-    try {
-      if (websocket.current?.readyState === WebSocket.OPEN) {
-        websocket.current.send(JSON.stringify({
-          type: 'command',
-          action: 'step'
-        }));
-        // Keep timeout as safety net
-        setTimeout(() => setIsProcessing(false), 30000);
-      }
-    } catch (error) {
-      setIsProcessing(false);
-    }
+    setIsProcessing(true); 
+    sendCommand('step');
   };
 
   const handleRun = async () => {
-    if (isProcessing) return;
     setIsProcessing(true);
-    
-    try {
-      if (websocket.current?.readyState === WebSocket.OPEN) {
-        websocket.current.send(JSON.stringify({
-          type: 'command',
-          action: 'run'
-        }));
-      }
-    } catch (error) {
-      setIsProcessing(false);
-    }
+    sendCommand('run');
   };
 
-  const handlePause = async () => {
-    if (websocket.current?.readyState === WebSocket.OPEN) {
-      websocket.current.send(JSON.stringify({
-        type: 'command',
-        action: 'pause'
-      }));
-      setIsProcessing(false);
-    }
+  const handlePause = () => {
+    setIsProcessing(false);
+    sendCommand('pause');
+  };
+
+  const handleRefresh = () => {
+    setIsProcessing(false);
+    setSimState(prev => ({
+      ...prev,
+      running: false,
+      paused: true
+    }));
+    sendCommand('refresh');
   };
 
   const handleInject = (target, text) => {
@@ -196,13 +182,15 @@ function App() {
   return (
     <div className="app-container">
       <div className="character-panels">
-        {Object.values(characters).map(character => (
-          <CharacterPanel 
-            key={character.name} 
-            character={character}
-            sessionId={sessionId}
-          />
-        ))}
+        {Object.values(characters)
+          .filter(character => character && character.name) // Only render valid characters
+          .map(character => (
+            <CharacterPanel 
+              key={character.name} 
+              character={character}
+              sessionId={sessionId}
+            />
+          ))}
       </div>
       <div className="center-panel">
         <div className="world-container">
@@ -221,16 +209,26 @@ function App() {
       </div>
       <div className="control-panel">
         <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
-        <button className="control-button" onClick={handleRun} disabled={isProcessing}>Run</button>
-        <button className="control-button" onClick={handleStep} disabled={isProcessing}>Step</button>
+        <button className="control-button" 
+          onClick={handleRun} 
+          disabled={isProcessing || simState.running}>Run</button>
+        <button className="control-button" 
+          onClick={handleStep} 
+          disabled={isProcessing || simState.running}>Step</button>
         <button className="control-button" onClick={handlePause}>Pause</button>
         <button className="control-button" onClick={() => setShowInjectDialog(true)}>Inject</button>
-        <button className="control-button">Refresh</button>
+        <button onClick={handleRefresh} className="control-button">
+          Refresh
+        </button>
         <button className="control-button">Load World</button>
         <button className="control-button">Save World</button>
         <div className="status-area">
           {currentPlay && <div>Play: {currentPlay}</div>}
-          <div>Status: {isProcessing ? 'Processing...' : simState.running ? 'Running' : 'Paused'}</div>
+          <div>Status: {
+            simState.running ? 'Running' : 
+            isProcessing ? 'Processing...' : 
+            'Paused'
+          }</div>
         </div>
       </div>
 

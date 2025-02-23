@@ -27,6 +27,7 @@ class Context():
         self.force_sense = False # force full sense for all actors
         self.message_queue = Queue()  # Queue for messages to be sent to the UI
         self.current_actor_index = 0  # Add this line to track position in actors list
+        self.show = ''
         for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
@@ -37,7 +38,9 @@ class Context():
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
         for actor in self.actors:
-            actor.driveSignalManager.recluster() # recluster drive signals after actor initialization, including
+            actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
+            actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
+            actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
             actor.generate_goal_alternatives()
             actor.generate_task_alternatives()
             actor.wakeup = False
@@ -255,8 +258,9 @@ End your response with:
             if new_situation is not None:
                 updates = self.world_updates_from_act_consequences(new_situation)
                 self.current_state = new_situation
-                self.show = '\n-----scene-----\n' + new_situation
+                self.show = '\n\n-----scene-----\n' + new_situation
                 self.message_queue.put({'name':self.name, 'text':self.show})
+                self.show = '' # has been added to message queue!
                 await asyncio.sleep(0.1)
             # self.current_state += '\n'+updates
             print(f'World updates:\n{updates}')
@@ -344,8 +348,10 @@ End your response with:
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation.replace('\n\n','\n')
-            self.show = '\n-----scene-----\n' + new_situation
-            self.message_queue.put({'name':self.name, 'text':self.show})
+            # this is done in world_update in simulation
+            # self.show = '\n\n-----scene-----\n' + new_situation
+            #self.message_queue.put({'name':self.name, 'text':self.show})
+            self.show = '' # has been added to message queue!
             await asyncio.sleep(0.1)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
@@ -374,11 +380,6 @@ End your response with:
         for listener in self.state_listeners:
             listener(update_type, data)
 
-    async def show(self, message):
-        """Queue message for websocket transmission"""
-        self.message_queue.put({'name':self.name, 'text':message})
-        await asyncio.sleep(0.1)
-
     def update_display(self):
         """UI-independent state update"""
         state = {
@@ -401,7 +402,7 @@ End your response with:
     def to_json(self):
         """Return JSON-serializable dict of context state"""
         return {
-            'show': self.current_state,
+            'show': ' \n\n'+self.current_state,
             'image': self.image('worldsim.png')
         }
 

@@ -77,6 +77,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     sessions[session_id] = None
     message_task = None
+    
+    async def send_command_ack(command: str):
+        """Send command completion acknowledgement"""
+        await websocket.send_json({
+            "type": "command_ack",
+            "command": command
+        })
 
     async def update_world(name, world_data):
             # Send character update
@@ -157,6 +164,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         await asyncio.sleep(0.1)
         await sim.simulation.update_actors(char_update_callback=update_character, world_update_callback=update_world, log_callback=log_callback)
         await asyncio.sleep(0.1)
+        await send_command_ack('load_play')
 
     try:
         while True:
@@ -194,6 +202,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'type': 'play_error',
                             'error': f'Failed to list plays: {str(e)}'
                         }))
+                    await send_command_ack('initialize')    
                 
                 elif action == 'load_play':
                     play_name = data.get('play')
@@ -218,6 +227,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 'type': 'play_error',
                                 'error': f'Failed to load play: {str(e)}'
                             }))
+                        await send_command_ack('load_play')
                 
                 elif action == 'confirm_load_play':
                     play_name = data.get('play')
@@ -236,7 +246,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'type': 'play_error',
                             'error': f'Failed to load play: {str(e)}'
                         }))
-                
+                    await send_command_ack('load_play')
                 elif action == 'step':
                     if sim is None:
                         return
@@ -257,7 +267,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             'paused': sim.simulation.paused
                         }
                     }))
-                    
+                    await send_command_ack('step')
                 elif action == 'inject':
                     target_name = data.get('target')
                     text = data.get('text')
@@ -275,7 +285,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         await asyncio.sleep(0.1)
                     except Exception as e:
                         print(f"Error handling inject: {e}")
-                
+                    await send_command_ack('inject')
                 # Send updated state
                 if sim is not None:
                     char_states = sim.simulation.get_character_states()
@@ -309,16 +319,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 async def get_character_details(name: str, session_id: str):
     """Get detailed character state for explorer"""
     try:
-        if not session_id or session_id == 'undefined':
+        if not session_id:
             raise HTTPException(
                 status_code=400, 
-                detail="Invalid or missing session ID"
+                detail="Missing session ID"
             )
             
         if session_id not in sessions:
             raise HTTPException(
                 status_code=404, 
-                detail="Session not found"
+                detail=f"Session {session_id} not found"
             )
             
         sim = sessions[session_id]
@@ -328,8 +338,13 @@ async def get_character_details(name: str, session_id: str):
                 detail="No active simulation"
             )
             
-        # Now this is a direct call, not a coroutine
         details = sim.simulation.get_character_details(name)
+        if not details:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Character {name} not found"
+            )
+            
         return details
         
     except HTTPException:

@@ -18,7 +18,7 @@ class Dialog:
         self.fatigue: float = 0.0  # Add fatigue counter
         self.fatigue_threshold: float = 5.0  # Configurable threshold
         self.interrupted_task: Optional[str] = None  # Task that was interrupted by dialog
-        self.active: bool = True
+        self.active: bool = False
         self.transcript: List[str] = []
     
     def activate(self, source=None):
@@ -29,10 +29,8 @@ class Dialog:
             
         # Store current task if being interrupted, but don't try to stack dialogs
         #  we store interrupted task, but don't push dialog task here, read only on character
+        self.active = True
         self.turn_count = 0
-        self.interrupted_task = None
-        if self.actor.focus_task.peek() and not self.actor.focus_task.peek().name.startswith('dialog'):
-            self.interrupted_task = self.actor.focus_task.peek()
 
     def add_turn(self, speaker, message):
         """Record a new turn in the conversation and increase fatigue"""
@@ -54,11 +52,12 @@ class Dialog:
     def get_transcript(self, max_turns=10):
         return '\n'.join(self.transcript[-max_turns:])
         
+    def get_current_dialog(self, max_turns=10):
+        return '\n'.join(self.transcript[-min(max_turns, self.turn_count):])
+    
     def deactivate_dialog(self):
         """End current dialog with fatigue consideration"""
         self.active = False
-        self.turn_count = 0
-        self.fatigue = 0.0
         # Store fatigue level for future interactions
         self.actor.memory_consolidator.update_cognitive_model(
             memory=self.actor.structured_memory,
@@ -67,39 +66,5 @@ class Dialog:
             current_time=self.actor.context.simulation_time,
             character_desc=self.actor.character
         )
-        interrupted_task = self.interrupted_task
-        self.actor.intentions = []
         
         # again, read only on actor, let actor manage focus task stack
-        # if self.actor.focus_task.peek().startswith('dialog'):
-        #    self.actor.focus_task.pop()
-           
-        if self.interrupted_task and self.interrupted_task != self.actor.focus_task.peek():
-            if self._is_task_still_relevant(self.interrupted_task):
-                # If the interrupted task is not the current task, push it onto the stack 
-                # to resume it after the dialog ends
-                self.actor.focus_task.push(self.interrupted_task)   
-        elif self.interrupted_task and self.actor.focus_task.peek() == self.interrupted_task:
-            if not self._is_task_still_relevant(self.interrupted_task):
-                # If the interrupted task is the current task, and no longer relevant, remove it
-                self.actor.focus_task.pop()
-            
-    def _is_task_still_relevant(self, task_name: str) -> bool:
-        """Check if a task is still relevant and should be resumed"""
-        # Look for task in current priorities
-        for task in self.actor.priorities:
-            if xml.find('<name>', task) == task_name:
-                # Check if task is already satisfied using agent's satisfaction test
-                termination_check = xml.find('<termination_check>', task)
-                if termination_check:
-                    satisfied = self.actor.test_priority_termination(
-                        termination_check,
-                        '',  # No new consequences to check
-                        ''   # No world updates to check
-                    )
-                    if satisfied:
-                        return False  # Task is complete, don't resume
-                
-                return True  # Task exists and isn't satisfied
-            
-        return False  # Task not found in current priorities

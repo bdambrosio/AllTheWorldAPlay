@@ -9,10 +9,11 @@ function CharacterPanel({ character, sessionId }) {
   const [lastExplorerState, setLastExplorerState] = useState(null);
   const [explorerStatus, setExplorerStatus] = useState('idle');
 
-  // Update cached explorer state whenever character updates
+  // Cache explorer state from character updates
   useEffect(() => {
     if (character?.explorer_state) {
       setLastExplorerState(character.explorer_state);
+      setExplorerStatus('idle');
     }
   }, [character]);
 
@@ -20,18 +21,22 @@ function CharacterPanel({ character, sessionId }) {
   const handleExplorerOpen = async () => {
     setShowExplorer(true);
     
-    // Only fetch fresh state if simulation is paused
-    if (!character.status || character.status !== 'processing') {
-      setExplorerStatus('loading');
-      try {
-        const res = await fetch(`http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`);
-        const data = await res.json();
-        setLastExplorerState(data);
-        setExplorerStatus('idle');
-      } catch (err) {
-        console.error('Error fetching explorer state:', err);
-        setExplorerStatus('error');
-      }
+    // Use cached state if running or processing
+    if (character.status === 'processing' || character.status === 'running') {
+      console.log('Using cached explorer state');
+      return;
+    }
+
+    setExplorerStatus('loading');
+    try {
+      const res = await fetch(`http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      setLastExplorerState(data);
+      setExplorerStatus('idle');
+    } catch (err) {
+      console.error('Error fetching explorer state:', err);
+      setExplorerStatus('error');
     }
   };
 
@@ -96,6 +101,7 @@ function CharacterPanel({ character, sessionId }) {
           character={character}
           sessionId={sessionId}
           lastState={lastExplorerState}
+          status={explorerStatus}
           onClose={() => setShowExplorer(false)}
         />
       )}
