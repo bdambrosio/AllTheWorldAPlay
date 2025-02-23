@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime, timedelta
 from enum import Enum
 import json
@@ -29,6 +30,7 @@ from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, Sens
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
 import asyncio
+
 class Mode(Enum):
     Think = "Think"
     Say = "Say"
@@ -159,7 +161,7 @@ class Character:
         self.last_sense_time = datetime.now()
         self.sense_threshold = timedelta(hours=4)
         self.act = None
-        self.previous_action = None
+        self.previous_action_name = None
         self.look_percept = ''
         self.driveSignalManager = None
        # Initialize drives
@@ -332,20 +334,10 @@ class Character:
         # Update state and tasks
         self.focus_goal = None
         self.goals = []
-        self.focus_task = None
-        self.tasks = []
-
+        self.focus_task = Stack()
 
         # Reset new memory counter
         self.new_memory_cnt = 0
-
-
-    def get_task(self, task_name):
-        for candidate in self.tasks:
-            if task_name == hash_utils.find('name', candidate):
-                #print(f'found existing task\n  {task_name}')
-                return candidate
-        return None
 
 
     def resolve_reference(self, reference, task):
@@ -467,11 +459,11 @@ End your response with:
 {{$state}}
 </state>
 
-And your tasks are:
+And your current focus task is:
 
-<tasks>
-{{$tasks}}
-</tasks>
+<focus_task>
+{{$focus_task}}
+</focus_task>
 
 You see the following:
 
@@ -490,8 +482,8 @@ End your response with:
         #print("Look",end=' ')
         response = self.llm.ask({"view": text_view, 
                                  "interests": interest,
-                                 "state": self.narrative.get_summary(), 
-                                 "tasks": '\n'.join([str(hash_utils.find('name', task)) for task in self.tasks])}, 
+                                 "state": self.narrative.get_summary(),
+                                 "focus_task": self.focus_task.peek().to_string() if self.focus_task.peek() else ''}, 
                                 prompt, temp=0.2, stops=['<end/>'], max_tokens=100)
         percept = xml.find('<perception>', response)
         perceptual_input = PerceptualInput(
@@ -675,10 +667,7 @@ adjective, adjective, adjective
 <end/>
 """)]
 
-            concerns = ''
-            for task in self.tasks:
-                concern = hash_utils.find('name', task) + '. '+hash_utils.find('reason', task)
-                concerns = concerns + '; '+concern
+            concerns = self.focus_task.peek().to_string() if self.focus_task.peek() else ''
             state = description + '.\n '+concerns +'\n'+ context
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.text for memory in recent_memories)
@@ -931,7 +920,7 @@ End response with:
         return satisfied
 
 
-    async def acts(self, target, act_name, act_arg='', reason='', source=None):
+    async def acts(self, target: Character, act_name: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
         # Create action record with state before action
         try:
@@ -942,6 +931,7 @@ End response with:
     
         # Store current state and reason
         self.reason = reason
+        self.show = ''
         if act_name is None or act_arg is None or len(act_name) <= 0 or len(act_arg) <= 0:
             return
 
@@ -952,7 +942,6 @@ End response with:
             self.show += f" \n...{self.thought}..."
             self.context.message_queue.put({'name':self.name, 'text':f"{self.show}"})  
             await asyncio.sleep(0.1)
-            self.show = '' # has been added to message queue!
         else:
             self.thought +=  "\n..." + self.reason + "..."
 
@@ -969,6 +958,7 @@ End response with:
 
             self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.show = ''
             await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"You observe {world_updates}", mode='visual')
@@ -987,6 +977,7 @@ End response with:
                 percept = self.look(interest=act_arg)
                 self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.show = '' # has been added to message queue!
                 await asyncio.sleep(0.1)
                 self.show = '' # has been added to message queue!
                 self.add_perceptual_input(f"\nYou {act_name}: {act_arg}\n  {percept}", mode='visual')
@@ -994,6 +985,7 @@ End response with:
             percept = self.look(interest=act_arg)
             self.show += act_arg + '.\n  sees ' + percept + '. '
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
             await asyncio.sleep(0.1)
 
@@ -1020,28 +1012,20 @@ End response with:
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if target != None: #target can be an NPC or an NPC-like object
+                if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
+                    # initiating a dialog
+                    dialog_task = Task('dialog with '+target.name, 
+                                        description=self.name + ' says ' + act_arg, 
+                                        reason=reason, 
+                                        termination='natural end of dialog', 
+                                        goal=None,
+                                        actors=[self, target])
+                    self.focus_task.push(dialog_task)
+                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
                 self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
-                target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
+                await target.hear(self, act_arg, source)
 
-            for actor in self.context.actors:
-                if actor != self:
-                    if source.name != 'dialog with watcher':  # when talking to watcher, others don't hear it
-                        if actor != target and self.actor_models.get_actor_model(actor.name) != None\
-                            and self.actor_models.get_actor_model(actor.name).visible:
-                            actor.add_perceptual_input(f"You hear {self.name}: '{act_arg}'", percept=False, mode='auditory')
-                        elif actor == target:
-                            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'):
-                                # initiating a dialog
-                                dialog_task = Task('dialog with '+actor.name, 
-                                                    description=self.name + ' says ' + act_arg, 
-                                                    reason=reason, 
-                                                    termination='natural end of dialog', 
-                                                    goal=None,
-                                                    actors=[self, actor])
-                                self.focus_task.push(dialog_task)
-                            await actor.hear(self, act_arg, source)
-
-        self.previous_action = act_name           
+        self.previous_action_name = act_name           
 
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
@@ -1059,6 +1043,9 @@ End response with:
 
         options = [(goal, score) for goal, score in zip(goals,scores)]
         self.focus_goal = choice.pick_weighted(options, weight=2, n=1) if len(options) > 0 else None
+        self.focus_goal = self.focus_goal[0] if self.focus_goal else None
+        if not self.focus_goal:
+            raise ValueError(f'No focus goal for {self.name}')
         return self.focus_goal
 
     def generate_goal(self, signalCluster):
@@ -1286,6 +1273,9 @@ End response with:
             if task:
                 task_alternatives.append(task)
         focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=2, n=1)
+        focus_task = focus_task[0] if focus_task else None
+        if not focus_task:
+            raise ValueError(f'No task alternatives for {self.name}')
         self.focus_task = Stack()
         self.focus_task.push(focus_task)
         return focus_task
@@ -1358,26 +1348,27 @@ End your response with:
 
         satisfied = hash_utils.find('status', response)
         progress = hash_utils.find('progress', response)
-        print(f'\n{self.name} testing {type} {object.name} termination: {termination_check}, satisfied: {satisfied}, progress: {progress}')
+        print(f'\n{self.name} testing {type} {object.name} termination: {termination_check}, ', end='')
         try:
             progress = int(progress.strip())
         except:
             progress = 50
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'  **Satisfied!**')
-            self.add_perceptual_input(f"You realize {object.name} is complete: {termination_check}", mode='internal')
+            self.add_perceptual_input(f" {object.name} is complete: {termination_check}", mode='internal')
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > 0.67 * random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                self.add_perceptual_input(f"You observe {object.name} is pretty much complete: {termination_check}", mode='internal')
+                self.add_perceptual_input(f" {object.name} is pretty much complete: {termination_check}", mode='internal')
                 return True, progress
         elif satisfied != None and 'insufficient' in satisfied.lower():
             if progress/100.0 > random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                self.add_perceptual_input(f"You observe {object.name} is sufficiently complete: {termination_check}", mode='internal')
+                self.add_perceptual_input(f"{object.name} is sufficiently complete: {termination_check}", mode='internal')
                 return True, progress
             
+        print(f'  **Not satisfied! {satisfied}, {progress}%**')
         return False, progress
 
     def refine_say_act(self, act, task):
@@ -1386,7 +1377,7 @@ End your response with:
         if target_name is None:
             return act
         
-        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(10)
+        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(6)
         if dialog is None or len(dialog) == 0:
             return act
         prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
@@ -1659,7 +1650,7 @@ End your response with:
             elif act.mode == 'Do' or act.mode == 'Move':
                 dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
                 if dup:
-                    print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ""}\n    candidate act: {act}\n')
+                    # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ""}\n    candidate act: {act}\n')
                     #print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
                     if tries < 1:
                         #act = None  # force redo
@@ -1667,10 +1658,10 @@ End your response with:
                     else:
                         #act = None #skip task, nothing interesting to do
                         pass
-            elif act.mode == self.previous_action:
+            elif act.mode == self.previous_action_name:
                 dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
                 if dup:
-                    print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
+                    # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
                     #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****\n"""
                     if tries < 1:
@@ -1727,7 +1718,7 @@ End your response with:
     def update_actions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
         if source.name.startswith('dialog'):
-            print(f' in dialog, no action updates')
+            # print(f' in dialog, no action updates')
             return
         if target is None:
             target_name = self.say_target(act_name, act_arg, source)
@@ -1737,7 +1728,7 @@ End your response with:
             target_name = target
         # Skip action processing during active dialogs
         if target is not None and self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.active and source.name.startswith('dialog'):
-            print(f' in active dialog, no action updates')
+            # print(f' in active dialog, no action updates')
             return
         
         # Rest of the existing function remains unchanged
@@ -1974,7 +1965,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
+                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
                                  "focus_task":self.focus_task.peek(),
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
@@ -2140,24 +2131,37 @@ End your response with:
         """ called from acts when a character says something to this character """
         #if self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > 10):
         #    return True
-        prompt = [UserMessage(content="""Given the following dialog transcript, determine if the dialog has reached a natural end.
+        prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
 <transcript>
 {{$transcript}}
 </transcript>
                               
-Respond only with True or False.
+For example, if the last entry in the transcript is a question that expects an answer (as opposed to merely musing), ending at this point is likely not natural.
+On the other hand, if the last entry is an agreement to act this may be a natural end.
+Respond only with a rating between 0 and 10, where
+ - 0 requires continuation of the dialog (ie termination at this point would be unnatural)
+ - 10 indicates continuation is unexpected, unnatural, or repetitious.   
+                                                  
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]   
-        response = self.llm.ask({"transcript":self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript()}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+        transcript = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+        response = self.llm.ask({"transcript":transcript}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
         if response is None:
             return False
-        
-        return response.lower().strip() == 'true'
-    
-    async def hear(self, from_actor, message: str, source=None, respond=True):
+        try:
+            rating = int(response.lower().strip())
+        except ValueError:
+            print(f'{self.name} natural_dialog_end: invalid rating: {response}')
+            rating = 7
+        # force end to run_on conversations
+        end_point = rating > 8 or random.randint(4, 11) < rating or rating + len(transcript.split('\n')) > random.randint(10,14)
+        print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
+        return end_point
+            
+    async def hear(self, from_actor: Character, message: str, source: Task=None, respond: bool=True):
         """ called from acts when a character says something to this character """
         # Initialize dialog manager if needed
         print(f'\n{self.name} hears from {from_actor.name}: {message}')
@@ -2180,14 +2184,16 @@ End your response with:
 
         self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
         # Remove text between ellipses - thoughts don't count as dialog
-        message = re.sub(r'\.\.\..*?\.\.\.', '', message)   
+        message = re.sub(r'\.\.\..*?\.\.\.', '', message)
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
+            # new dialog, create a new dialog task, but only if we don't already have a dialog task, no nested dialogs for now
             if self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog'):
                 print(f'{self.name} already has a dialog task, assertion error')
                 self.focus_task.pop()
                 raise Exception(f'{self.name} already has a dialog task, assertion error')
             # we don't have a dialog task, so we activate a new one
             self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
+            # create a new dialog task
             dialog_task = Task('dialog with '+from_actor.name, 
                                 description='dialog with '+from_actor.name, 
                                 reason=from_actor.name+' says '+message, 
@@ -2195,24 +2201,36 @@ End your response with:
                                 goal=None,
                                 actors=[self, from_actor])
             self.focus_task.push(dialog_task)
-        # otherwise, we have an active dialog in progress, close it or continue it
-        elif self.natural_dialog_end(from_actor):
-            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            self.focus_task.pop()
-            joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
-                                                                               from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript())
-            self.update_individual_commitments_following_conversation(from_actor, 
-                                                                      self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
-                                                                      joint_tasks)
-            from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
-            if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
-                from_actor.focus_task.pop()
-            from_actor.update_individual_commitments_following_conversation(self, 
-                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(),
+            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
+
+        # otherwise, we have an active dialog in progress, decide whether to close it or continue it
+        else:
+            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
+            if self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end
+
+                self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+                self.focus_task.pop()
+                if not self.focus_task.peek():
+                    # no previous focus task!
+                    print(f'{self.name} has no previous focus task!')
+                joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
+                                                                                    from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
+                self.update_individual_commitments_following_conversation(from_actor, 
+                                                                        self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
+                                                                        joint_tasks)
+                # it would probably be better to have the other actor deactivate the dialog itself
+                from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
+                if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
+                    from_actor.focus_task.pop()
+                if not self.focus_task.peek():
+                    # no previous focus task!
+                    print(f'{from_actor.name} has no previous focus task!')
+                from_actor.update_individual_commitments_following_conversation(self, 
+                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
                                                                               joint_tasks)
-            self.driveSignalManager.recluster()
-            from_actor.driveSignalManager.recluster()
-            return
+                self.driveSignalManager.recluster()
+                from_actor.driveSignalManager.recluster()
+                return
 
         action, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         await self.act_on_action(action, response_source)
@@ -2221,7 +2239,7 @@ End your response with:
         self.memory_consolidator.update_cognitive_model(
             memory=self.structured_memory,
             narrative=self.narrative,
-            knownActorManager=self.actor_models,
+            knownActorManager=self.actor_models,    
             current_time=self.context.simulation_time,
             character_desc=self.character,
             relationsOnly=True
@@ -2323,7 +2341,7 @@ End your response with:
                 "memories": memory_text,  # Updated from 'memory'
                 "activity": activity,
                 'history': self.narrative.get_summary('medium'),
-                'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_transcript(),
+                'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
                 'commitments': '\n'.join([str(hash_utils.find('name', task)) 
                                           + ' - ' + str(hash_utils.find('description', task)) 
@@ -2334,7 +2352,7 @@ End your response with:
             response = xml.find('<response>', answer_xml)
             if response is None:
                 print(f'No response to hear')
-                self.actor_models.get_actor_model(from_actor.name).dialog.end_dialog()
+                self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
                 return
 
             dup = self.repetitive(response, self.focus_task.peek().acts[-1].name if self.focus_task.peek() and len(self.focus_task.peek().acts) > 0 else '', self.format_history(6))
@@ -2342,7 +2360,7 @@ End your response with:
                 break
             else:
                 trying += 1
-                print(f'  Duplicate test failed in hear response, retrying')
+                #print(f'  Duplicate test failed in hear response, retrying')
                 duplicative_insert = f"""\n****\nResponse:\n{response}\n is repetitive of an earlier statement. Try something new\n****"""
 
  
@@ -2489,7 +2507,7 @@ End your response with:
 
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
-        self.context.message_queue.put({'name':self.name, 'text':f'cognitive cycle'})
+        self.context.message_queue.put({'name':' \n'+self.name, 'text':f'cognitive cycle'})
         await asyncio.sleep(0.1)
         self.thought = ''
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
@@ -2517,6 +2535,8 @@ End your response with:
             self.clear_task_if_satisfied(self.focus_task.peek())
             
         if not self.focus_task.peek():
+            if not self.focus_goal:
+                self.generate_goal_alternatives()
             self.generate_task_alternatives()
 
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
@@ -2593,7 +2613,7 @@ End your response with:
         if self.focus_goal:
             tasks.append(f"Goal: {self.focus_goal.to_string()}")
         if self.focus_task.peek():
-            tasks.append(f"Task: {self.focus_task.peek().to_string()}")
+            tasks.append(f" \nTask: {self.focus_task.peek().to_string()}")
         return tasks
     
     #def format_history(self):

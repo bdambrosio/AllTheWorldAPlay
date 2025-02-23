@@ -133,7 +133,7 @@ class Simulation:
                     if log_callback:
                         await log_callback('*** updating world ***')
                         await asyncio.sleep(0.1)
-                    self.context.senses('')
+                    await self.context.senses('')
                     if world_update_callback:
                         context_data = self.context.to_json()
                         await world_update_callback('World', context_data)

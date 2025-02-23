@@ -49,6 +49,9 @@ class DriveSignal:
     timestamp: datetime    # When this was last detected
     embedding: np.ndarray  # Vector embedding of the text
 
+    def to_string(self):
+        return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {[d.text for d in self.drives]} {self.importance:.2f} {self.urgency:.2f} {self.timestamp}'
+    
     def get_age_factor(self, current_time: datetime, min_age: int, age_range: int) -> float:
         """Get age factor for signal"""
         if age_range > 0:
@@ -67,6 +70,8 @@ class SignalCluster:
     text: str            # Label for the cluster
     history: List[str] = field(default_factory=list)
     score: float = 0.0
+
+
     def to_string(self):
         return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
     
@@ -77,7 +82,14 @@ class SignalCluster:
         self.drives.update(signal.drives)
         embeddings = [s.embedding for s in self.signals]
         self.centroid = np.mean(embeddings, axis=0)
-        prompt = [SystemMessage(content="""Given the following texts contained in a cluster, determine the most appropriate label for the cluster.
+
+    def cluster_name(self):
+        if len(self.signals) == 0:
+            self.text = 'NA'
+        elif len(self.signals) == 1:
+            self.text = self.signals[0].text
+        else:
+            prompt = [SystemMessage(content="""Given the following texts contained in a cluster, determine the most appropriate label for the cluster.
 The label should be of similar length to the individual texts, and most closely represent the central theme of the cluster: 
                                 
 <texts>
@@ -91,12 +103,14 @@ Only respond with the label, no other text.
 End your response with:
 </end>
 """)]
-        response = self.manager.llm.ask({"signals": '\n'.join([signal.text for signal in self.signals])}, prompt, temp=0.1, stops=['</end>'], max_tokens=20)
-        if xml.find('<label>', response):
-            self.text = xml.find('<label>', response).strip()
-        else:
-            self.text = self.signals[0].text
-
+            response = self.manager.llm.ask({"signals": '\n'.join([signal.text for signal in self.signals])}, prompt, temp=0.1, stops=['</end>'], max_tokens=20)
+            if xml.find('<label>', response):
+                self.text = xml.find('<label>', response).strip()
+            else:
+                self.text = self.signals[0].text
+        return self.text
+        
+        
     def get_importance(self, current_time: datetime, min_age: int, age_range: int) -> float:
         """Get cluster importance as max of contained signals"""
         if age_range > 0:
@@ -120,10 +134,12 @@ class DriveSignalManager:
         """Initialize detector with given embedding dimension"""
         self.clusters: List[SignalCluster] = []
         self.embedding_dim = embedding_dim
-        self.similarity_threshold = 0.6
+        self.similarity_threshold = 0.61
         self.llm = llm
         self.context = context
         self.current_time = None
+        self.clustering_eps = 0.39
+
     def set_llm(self, llm: LLM):
         self.llm = llm
         
@@ -225,7 +241,7 @@ End your response with:
                     signals.append(signal)
                    
             self.process_signals(signals)
-            print(f"Found {len(signals)} signals")
+            # print(f"Found {len(signals)} signals")
             return signals
         except Exception as e:
             traceback.print_exc()
@@ -234,22 +250,31 @@ End your response with:
  
     def process_signals(self, signals: List[DriveSignal]):
         """Process new signals and update clusters"""
+        updated_clusters = []
         for signal in signals:
             closest_idx, similarity = self._find_closest_cluster(signal)
             
             if similarity > self.similarity_threshold:
                 # Add to existing cluster
                 self.clusters[closest_idx].add_signal(signal)
+                if not any(self.clusters[closest_idx] is cluster for cluster in updated_clusters):
+                    updated_clusters.append(self.clusters[closest_idx])
             else:
                 # Create new cluster
-                self.clusters.append(SignalCluster(
+                new_cluster = SignalCluster(
                     manager=self,
                     centroid=signal.embedding,
                     signals=[signal],
                     drives=signal.drives,
                     is_opportunity=signal.is_opportunity,
                     text=signal.text
-                ))
+                )
+                self.clusters.append(new_cluster)
+                if not any(new_cluster is cluster for cluster in updated_clusters):
+                    updated_clusters.append(new_cluster)
+
+        for cluster in updated_clusters:
+            cluster.cluster_name()
         #scored = self.get_scored_clusters()
         #return scored
                 
@@ -304,7 +329,7 @@ End your response with:
                 print(f"Error scoring cluster: {e}")
         return sorted(scored_clusters, key=lambda x: x[1], reverse=True)
         
-    def recluster(self, eps: float = 0.37, min_samples: int = 2) -> None:
+    def recluster(self, eps: float=-1, min_samples: int = 2) -> None:
         """Rebuild clusters using DBSCAN to remove outliers and optimize grouping.
         Preserves recent high-importance outliers as single-signal clusters.
         
@@ -315,6 +340,9 @@ End your response with:
         if not self.clusters:
             return
         
+        if eps == -1:
+            eps = self.clustering_eps
+
         # Collect all signals and their embeddings
         all_signals = []
         embeddings = []
@@ -328,20 +356,15 @@ End your response with:
         
         # Group signals by cluster label
         new_clusters = defaultdict(list)
+        outlier_signals = []
         current_time = self.context.simulation_time if self.context else datetime.now()
-        
+
         for signal, label in zip(all_signals, labels):
             if label != -1:
                 # Add to regular cluster
                 new_clusters[label].append(signal)
             else:
-                # Check if outlier should be preserved
-                age_minutes = (current_time - signal.timestamp).total_seconds() / 60
-                if (age_minutes <= 30 or 
-                    (signal.importance >= 0.8 and 
-                    signal.urgency >= 0.8)):
-                    # Create singleton cluster for important recent outlier
-                    new_clusters[f'outlier_{len(new_clusters)}'].append(signal)
+                outlier_signals.append(signal)
             
         # Create new cluster objects
         self.clusters = []
@@ -359,7 +382,34 @@ End your response with:
                 # Add remaining signals
                 for signal in signals[1:]:
                     cluster.add_signal(signal)
+                cluster.cluster_name()
                 self.clusters.append(cluster)
+        
+        num_clusters = len(self.clusters)
+        num_clustered_signals = sum(len(c.signals) for c in self.clusters) + len(outlier_signals)
+        if num_clustered_signals > 24:
+            # if num_clusters < sqrt num_signals, clusters are too large, decrease eps to require closer signals
+            eps_adjustment = 0.01*math.sqrt(num_clustered_signals - num_clusters)/num_clusters
+            self.clustering_eps = self.clustering_eps - eps_adjustment
+            
+        # Check if outliers should be preserved
+        for outlier_signal in outlier_signals:
+            age_minutes = (current_time - outlier_signal.timestamp).total_seconds() / 60
+            if (age_minutes <= 30 or 
+                (outlier_signal.importance >= 0.6 and 
+                outlier_signal.urgency >= 0.6)):
+                # Create singleton cluster for important recent outlier
+                outlier_cluster = SignalCluster(
+                    manager=self,
+                    centroid=outlier_signal.embedding,
+                    signals=[outlier_signal],
+                    drives=outlier_signal.drives,
+                    is_opportunity=outlier_signal.is_opportunity,
+                    text='outliner_'+outlier_signal.text
+                )
+                # Add remaining signals
+                outlier_cluster.cluster_name()
+                self.clusters.append(outlier_cluster)
             
         self.get_scored_clusters() # rank new clusters
         print(f"Reclustered into {len(self.clusters)} clusters")

@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 from sim.cognitive.DialogManager import Dialog
 from utils.Messages import UserMessage
 
@@ -89,7 +91,7 @@ class KnownActorManager:
             self.known_actors[actor_agh.name] = KnownActor(actor_agh, self)
         return self.known_actors[actor_name]
 
-    def get_actor_model(self, actor_name, create_if_missing=False):
+    def get_actor_model(self, actor_name: str, create_if_missing: bool=False) -> Optional[KnownActor]:
         if actor_name not in self.known_actors:
             if create_if_missing:
                 print(f"{self.owner.name} creating model for {actor_name}")
