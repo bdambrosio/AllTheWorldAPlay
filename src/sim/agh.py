@@ -39,6 +39,8 @@ class Mode(Enum):
     Look = "Look"
     Listen = "Listen"
 
+    
+
 def find_first_digit(s):
     for char in s:
         if char.isdigit():
@@ -892,7 +894,7 @@ End response with:
             type='task'
         )
 
-        if satisfied:
+        if satisfied or type(object) is Task and len(object.acts) > random.randint(3,5): # basic timeout on task
             if task == self.focus_task.peek():
                 self.focus_task.pop()
 
@@ -1030,7 +1032,7 @@ End response with:
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=3, n=3) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=3) if len(ranked_signalClusters) > 0 else []
         goals = []
         scores = []
         for signalCluster in focus_signalClusters:
@@ -1042,7 +1044,7 @@ End response with:
         """Choose the best goals to focus on based on the goal alternatives ranked by signalCluster ranking and choose three stochastically"""
 
         options = [(goal, score) for goal, score in zip(goals,scores)]
-        self.focus_goal = choice.pick_weighted(options, weight=2, n=1) if len(options) > 0 else None
+        self.focus_goal = choice.pick_weighted(options, weight=3, n=1) if len(options) > 0 else None
         self.focus_goal = self.focus_goal[0] if self.focus_goal else None
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
@@ -1083,16 +1085,15 @@ End response with:
 </drive_related_memories>
 
 
-Consider this signal and and your drives, memories, situation, and character, paying special attention to drive_memories.
+Consider this signalCluster and and your drives, memories, situation, and character, paying special attention to the signalCluster's drives in drive_memories.
 Consider:
-1. How well the drive's needs are being met
-2. Recent events that affect the drive
-3. The importance scores of relevant memories
-4. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
+1. What is the central issue / opportunity this signalCluster indicates wrt your drives in the context of your character, situation, etc?
+2. Recent events that affect the drive.
+3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
 
 Respond with a goal, in four parts: 
     name - a terse (3-4 words) name for the goal, 
-    description - a concise (5-8 words) description of the goal, 
+    description - a concise (5-8 words) description of the goal, intended to guide task generation, 
     other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
     and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
 
@@ -1272,7 +1273,7 @@ End response with:
             task = self.validate_and_create_task(task_hash, self.focus_goal)
             if task:
                 task_alternatives.append(task)
-        focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=2, n=1)
+        focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=3, n=1)
         focus_task = focus_task[0] if focus_task else None
         if not focus_task:
             raise ValueError(f'No task alternatives for {self.name}')
@@ -1337,7 +1338,7 @@ End your response with:
 
 
         response = self.llm.ask({
-            "termination_check": termination_check,
+            "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
             "situation": self.context.current_state,
             "memories": memory_text,  # Updated from 'memory'
             "events": consequences + '\n' + updates,
@@ -2182,7 +2183,6 @@ End your response with:
             self.watcher_message_pending = True
             return
 
-        self.add_perceptual_input(f'You hear {from_actor.name} say: {message}', percept=False, mode='auditory')
         # Remove text between ellipses - thoughts don't count as dialog
         message = re.sub(r'\.\.\..*?\.\.\.', '', message)
         if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
@@ -2208,6 +2208,8 @@ End your response with:
             self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
             if self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end
 
+                dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+                self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
                 self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
                 self.focus_task.pop()
                 if not self.focus_task.peek():
@@ -2219,6 +2221,8 @@ End your response with:
                                                                         self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
                                                                         joint_tasks)
                 # it would probably be better to have the other actor deactivate the dialog itself
+                dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
+                from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
                 from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
                 if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
                     from_actor.focus_task.pop()
@@ -2519,10 +2523,6 @@ End your response with:
 
 
         # clear intension tasks that are satisfied - a temporary hack to check if others actions satisfied a task.
-        for task in self.intensions[-5:].copy():
-            task_satisfied = self.clear_task_if_satisfied(task) 
-            if task_satisfied:
-                self.intensions.remove(task)
 
         if self.focus_goal:
             focus_goal_satisfied = self.clear_goal_if_satisfied(self.focus_goal)
@@ -2539,12 +2539,6 @@ End your response with:
                 self.generate_goal_alternatives()
             self.generate_task_alternatives()
 
-        self.memory_consolidator.update_cognitive_model(self.structured_memory, 
-                                                  self.narrative, 
-                                                  self.actor_models,
-                                                  self.context.simulation_time, 
-                                                  self.character.strip(),
-                                                  relationsOnly=True )
         await self.step_task()
 
        
@@ -2556,16 +2550,21 @@ End your response with:
 
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         task = self.focus_task.peek()
-        action = self.actualize_task(task)
-        if action:
-            await self.act_on_action(action, self.focus_task.peek())
-            self.clear_task_if_satisfied(task)
-            return
-        else:
-            print(f'No action for task {task.name}')
-            self.generate_task_alternatives()
+        # iterate over task until it is no longer the focus task. 
+        # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
+        while self.focus_task.peek() is task:
+            action = self.actualize_task(task)
+            if action:
+                await self.act_on_action(action, task)
+                #this will affect selected act and determine consequences
+                if self.context:
+                    self.context.simulation_time += timedelta(minutes=15)
+                if self.focus_task.peek() is task:
+                    self.clear_task_if_satisfied(task)
+            else:
+                print(f'No action for task {task.name}')
+                return
         return
-
 
     async def act_on_action(self, action, task):
         self.act = action
@@ -2579,7 +2578,6 @@ End your response with:
         source = action.source
         #print(f'{self.name} choose {action}')
         target = None
-
         #responses, at least, explicitly name target of speech.
         if action.target and action.target != self:
             target_name = action.target.name
@@ -2587,14 +2585,7 @@ End your response with:
             target_name = self.say_target(act_name, act_arg, source)
         if target_name != None:
             target = self.context.get_actor_by_name(target_name)
-
-        #this will affect selected act and determine consequences
-        if self.context:
-            self.context.simulation_time += timedelta(minutes=15)
         await self.acts(target, act_name, act_arg, self.reason, source)
-        if task is not None:
-            self.clear_task_if_satisfied(task, '', self.act_result)
-
     
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'

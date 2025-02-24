@@ -96,7 +96,7 @@ if __name__ == "__main__":
     items = [('a', 100), ('b', 50), ('c', 25), ('d', 10)]
     
     # Test single selection
-    print("Single selection:", pick_weighted(items, weight=2.0))
+    print("Single selection:", pick_weighted(items, weight=4.0))
     
     # Test multiple selection
-    print("Multiple selection:", pick_weighted(items, weight=2.0, n=3))
+    print("Multiple selection:", pick_weighted(items, weight=4.0, n=3))

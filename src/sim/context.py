@@ -212,6 +212,8 @@ End your response with:
     async def senses(self, sense_data='', ui_task_queue=None):
         """ This is where the world advances the timeline in the scenario """
         # Debug prints
+        self.message_queue.put({'name':self.name, 'text':'\n\n-----scene-----\n'})
+        await asyncio.sleep(0.1)
         history = self.history()
         if self.step == 'static': # static world, nothing changes!
             prompt = [UserMessage(content="""You are a static world. Your task is to update the environment description. 
@@ -258,7 +260,7 @@ End your response with:
             if new_situation is not None:
                 updates = self.world_updates_from_act_consequences(new_situation)
                 self.current_state = new_situation
-                self.show = '\n\n-----scene-----\n' + new_situation
+                self.show = new_situation
                 self.message_queue.put({'name':self.name, 'text':self.show})
                 self.show = '' # has been added to message queue!
                 await asyncio.sleep(0.1)
@@ -348,9 +350,6 @@ End your response with:
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation.replace('\n\n','\n')
-            # this is done in world_update in simulation
-            # self.show = '\n\n-----scene-----\n' + new_situation
-            #self.message_queue.put({'name':self.name, 'text':self.show})
             self.show = '' # has been added to message queue!
             await asyncio.sleep(0.1)
         # self.current_state += '\n'+updates
@@ -358,6 +357,7 @@ End your response with:
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
             actor.forward(self.step)  # forward three hours and update history, etc
+            await asyncio.sleep(0.1)
         return response
 
     def advance_time(self):

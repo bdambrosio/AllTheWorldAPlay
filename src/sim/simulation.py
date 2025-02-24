@@ -82,6 +82,8 @@ class Simulation:
         self.websocket = None
         self.current_step = 0
         self.connection_active = False
+        self.last_heartbeat = time.time()
+        self.processing = False  # Track if in long operation
 
     def process_command(self, command: str) -> str:
         """Process command and return response"""
@@ -112,6 +114,7 @@ class Simulation:
     async def step(self, char_update_callback=None, world_update_callback=None, log_callback=None):
         """Perform one simulation step with optional character update callback"""
         try:
+            self.processing = True  # Mark as processing
             # Process any queued injects before the step
             while not self.inject_queue.empty():
                 inject = await self.inject_queue.get()
@@ -144,12 +147,8 @@ class Simulation:
 
                 # Yield control briefly to allow other tasks
                 await asyncio.sleep(0.1)
-
-        except Exception as e:
-            logger.error(f"Error in simulation step: {e}")
-            logger.error(f"Traceback:\n{traceback.format_exc()}")
-            self.is_running = False
-            raise  # Re-raise to maintain existing error handling
+        finally:
+            self.processing = False  # Clear processing flag
             
     def run(self):
         """Start continuous simulation"""
@@ -191,7 +190,7 @@ class Simulation:
                 return
             # Format message as "character-name, message" like worldsim
             formatted_message = f"{target_name}, {text}"
-            self.watcher.inject(formatted_message)
+            await self.watcher.inject(formatted_message)
             target = self.context.get_actor_by_name(target_name)
             if update_callback and target:
                 await update_callback(target_name, target.to_json())
@@ -251,6 +250,15 @@ class Simulation:
             state['explorer_state'] = char.get_explorer_state()  # Added here
             states[char.name] = state
         return states
+
+    async def handle_heartbeat(self):
+        """Handle heartbeat without interrupting simulation"""
+        self.last_heartbeat = time.time()
+        return {
+            'type': 'heartbeat_response',
+            'processing': self.processing,
+            'timestamp': self.last_heartbeat
+        }
 
 # Add a simple test character class
 class TestCharacter:

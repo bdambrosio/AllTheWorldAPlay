@@ -90,7 +90,7 @@ class SignalCluster:
             self.text = self.signals[0].text
         else:
             prompt = [SystemMessage(content="""Given the following texts contained in a cluster, determine the most appropriate label for the cluster.
-The label should be of similar length to the individual texts, and most closely represent the central theme of the cluster: 
+The label should be 8 - 10 words , and most closely represent the central theme of the cluster: 
                                 
 <texts>
 {{$signals}}
@@ -134,11 +134,11 @@ class DriveSignalManager:
         """Initialize detector with given embedding dimension"""
         self.clusters: List[SignalCluster] = []
         self.embedding_dim = embedding_dim
-        self.similarity_threshold = 0.61
+        self.similarity_threshold = 0.60
         self.llm = llm
         self.context = context
         self.current_time = None
-        self.clustering_eps = 0.39
+        self.clustering_eps = 0.40
 
     def set_llm(self, llm: LLM):
         self.llm = llm
@@ -387,17 +387,15 @@ End your response with:
         
         num_clusters = len(self.clusters)
         num_clustered_signals = sum(len(c.signals) for c in self.clusters) + len(outlier_signals)
-        if num_clustered_signals > 24:
+        if num_clustered_signals > 24 and num_clusters > 0:
             # if num_clusters < sqrt num_signals, clusters are too large, decrease eps to require closer signals
-            eps_adjustment = 0.01*math.sqrt(num_clustered_signals - num_clusters)/num_clusters
+            eps_adjustment = 0.01*(num_clustered_signals**0.5 - num_clusters)
             self.clustering_eps = self.clustering_eps - eps_adjustment
             
         # Check if outliers should be preserved
         for outlier_signal in outlier_signals:
-            age_minutes = (current_time - outlier_signal.timestamp).total_seconds() / 60
-            if (age_minutes <= 30 or 
-                (outlier_signal.importance >= 0.6 and 
-                outlier_signal.urgency >= 0.6)):
+            age_minutes = max(30, (current_time - outlier_signal.timestamp).total_seconds() / 60)
+            if (30/age_minutes <= 30 * outlier_signal.importance * outlier_signal.urgency)**.33 >= 0.6:
                 # Create singleton cluster for important recent outlier
                 outlier_cluster = SignalCluster(
                     manager=self,
