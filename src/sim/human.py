@@ -39,7 +39,7 @@ class Human(Character):
         pass
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
-ginn        pass                       
+        pass                       
     def senses(self, sense_data = None):
         pass  
 
