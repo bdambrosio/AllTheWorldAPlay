@@ -28,6 +28,8 @@ function App() {
   const logRef = useRef(null);
   const initialized = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const messageQueue = useRef([]);
+  const sendingLock = useRef(false);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -166,15 +168,40 @@ function App() {
     sendCommand('inject', { target, text });
   };
 
+  const sendMessageSafely = async (message) => {
+    messageQueue.current.push(message);
+    if (!sendingLock.current) {
+      await processQueue();
+    }
+  };
+
+  const processQueue = async () => {
+    if (sendingLock.current || messageQueue.current.length === 0) return;
+    
+    sendingLock.current = true;
+    try {
+      while (messageQueue.current.length > 0) {
+        const message = messageQueue.current[0];
+        if (websocket.current?.readyState === WebSocket.OPEN) {
+          websocket.current.send(message);
+          // Small delay to ensure message processing
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        messageQueue.current.shift();
+      }
+    } finally {
+      sendingLock.current = false;
+    }
+  };
+
   const sendCommand = async (command, payload = {}) => {
     console.log('sendCommand called:', { command, payload });
-    if (websocket.current?.readyState === WebSocket.OPEN) {
-      websocket.current.send(JSON.stringify({
-        type: 'command',
-        action: command,
-        ...payload
-      }));
-    }
+    const message = JSON.stringify({
+      type: 'command',
+      action: command,
+      ...payload
+    });
+    await sendMessageSafely(message);
   };
 
   console.log('Current characters:', characters);  // See if state is updated

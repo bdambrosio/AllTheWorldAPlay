@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List
 from sim.memory.core import MemoryEntry, StructuredMemory
 from sim.agh import Character, Stack
+import asyncio
 
 from PyQt5.QtWidgets import QDialog
 class Human(Character):
@@ -38,14 +39,14 @@ class Human(Character):
         pass
 
     def acts(self, target, act_name, act_arg='', reason='', source=''):
-        pass                       
+ginn        pass                       
     def senses(self, sense_data = None):
         pass  
 
     def cognitive_cycle(self):
         pass
 
-    def inject(self, input_text):
+    async def inject(self, input_text):
         """Process user input from UI"""
         # Parse "Character name, message" format
         parts = input_text.split(',')
@@ -64,6 +65,6 @@ class Human(Character):
                 break
                 
         if target:
-            target.hear(self, message, source='dialog with watcher')
+            await target.hear(self, message, source='dialog with watcher')
         else:
             print(f"Character {target_name} not found")

@@ -16,6 +16,7 @@ from pathlib import Path
 from utils.llm_api import LLM
 from utils.llm_api import IMAGE_PATH
 import asyncio
+from contextlib import asynccontextmanager
 
 app = FastAPI()
 
@@ -30,6 +31,34 @@ app.add_middleware(
 
 # Store active sessions
 sessions: Dict[str, SimulationWrapper] = {}
+
+class WebSocketManager:
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._message_queue = asyncio.Queue()
+        
+    @asynccontextmanager
+    async def send_lock(self):
+        try:
+            await self._lock.acquire()
+            yield
+        finally:
+            self._lock.release()
+            
+    async def send_message(self, websocket, message):
+        async with self.send_lock():
+            await websocket.send_json(message)
+            # Small delay to ensure message processing
+            await asyncio.sleep(0.05)
+            
+    async def process_queue(self, websocket):
+        while True:
+            message = await self._message_queue.get()
+            await self.send_message(websocket, message)
+            self._message_queue.task_done()
+            
+    def queue_message(self, message):
+        self._message_queue.put_nowait(message)
 
 def generate_and_encode_image(char):
     """Generate and base64 encode an image for a character"""
@@ -166,10 +195,27 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         await asyncio.sleep(0.1)
         await send_command_ack('load_play')
 
+    # Add heartbeat handler but keep all existing code
+    async def handle_heartbeat():
+        if session_id in sessions and sessions[session_id]:
+            sim = sessions[session_id]
+            return await sim.simulation.handle_heartbeat()
+        return {
+            'type': 'heartbeat_response',
+            'processing': False,
+            'timestamp': time.time()
+        }
+
     try:
         while True:
             data = json.loads(await websocket.receive_text())
             
+            # Add heartbeat handling
+            if data.get('type') == 'heartbeat':
+                response = await handle_heartbeat()
+                await websocket.send_json(response)
+                continue
+                
             if data.get('type') == 'command':
                 action = data.get('action')
                 sim = sessions[session_id]
@@ -277,7 +323,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             return
                         # Format message as "character-name, message" like worldsim
                         formatted_message = f"{target_name}, {text}"
-                        sim.simulation.inject(target_name, text, update_callback=update_character)
+                        await sim.simulation.inject(target_name, text, update_callback=update_character)
                         await websocket.send_text(json.dumps({
                             'type': 'command_complete',
                             'command': 'inject'
