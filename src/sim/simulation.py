@@ -190,14 +190,37 @@ class SimulationServer:
         self.running = True
         self.paused = False
         
+        # Start continuous execution loop
+        while self.running and not self.paused:
+            try:
+                await self.step()
+                # Brief delay between steps
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Error in run loop: {e}")
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                self.running = False
+                self.paused = True
+                await self.send_result({
+                    'type': 'error',
+                    'error': f'Run loop error: {str(e)}'
+                })
+                break
+        
+        # Send command acknowledgment when run stops
+        await self.send_command_ack('run')
+        
     async def pause_cmd(self):
         """Pause running simulation"""
         self.paused = True
+        self.running = False  # Also clear running flag
+        await self.send_command_ack('pause')  # Acknowledge pause command
         
     async def stop_cmd(self):
         """Stop simulation completely"""
         self.running = False
         self.paused = False
+        await self.send_command_ack('stop')  # Acknowledge stop command
         
     async def save_world_cmd(self, filename=None):
         """Save current world state"""
