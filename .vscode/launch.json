@@ -3,6 +3,29 @@
     "configurations": [
 
         {
+            "name": "webworld",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "main:app",
+                "--reload",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}/src/sim/",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            }
+        },
+        {
+            "name": "sd3 server",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
@@ -56,5 +79,6 @@
                 "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
                 "CUDA_VISIBLE_DEVICES": "1"
             }
-        }
+        },
     ]
+}

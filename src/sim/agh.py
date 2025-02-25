@@ -25,7 +25,7 @@ import utils.choice as choice
 from sim.cognitive.DialogManager import Dialog
 from collections import defaultdict
 from dataclasses import dataclass, field
-import numpy as np
+import numpy as np # type: ignore
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
@@ -39,7 +39,7 @@ class Mode(Enum):
     Look = "Look"
     Listen = "Listen"
 
-    
+
 
 def find_first_digit(s):
     for char in s:
@@ -151,7 +151,7 @@ class Character:
             last_update=datetime.now(),  # Will be updated to simulation time
             active_drives=[]
         )
-     
+
         # World integration attributes
         if mapAgent:
             self.mapAgent = None  # Will be set later
@@ -352,7 +352,7 @@ class Character:
 
         #actor = self.say_target('', reference, task)
         return None
-        
+
     def say_target(self, act_name, text, source=None):
         """Determine the intended recipient of a message"""
         if len(self.context.actors) == 2:
@@ -494,7 +494,7 @@ End your response with:
             timestamp=self.context.simulation_time,
             intensity=0.7,  # Medium-high for direct observation
         )       
-        self.perceptual_state.add_input(perceptual_input)    
+        self.perceptual_state.add_input(perceptual_input)       
         self.look_percept = percept
         return percept
 
@@ -753,7 +753,7 @@ Respond only with a single choice of mode. Do not include any introductory, disc
             input_time = datetime.now()
         self.driveSignalManager.analyze_text(message, self.drives, input_time)
         return perceptual_input
-    
+
     def add_to_history(self, message: str):
         """Add message to structured memory"""
         if message is None or message == '':
@@ -938,7 +938,7 @@ End response with:
             return
 
 
-         # Update thought display
+        # Update thought display
         if act_name == 'Think':
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
@@ -955,7 +955,7 @@ End response with:
             if source == None:
                 source = self.focus_task.peek()
             task = source
-        
+
             # Update displays
 
             self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
@@ -1010,7 +1010,7 @@ End response with:
         elif act_name == 'Say':# must be a say
             self.show += f"{act_arg}'"
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-            self.context.message_queue.put({'name':self.name, 'text':act_arg})
+            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if target != None: #target can be an NPC or an NPC-like object
@@ -1520,7 +1520,7 @@ Consider the previous act. E.G.:
     If you are at your destination, what do you want to Do there? 
     Gather or use a resource? Talk to someone there? Do something else at your new location?
 - If the previous act was a Look, what did you learn?
-
+                              
 Respond in XML:
 <actionable>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
@@ -1665,12 +1665,12 @@ End your response with:
                     # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
                     #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
                     duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****\n"""
-                    if tries < 1:
-                        act = None  # force redo
-                        temp += .3
-                    else:
-                        act = None #skip task, nothing interesting to do
-                        pass
+                if tries < 1:
+                    act = None  # force redo
+                    temp += .3
+                else:
+                    act = None #skip task, nothing interesting to do
+                    pass
             tries += 1
 
         
@@ -2109,7 +2109,7 @@ End your response with:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
             self.intensions.append(intension)
         return intension_hashes
-    
+
     def random_string(self, length=8):
         """Generate a random string of fixed length"""
         letters = string.ascii_lowercase
@@ -2234,7 +2234,7 @@ End your response with:
                                                                               joint_tasks)
                 self.driveSignalManager.recluster()
                 from_actor.driveSignalManager.recluster()
-                return
+            return
 
         action, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         await self.act_on_action(action, response_source)
@@ -2274,7 +2274,7 @@ generate a response to the statement below.
 </recent_history>
 
 Your last action was:
-                              
+
 {{$activity}}
 
 Your relationship with the speaker is:
@@ -2335,16 +2335,16 @@ End your response with:
         #print("Hear",end=' ')
         duplicative_insert = ''
         trying = 0
-        while trying < 1: # don't bother with duplicate test
-            answer_xml = self.llm.ask({
-                'character': self.character,
-                'statement': f'{from_actor.name} says {message}',
-                "situation": self.context.current_state,
-                "name": self.name,
+
+        answer_xml = self.llm.ask({
+            'character': self.character,
+            'statement': f'{from_actor.name} says {message}',
+            "situation": self.context.current_state,
+            "name": self.name,
                 "goals": mapped_goals,
-                "memories": memory_text,  # Updated from 'memory'
-                "activity": activity,
-                'history': self.narrative.get_summary('medium'),
+            "memories": memory_text,  # Updated from 'memory'
+            "activity": activity,
+            'history': self.narrative.get_summary('medium'),
                 'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
                 'commitments': '\n'.join([str(hash_utils.find('name', task)) 
@@ -2353,20 +2353,11 @@ End your response with:
                                           for task in self.tasks if hash_utils.find('committed', task) == 'True']),
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
-            response = xml.find('<response>', answer_xml)
-            if response is None:
-                print(f'No response to hear')
-                self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-                return
-
-            dup = self.repetitive(response, self.focus_task.peek().acts[-1].name if self.focus_task.peek() and len(self.focus_task.peek().acts) > 0 else '', self.format_history(6))
-            if not dup:
-                break
-            else:
-                trying += 1
-                #print(f'  Duplicate test failed in hear response, retrying')
-                duplicative_insert = f"""\n****\nResponse:\n{response}\n is repetitive of an earlier statement. Try something new\n****"""
-
+        response = xml.find('<response>', answer_xml)
+        if response is None:
+            print(f'No response to hear')
+            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+            return
  
         unique = xml.find('<unique>', answer_xml)
         if unique is None or 'false' in unique.lower():
@@ -2385,7 +2376,7 @@ End your response with:
             response_source = source
             # self.show = response
             if from_actor.name == 'Watcher':
-                self.context.message_queue.put({'name':self.name, 'text':response})
+                self.context.message_queue.put({'name':self.name, 'text':f"'{response}'"})
                 return response
 
         # Create action for response
@@ -2488,12 +2479,12 @@ End your response with:
         tasks_memories = '\n'.join(tasks_memories)  # Join at the end
         #print("Choose",end=' ')
         response = self.llm.ask({
-            'input': sense_data + self.sense_input, 
-            'history': self.narrative.get_summary('medium'),
-            "memories": memory_text,
-            "situation": self.context.current_state,
+                'input': sense_data + self.sense_input, 
+                'history': self.narrative.get_summary('medium'),
+                "memories": memory_text,
+                "situation": self.context.current_state,
             "goals": mapped_goals, 
-            "drives": '\n'.join(drive.text for drive in self.drives),
+                "drives": '\n'.join(drive.text for drive in self.drives),
             "tasks": '\n'.join([str(hash_utils.find('name', task)) for task in self.tasks]),
             "tasks_memories": tasks_memories,
             "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
@@ -2564,7 +2555,7 @@ End your response with:
             else:
                 print(f'No action for task {task.name}')
                 return
-        return
+                return
 
     async def act_on_action(self, action, task):
         self.act = action
@@ -2578,15 +2569,15 @@ End your response with:
         source = action.source
         #print(f'{self.name} choose {action}')
         target = None
-        #responses, at least, explicitly name target of speech.
+            #responses, at least, explicitly name target of speech.
         if action.target and action.target != self:
             target_name = action.target.name
         else:
             target_name = self.say_target(act_name, act_arg, source)
-        if target_name != None:
-            target = self.context.get_actor_by_name(target_name)
+            if target_name != None:
+                target = self.context.get_actor_by_name(target_name)
         await self.acts(target, act_name, act_arg, self.reason, source)
-    
+
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'
         if self.act:

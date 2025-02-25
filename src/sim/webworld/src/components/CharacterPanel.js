@@ -3,7 +3,7 @@ import CharacterNarrative from './CharacterNarrative';
 import ExplorerModal from './ExplorerModal';
 import './CharacterPanel.css';
 
-function CharacterPanel({ character, sessionId }) {
+function CharacterPanel({ character, sessionId, sendCommand }) {
   const [showNarrative, setShowNarrative] = useState(false);
   const [showExplorer, setShowExplorer] = useState(false);
   const [lastExplorerState, setLastExplorerState] = useState(null);
@@ -29,13 +29,10 @@ function CharacterPanel({ character, sessionId }) {
 
     setExplorerStatus('loading');
     try {
-      const res = await fetch(`http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`);
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      setLastExplorerState(data);
-      setExplorerStatus('idle');
+      // Use sendCommand instead of dispatching event
+      await sendCommand('get_character_details', { name: character.name });
     } catch (err) {
-      console.error('Error fetching explorer state:', err);
+      console.error('Error requesting explorer state:', err);
       setExplorerStatus('error');
     }
   };
@@ -103,6 +100,7 @@ function CharacterPanel({ character, sessionId }) {
           lastState={lastExplorerState}
           status={explorerStatus}
           onClose={() => setShowExplorer(false)}
+          sendCommand={sendCommand}
         />
       )}
     </div>
