@@ -59,6 +59,17 @@ function App() {
                 }
               }));
               break;
+            case 'character_details':
+              console.log('Character details received:', data.name);
+              setCharacters(prev => ({
+                ...prev,
+                [data.name]: {
+                  ...prev[data.name],
+                  explorer_state: data.details,
+                  status: 'idle'
+                }
+              }));
+              break;
             case 'show_update':
               setLogText(prev => {
                 const newEntry = data.text;
@@ -216,6 +227,7 @@ function App() {
               key={character.name} 
               character={character}
               sessionId={sessionId}
+              sendCommand={sendCommand}
             />
           ))}
       </div>

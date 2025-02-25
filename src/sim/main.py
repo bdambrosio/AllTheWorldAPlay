@@ -7,7 +7,6 @@ from typing import Dict
 import uuid
 import os, json, math, time, requests, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from sim.simulation import SimulationWrapper
 import base64
 from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -17,6 +16,10 @@ from utils.llm_api import LLM
 from utils.llm_api import IMAGE_PATH
 import asyncio
 from contextlib import asynccontextmanager
+import zmq
+import zmq.asyncio
+import subprocess
+import websockets
 
 app = FastAPI()
 
@@ -29,8 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store active sessions
-sessions: Dict[str, SimulationWrapper] = {}
+# Store active sessions - but code only handles one session right now
+sessions: Dict[str, int] = {}
 
 class WebSocketManager:
     def __init__(self):
@@ -60,21 +63,50 @@ class WebSocketManager:
     def queue_message(self, message):
         self._message_queue.put_nowait(message)
 
-def generate_and_encode_image(char):
-    """Generate and base64 encode an image for a character"""
-    try:
-        description = char.generate_image_description()
-        if description:
-            image_path = generate_image(description)
-            if image_path:
-                with open(image_path, 'rb') as f:
-                    image_data = f.read()
-                    print(f"Image size: {len(image_data)} bytes")  # Debug log
-                    return base64.b64encode(image_data).decode()
-    except Exception as e:
-        print(f"Error generating image for {char.name}: {e}")
-    return None
+class SimulationManager:
+    def __init__(self):
+        self.context = zmq.asyncio.Context()
+        self.command_socket = self.context.socket(zmq.PUSH)
+        self.result_socket = self.context.socket(zmq.PULL)
+        self.process = None
+        
+    async def start(self):
+        # Setup ZMQ ports
+        self.command_socket.bind("tcp://127.0.0.1:5555")
+        self.result_socket.bind("tcp://127.0.0.1:5556")
+        
+        # Start simulation process
+        sim_path = Path(__file__).parent / "simulation.py"
+        self.process = subprocess.Popen(["python", "-Xfrozen_modules=off", str(sim_path)])
+        
+        # Wait briefly for process to start
+        await asyncio.sleep(10)
+        
+    async def stop(self):
+        if self.process:
+            self.process.terminate()
+            await asyncio.sleep(0.5)
+            if self.process.poll() is None:
+                self.process.kill()
+        self.command_socket.close()
+        self.result_socket.close()
+        self.context.term()
+        
+    async def send_command(self, command):
+        await self.command_socket.send_json(command)
+        
+    async def receive_results(self):
+        while True:
+            try:
+                result = await self.result_socket.recv_json()
+                yield result
+            except Exception as e:
+                print(f"Error receiving results: {e}")
+                break
 
+
+sim_manager = SimulationManager()
+ws_manager = WebSocketManager()
 # Add a root endpoint for health check
 @app.get("/")
 async def root():
@@ -87,25 +119,13 @@ async def create_session():
     sessions[session_id] = None
     return {"session_id": session_id}
 
-async def process_messages(websocket, sim):
-    while True:
-        try:
-            if not sim.simulation.context.message_queue.empty():
-                message = sim.simulation.context.message_queue.get_nowait()
-                await websocket.send_json({
-                    "type": "show_update",
-                    "text": f"{message['name']}: {message['text']}"  # Format as string
-                })
-            await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"Error processing messages: {e}")
-            break
-
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     sessions[session_id] = None
-    message_task = None
+    
+    # Start the message queue processing task
+    queue_task = asyncio.create_task(ws_manager.process_queue(websocket))
     
     async def send_command_ack(command: str):
         """Send command completion acknowledgement"""
@@ -114,92 +134,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             "command": command
         })
 
-    async def update_world(name, world_data):
-            # Send character update
-            context_data = sim.simulation.context.to_json()
-            image_path = context_data['image']
-            if image_path:
-                with open(image_path, 'rb') as f:
-                    image_data = f.read()
-                    context_data['image'] = base64.b64encode(image_data).decode()
-            await websocket.send_text(json.dumps({
-                'type': 'world_update',
-                'name': 'World',
-                'data': context_data
-            }))
-            await websocket.send_text(json.dumps({
-                'type': 'context_update',
-                'text': context_data['show']
-            }))
-
-
-    async def update_character(name, char_data):
-        # Send character update only
-        await websocket.send_text(json.dumps({
-            'type': 'character_update',
-            'name': name,
-            'data': char_data
-        }))
-
-    async def log_callback(message):
-        await websocket.send_text(json.dumps({
-            'type': 'show_update',
-            'text': message
-        }))
-
-    async def run_simulation(sim):
-        if sim is None:
-            return
-        print(f"Starting simulation run with context id: {id(sim.simulation.context)}")  # Debug
-        try:
-            while sim.simulation.running and not sim.simulation.paused:
-                await sim.simulation.step(
-                    char_update_callback=update_character,
-                    world_update_callback=update_world
-                )
-                await asyncio.sleep(0.1)
-        finally:
-            print("Cancelling message task")  # Debug
-            if message_task:
-                message_task.cancel()
-    
-    async def load_and_start_play(websocket, play_path):
-        nonlocal message_task  # Access outer message_task
-        sessions[session_id] = SimulationWrapper(play_path)
-        sim = sessions[session_id]
-        
-        # Create message task after sim exists
-        message_task = asyncio.create_task(
-            process_messages(websocket, sim)
-        )
-        
-        await websocket.send_text(json.dumps({
-            'type': 'play_loaded',
-            'name': play_name
-        }))
-        
-        # Rest of initialization...
-        context_data = sim.simulation.context.to_json()
-        image_path = context_data['image']
-        if image_path:
-            with open(image_path, 'rb') as f:
-                image_data = f.read()
-                context_data['image'] = base64.b64encode(image_data).decode()
-        await websocket.send_text(json.dumps({
-            'type': 'world_update',
-            'name': 'World',
-            'data': context_data
-        }))
-        await asyncio.sleep(0.1)
-        await sim.simulation.update_actors(char_update_callback=update_character, world_update_callback=update_world, log_callback=log_callback)
-        await asyncio.sleep(0.1)
-        await send_command_ack('load_play')
-
-    # Add heartbeat handler but keep all existing code
     async def handle_heartbeat():
         if session_id in sessions and sessions[session_id]:
             sim = sessions[session_id]
-            return await sim.simulation.handle_heartbeat()
         return {
             'type': 'heartbeat_response',
             'processing': False,
@@ -217,132 +154,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 continue
                 
             if data.get('type') == 'command':
-                action = data.get('action')
-                sim = sessions[session_id]
+                # just pass commands through
+                await sim_manager.send_command(data)
                 
-                if action == 'run' and sim is not None:
-                    sim.simulation.running = True
-                    sim.simulation.paused = False
-                    asyncio.create_task(run_simulation(sim))
-                
-                elif action == 'pause' and sim is not None:
-                    sim.simulation.paused = True
-                    sim.simulation.running = False
-                
-                elif action == 'initialize':
-                    try:
-                        # Get path to plays directory relative to main.py
-                        main_dir = Path(__file__).parent
-                        plays_dir = (main_dir / '../plays').resolve()
-                        
-                        # List .py files, excluding system files
-                        play_files = [f.name for f in plays_dir.glob('*.py') 
-                                    if f.is_file() and not f.name.startswith('__')]
-                        
-                        await websocket.send_text(json.dumps({
-                            'type': 'play_list',
-                            'plays': play_files
-                        }))
-                    except Exception as e:
-                        await websocket.send_text(json.dumps({
-                            'type': 'play_error',
-                            'error': f'Failed to list plays: {str(e)}'
-                        }))
-                    await send_command_ack('initialize')    
-                
-                elif action == 'load_play':
-                    play_name = data.get('play')
-                    if sim is not None and sim.simulation:
-                        await websocket.send_text(json.dumps({
-                            'type': 'confirm_reload',
-                            'message': 'This will reset the current simulation. Continue?'
-                        }))
-                    else:
-                        try:
-                            main_dir = Path(__file__).parent
-                            play_path = (main_dir / '../plays' / play_name).resolve()
-                            await load_and_start_play(websocket, play_path)
-                            # Add completion message
-                            await websocket.send_text(json.dumps({
-                            'type': 'command_complete',
-                                'command': 'load_play'
-                            }))
-                        except Exception as e:
-                            traceback.print_exc()
-                            await websocket.send_text(json.dumps({
-                                'type': 'play_error',
-                                'error': f'Failed to load play: {str(e)}'
-                            }))
-                        await send_command_ack('load_play')
-                
-                elif action == 'confirm_load_play':
-                    play_name = data.get('play')
-                    try:
-                        main_dir = Path(__file__).parent
-                        play_path = (main_dir / '../plays' / play_name).resolve()
-                        await load_and_start_play(websocket, play_path)
-                        # Add completion message here too
-                        await websocket.send_text(json.dumps({
-                            'type': 'command_complete',
-                            'command': 'load_play'
-                        }))
-                    except Exception as e:
-                        sim = None
-                        await websocket.send_text(json.dumps({
-                            'type': 'play_error',
-                            'error': f'Failed to load play: {str(e)}'
-                        }))
-                    await send_command_ack('load_play')
-                elif action == 'step':
-                    if sim is None:
-                        return
-                    
-                    # Pass callback to step
-                    await sim.simulation.step(char_update_callback=update_character, world_update_callback=update_world)
-                    
-                    # Send completion status
-                    await websocket.send_text(json.dumps({
-                        'type': 'command_complete',
-                        'command': 'step'
-                    }))
-                    
-                    await websocket.send_text(json.dumps({
-                        'type': 'status_update',
-                        'status': {
-                            'running': sim.simulation.running,
-                            'paused': sim.simulation.paused
-                        }
-                    }))
-                    await send_command_ack('step')
-                elif action == 'inject':
-                    target_name = data.get('target')
-                    text = data.get('text')
-                    try:
-                        if target_name == 'World':
-                            # Stub for now
-                            return
-                        # Format message as "character-name, message" like worldsim
-                        formatted_message = f"{target_name}, {text}"
-                        await sim.simulation.inject(target_name, text, update_callback=update_character)
-                        await websocket.send_text(json.dumps({
-                            'type': 'command_complete',
-                            'command': 'inject'
-                        }))
-                        await asyncio.sleep(0.1)
-                    except Exception as e:
-                        print(f"Error handling inject: {e}")
-                    await send_command_ack('inject')
-                # Send updated state
-                if sim is not None:
-                    char_states = sim.simulation.get_character_states()
-                    await websocket.send_json({
-                        "type": "character_update",
-                        "data": char_states
-                    })
-                    await asyncio.sleep(0.1)
     except WebSocketDisconnect:
-        if message_task:
-            message_task.cancel()
+        queue_task.cancel()
         print(f"Client disconnected: {session_id}")
         # Stop simulation if running
         if session_id in sessions:
@@ -354,52 +170,89 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             del sessions[session_id]
             
     except Exception as e:
-        if message_task:
-            message_task.cancel()
+        queue_task.cancel()
         print(f"Error in websocket handler: {e}")
         # Clean up on other errors too
         if session_id in sessions:
             del sessions[session_id]
-                
-@app.get("/api/character/{name}/details")
-async def get_character_details(name: str, session_id: str):
-    """Get detailed character state for explorer"""
+
+
+def process_ws_message(message):
+    # Convert websocket message to simulation command format
     try:
-        if not session_id:
-            raise HTTPException(
-                status_code=400, 
-                detail="Missing session ID"
-            )
-            
-        if session_id not in sessions:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Session {session_id} not found"
-            )
-            
-        sim = sessions[session_id]
-        if not sim:
-            raise HTTPException(
-                status_code=404, 
-                detail="No active simulation"
-            )
-            
-        details = sim.simulation.get_character_details(name)
-        if not details:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Character {name} not found"
-            )
-            
-        return details
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error getting character details: {e}")
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        data = json.loads(message)
+        # Assuming the websocket message already has the correct format
+        # Adjust this conversion based on your specific message formats
+        return data
+    except json.JSONDecodeError:
+        return {
+            'type': 'error',
+            'error': 'Invalid JSON message'
+        }
+
+async def handle_websocket(websocket, sim_manager):  # Add sim_manager parameter
+    async for message in websocket:
+        command = process_ws_message(message)
+        await sim_manager.send_command(command)
+
+# Add startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    global sim_manager, ws_manager
+    await sim_manager.start()
+    
+    async def handle_simulation_results():
+        async for result in sim_manager.receive_results():
+            ws_message = convert_sim_to_ws_message(result)
+            #print(f"Sending message to websocket: {ws_message}")
+            ws_manager.queue_message(ws_message)
+            await asyncio.sleep(0.1)
+    
+    app.state.result_task = asyncio.create_task(handle_simulation_results())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if hasattr(app.state, 'result_task'):
+        app.state.result_task.cancel()
+    await sim_manager.stop()
+
+def convert_sim_to_ws_message(sim_result):
+    """Convert simulation message format to websocket format"""
+    print(f"Converting message: {sim_result.get('type')}")  # Debug logging
+    
+    # Handle show_update messages from the simulation
+    if sim_result.get('type') == 'show_update':
+        return {
+            'type': 'show_update',
+            'text': f"{sim_result['message']['name']}: {sim_result['message']['text']}"
+        }
+    # Handle world_update messages
+    elif sim_result.get('type') == 'world_update':
+        return {
+            'type': 'world_update',
+            'name': 'World',
+            'data': sim_result['world']  # Unpack the nested world data
+        }
+    # Handle character_update messages
+    elif sim_result.get('type') == 'character_update':
+        return {
+            'type': 'character_update',
+            'name': sim_result['character']['name'],
+            'data': sim_result['character']  # The full character data including image if present
+        }
+    # Handle character details messages
+    elif sim_result.get('type') == 'character_details':
+        return {
+            'type': 'character_details',
+            'name': sim_result['name'],
+            'details': sim_result.get('details', {})  # Use get() with default empty dict
+        }
+    # Handle error messages
+    elif sim_result.get('type') == 'error':
+        return {
+            'type': 'error',
+            'error': sim_result.get('error', 'Unknown error')
+        }
+    # Pass through other message types as-is
+    return sim_result
                 

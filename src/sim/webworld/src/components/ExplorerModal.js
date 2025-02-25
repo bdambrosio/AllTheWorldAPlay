@@ -1,42 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import './ExplorerModal.css';
 
-function ExplorerModal({ character, sessionId, lastState, onClose }) {
+function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }) {
   const [explorerState, setExplorerState] = useState(lastState);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('core');
 
   useEffect(() => {
-    async function fetchExplorerState() {
-      try {
-        const response = await fetch(
-          `http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setExplorerState(data);
-      } catch (e) {
-        setError(`Error fetching explorer state: ${e.message}`);
-      }
+    // Update state when lastState changes
+    if (lastState) {
+      setExplorerState(lastState);
     }
-
-    if (!explorerState) {
-      fetchExplorerState();
-    }
-  }, [character.name, sessionId]);
+  }, [lastState]);
 
   const refreshData = async () => {
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/character/${character.name}/details?session_id=${sessionId}`
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setExplorerState(data);
+      await sendCommand('get_character_details', { name: character.name });
     } catch (e) {
       setError(`Error refreshing data: ${e.message}`);
     }
