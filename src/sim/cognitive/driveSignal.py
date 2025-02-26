@@ -390,7 +390,7 @@ End your response with:
         if num_clustered_signals > 24 and num_clusters > 0:
             # if num_clusters < sqrt num_signals, clusters are too large, decrease eps to require closer signals
             eps_adjustment = 0.01*(num_clustered_signals**0.5 - num_clusters)
-            self.clustering_eps = self.clustering_eps - eps_adjustment
+            self.clustering_eps = self.clustering_eps + eps_adjustment
             
         # Check if outliers should be preserved
         for outlier_signal in outlier_signals:

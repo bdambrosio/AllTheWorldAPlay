@@ -90,11 +90,11 @@ pattern = r'\{\$[^}]*\}'
 
 # options include 'local', 'Claude', 'OpenAI', 'deepseek-chat',
 class LLM():
-    def __init__(self, llm='local'):
+    def __init__(self, server_name='local'):
         global vllm_model
-        self.llm = llm
-        print(f'will use {self.llm} as llm')
-        if llm.startswith('GPT') or llm.startswith('deepseek'):
+        self.server_name = server_name
+        print(f'will use {self.server_name} as llm')
+        if server_name.startswith('GPT') or server_name.startswith('deepseek'):
             models = requests.get('http://127.0.0.1:5000/v1/models')
             if models.status_code == 200:
                 vllm_model = models.json()['data'][0]['id']
@@ -102,14 +102,14 @@ class LLM():
             else:
                 print(f'fail to get models {models.status_code}')
             self.context_size = 16384
-        elif llm.startswith('mistral'):
+        elif server_name.startswith('mistral'):
             self.context_size = 32000  # I've read mistral uses sliding 8k window
-        elif llm.startswith('claude'):
+        elif server_name.startswith('claude'):
             self.context_size = 32768  #
         else:
             self.context_size = 16384  # conservative local mis/mixtral default
             try:
-                if 'deepseeklocal' not in self.llm:
+                if 'deepseeklocal' not in self.server_name:
                     response = requests.post('http://127.0.0.1:5000' + '/template')
                     if response.status_code == 200:
                         self.context_size = response.json()['context_size']
@@ -150,13 +150,13 @@ class LLM():
         if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'deepseek' in self.llm and 'deepseeklocal' not in self.llm:
+        if 'deepseek' in self.server_name and 'deepseeklocal' not in self.server_name:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'llama.cpp' in self.llm:
+        if 'llama.cpp' in self.server_name:
             response= llcpp_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
-        if 'Claude' in self.llm:
+        if 'Claude' in self.server_name:
             response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
         if options.model is not None and 'gpt' in options.model:
@@ -164,7 +164,7 @@ class LLM():
             return response
         else:
             if options.stops is None: options.stops = []
-            if 'deepseeklocal' in self.llm:
+            if 'deepseeklocal' in self.server_name:
                 headers = {"Content-Type": "application/json"}
                 url = 'http://localhost:5000/v1/completions'
                 content = '\n'.join([msg['content'] for msg in substituted_prompt])
@@ -178,16 +178,16 @@ class LLM():
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
-            if 'deepseeklocal' in self.llm:
+            if 'deepseeklocal' in self.server_name:
                 text = response.json()['choices'][0]['text']
                 if (index := text.find('</think>')) > -1:
                     text = text[index+8:].strip()
                 return text
-            elif 'local' in self.llm:
+            elif 'local' in self.server_name:
                 text = response.content.decode('utf-8').strip()
                 return text
 
-            if 'deepseeklocal' in self.llm and (index := text.find('</think>')) > -1:
+            if 'deepseeklocal' in self.server_name and (index := text.find('</think>')) > -1:
                 text = text[index+8:].strip()
                 return text
             if text.startswith('{'):

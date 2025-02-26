@@ -48,6 +48,10 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
         onMouseEnter={() => setShowNarrative(true)}
         onMouseLeave={() => setShowNarrative(false)}
       >
+        <div className="name-column">
+          <div className="character-name">{character.name}</div>
+          <div className="character-signals">{character.signals}</div>
+        </div>
         <img 
           src={character.image} 
           alt={character.name} 
@@ -60,7 +64,6 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
       
       <div className="middle-section">
         <div className="section-container">
-          <h4>Tasks</h4>
           <div className="tasks-area">
             {character.tasks?.map((task, index) => (
               <div key={index} className="task-item">
@@ -70,7 +73,6 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
           </div>
         </div>
         <div className="section-container">
-          <h4>History</h4>
           <div className="history-area">
             <div className="history-item">
               {character.history}
@@ -80,7 +82,6 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
       </div>
       
       <div className="thoughts-area">
-        <h4>Thoughts</h4>
         <div className="thoughts-content">
           {character.thoughts}
         </div>

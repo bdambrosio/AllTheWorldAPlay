@@ -10,14 +10,15 @@ from datetime import datetime, timedelta
 import utils.choice as choice
 import asyncio
 class Context():
-    def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server='local'):
+    def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
         self.initial_state = situation
         self.current_state = situation
         self.actors = actors
+        self.npcs = [] # created as needed
         self.map = map.WorldMap(60, 60, terrain_types, resources)
         self.step = step  # amount of time to step per scene update
         self.name = 'World'
-        self.llm = llm_api.LLM(server)
+        self.llm = llm_api.LLM(server_name)
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = step  # Amount to advance each step
         # Add new fields for UI independence
@@ -28,6 +29,7 @@ class Context():
         self.message_queue = Queue()  # Queue for messages to be sent to the UI
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
+        
         for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
@@ -116,6 +118,25 @@ class Context():
         for actor in self.actors:
             if actor.name == name or actor.name in name:
                 return actor
+        return None
+
+    def plausible_npc(self, name):
+        """Check if a name is plausible for an NPC"""
+        return name.lower() in ['father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman']
+
+    def get_npc_by_name(self, name, create_if_missing=False):
+        """Helper to find NPC by name"""
+        for actor in self.npcs:
+            if actor.name == name or actor.name in name:
+                return actor
+        # create a new NPC
+        if create_if_missing and self.plausible_npc(name):
+            from sim.agh import Character
+            npc = Character(name, character_description=f'{name} is a non-player character', server_name=self.llm.server_name)
+            npc.set_context(self)
+            npc.llm = self.llm
+            self.npcs.append(npc)
+            return npc
         return None
 
     def world_updates_from_act_consequences(self, consequences):
@@ -339,17 +360,19 @@ Respond with an updated world state description reflecting a time passage of {{$
 Include ONLY the concise updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
-Limit your total response to about 330 words
+Limit your total response to about 270 words
 Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
 <end/>""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
-                                temp=0.6, stops=['<end/>'], max_tokens=700)
+                                temp=0.6, stops=['<end/>'], max_tokens=450)
         new_situation = xml.find('<situation>', response)
         if new_situation is not None:
             updates = self.world_updates_from_act_consequences(new_situation)
             self.current_state = new_situation.replace('\n\n','\n')
+            self.show = new_situation
+            self.message_queue.put({'name':self.name, 'text':self.show})
             self.show = '' # has been added to message queue!
             await asyncio.sleep(0.1)
         # self.current_state += '\n'+updates
