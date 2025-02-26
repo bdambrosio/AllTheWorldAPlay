@@ -5,7 +5,7 @@ import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
 import plays.config as configuration
 
-server = configuration.server
+server_name = configuration.server_name
 class GardenTerrain(Enum):
     Grass = 1      # Roads and walkways
     Tree = 2    # Commercial/residential buildings
@@ -27,7 +27,7 @@ class GardenResource(Enum):
 lemon = agh.Agh("Lemonade", """I am a pale grey kitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
-My name is Lemonade, others often call me Lemon""", server=server)
+My name is Lemonade, others often call me Lemon""", server_name=server_name)
 
 # Drives are what cause a character to create tasks.
 # Below is the default an agh inherits if you don't override, as we do below.
@@ -52,7 +52,7 @@ lemon.set_drives([
 meow = agh.Agh("Meow-Meow", """I am a grey full-grown tabby cat. 
 I love Lemonade, but sometimes need a break from her playfulness.
 I like to sleep, and occasionally hunt bugs and butterflys.
-My name is Meow-Meow""", server=server)
+My name is Meow-Meow""", server_name=server_name)
 meow.set_drives([
     "keep watch over Lemonade and keep her safe.",
     "play with Lemonade and share in her adventures.",
@@ -65,8 +65,8 @@ meow.add_to_history("Where did that Lemon go this time?")
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = context.Context([lemon, meow],
                 """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happenning.
-""", terrain_types=GardenTerrain, resources=GardenResource, server=server)
+""", terrain_types=GardenTerrain, resources=GardenResource, server_name=server_name)
 
 #worldsim.IMAGEGENERATOR = 'tti_serve'
 
-#worldsim.main(W, server=server)
+#worldsim.main(W, server_name=server_name)

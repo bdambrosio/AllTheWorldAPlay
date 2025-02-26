@@ -84,6 +84,9 @@ class Goal:
         self.progress = 0
         self.tasks = []
 
+    def short_string(self):
+        return f'{self.name}: {self.description}; \n termination: {self.termination}'
+    
     def to_string(self):
         return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; signals: {self.signalCluster.text}; termination: {self.termination}'
     
@@ -101,6 +104,9 @@ class Task:
         self.goal = goal
         self.acts = []
         self.progress = 0
+
+    def short_string(self):
+        return f'{self.name}: {self.description} \n reason: {self.reason} \n termination: {self.termination}'
 
     def to_string(self):
         return f'Task {self.name}: {self.description}; actors: {[actor.name for actor in self.actors]}; reason: {self.reason}; termination: {self.termination}'
@@ -125,11 +131,11 @@ class Act:
 
 # Character base class
 class Character:
-    def __init__(self, name, character_description, server='local', mapAgent=True):
+    def __init__(self, name, character_description, server_name='local', mapAgent=True):
         print(f"Initializing Character {name}")  # Debug print
         self.name = name
         self.character = character_description
-        self.llm = llm_api.LLM(server)
+        self.llm = llm_api.LLM(server_name)
         self.context = None
 
         self.show = ''  # to be displayed by main thread in UI public text widget
@@ -223,7 +229,7 @@ class Character:
             actors =  [self] + actors
 
         if name and description and reason and termination and actor_names:
-            task = Task(name, description, reason, termination, goal, actors)
+            task = Task(name, description, reason, termination.replace('##','').strip(), goal, actors)
             return task
         else:
             print(f"Warning: Invalid task generation response for {task_hash}") 
@@ -337,7 +343,7 @@ class Character:
         self.focus_goal = None
         self.goals = []
         self.focus_task = Stack()
-
+        self.intensions = []
         # Reset new memory counter
         self.new_memory_cnt = 0
 
@@ -349,8 +355,10 @@ class Character:
             actor = self.context.get_actor_by_name(candidate.strip())
             if actor:
                 return actor
-
-        #actor = self.say_target('', reference, task)
+            actor = self.context.get_npc_by_name(candidate.strip(), create_if_missing=True)
+            if actor:
+                return actor
+        
         return None
 
     def say_target(self, act_name, text, source=None):
@@ -637,7 +645,7 @@ water: the water resources visible
     def generate_image_description(self):
         """Generate a description of the character for image generation
             character_description, current activity, emotional state, and environment"""
-        description = self.character
+        description = 'Portrait of '+self.character
         try:
             context = ''
             i = 0
@@ -646,7 +654,7 @@ water: the water resources visible
                 context += candidates[i]+'. '
                 i +=1
             context = context[:96]
-            description = self.name + ', '+'. '.join(self.character.split('.')[:2])[6:]
+            description = '. '.join(self.character.split('.')[:2])[8:] # assumes character description starts with 'You are <name>'
             
             description = description
             prompt = [UserMessage(content="""Following is a description of a character in a play. 
@@ -678,7 +686,7 @@ adjective, adjective, adjective
             #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
             if response:
-                description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. '+context
+                description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. Background: '+context
             else:
                 description = description[:192-min(len(context), 48)] + ', '+context
 
@@ -922,7 +930,7 @@ End response with:
         return satisfied
 
 
-    async def acts(self, target: Character, act_name: str, act_arg: str='', reason: str='', source: Task=None):
+    async def acts(self, act:Act, target: Character, act_name: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
         # Create action record with state before action
         try:
@@ -991,7 +999,7 @@ End response with:
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
             await asyncio.sleep(0.1)
 
-        if act_name == 'Think' or act_name == 'Say':
+        if act_name == 'Think': # Say is handled below
             # Update actions based on thought
             self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
             self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
@@ -1013,7 +1021,7 @@ End response with:
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
-            if target != None: #target can be an NPC or an NPC-like object
+            if target: 
                 if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
                     # initiating a dialog
                     dialog_task = Task('dialog with '+target.name, 
@@ -1026,6 +1034,23 @@ End response with:
                 self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
                 self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
                 await target.hear(self, act_arg, source)
+            elif act.target:
+                # target is an NPC-like object
+                target_name = act.target.strip()
+                target = self.context.get_npc_by_name(target_name, create_if_missing=True)
+                if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
+                    # initiating a dialog
+                    dialog_task = Task('dialog with '+target.name, 
+                                        description=self.name + ' says ' + act_arg, 
+                                        reason=reason, 
+                                        termination='natural end of dialog', 
+                                        goal=None,
+                                        actors=[self, target])
+                    self.focus_task.push(dialog_task)
+                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
+                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
+
+                self.add_perceptual_input(f"You say: {act_arg}", mode='internal')
 
         self.previous_action_name = act_name           
 
@@ -1162,7 +1187,7 @@ End response with:
                 goal = Goal(name=name, 
                             actors=[self],
                             description=description, 
-                            termination=termination, 
+                            termination=termination.replace('##','').strip(), 
                             signalCluster=signalCluster, 
                             drives=signalCluster.drives)
                 print(f'   generated goal: '+goal.to_string())
@@ -1227,12 +1252,13 @@ And the recent events in the world:
 
 Create up to {{$n_new_tasks}} specific, actionable tasks.
                               
-The new tasks should be distinct from one another, and jointly cover both the focus goal and as many of your intensions as possible.
+The new tasks should be distinct from one another, and cover both the focus goal.
+Where possible, use one or more of your intensions in generating task alternatives.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#plan
+#task
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
@@ -1242,8 +1268,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 
 In refering to other actors. always use their name, without other labels like 'Agent', 
 and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
-Respond ONLY with three plans in hash-formatted-text format and each ending with ## as shown above.
-Order plans from highest to lowest priority.
+Respond ONLY with three tasks in hash-formatted-text format and each ending with ## as shown above.
+Order tasks from highest to lowest priority.
 End response with:
 <end/>
 """)]
@@ -1645,7 +1671,6 @@ End your response with:
                         act = None  # force redo
                         temp += .3
                     else:
-                        act = None  # skip task, nothing interesting to do
                         pass
 
             elif act.mode == 'Do' or act.mode == 'Move':
@@ -1657,7 +1682,6 @@ End your response with:
                         #act = None  # force redo
                         temp += .3
                     else:
-                        #act = None #skip task, nothing interesting to do
                         pass
             elif act.mode == self.previous_action_name:
                 dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
@@ -1669,7 +1693,6 @@ End your response with:
                     act = None  # force redo
                     temp += .3
                 else:
-                    act = None #skip task, nothing interesting to do
                     pass
             tries += 1
 
@@ -1770,10 +1793,11 @@ Consider the current task and action reason in determining if there is a new tas
 Do not include any intensions that are similar to those already formed.
 Do not include any intensions that are similar to the focus task.
 
+Respond with at most one task expressing an intension in the text.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#plan
+#task
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
@@ -1796,7 +1820,7 @@ Madam
 </name>
 
 Response:
-#plan
+#task
 #name Head to the office for the day.
 #description Head to the office for the day.
 #reason Need to go to work.
@@ -1813,7 +1837,7 @@ Hank
 </name>
 
 Response:
-#plan
+#task
 #name Reassure Annie
 #description Reassure Annie
 #reason Need to reassure Annie
@@ -1830,7 +1854,7 @@ Annie
 </name>
 
 Response:
-#plan
+#task
 #name Call maintenance about the disposal noise
 #description Call maintenance about the disposal noise
 
@@ -1838,7 +1862,7 @@ Text:
 'Reflect on my thoughts and feelings to gain clarity and understanding, which will ultimately guide me towards finding my place in the world.'
 
 Response:
-#plan
+#task
 #name Reflect on my thoughts and feelings
 #description Reflect on my thoughts and feelings
 #reason Gain clarity and understanding
@@ -1859,7 +1883,7 @@ End your response with:
                                  "intensions":'\n'.join(task.to_string() for task in self.intensions[-5:]),
                                  "name":self.name}, 
                                  prompt, temp=0.1, stops=['</end>'], max_tokens=150)
-        intension_hashes = hash_utils.findall('plan', response)
+        intension_hashes = hash_utils.findall('task', response)
         if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
             return
@@ -1903,7 +1927,7 @@ End your response with:
 {{$joint_tasks}}
 </joint_tasks>
 
-Extract from this transcript new commitments to act made by self, {{$name}}, to other, {{$target_name}}.
+Extract from this transcript up to three new commitments to act made by self, {{$name}}, to other, {{$target_name}}.
 
 Extract only commitments made by self that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
 Note that the joint_tasks, as listed above, are commitments made by both self and other to work together, and should not be reported as new commitments here.
@@ -1916,7 +1940,7 @@ Consider the all_tasks pendingand current task and action reason in determining 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#plan
+#task
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #actors {{$name}}
@@ -1948,7 +1972,7 @@ Jean
 </other>
 
 Response:
-#plan
+#task
 #name bring ropes
 #description bring ropes to meeting with Jean
 #reason in case the well handle breaks
@@ -1979,7 +2003,7 @@ End your response with:
                       termination='natural end of dialog', 
                       goal=None,
                       actors=[self, target])    
-        intension_hashes = hash_utils.findall('plan', response)
+        intension_hashes = hash_utils.findall('task', response)
         if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
             return
@@ -2011,7 +2035,7 @@ End your response with:
 </transcript>
 
 
-Extract from this transcript new commitments to act jointly made by self, {{$name}} and other, {{$target_name}}.
+Extract from this transcript the single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
 Extract only new joint actions that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
 If more than one joint action is found, and they are similar, combine them into a single commitment.
 If more than one joint action is found, and they are different, and there are dependencies among them, use the 'needs' tag to indicate the dependencies.
@@ -2023,7 +2047,7 @@ Consider the all_tasks and current task and action reason in determining if ther
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#plan
+#task
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #actors {{$name}}, {{$target_name}}
@@ -2055,14 +2079,14 @@ Jean
 </other>
 
 Response:
-#plan
+#task
 #name Meet by the well
 #description Meet by the well  
 #actors Jean, Francoise
 #reason get water for the south field
 #termination water bucket is full
 ##
-#plan
+#task
 #name Water south field
 #description Water the south field
 #needs Meet by the well
@@ -2070,7 +2094,7 @@ Response:
 #reason crops are getting parched
 #termination south field is watered
 ##
-#plan
+#task
 #name Check the wheat
 #description Check the wheat
 #actors Jean, Francoise
@@ -2099,7 +2123,7 @@ End your response with:
                       termination='natural end of dialog', 
                       goal=None,
                       actors=[self, target])    
-        intension_hashes = hash_utils.findall('plan', response)
+        intension_hashes = hash_utils.findall('task', response)
         if len(intension_hashes) == 0:
             print(f'no new joint intensions in turn')
             return
@@ -2107,7 +2131,7 @@ End your response with:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
-            self.intensions.append(intension)
+                self.intensions.append(intension)
         return intension_hashes
 
     def random_string(self, length=8):
@@ -2125,7 +2149,7 @@ End your response with:
                 content = re.sub(r'\.\.\..*?\.\.\.', '', message)
                 self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, content)
         
-        self.acts(to_actor, 'Say', message, '', source)
+        self.acts(Act(name='tell', mode='Say', target=to_actor, action=message, reason=message, source=source), to_actor, 'tell', message, self.reason, source)
         
 
     def natural_dialog_end(self, from_actor):
@@ -2171,7 +2195,7 @@ End your response with:
         if self.name == 'Owl' and from_actor.name == 'Doc':
             # doc is asking a question or assigning a task
             new_task_name = self.random_string()
-            new_task = f"""#plan
+            new_task = f"""#task
 #name {new_task_name}
 #description {message}
 #termination_check Responded
@@ -2234,7 +2258,7 @@ End your response with:
                                                                               joint_tasks)
                 self.driveSignalManager.recluster()
                 from_actor.driveSignalManager.recluster()
-            return
+                return
 
         action, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         await self.act_on_action(action, response_source)
@@ -2572,30 +2596,30 @@ End your response with:
             #responses, at least, explicitly name target of speech.
         if action.target and action.target != self:
             target_name = action.target.name
+            target = action.target
         else:
             target_name = self.say_target(act_name, act_arg, source)
             if target_name != None:
                 target = self.context.get_actor_by_name(target_name)
-        await self.acts(target, act_name, act_arg, self.reason, source)
+        await self.acts(action, target, act_name, act_arg, self.reason, source)
 
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'
+        action = ''
         if self.act:
             action = f'{self.act.name}: {self.act.action}'
-        else:
-            action = ''
-        if self.thought is None:
-            return ''
-        else:
-            return self.thought.strip()
+        reason = ''
+        if self.focus_task.peek() and type(self.focus_task.peek()) == Task:
+            reason = f'{self.focus_task.peek().reason}'
+        return f'{action} \n{reason} \n{self.thought.strip()}'
    
     def format_tasks_for_UI(self):
         """Format tasks for UI display as array of strings"""
         tasks = []
         if self.focus_goal:
-            tasks.append(f"Goal: {self.focus_goal.to_string()}")
+            tasks.append(f"Goal: {self.focus_goal.short_string()}")
         if self.focus_task.peek():
-            tasks.append(f" \nTask: {self.focus_task.peek().to_string()}")
+            tasks.append(f"Task: {self.focus_task.peek().short_string()}")
         return tasks
     
     #def format_history(self):
@@ -2614,7 +2638,8 @@ End your response with:
                 'recent_events': self.narrative.recent_events,
                 'ongoing_activities': self.narrative.ongoing_activities,
                 'relationships': self.actor_models.get_known_relationships(),
-            }
+            },
+            'signals': self.driveSignalManager.get_scored_clusters()[0][0].text
         }
 
     def find_say_result(self) -> str:

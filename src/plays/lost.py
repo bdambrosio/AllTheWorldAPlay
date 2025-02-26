@@ -4,7 +4,7 @@ import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
 import plays.config as configuration
 
-server = configuration.server
+server_name = configuration.server_name
 S = agh.Character("Samantha", """You are Samantha, a healthy, attractive young woman. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 
@@ -12,7 +12,7 @@ You have a uncomfortable history, maybe it is just as well you don't remember it
 You are very informal, chatty, think and speak in informal teen style, and are a playful and flirty when relaxed. 
 You are comfortable on long treks, and are unafraid of hard work. 
 You are wary of strangers. 
-""", server=server)
+""", server_name=server_name)
 
 # Drives are what cause a character to create tasks.
 # Below is the default an agh inherits if you don't override, as we do below.
@@ -46,7 +46,7 @@ You are strong, and think you love the outdoors, but are basically a nerd.
 You yearn for something more, but don't know what it is.
 You are socially awkward, especially around strangers. 
 You speak in informally.
-""", server=server)
+""", server_name=server_name)
 
 J.set_drives([
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
@@ -65,7 +65,7 @@ J.add_to_history("You think Whoever she is, she is pretty!")
 W = context.Context([S, J],
                 """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humanity. 
 It is a early morning on what seems like it will be a warm, sunny day.
-Two people are standing in the middle of the forest, looking around in confusion.""", server=server)
+Two people are standing in the middle of the forest, looking around in confusion.""", server_name=server_name)
 
 # uncomment if running from command line to use PyQt UI
 #worldsim.main(W, server=server)

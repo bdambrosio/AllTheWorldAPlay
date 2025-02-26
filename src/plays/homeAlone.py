@@ -4,10 +4,10 @@ import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
 import plays.config as configuration
 
-server = configuration.server
+server_name = configuration.server_name
 # Create characters
 
-jill = agh.Agh("Jill", "I am a young confused woman.", server=server)
+jill = agh.Agh("Jill", "I am a young confused woman.", server_name=server_name)
 jill.set_drives([
     "self-knowledge: comfort with knowing one's place in the world.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
@@ -16,6 +16,6 @@ jill.add_to_history('Nothing except the awareness that I perceive nothing.')
 
 
 W = context.Context([jill],
-            "A soft glow of light in the room, a warm, cozy atmosphere.", server=server)
+            "A soft glow of light in the room, a warm, cozy atmosphere.", server_name=server_name)
 
-#worldsim.main(context, server='local')
+#worldsim.main(context, server_name=server_name)

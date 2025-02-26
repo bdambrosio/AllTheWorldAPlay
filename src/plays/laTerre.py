@@ -5,7 +5,7 @@ import sim.agh as agh
 from sim.context import Context
 import plays.config as configuration
 
-server = configuration.server
+server_name = configuration.server_name
 class RuralTerrain(Enum):
     Road = 1      # Roads and walkways
     Barn = 2    # Commercial/residential buildings
@@ -26,7 +26,7 @@ You are strong, honest and committed to working the land, but have a quick tempe
 You speak plainly and directly, in the style of a 19th century french peasant speaking to an acquaintance.
 You hope to inherit a share of the family farm and make a living as a farmer.
 Despite being french, you speak in 19th century peasant English.
-Your name is Jean.""", server=server)
+Your name is Jean.""", server_name=server_name)
 J.drives = [Drive("maintaining and working the family farm"),
 Drive("gaining your rightful inheritance - justice and fairness in how the land is divided"),
 Drive("finding love and a wife to build a family with"),
@@ -40,7 +40,7 @@ You conceal your feelings and speak carefully, knowing every word will be gossip
 You dream of marrying and having a farm of your own to manage one day.
 You speak plainly and directly, in the style of a 19th century french peasant speaking to an acquaintance.
 Despite being french, you speak in 19th century peasant English.
-Your name is Francoise.""", server=server)
+Your name is Francoise.""", server_name=server_name)
 F.drives = [Drive("finding a good husband to marry, gaining status and security"),
 Drive("avoiding scandal and protecting your reputation"),
 Drive("helping your family with the endless chores"),
@@ -51,6 +51,6 @@ F.add_perceptual_input("You think – I saw that Jean Macquart again in the fiel
 
 W =Context([J, F],
 """A small 19th century French farming village surrounded by fields ripe with wheat and other crops. 
-It is late afternoon on a hot summer day.""", terrain_types=RuralTerrain, resources=RuralResource, server=server)
+It is late afternoon on a hot summer day.""", terrain_types=RuralTerrain, resources=RuralResource, server_name=server_name)
 #worldsim.IMAGEGENERATOR = 'tti_serve'
 #worldsim.main(W)

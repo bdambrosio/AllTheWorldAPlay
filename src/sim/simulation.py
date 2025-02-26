@@ -42,6 +42,7 @@ class SimulationServer:
         self.paused = False
         self.watcher = None  # Add watcher storage
         self.steps_since_last_update = 0
+        self.run_task = None  # Add field for run task
         
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
@@ -125,14 +126,14 @@ class SimulationServer:
             
             if not hasattr(module, 'W'):
                 raise ValueError("Play file must define a 'W' variable")
-            if hasattr(module, 'server'):
-                self.server = module.server
+            if hasattr(module, 'server_name'):
+                self.server_name = module.server_name
             else:
-                self.server = 'deepseek'
+                self.server_name = 'deepseek'
             if hasattr(module, 'world_name'):
                 self.world_name = module.world_name
             else:
-                self.world_name = 'Lost'
+                self.world_name = 'World'
             
             self.context = module.W
             await self.send_command_ack('load_play')
@@ -169,8 +170,7 @@ class SimulationServer:
             
                 await self.update_character_states()
                 #now handle context
-                if self.steps_since_last_update > random.randint(3, 5):    
-                    await self.send_log_update('*** updating world ***')
+                if self.steps_since_last_update > random.randint(4, 6):    
                     await asyncio.sleep(0.1)
                     await self.context.senses('')
                     await self.send_world_update()
@@ -185,35 +185,67 @@ class SimulationServer:
         finally:
             self.processing = False  # Clear processing flag
             
+    async def run_loop(self):
+        """Separate task for running continuous steps"""
+        try:
+            while self.running and not self.paused:
+                try:
+                    # Complete the full step
+                    await self.step()
+                    
+                    # Only check for cancellation after step completes
+                    if not self.running or self.paused:
+                        break
+                        
+                    # Brief delay between steps
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.error(f"Error in run loop: {e}")
+                    logger.error(f"Traceback:\n{traceback.format_exc()}")
+                    self.running = False
+                    self.paused = True
+                    await self.send_result({
+                        'type': 'error',
+                        'error': f'Run loop error: {str(e)}'
+                    })
+                    break
+        finally:
+            # Ensure we're in a clean state when exiting
+            self.processing = False
+                
     async def run_cmd(self):
         """Start continuous simulation"""
         self.running = True
         self.paused = False
         
-        # Start continuous execution loop
-        while self.running and not self.paused:
+        # Cancel existing run task if any
+        if self.run_task:
+            self.run_task.cancel()
             try:
-                await self.step()
-                # Brief delay between steps
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                logger.error(f"Error in run loop: {e}")
-                logger.error(f"Traceback:\n{traceback.format_exc()}")
-                self.running = False
-                self.paused = True
-                await self.send_result({
-                    'type': 'error',
-                    'error': f'Run loop error: {str(e)}'
-                })
-                break
+                await self.run_task
+            except asyncio.CancelledError:
+                pass
+                
+        # Start new run task
+        self.run_task = asyncio.create_task(self.run_loop())
         
-        # Send command acknowledgment when run stops
+        # Send command acknowledgment
         await self.send_command_ack('run')
         
     async def pause_cmd(self):
         """Pause running simulation"""
+        # Signal the run loop to stop at next safe point
         self.paused = True
-        self.running = False  # Also clear running flag
+        self.running = False
+        
+        # Wait for run task to complete its current step and exit
+        if self.run_task:
+            try:
+                await self.run_task
+            except asyncio.CancelledError:
+                pass
+            self.run_task = None
+            
         await self.send_command_ack('pause')  # Acknowledge pause command
         
     async def stop_cmd(self):
