@@ -5,6 +5,8 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
   const [explorerState, setExplorerState] = useState(lastState);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('core');
+  const [chatInput, setChatInput] = useState('');
+  const [chatOutput, setChatOutput] = useState('');
 
   useEffect(() => {
     // Update state when lastState changes
@@ -71,6 +73,12 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
         >
           Signals
         </button>
+        <button 
+          className={activeTab === 'chat' ? 'active' : ''} 
+          onClick={() => setActiveTab('chat')}
+        >
+          Chat
+        </button>
       </div>
 
       <div className="modal-content">
@@ -83,7 +91,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
 
             <h4>Drives</h4>
             <div className="drives-list">
-              {explorerState.drives.map((drive, i) => (
+              {explorerState.drives?.map((drive, i) => (
                 <div key={i} className="drive-item">
                   <div className="drive-text">{drive.text}</div>
                 </div>
@@ -92,7 +100,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
 
             <h4>Current Perceptions</h4>
             <div className="perceptions-list">
-              {explorerState.emotional_state.map((percept, i) => (
+              {explorerState.emotional_state?.map((percept, i) => (
                 <div key={i} className="percept-item">
                   <div className="percept-header">
                     <span className="percept-mode">{percept.mode}</span>
@@ -105,14 +113,14 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
 
             <h4>Last Action</h4>
             <div className="action-details">
-              <div>Name: {explorerState.lastAction.name}</div>
-              <div>Result: {explorerState.lastAction.result}</div>
-              <div>Reason: {explorerState.lastAction.reason}</div>
+              <div>Name: {explorerState.lastAction?.name || 'None'}</div>
+              <div>Result: {explorerState.lastAction?.result || 'None'}</div>
+              <div>Reason: {explorerState.lastAction?.reason || 'None'}</div>
             </div>
 
             <h4>Recent Actions</h4>
             <div className="actions-list">
-              {explorerState.cognitive.actions.map((action, i) => (
+              {explorerState.cognitive?.actions?.map((action, i) => (
                 <div key={i} className="action-item">{action}</div>
               ))}
             </div>
@@ -123,7 +131,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
           <div className="memory-state">
             <h4>Recent Memories</h4>
             <div className="memories-list">
-              {explorerState.memories.map((memory, i) => (
+              {explorerState.memories?.map((memory, i) => (
                 <div key={i} className="memory-item">
                   <div className="memory-time">{new Date(memory.timestamp).toLocaleString()}</div>
                   <div className="memory-text">{memory.text}</div>
@@ -152,7 +160,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
           <div className="social-state">
             <h4>Known Characters</h4>
             <div className="actors-list">
-              {explorerState.social.known_actors.map((actor, i) => (
+              {explorerState.social?.known_actors?.map((actor, i) => (
                 <div key={i} className="actor-item">
                   <div className="actor-header">
                     <span className="actor-name">{actor.name}</span>
@@ -180,26 +188,26 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
           <div className="cognitive-state">
             <h4>Goals</h4>
             <div className="goals-list">
-              {explorerState.cognitive.goals.map((goal, i) => (
+              {explorerState.cognitive?.goals?.map((goal, i) => (
                 <div key={i} className="goal-item">
                   <div className="goal-name">{goal.name}</div>
                   <div className="goal-description">{goal.description}</div>
                   <div className="goal-termination">Termination: {goal.termination}</div>
                   <div className="goal-progress">Progress: {goal.progress}</div>
-                  <div className="goal-drives">Drives: {goal.drives}</div>
+                  <div className="goal-drives">Drives: {goal.drives?.join(', ')}</div>
                 </div>
               ))}
             </div>
 
             <h4>Tasks</h4>
             <div className="tasks-list">
-              {explorerState.cognitive.tasks.map((task, i) => (
+              {explorerState.cognitive?.tasks?.map((task, i) => (
                 <div key={i} className="task-item">
                   <div className="task-name">{task.name}</div>
                   <div className="task-description">{task.description}</div>
                   <div className="task-reason">Reason: {task.reason}</div>
-                  <div className="task-actors">Actors: {task.actors.join(', ')}</div>
-                  <div className="task-needs">Needs: {task.needs.join(', ')}</div>
+                  <div className="task-actors">Actors: {task.actors?.join(', ')}</div>
+                  <div className="task-needs">Needs: {task.needs?.join(', ')}</div>
                 </div>
               ))}
             </div>
@@ -217,7 +225,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
                       {cluster.is_opportunity ? '✓ Opportunity' : '⚠ Issue'}
                     </span>
                     <span className="cluster-metrics">
-                      Score: {cluster.score.toFixed(1)}
+                      Score: {cluster.score?.toFixed(1)}
                     </span>
                   </div>
                   <div className="cluster-text">{cluster.text}</div>
@@ -226,7 +234,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
                   </div>
                   <div className="cluster-signals">
                     Related signals:
-                    {cluster.signals.map((signal, j) => (
+                    {cluster.signals?.map((signal, j) => (
                       <div key={j} className="signal-item">• {signal}</div>
                     ))}
                   </div>
@@ -236,6 +244,36 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'chat' && (
+          <div className="chat-interface">
+            <textarea 
+              className="chat-input"
+              placeholder="Type your message..."
+              rows={4}
+              onChange={(e) => setChatInput(e.target.value)}
+              value={chatInput}
+            />
+            <button 
+              className="chat-send-button"
+              onClick={() => {
+                sendCommand('inject', { 
+                  target: character.name, 
+                  text: chatInput 
+                });
+                setChatInput('');
+              }}
+            >
+              Send
+            </button>
+            <textarea 
+              className="chat-output"
+              rows={8}
+              value={chatOutput}
+              readOnly
+            />
           </div>
         )}
       </div>

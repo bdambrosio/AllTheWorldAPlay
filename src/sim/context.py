@@ -122,7 +122,7 @@ class Context():
 
     def plausible_npc(self, name):
         """Check if a name is plausible for an NPC"""
-        return name.lower() in ['father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman', 'doctor', 'nurse', 'teacher', 'student', 'police', 'fireman']
+        return name.lower() in ['viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']
 
     def get_npc_by_name(self, name, create_if_missing=False):
         """Helper to find NPC by name"""
@@ -139,6 +139,21 @@ class Context():
             return npc
         return None
 
+    def resolve_reference(self, reference, create_if_missing=False):
+        """Resolve a reference to an actor"""
+        candidates = reference.strip().split()
+        for candidate in candidates:
+            if len(candidate) < 3 or candidate.lower() == 'none' or candidate[0].isdigit():
+                continue
+            actor = self.get_actor_by_name(candidate.strip())
+            if actor:
+                return actor
+            actor = self.get_npc_by_name(candidate.strip(), create_if_missing=create_if_missing)
+            if actor:
+                return actor
+        
+        return None
+    
     def world_updates_from_act_consequences(self, consequences):
         """ This needs overhaul to integrate and maintain consistency with world map."""
         prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.

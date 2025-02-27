@@ -121,6 +121,15 @@ function App() {
                 paused: true
               }));
               break;
+            case 'chat_response':
+              setCharacters(prev => ({
+                ...prev,
+                [data.char_name]: {
+                  ...prev[data.char_name],
+                  chatOutput: data.text
+                }
+              }));
+              break;
             default:
               console.log('Unknown message type:', data.type);
           }

@@ -65,11 +65,12 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
       <div className="middle-section">
         <div className="section-container">
           <div className="tasks-area">
-            {character.tasks?.map((task, index) => (
-              <div key={index} className="task-item">
-                {task}
-              </div>
-            ))}
+            {character.tasks?.[0]}
+          </div>
+        </div>
+        <div className="section-container">
+          <div className="tasks-area">
+            {character.tasks?.[1]}
           </div>
         </div>
         <div className="section-container">

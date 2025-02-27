@@ -7,7 +7,7 @@ import os, json, math, time, requests, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sim.agh import Character
+from sim.agh import Act, Character, Task
 from sim.context import Context
 from utils.llm_api import LLM, generate_image
 import base64
@@ -43,7 +43,7 @@ class SimulationServer:
         self.watcher = None  # Add watcher storage
         self.steps_since_last_update = 0
         self.run_task = None  # Add field for run task
-        
+        self.image_cache = {}
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
         self.result_socket.connect("tcp://127.0.0.1:5556")
@@ -61,20 +61,25 @@ class SimulationServer:
         for actor in self.context.actors:
             await self.send_character_update(actor)
     
-    async def send_character_update(self, actor):
+    async def send_character_update(self, actor, new_image=True):
         actor_data = actor.to_json()
         try:
-            description = actor.generate_image_description()
-            if description:
-                image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
-                with open(image_path, 'rb') as f:
-                    image_data = base64.b64encode(f.read()).decode()
-                    actor_data['image'] = image_data
+            if new_image:
+                description = actor.generate_image_description()
+                if description:
+                    image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
+                    with open(image_path, 'rb') as f:
+                        image_data = base64.b64encode(f.read()).decode()
+                        actor_data['image'] = image_data
+                        self.image_cache[actor.name] = image_data
+            else:
+                actor_data['image'] = self.image_cache[actor.name]
             
             await self.send_result({
                 'type': 'character_update',
                 'character': actor_data
             })
+            await asyncio.sleep(0.1)
         except Exception as e:
             print(f"Error generating image for {actor.name}: {e}")
     
@@ -268,22 +273,27 @@ class SimulationServer:
             self.is_running = False
             raise  # Re-raise to maintain existing error handling
          
-    async def inject_cmd(self, target_name, text, update_callback=None):
+    async def inject_cmd(self, command):
         """Route inject command using watcher pattern from worldsim"""
         try:
-            if self.watcher is None:
-                self.watcher = Human('Watcher', "Human user representative", None)
-                self.watcher.set_context(self.context)
-                self.context.actors.append(self.watcher)
-            if target_name == 'World':
-                # Stub for now
-                return
-            # Format message as "character-name, message" like worldsim
-            formatted_message = f"{target_name}, {text}"
-            # hearer will directly push to message queue
-            await self.watcher.inject(formatted_message)
+            target_name = command.get('target')
+            target = self.context.resolve_reference(target_name)
+            if target is None:
+                raise ValueError(f"Target {target_name} not found")
+            text = command.get('text')
+            viewer = self.context.resolve_reference('viewer', create_if_missing=True)
+            # does an npc have a task or goal?
+            task = Task(name='dialog with '+target_name, description='inject', reason='inject', termination='', goal=None, actors=[viewer, target])
+            viewer.focus_task.push(task)
+            await viewer.act_on_action(Act('Say', 'Say', text, [viewer, target],'inject', None , target), task)
+            await asyncio.sleep(0.1)
+            await self.send_result({
+                'type': 'inject',
+                'message': f'{viewer.name} injects {target.name}: {text}'
+            })
+
         except Exception as e:
-            logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Error in simulation inject: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
             self.is_running = False
             raise  # Re-raise to maintain existing error handling
@@ -356,10 +366,13 @@ class SimulationServer:
         while True:
             if self.context and not self.context.message_queue.empty():
                 message = self.context.message_queue.get_nowait()
-                await self.send_result({
-                    'type': 'show_update',
-                    'message': message
-                })
+                if message['text'] == 'character_update':
+                    await self.send_character_update(message['name'], new_image=False)
+                else:
+                    await self.send_result({
+                        'type': 'show_update',
+                        'message': message
+                    })
             await asyncio.sleep(0.1)
         
     async def run(self):
