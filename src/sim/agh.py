@@ -187,7 +187,6 @@ class Character:
         self.memory_consolidator = MemoryConsolidator(self.llm)
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
-        self.watcher_message_pending = False
         self.next_task = None  # Add this line
         self.driveSignalManager = DriveSignalManager(self.llm)
         self.driveSignalManager.set_context(self.context)
@@ -223,7 +222,7 @@ class Character:
         except Exception as e:
             print(f"Warning: invalid actors field in {task_hash}") 
             actor_names = []
-        actors = [self.resolve_reference(actor_name, None) for actor_name in actor_names if actor_name]
+        actors = [self.context.resolve_reference(actor_name) for actor_name in actor_names if actor_name]
         actors = [actor for actor in actors if actor is not None]
         if not self in actors:
             actors =  [self] + actors
@@ -244,9 +243,9 @@ class Character:
         """
         mode = xml.find('<mode>', xml_string)
         action = xml.find('<specificAct>', xml_string)
-        target = xml.find('<target>', xml_string)
-        if target:
-            target = self.resolve_reference(target, task)
+        target_name = xml.find('<target>', xml_string)
+        if target_name:
+            target = self.context.resolve_reference(target_name, create_if_missing=True)
         # Clean up mode string and validate against Mode enum
         if mode:
             mode = mode.strip().capitalize()
@@ -261,7 +260,7 @@ class Character:
                 name=mode,
                 mode=mode, 
                 action=action,
-                actors=task.actors,
+                actors=[self, target] if target else [self],
                 reason=task.reason,
                 source=task,
                 target=target
@@ -348,19 +347,6 @@ class Character:
         self.new_memory_cnt = 0
 
 
-    def resolve_reference(self, reference, task):
-        """Resolve a reference to an actor"""
-        candidates = reference.strip().split()
-        for candidate in candidates:
-            actor = self.context.get_actor_by_name(candidate.strip())
-            if actor:
-                return actor
-            actor = self.context.get_npc_by_name(candidate.strip(), create_if_missing=True)
-            if actor:
-                return actor
-        
-        return None
-
     def say_target(self, act_name, text, source=None):
         """Determine the intended recipient of a message"""
         if len(self.context.actors) == 2:
@@ -414,11 +400,10 @@ End your response with:
 
         candidate = xml.find('<name>', response)
         if candidate is not None:
-            for actor in self.context.actors:
-                if actor.name in candidate:
-                    return actor.name
-        else:
-            return None
+            target = self.context.resolve_reference(candidate)
+            if target:
+                return target.name
+        return None
     # World interaction methods
     def look(self, interest='', height=5):
         """Get visual information about surroundings"""
@@ -645,7 +630,7 @@ water: the water resources visible
     def generate_image_description(self):
         """Generate a description of the character for image generation
             character_description, current activity, emotional state, and environment"""
-        description = 'Portrait of '+self.character
+
         try:
             context = ''
             i = 0
@@ -654,9 +639,8 @@ water: the water resources visible
                 context += candidates[i]+'. '
                 i +=1
             context = context[:96]
-            description = '. '.join(self.character.split('.')[:2])[8:] # assumes character description starts with 'You are <name>'
+            description = 'Portrait of '+'. '.join(self.character.split('.')[:2])[8:] # assumes character description starts with 'You are <name>'
             
-            description = description
             prompt = [UserMessage(content="""Following is a description of a character in a play. 
 
 <description>
@@ -681,8 +665,6 @@ adjective, adjective, adjective
             state = description + '.\n '+concerns +'\n'+ context
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.text for memory in recent_memories)
-
-
             #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
             if response:
@@ -801,10 +783,10 @@ Respond only with a single choice of mode. Do not include any introductory, disc
                 
         return related_drives
 
-    def format_history(self, n=2):
+    def format_history_for_UI(self, n=2):
         """Get n most recent memories"""
         recent_memories = self.structured_memory.get_recent(n)
-        return '\n'.join(memory.text for memory in recent_memories)
+        return ' \n '.join(memory.text for memory in recent_memories)
     
     def map_goals(self):
         """ map goals for llm input """
@@ -953,7 +935,7 @@ End response with:
             self.context.message_queue.put({'name':self.name, 'text':f"{self.show}"})  
             await asyncio.sleep(0.1)
         else:
-            self.thought +=  "\n..." + self.reason + "..."
+            self.thought +=  self.reason
 
         # Handle world interaction
         if act_name == 'Do':
@@ -1009,12 +991,11 @@ End response with:
         if act_name != 'Say' and act_name != 'Look' and act_name != 'Think':  # everyone you do or move or look if they are visible
             for actor in self.context.actors:
                 if actor != self:
-                    if source.name != 'dialog with watcher':  # when talking to watcher, others don't hear it
-                        if actor != target:
-                            actor_model = self.actor_models.get_actor_model(actor.name)
-                            if actor_model != None and actor_model.visible:
-                                percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
-                                actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
+                    if actor != target:
+                        actor_model = self.actor_models.get_actor_model(actor.name)
+                        if actor_model != None and actor_model.visible:
+                            percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
+                            actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         elif act_name == 'Say':# must be a say
             self.show += f"{act_arg}'"
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
@@ -1022,6 +1003,7 @@ End response with:
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if target: 
+                # NPCs are initialized with a dialog task
                 if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
                     # initiating a dialog
                     dialog_task = Task('dialog with '+target.name, 
@@ -1176,7 +1158,7 @@ End response with:
             termination = hash_utils.find('termination', response)
                 
             if other_actor_name:
-                other_actor = self.resolve_reference(other_actor_name, None)
+                other_actor = self.context.resolve_reference(other_actor_name, create_if_missing=True)
                 if other_actor is None:
                     actors = [self]
                 else:
@@ -1369,7 +1351,7 @@ End your response with:
             "memories": memory_text,  # Updated from 'memory'
             "events": consequences + '\n' + updates,
             "character": self.character,
-            "history": self.format_history(),
+            "history": self.format_history_for_UI(),
             "relationships": self.narrative.get_summary('medium')
         }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
 
@@ -1551,7 +1533,7 @@ Respond in XML:
 <actionable>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
   <specificAct>thoughts, words to speak, direction to move, or physical action</specificAct>
-  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise None</target>
+  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise None. </target>
 </actionable>
 
 ===Examples===
@@ -1663,7 +1645,7 @@ End your response with:
                 raise Exception(f"Error parsing XML, Invalid Act: {e}")
             # test for dup act
             if act.mode == 'Say':
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(6))
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(6))
                 if dup:
                     #print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
                     duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****"""
@@ -1674,7 +1656,7 @@ End your response with:
                         pass
 
             elif act.mode == 'Do' or act.mode == 'Move':
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(4))
                 if dup:
                     # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ""}\n    candidate act: {act}\n')
                     #print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
@@ -1684,7 +1666,7 @@ End your response with:
                     else:
                         pass
             elif act.mode == self.previous_action_name:
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history(4))
+                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(4))
                 if dup:
                     # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
                     #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
@@ -1758,8 +1740,8 @@ End your response with:
         # Rest of the existing function remains unchanged
         print(f'\n{self.name} Update actions from say or think\n {act_name}, {act_arg};  reason: {reason}')
         
-        if 'watcher' in source.name:  # Still skip watcher
-            print(f' source is watcher, no action updates')
+        if 'viewer' in source.name:  # Still skip viewer
+            print(f' source is viewer, no action updates')
             return
         
         prompt=[UserMessage(content="""Your task is to analyze the following text.
@@ -2204,7 +2186,6 @@ End your response with:
 #reason engaging with Doc: completing his assignments.
 """
             self.focus_task.push(new_task_name)
-            self.watcher_message_pending = True
             return
 
         # Remove text between ellipses - thoughts don't count as dialog
@@ -2230,7 +2211,7 @@ End your response with:
         # otherwise, we have an active dialog in progress, decide whether to close it or continue it
         else:
             self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
-            if self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end
+            if self.natural_dialog_end(from_actor) or (self.name == 'viewer'): # test if the dialog has reached a natural end, or hearer is viewer.
 
                 dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
                 self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
@@ -2399,7 +2380,7 @@ End your response with:
         else:
             response_source = source
             # self.show = response
-            if from_actor.name == 'Watcher':
+            if from_actor.name == 'viewer':
                 self.context.message_queue.put({'name':self.name, 'text':f"'{response}'"})
                 return response
 
@@ -2583,7 +2564,8 @@ End your response with:
 
     async def act_on_action(self, action, task):
         self.act = action
-        task.acts.append(action)
+        if task:
+            task.acts.append(action)
         act_name = action.name
         if act_name is not None:
             self.act_name = act_name.strip()
@@ -2601,6 +2583,8 @@ End your response with:
             target_name = self.say_target(act_name, act_arg, source)
             if target_name != None:
                 target = self.context.get_actor_by_name(target_name)
+        #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
+        #await asyncio.sleep(0.1)
         await self.acts(action, target, act_name, act_arg, self.reason, source)
 
     def format_thought_for_UI (self):
@@ -2611,7 +2595,7 @@ End your response with:
         reason = ''
         if self.focus_task.peek() and type(self.focus_task.peek()) == Task:
             reason = f'{self.focus_task.peek().reason}'
-        return f'{action} \n{reason} \n{self.thought.strip()}'
+        return f'{self.thought.strip()}'
    
     def format_tasks_for_UI(self):
         """Format tasks for UI display as array of strings"""
@@ -2633,7 +2617,7 @@ End your response with:
             'thoughts': self.format_thought_for_UI(),  # Current thoughts
             'tasks': self.format_tasks_for_UI(),
             'description': self.character.strip(),  # For image generation
-            'history': self.format_history().strip(), # Recent history, limited to last 5 entries
+            'history': self.format_history_for_UI().strip(), # Recent history, limited to last 5 entries
             'narrative': {
                 'recent_events': self.narrative.recent_events,
                 'ongoing_activities': self.narrative.ongoing_activities,
@@ -2741,10 +2725,9 @@ end your response with:
                         'description': p.description,
                         'reason': p.reason,
                         'actors': [a.name for a in p.actors],
-                        'needs': [n for n in p.needs],
-                    } for p in (self.tasks or [])
+                    } for p in (self.focus_task.stack or [])
                 ],
-                'actions': [intension.name for intension in self.intensions]  # List[str]
+                'intensions': [intension.name for intension in self.intensions]  # List[str]
             },
             'signals': [
                 {

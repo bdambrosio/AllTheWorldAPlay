@@ -462,4 +462,28 @@ h5 {
   color: #888;
   font-size: 0.8em;
   margin-top: 8px;
+}
+
+.chat-interface {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.chat-input, .chat-output {
+  width: 100%;
+  padding: 8px;
+  background: #222;
+  color: #d0d0d0;
+  border: 1px solid #444;
+}
+
+.chat-send-button {
+  align-self: flex-end;
+  padding: 8px 16px;
+  background: #444;
+  color: white;
+  border: none;
+  cursor: pointer;
 } 

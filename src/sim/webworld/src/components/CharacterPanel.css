@@ -98,10 +98,14 @@
 }
 
 .character-signals {
-  color: #909090;
+  color: #cab939;  /* Brighter text color */
   font-size: 0.9em;
   word-wrap: break-word;
   line-height: 1.3;
+  background: rgba(255, 255, 255, 0.05);  /* Subtle light background */
+  padding: 4px 8px;  /* Add some padding */
+  border-radius: 2px;  /* Slight rounding */
+  margin-top: 4px;  /* Space from name */
 }
 
 .character-image {
@@ -126,20 +130,22 @@
 .tasks-area, .history-area {
   padding: 8px;
   border: 1px solid #444;
-  height: 100px;
+  height: 80px;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
+  font-size: 0.9em;
 }
 
 .thoughts-area {
-  margin-top: 10px;
+  margin-top: 0;
   padding: 8px;
   border: 1px solid #444;
-  height: 100px;
+  height: 80px;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
+  font-size: 0.9em;
 }
 
 .thoughts-content {
@@ -173,11 +179,11 @@
 
 .character-tasks {
   margin-bottom: 6px;
-  font-size: 0.75em;
+  font-size: 0.9em;
 }
 
 .character-history {
-  font-size: 0.75em;
+  font-size: 0.9em;
   color: #909090;
 }
 
@@ -208,7 +214,7 @@
 
 .tasks-pane, .history-pane {
   min-width: 0;
-  padding: 10px;
+  padding: 6px;
 }
 
 .explore-button {
@@ -225,4 +231,8 @@
 
 .explore-button:hover {
   background-color: #555;
+}
+
+.tasks-area {
+  font-size: 0.9em;
 } 
