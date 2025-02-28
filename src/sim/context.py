@@ -47,6 +47,22 @@ class Context():
             actor.generate_task_alternatives()
             actor.wakeup = False
 
+    def to_json(self):
+        return {
+            'name': self.name,
+            'initial_state': self.initial_state,
+            'current_state': self.current_state,
+            'current_state': self.current_state,
+            'actors': [actor.to_shallow_json() for actor in self.actors],
+            'npcs': [npc.to_shallow_json() for npc in self.npcs],
+            #'map': self.map.to_json(),
+            'server_name': self.server_name,
+            'simulation_time': self.simulation_time.isoformat(),
+            'time_step': self.time_step,
+            'step': self.step,
+            'current_actor_index': self.current_actor_index,
+        }
+
     def set_llm(self, llm):
         self.llm = llm
         for actor in self.actors:

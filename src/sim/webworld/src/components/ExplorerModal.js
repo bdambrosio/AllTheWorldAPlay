@@ -6,7 +6,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('core');
   const [chatInput, setChatInput] = useState('');
-  const [chatOutput, setChatOutput] = useState('');
+  const [chatOutput, setChatOutput] = useState(character?.chatOutput || '');
 
   useEffect(() => {
     // Update state when lastState changes
@@ -14,6 +14,13 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
       setExplorerState(lastState);
     }
   }, [lastState]);
+
+  // Add effect to update chat output when character.chatOutput changes
+  useEffect(() => {
+    if (character?.chatOutput) {
+      setChatOutput(prev => prev ? `${prev}\n${character.chatOutput}` : character.chatOutput);
+    }
+  }, [character?.chatOutput]);
 
   const refreshData = async () => {
     try {
@@ -249,31 +256,32 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
 
         {activeTab === 'chat' && (
           <div className="chat-interface">
-            <textarea 
-              className="chat-input"
-              placeholder="Type your message..."
-              rows={4}
-              onChange={(e) => setChatInput(e.target.value)}
-              value={chatInput}
+            <textarea
+              className="chat-output"
+              value={chatOutput}
+              readOnly
+              placeholder="Chat responses will appear here..."
             />
-            <button 
+            <textarea
+              className="chat-input"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Type your message..."
+            />
+            <button
               className="chat-send-button"
               onClick={() => {
-                sendCommand('inject', { 
-                  target: character.name, 
-                  text: chatInput 
-                });
-                setChatInput('');
+                if (chatInput.trim()) {
+                  sendCommand('inject', { 
+                    target: character.name,
+                    text: chatInput
+                  });
+                  setChatInput('');
+                }
               }}
             >
               Send
             </button>
-            <textarea 
-              className="chat-output"
-              rows={8}
-              value={chatOutput}
-              readOnly
-            />
           </div>
         )}
       </div>
