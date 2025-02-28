@@ -243,9 +243,14 @@ class Character:
         """
         mode = xml.find('<mode>', xml_string)
         action = xml.find('<specificAct>', xml_string)
-        target_name = xml.find('<target>', xml_string)
-        if target_name:
-            target = self.context.resolve_reference(target_name, create_if_missing=True)
+        try:
+            target_name = xml.find('<target>', xml_string)
+            if target_name:
+                target = self.context.resolve_reference(target_name, create_if_missing=True)
+            else:
+                target = None
+        except Exception as e:
+            target = None
         # Clean up mode string and validate against Mode enum
         if mode:
             mode = mode.strip().capitalize()
@@ -1533,7 +1538,7 @@ Respond in XML:
 <actionable>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
   <specificAct>thoughts, words to speak, direction to move, or physical action</specificAct>
-  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise None. </target>
+  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.</target>
 </actionable>
 
 ===Examples===
@@ -1587,12 +1592,12 @@ Response:
 
 ===End Examples===
 
-Use the XML format:
+Use the XML format for the actionable:
 
 <actionable> 
-  <mode>Think, Say, Do, Look, Move</mode>
+  <mode>Think, Say, Do, Look, or Move</mode>
   <specificAct>thoughts, words to say, direction to move, or physical action</specificAct> 
-  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of ,if applicable. Otherwise None</target>
+  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.</target>
 </actionable>
 
 Respond ONLY with the above XML.
@@ -2220,9 +2225,10 @@ End your response with:
                 if not self.focus_task.peek():
                     # no previous focus task!
                     print(f'{self.name} has no previous focus task!')
-                joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
+                if self.name != 'viewer' and from_actor.name != 'viewer':
+                    joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
                                                                                     from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
-                self.update_individual_commitments_following_conversation(from_actor, 
+                    self.update_individual_commitments_following_conversation(from_actor, 
                                                                         self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
                                                                         joint_tasks)
                 # it would probably be better to have the other actor deactivate the dialog itself
@@ -2234,14 +2240,18 @@ End your response with:
                 if not self.focus_task.peek():
                     # no previous focus task!
                     print(f'{from_actor.name} has no previous focus task!')
-                from_actor.update_individual_commitments_following_conversation(self, 
+                if from_actor.name != 'viewer' and self.name != 'viewer':
+                    joint_tasks = from_actor.update_joint_commitments_following_conversation(self, 
+                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
+                    from_actor.update_individual_commitments_following_conversation(self, 
                                                                               from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
                                                                               joint_tasks)
                 self.driveSignalManager.recluster()
                 from_actor.driveSignalManager.recluster()
                 return
 
-        action, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        action = Act(name='Say', mode='Say', action=text, actors=[self, from_actor], reason=text, source=response_source, target=from_actor)
         await self.act_on_action(action, response_source)
 
     def generate_dialog_turn(self, from_actor, message, source=None):
@@ -2311,7 +2321,6 @@ Use the following XML template in your response:
                               
 <response>response to this statement</response>
 <reason>terse (4-6 words) reason for this answer</reason>
-<unique>True if you in fact want to respond and have something to say, False otherwise</unique>
 
 {{$duplicative_insert}}
 
@@ -2362,13 +2371,8 @@ End your response with:
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            return
+            return '', source
  
-        unique = xml.find('<unique>', answer_xml)
-        if unique is None or 'false' in unique.lower():
-            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            return 
-
         reason = xml.find('<reason>', answer_xml)
         if not source:
             response_source = Task('dialog with '+from_actor.name, 
@@ -2381,12 +2385,11 @@ End your response with:
             response_source = source
             # self.show = response
             if from_actor.name == 'viewer':
-                self.context.message_queue.put({'name':self.name, 'text':f"'{response}'"})
-                return response
+                self.context.message_queue.put({'name':self.name, 'text':f"'{response}'", 'chat_response': True})
+                return response, response_source
 
         # Create action for response
-        action = Act(name='Say', mode='Say', action=response, actors=[self, from_actor], reason=reason, source=response_source, target=from_actor)
-        return action, response_source
+        return response, response_source
     
     def format_tasks(self, tasks, labels):
         task_list = []

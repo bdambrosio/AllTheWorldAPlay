@@ -469,6 +469,7 @@ h5 {
   flex-direction: column;
   gap: 10px;
   padding: 10px;
+  height: 100%;
 }
 
 .chat-input, .chat-output {
@@ -477,6 +478,17 @@ h5 {
   background: #222;
   color: #d0d0d0;
   border: 1px solid #444;
+}
+
+.chat-output {
+  flex-grow: 1;
+  min-height: 300px;  /* Make output pane significantly taller */
+  resize: vertical;   /* Allow vertical resizing */
+}
+
+.chat-input {
+  height: 80px;  /* Fixed height for input */
+  resize: none;   /* Prevent resizing */
 }
 
 .chat-send-button {

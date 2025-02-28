@@ -119,12 +119,17 @@ class SimulationServer:
     async def load_play(self, command):
         play_name = command.get('play')
         main_dir = Path(__file__).parent
+        config_path = (main_dir / '../plays/config.py').resolve()
         play_path = (main_dir / '../plays' / play_name).resolve()
         try:
             """Initialize new simulation instance"""
             if play_path is None:
                 raise ValueError("Play path is required")
             import importlib.util
+            spec = importlib.util.spec_from_file_location("configuration", config_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            server_name = module.server_name
             spec = importlib.util.spec_from_file_location("play_module", play_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
@@ -368,6 +373,12 @@ class SimulationServer:
                 message = self.context.message_queue.get_nowait()
                 if message['text'] == 'character_update':
                     await self.send_character_update(message['name'], new_image=False)
+                elif 'chat_response' in message.keys():
+                    await self.send_result({
+                        'type': 'chat_response',
+                        'char_name': message['name'],
+                        'text': message['text']
+                    })
                 else:
                     await self.send_result({
                         'type': 'show_update',
