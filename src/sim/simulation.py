@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 class SimulationServer:
     def __init__(self):
-        self.context = zmq.asyncio.Context()
-        self.command_socket = self.context.socket(zmq.PULL)
-        self.result_socket = self.context.socket(zmq.PUSH)
+        self.zmq_context = zmq.asyncio.Context()
+        self.command_socket = self.zmq_context.socket(zmq.PULL)
+        self.result_socket = self.zmq_context.socket(zmq.PUSH)
         """Initialize with existing context from scenario"""
-        self.context = None
+        self.sim_context = None
         self.server = None
         self.world_name = None
         self.initialized = False
@@ -43,6 +43,7 @@ class SimulationServer:
         self.watcher = None  # Add watcher storage
         self.steps_since_last_update = 0
         self.run_task = None  # Add field for run task
+        self.step_task = None  # Add field for current step task
         self.image_cache = {}
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
@@ -58,7 +59,7 @@ class SimulationServer:
     
     async def update_character_states(self):
         """send character updates to UI for all characters"""
-        for actor in self.context.actors:
+        for actor in self.sim_context.actors:
             await self.send_character_update(actor)
     
     async def send_character_update(self, actor, new_image=True):
@@ -67,7 +68,7 @@ class SimulationServer:
             if new_image:
                 description = actor.generate_image_description()
                 if description:
-                    image_path = generate_image(self.context.llm, description, filepath=actor.name+'.png')
+                    image_path = generate_image(self.sim_context.llm, description, filepath=actor.name+'.png')
                     with open(image_path, 'rb') as f:
                         image_data = base64.b64encode(f.read()).decode()
                         actor_data['image'] = image_data
@@ -85,7 +86,7 @@ class SimulationServer:
     
     async def send_world_update(self):
         """send world update to UI"""
-        update = self.context.to_json()
+        update = self.sim_context.to_json()
         image_path = update['image']
         with open(image_path, 'rb') as f:
             image_data = base64.b64encode(f.read()).decode()
@@ -145,19 +146,20 @@ class SimulationServer:
             else:
                 self.world_name = 'World'
             
-            self.context = module.W
+            self.sim_context = module.W
             await self.send_command_ack('load_play')
             self.initialized = True
 
             await self.send_world_update()
             await asyncio.sleep(0.1)
-            for char in self.context.actors:
+            for char in self.sim_context.actors:
                 await self.send_character_update(char)
             await asyncio.sleep(0.1)
             
-            logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.context.actors)} actors")
+            logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
 
         except Exception as e:
+            traceback.print_exc()
             await self.send_result({
                 'type': 'play_error',
                 'error': f'Failed to load play: {str(e)}'
@@ -170,7 +172,7 @@ class SimulationServer:
             # Process any queued injects before the step
 
             if self.initialized:
-                task, chars = self.context.next_act()
+                task, chars = self.sim_context.next_act()
                 # Process character step
                 for char in chars:
                     if char:
@@ -182,7 +184,7 @@ class SimulationServer:
                 #now handle context
                 if self.steps_since_last_update > random.randint(4, 6):    
                     await asyncio.sleep(0.1)
-                    await self.context.senses('')
+                    await self.sim_context.senses('')
                     await self.send_world_update()
                     self.steps_since_last_update = 0
                 else:
@@ -266,12 +268,12 @@ class SimulationServer:
         
     async def save_world_cmd(self, filename=None):
         """Save current world state"""
-        return self.context.save_world(filename)
+        return self.sim_context.save_world(filename)
         
     async def load_world_cmd(self, filename):
         """Load saved world state"""
         try:
-            return self.context.load_world(filename)
+            return self.sim_context.load_world(filename)
         except Exception as e:
             logger.error(f"Error in simulation step: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
@@ -282,11 +284,11 @@ class SimulationServer:
         """Route inject command using watcher pattern from worldsim"""
         try:
             target_name = command.get('target')
-            target = self.context.resolve_reference(target_name)
+            target = self.sim_context.resolve_reference(target_name)
             if target is None:
                 raise ValueError(f"Target {target_name} not found")
             text = command.get('text')
-            viewer = self.context.resolve_reference('viewer', create_if_missing=True)
+            viewer = self.sim_context.resolve_reference('viewer', create_if_missing=True)
             # does an npc have a task or goal?
             task = Task(name='dialog with '+target_name, description='inject', reason='inject', termination='', goal=None, actors=[viewer, target])
             viewer.focus_task.push(task)
@@ -306,13 +308,13 @@ class SimulationServer:
 
     def get_character_details_cmd(self, char_name):
         """Get detailed character state"""
-        char = self.context.get_actor_by_name(char_name)
+        char = self.sim_context.get_actor_by_name(char_name)
         return char.get_explorer_state()
 
     def get_character_states_cmd(self):
         """Get current state of all characters including explorer state"""
         states = {}
-        for char in self.context.actors:
+        for char in self.sim_context.actors:
             state = char.to_json()
             state['explorer_state'] = char.get_explorer_state()  # Added here
             states[char.name] = state
@@ -328,7 +330,16 @@ class SimulationServer:
                 await self.load_play(command)
                 await asyncio.sleep(0.1)
             elif cmd_name == 'step':
-                await self.step()
+                # Cancel any existing step task
+                if self.step_task and not self.step_task.done():
+                    self.step_task.cancel()
+                    try:
+                        await self.step_task
+                    except asyncio.CancelledError:
+                        pass
+                # Start new step task
+                self.step_task = asyncio.create_task(self.step())
+                # Don't await it - let it run independently
                 await asyncio.sleep(0.1)
             elif cmd_name == 'run':
                 await self.run_cmd()
@@ -354,6 +365,13 @@ class SimulationServer:
             elif cmd_name == 'get_character_states':
                 await self.get_character_states_cmd()
                 await asyncio.sleep(0.1)
+            elif cmd_name == 'choice_response':
+                # Put the response in the context's choice_response queue
+                if self.sim_context:
+                    self.sim_context.choice_response.put_nowait({
+                        'selected_id': command.get('selected_id')
+                    })
+                await asyncio.sleep(0.1)
             else:
                 await self.send_result({
                     'type': 'error',
@@ -369,8 +387,8 @@ class SimulationServer:
     async def check_message_queue(self):
         """Monitor the context message queue and forward messages via ZMQ"""
         while True:
-            if self.context and not self.context.message_queue.empty():
-                message = self.context.message_queue.get_nowait()
+            if self.sim_context and not self.sim_context.message_queue.empty():
+                message = self.sim_context.message_queue.get_nowait()
                 if message['text'] == 'character_update':
                     await self.send_character_update(message['name'], new_image=False)
                 elif 'chat_response' in message.keys():
@@ -379,6 +397,8 @@ class SimulationServer:
                         'char_name': message['name'],
                         'text': message['text']
                     })
+                elif message.get('text') in ['goal_choice', 'task_choice']:
+                    await self.send_result(message)
                 else:
                     await self.send_result({
                         'type': 'show_update',
@@ -415,7 +435,7 @@ class SimulationServer:
             if not char_name:
                 raise ValueError("Character name not provided")
                 
-            if not self.context:
+            if not self.sim_context:
                 raise ValueError("No simulation context loaded")
                 
             details = self.get_character_details_cmd(char_name)

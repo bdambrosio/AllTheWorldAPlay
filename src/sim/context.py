@@ -27,6 +27,7 @@ class Context():
         self.widget_refs = {}  # Keep track of widget references for PyQt UI
         self.force_sense = False # force full sense for all actors
         self.message_queue = Queue()  # Queue for messages to be sent to the UI
+        self.choice_response = asyncio.Queue()  # Queue for receiving choice responses from UI
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
         
@@ -44,7 +45,7 @@ class Context():
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
             actor.generate_goal_alternatives()
-            actor.generate_task_alternatives()
+            #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
 
     def to_json(self):

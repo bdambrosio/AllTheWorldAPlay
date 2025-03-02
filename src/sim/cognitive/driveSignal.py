@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime
 import math
 import numpy as np
@@ -15,6 +16,11 @@ from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sim.agh import Character  # Only imported during type checking
+    from sim.cognitive.EmotionalStance import EmotionalStance
 
 _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -70,10 +76,13 @@ class SignalCluster:
     text: str            # Label for the cluster
     history: List[str] = field(default_factory=list)
     score: float = 0.0
-
+    emotional_stance: Optional[EmotionalStance] = None
 
     def to_string(self):
         return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
+    
+    def to_full_string(self):
+        return f'Name: {self.text}\n    {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    {self.emotional_stance.to_definition()}\n    signals:{"\n      ".join([s.text for s in self.signals[:10]])}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
@@ -149,6 +158,16 @@ class DriveSignalManager:
     def _get_embedding(self, text: str) -> np.ndarray:
         """Get vector embedding for text using memory consolidation's embedding"""
         return _embedding_model.encode(text)
+
+    def get_signal_cluster_by_name(self, name: str, create_if_missing: bool = False) -> SignalCluster:
+        """Get signal cluster by name"""
+        name = name.strip().lower()
+        for cluster in self.clusters:
+            if cluster.text.strip().lower() == name:
+                return cluster
+        if create_if_missing:
+            return SignalCluster(manager=self, centroid=np.zeros(self.embedding_dim), signals=[], drives=set(), is_opportunity=False, text=name)
+        return None
         
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """Calculate cosine similarity between vectors"""
@@ -186,7 +205,7 @@ class DriveSignalManager:
         signal_drives = set([d for d in drives if d.text in drive_names])
                     
         signal = DriveSignal(
-            text=f'{signal_text}; {desc}',
+            text=f'{signal_text}: {desc}',
             drives=signal_drives,
             is_opportunity=signal_type == 'opportunity',
             importance=importance,
@@ -217,9 +236,9 @@ class DriveSignalManager:
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
                                     
-#signal
+#signal 3-4 words naming the issue or opportunity detected
 #type opportunity / issue
-#description 6-8 words describing the opportunity or issue
+#description 6-8 words further detailing the opportunity or issue
 #drive a @ separated list of drives this signal is related to
 #importance 0-1
 #urgency 0-1
@@ -390,7 +409,10 @@ End your response with:
         if num_clustered_signals > 24 and num_clusters > 0:
             # if num_clusters < sqrt num_signals, clusters are too large, decrease eps to require closer signals
             eps_adjustment = 0.01*(num_clustered_signals**0.5 - num_clusters)
-            self.clustering_eps = self.clustering_eps + eps_adjustment
+            if self.clustering_eps - eps_adjustment < 0 or self.clustering_eps - eps_adjustment > 0.5:
+                print(f"Warning: eps_adjustment {eps_adjustment} is out of range")
+                eps_adjustment = 0.0
+            self.clustering_eps = self.clustering_eps - eps_adjustment
             
         # Check if outliers should be preserved
         for outlier_signal in outlier_signals:

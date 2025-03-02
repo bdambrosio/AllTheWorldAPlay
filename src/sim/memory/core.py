@@ -1,13 +1,21 @@
 # memory/core.py
+from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Set, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sim.agh import Character, Goal, Task  # Only imported during type checking
+    from sim.cognitive.driveSignal import Drive
+    from sim.cognitive.EmotionalStance import EmotionalStance
+    from sim.cognitive.driveSignal import SignalCluster
+
 # At module level
 _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-from sim.cognitive.driveSignal import Drive
 
 @dataclass
 class MemoryEntry:
@@ -27,7 +35,7 @@ class AbstractMemory:
     start_time: datetime
     end_time: Optional[datetime] = None  # None if still active
     instances: List[int] = field(default_factory=list)  # Memory IDs of concrete instances
-    drive: Optional[str] = None  # Related drive if any
+    drive: Optional[Drive] = None  # Related drive if any
     embedding: Optional[np.ndarray] = None
     memory_id: Optional[int] = None
     is_active: bool = True
@@ -295,7 +303,8 @@ class NarrativeSummary:
     update_interval: timedelta = field(default_factory=lambda: timedelta(hours=0))
     
     # Supporting information
-    active_drives: List[str] = field(default_factory=list)  # Current motivating drives
+    focus_signalClusters: List[SignalCluster] = field(default_factory=list) # history of focusSignalClusters driving the narrative
+    active_drives: List[Drive] = field(default_factory=list)  # Current motivating drives
     key_events: List[Dict] = field(default_factory=list)  # Important memories that shaped character
     
     def needs_update(self, current_time: datetime) -> bool:

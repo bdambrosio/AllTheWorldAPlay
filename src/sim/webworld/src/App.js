@@ -3,7 +3,8 @@ import './App.css';
 import CharacterPanel from './components/CharacterPanel';
 import ShowPanel from './components/ShowPanel';
 import WorldPanel from './components/WorldPanel';
-import InjectDialog from './components/InjectDialog';
+import DirectorChoiceModal from './components/DirectorChoiceModal';
+import DirectorChairModal from './components/DirectorChairModal';
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
@@ -24,12 +25,13 @@ function App() {
   const [currentPlay, setCurrentPlay] = useState(null);
   const [worldState, setWorldState] = useState({});
   const websocket = useRef(null);
-  const [showInjectDialog, setShowInjectDialog] = useState(false);
   const logRef = useRef(null);
   const initialized = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const messageQueue = useRef([]);
   const sendingLock = useRef(false);
+  const [choiceRequest, setChoiceRequest] = useState(null);
+  const [showDirectorChair, setShowDirectorChair] = useState(false);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -46,92 +48,99 @@ function App() {
         websocket.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
           console.log('Message received:', data);  // See full message
-          switch(data.type) {
-            case 'character_update':
-              console.log('Character data:', data.name);  // Reduced logging
-              setCharacters(prev => ({
-                ...prev,
-                [data.name]: {
-                  ...data.data,
-                  image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
-                  status: isProcessing ? 'processing' : 'idle',
-                  explorer_state: data.data.explorer_state
+          if (data.text === 'goal_choice' || data.text === 'task_choice') {
+            setChoiceRequest({
+              ...data,
+              choice_type: data.text === 'goal_choice' ? 'goal' : 'task'
+            });
+          } else {
+            switch(data.type) {
+              case 'character_update':
+                console.log('Character data:', data.name);  // Reduced logging
+                setCharacters(prev => ({
+                  ...prev,
+                  [data.name]: {
+                    ...data.data,
+                    image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
+                    status: isProcessing ? 'processing' : 'idle',
+                    explorer_state: data.data.explorer_state
+                  }
+                }));
+                break;
+              case 'character_details':
+                console.log('Character details received:', data.name);
+                setCharacters(prev => ({
+                  ...prev,
+                  [data.name]: {
+                    ...prev[data.name],
+                    explorer_state: data.details,
+                    status: 'idle'
+                  }
+                }));
+                break;
+              case 'show_update':
+                setLogText(prev => {
+                  const newEntry = data.text;
+                  return prev ? `${prev} \n${newEntry}` : newEntry;
+                });
+                break;
+              case 'context_update':
+                setLogText(prev => {
+                  const newEntry = data.text; 
+                  return prev ? `${prev} \n\n ${newEntry} \n\n` : newEntry;
+                });
+                break;
+              case 'status_update':
+                setSimState(data.status);
+                setIsProcessing(data.status.running && !data.status.paused);
+                break;
+              case 'output':
+                setMessages(prev => [...prev, data.text]);
+                break;
+              case 'play_list':
+                setPlays(data.plays);
+                setShowPlayDialog(true);
+                break;
+              case 'confirm_reload':
+                setShowConfirmDialog(true);
+                break;
+              case 'play_error':
+                alert(data.error);  // Simple error handling for now
+                break;
+              case 'play_loaded':
+                setCurrentPlay(data.name);
+                break;
+              case 'state_update':
+                setSimState(data);
+                break;
+              case 'world_update':
+                setWorldState(data.data);
+                break;
+              case 'command_complete':
+                if (data.command === 'step' || data.command === 'refresh') {
+                  setIsProcessing(false);
                 }
-              }));
-              break;
-            case 'character_details':
-              console.log('Character details received:', data.name);
-              setCharacters(prev => ({
-                ...prev,
-                [data.name]: {
-                  ...prev[data.name],
-                  explorer_state: data.details,
-                  status: 'idle'
-                }
-              }));
-              break;
-            case 'show_update':
-              setLogText(prev => {
-                const newEntry = data.text;
-                return prev ? `${prev} \n${newEntry}` : newEntry;
-              });
-              break;
-            case 'context_update':
-              setLogText(prev => {
-                const newEntry = data.text; 
-                return prev ? `${prev} \n\n ${newEntry} \n\n` : newEntry;
-              });
-              break;
-            case 'status_update':
-              setSimState(data.status);
-              setIsProcessing(data.status.running && !data.status.paused);
-              break;
-            case 'output':
-              setMessages(prev => [...prev, data.text]);
-              break;
-            case 'play_list':
-              setPlays(data.plays);
-              setShowPlayDialog(true);
-              break;
-            case 'confirm_reload':
-              setShowConfirmDialog(true);
-              break;
-            case 'play_error':
-              alert(data.error);  // Simple error handling for now
-              break;
-            case 'play_loaded':
-              setCurrentPlay(data.name);
-              break;
-            case 'state_update':
-              setSimState(data);
-              break;
-            case 'world_update':
-              setWorldState(data.data);
-              break;
-            case 'command_complete':
-              if (data.command === 'step' || data.command === 'refresh') {
+                break;
+              case 'command_ack':
                 setIsProcessing(false);
-              }
-              break;
-            case 'command_ack':
-              setIsProcessing(false);
-              setSimState(prev => ({
-                ...prev,
-                running: false,
-                paused: true
-              }));
-              break;
-            case 'chat_response':
-              setCharacters(prev => ({
-                ...prev,
-                [data.char_name]: {
-                  ...prev[data.char_name],
-                  chatOutput: data.text
-                }
-              }));
-              break;
-            default:
-              console.log('Unknown message type:', data.type);
+                setSimState(prev => ({
+                  ...prev,
+                  running: false,
+                  paused: true
+                }));
+                break;
+              case 'chat_response':
+                setCharacters(prev => ({
+                  ...prev,
+                  [data.char_name]: {
+                    ...prev[data.char_name],
+                    chatOutput: data.text
+                  }
+                }));
+                break;
+              default:
+                console.log('Unknown message type:', data.type);
+            }
           }
         };
 
@@ -184,10 +193,6 @@ function App() {
     sendCommand('refresh');
   };
 
-  const handleInject = (target, text) => {
-    sendCommand('inject', { target, text });
-  };
-
   const sendMessageSafely = async (message) => {
     messageQueue.current.push(message);
     if (!sendingLock.current) {
@@ -219,9 +224,20 @@ function App() {
     const message = JSON.stringify({
       type: 'command',
       action: command,
-      ...payload
+      ...payload  // Flatten payload into main message
     });
     await sendMessageSafely(message);
+  };
+
+  const handleChoice = (choiceId) => {
+    if (!choiceRequest) return;
+    
+    sendCommand('choice_response', {
+      character_name: choiceRequest.character_name,
+      selected_id: choiceId
+    });
+    
+    setChoiceRequest(null);
   };
 
   console.log('Current characters:', characters);  // See if state is updated
@@ -256,20 +272,21 @@ function App() {
         </div>
       </div>
       <div className="control-panel">
-        <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
-        <button className="control-button" 
-          onClick={handleRun} 
-          disabled={isProcessing || simState.running}>Run</button>
-        <button className="control-button" 
-          onClick={handleStep} 
-          disabled={isProcessing || simState.running}>Step</button>
-        <button className="control-button" onClick={handlePause}>Pause</button>
-        <button className="control-button" onClick={() => setShowInjectDialog(true)}>Inject</button>
-        <button onClick={handleRefresh} className="control-button">
-          Refresh
-        </button>
-        <button className="control-button">Load World</button>
-        <button className="control-button">Save World</button>
+        <div className="control-buttons">
+          <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
+          <button className="control-button" 
+            onClick={handleRun} 
+            disabled={isProcessing || simState.running}>Run</button>
+          <button className="control-button" 
+            onClick={handleStep} 
+            disabled={isProcessing || simState.running}>Step</button>
+          <button className="control-button" onClick={handlePause}>Pause</button>
+          <button onClick={handleRefresh} className="control-button">
+            Refresh
+          </button>
+          <button className="control-button">Load World</button>
+          <button className="control-button">Save World</button>
+        </div>
         <div className="status-area">
           {currentPlay && <div>Play: {currentPlay}</div>}
           <div>Status: {
@@ -278,6 +295,12 @@ function App() {
             'Paused'
           }</div>
         </div>
+        <button 
+          className="director-chair-button"
+          onClick={() => setShowDirectorChair(true)}
+        >
+          Director's Chair
+        </button>
       </div>
 
       {showPlayDialog && (
@@ -308,11 +331,18 @@ function App() {
         </div>
       )}
 
-      {showInjectDialog && (
-        <InjectDialog
+      {choiceRequest && (
+        <DirectorChoiceModal
+          request={choiceRequest}
+          onChoice={handleChoice}
+          onClose={() => setChoiceRequest(null)}
+        />
+      )}
+
+      {showDirectorChair && (
+        <DirectorChairModal
           characters={characters}
-          onSend={handleInject}
-          onClose={() => setShowInjectDialog(false)}
+          onClose={() => setShowDirectorChair(false)}
         />
       )}
     </div>
