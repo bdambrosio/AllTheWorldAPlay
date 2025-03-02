@@ -11,8 +11,9 @@ from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
 from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
 from sim.memory.consolidation import MemoryConsolidator
-from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory, Drive
+from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
+from src.sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -202,6 +203,37 @@ class Character:
         if self.driveSignalManager:
             self.driveSignalManager.context = context
  
+
+    def validate_and_create_goal(self, goal_hash, signalCluster=None):
+        """Validate a goal hash and create a goal object
+        
+        Args:
+            goal_hash: Hash-formatted goal definition
+            signalCluster: SignalCluster this goal is for
+        """
+        name = hash_utils.find('name', goal_hash)
+        description = hash_utils.find('description', goal_hash)
+        other_actor_name = hash_utils.find('otherActorName', goal_hash)
+        primary_signalCluster = hash_utils.find('primarySignalCluster', goal_hash)
+        termination = hash_utils.find('termination', goal_hash)
+
+        if primary_signalCluster:
+            primary_signalCluster = self.driveSignalManager.get_signal_cluster_by_name(primary_signalCluster, create_if_missing=True)
+        if other_actor_name and other_actor_name.strip().lower() != None:
+            other_actor = self.context.resolve_reference(other_actor_name, create_if_missing=True)
+
+        if name and description and termination:
+            goal = Goal(name=name, 
+                        actors=[self, other_actor] if other_actor else [self],
+                        description=description, 
+                        termination=termination.replace('##','').strip(), 
+                        signalCluster=primary_signalCluster, 
+                        drives=primary_signalCluster.drives)
+            return goal
+        else:
+            print(f"Warning: Invalid goal generation response for {goal_hash}") 
+            return None
+        
     def validate_and_create_task(self, task_hash, goal=None):
         """Validate a task hash and create a task object
         
@@ -1044,25 +1076,89 @@ End response with:
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=3) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        for sc in focus_signalClusters:
+            sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
+        prompt = [UserMessage(content="""Following are up to 5 signalClusters ranked by impact on the character's drives. These clusters may overlap.
+Choose up to three with the least overlap and generate a goal for each. At least one of the chosen signalClusters should be of type 'opportunity', 
+and at least one should be of type 'issue', if possible.
+                              
+<signalClusters>
+{{$signalClusters}}
+</signalClusters>
+
+The character's emotional stance wrt a signalCluster is crucial in determining the goal formed in response. for examples the character likely to rise to the challenge or seek to avoid it?
+                              
+Additional information about the character to support developing your response:
+
+<drives>
+{{$drives}}
+</drives>
+
+<situation>
+{{$situation}}
+</situation>
+
+<character>
+{{$character}}
+</character>
+
+<relationships>
+{{$relationships}}
+</relationships>
+                              
+<recent_memories>
+{{$recent_memories}}
+</recent_memories>
+
+
+Consider this signalCluster and and your drives, memories, situation, and character, paying special attention to the signalCluster's related drives in drive_memories.
+Consider:
+1. What is the central issue / opportunity this signalCluster indicates wrt your drives in the context of your character, situation, etc?
+2. Recent events that affect the drive.
+3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
+
+Respond with up to three goals, each in the following parts: 
+    name - a terse (3-4 words) name for the goal, 
+    description - a concise (5-8 words) description of the goal, intended to guide task generation, 
+    other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
+    primary_signalCluster - the signalCluster that is the primary source for this goal
+    and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#goal 
+#name terse (3-4 words) name for this goal
+#description concise (5-8 words) description of this goal
+#otherActorName name of the other actor involved in this goal, or None if no other actor is involved
+#primarySignalCluster name of the signalCluster that is the primary source for this goal   
+#termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+##
+
+Respond ONLY with the above hash-formatted text.
+End response with:
+<end/>
+""")]
+
+        response = self.llm.ask({"signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
+                                 "drives": "\n".join([d.text for d in self.drives]),
+                                 "situation": self.context.current_state if self.context else "",
+                                 "character": self.character,
+                                 "relationships": self.actor_models.format_relationships(include_transcript=True),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
+                                 }, prompt, temp=0.3, stops=['<end/>'], max_tokens=240)
         goals = []
-        scores = []
-        for signalCluster in focus_signalClusters:
-            goal = self.generate_goal(signalCluster)
-            goals.append(goal)
-            scores.append(signalCluster.score)
+        for goal_hash in hash_utils.findall_forms(response):
+            goal = self.validate_and_create_goal(goal_hash)
+            if goal:
+                goals.append(goal)
         self.goals = goals
-        
-        """Choose the best goals to focus on based on the goal alternatives ranked by signalCluster ranking and choose three stochastically"""
+        print(f'{self.name} generated {len(goals)} goals')
+        return goals
 
-        options = [(goal, score) for goal, score in zip(goals,scores)]
-        self.focus_goal = choice.pick_weighted(options, weight=3, n=1) if len(options) > 0 else None
-        self.focus_goal = self.focus_goal[0] if self.focus_goal else None
-        if not self.focus_goal:
-            raise ValueError(f'No focus goal for {self.name}')
-        return self.focus_goal
-
-    def generate_goal(self, signalCluster):
+    def generate_goal(self, signalCluster, emotional_stance):
         """Generate a goal for a signalCluster"""
         drives = signalCluster.drives
         
@@ -1071,6 +1167,12 @@ End response with:
 <signalCluster>
 {{$signalCluster}}
 </signalCluster>
+
+The character's emotional stance wrt this signalCluster is crucial in determining the goal formed in response. for examples the character likely to rise to the challenge or seek to avoid it?
+                              
+<emotionalStance>
+{{$emotionalStance}}
+</emotionalStance>
 
 <drives>
 {{$drives}}
@@ -1097,17 +1199,18 @@ End response with:
 </drive_related_memories>
 
 
-Consider this signalCluster and and your drives, memories, situation, and character, paying special attention to the signalCluster's drives in drive_memories.
+Consider this signalCluster and and your drives, memories, situation, and character, paying special attention to the signalCluster's related drives in drive_memories.
 Consider:
 1. What is the central issue / opportunity this signalCluster indicates wrt your drives in the context of your character, situation, etc?
 2. Recent events that affect the drive.
 3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
 
-Respond with a goal, in four parts: 
+Respond with a goal, in the following parts: 
     name - a terse (3-4 words) name for the goal, 
     description - a concise (5-8 words) description of the goal, intended to guide task generation, 
     other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
-    and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+    primary_signalCluster - the signalCluster that is the primary source for this goal
+    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1116,6 +1219,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #name terse (3-4 words) name for this goal
 #description concise (5-8 words) description of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
+#primarySignalCluster name of the signalCluster that is the primary source for this goal   
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
 
@@ -1147,6 +1251,7 @@ End response with:
         # Generate state assessment
         response = self.llm.ask({
             "signalCluster": signalCluster.to_string(),
+            "emotionalStance": emotional_stance.to_definition(),
             "drives": "\n".join([d.text for d in signalCluster.drives]),
             "recent_memories": recent_memories_text,
             "drive_memories": drive_memories_text,
@@ -1160,6 +1265,7 @@ End response with:
             name = hash_utils.find('name', response)
             description = hash_utils.find('description', response)
             other_actor_name = hash_utils.find('otherActorName', response)
+            primary_signalCluster = hash_utils.find('primarySignalCluster', response)
             termination = hash_utils.find('termination', response)
                 
             if other_actor_name:
@@ -1170,12 +1276,15 @@ End response with:
                     actors = [self, other_actor]
             else:
                 actors = [self]
+
+            if primary_signalCluster:
+                primary_signalCluster = self.driveSignalManager.get_signal_cluster_by_name(primary_signalCluster, create_if_missing=True)
             if name and description and termination:
                 goal = Goal(name=name, 
                             actors=[self],
                             description=description, 
                             termination=termination.replace('##','').strip(), 
-                            signalCluster=signalCluster, 
+                            signalCluster=primary_signalCluster, 
                             drives=signalCluster.drives)
                 print(f'   generated goal: '+goal.to_string())
                 return goal
@@ -1235,6 +1344,12 @@ And the recent events in the world:
 <recent_events>
 {{$recent_events}}
 </recent_events>
+                              
+Crucial to the generation of tasks is the emotional stance wrt the focus goal.
+
+<focus_goal_emotional_stance>
+{{$focus_goal_emotional_stance}}
+</focus_goal_emotional_stance>
 
 
 Create up to {{$n_new_tasks}} specific, actionable tasks.
@@ -1271,6 +1386,7 @@ End response with:
             'situation': self.context.current_state.replace('\n', ' '),
             'goals': '\n'.join([goal.to_string() for goal in self.goals]),
             'focus_goal': self.focus_goal.to_string(),
+            'focus_goal_emotional_stance': self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
             'memories': memory_text,    
             'intensions': '\n'.join([intension.to_string() for intension in self.intensions]),
             'name': self.name,
@@ -1461,6 +1577,12 @@ And in particular, you are focusing on:
 {{$focus_goal}}
 </focus_goal>
 
+Your emotional stance wrt the focus goal is:
+
+<focus_goal_emotional_stance>
+{{$focus_goal_emotional_stance}}
+</focus_goal_emotional_stance>
+
 Your recent memories include:
 
 <recent_memories>
@@ -1496,7 +1618,9 @@ In choosing an Actionable (see format below), you can choose from these Modes:
 - Do - perform an act (other than move) with physical consequences in the world. 
     This is often appropriate when the task involves interacting with a resource or actor, particularly when the actor is not in {{$known_actor_names}}.
 
-Review your character for Mode preference. (e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
+Review your character and current emotional stance when Mode preference and specific Act. 
+(e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
+likewise, emotional tone and orientation can heavily influence the phrasing and style of expression for a Say, Think, or Do.
 
 A SpecificAct is one which:
 - Is a specific thought, spoken text, physical movement or action.
@@ -1637,6 +1761,7 @@ End your response with:
                 "goals": mapped_goals,
                 "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
                 "task": task.to_string(),
+                "focus_goal_emotional_stance": self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal and self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
                 "reason": task.reason,
                 "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
                 "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
@@ -2508,6 +2633,102 @@ End your response with:
         print(f'  Chosen label: {label_choice} task: {task_to_execute.replace('\n', '; ')}')
         return task_to_execute
 
+    async def request_goal_choice(self, goals):
+        """Request a goal choice from the UI"""
+        if len(self.goals) > 0:
+            # Send choice request to UI
+            choice_request = {
+                'text': 'goal_choice',
+                'character_name': self.name,
+                'options': [{
+                    'id': i,
+                    'name': goal.name,
+                    'description': goal.description,
+                    'termination': goal.termination,
+                    'context': {
+                        'signal_cluster': goal.signalCluster.to_string(),
+                        'emotional_stance': {
+                            'arousal': str(goal.signalCluster.emotional_stance.arousal.value),
+                            'tone': str(goal.signalCluster.emotional_stance.tone.value),
+                            'orientation': str(goal.signalCluster.emotional_stance.orientation.value)
+                        }
+                    }
+                } for i, goal in enumerate(goals)]
+            }
+            # Drain any old responses from the queue
+            while not self.context.choice_response.empty():
+                _ = self.context.choice_response.get_nowait()
+                
+            # Send choice request to UI
+            self.context.message_queue.put(choice_request)
+            
+            # Wait for response with timeout
+            waited = 0
+            while waited < 40.0:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                if not self.context.choice_response.empty():
+                    try:
+                        response = self.context.choice_response.get_nowait()
+                        if response and response.get('selected_id') is not None:
+                            self.focus_goal = goals[response['selected_id']]
+                            return
+                    except Exception as e:
+                        print(f'{self.name} request_goal_choice error: {e}')
+                        break
+            
+            # If we get here, either timed out or had an error
+            self.focus_goal = goals[random.randint(0, len(goals)-1)]
+        else:
+            self.focus_goal = None
+
+    async def request_task_choice(self, tasks):
+        """Request an act choice from the UI"""
+        if len(tasks) > 0:
+            # Send choice request to UI
+            choice_request = {
+                'text': 'task_choice',
+                'character_name': self.name,
+                'options': [{
+                    'id': i,
+                    'name': task.name,
+                    'description': task.description,
+                    'reason': task.reason,
+                    'context': {
+                        'signal_cluster': task.goal.signalCluster.to_string(),
+                        'emotional_stance': {
+                            'arousal': str(task.goal.signalCluster.emotional_stance.arousal.value),
+                            'tone': str(task.goal.signalCluster.emotional_stance.tone.value),
+                            'orientation': str(task.goal.signalCluster.emotional_stance.orientation.value)
+                        }
+                    }
+                } for i, task in enumerate(tasks)]
+            }
+            # Drain any old responses from the queue
+            while not self.context.choice_response.empty():
+                _ = self.context.choice_response.get_nowait()
+                
+            # Send choice request to UI
+            self.context.message_queue.put(choice_request)
+            
+            # Wait for response with timeout
+            waited = 0
+            while waited < 40.0:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                if not self.context.choice_response.empty():
+                    try:
+                        response = self.context.choice_response.get_nowait()
+                        if response and response.get('selected_id') is not None:
+                            self.focus_task.push(tasks[response['selected_id']])
+                            return
+                    except Exception as e:
+                        print(f'{self.name} request_task_choice error: {e}')
+                        break
+            
+            # If we get here, either timed out or had an error
+            self.focus_task.push(tasks[random.randint(0, len(tasks)-1)])
+
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         self.context.message_queue.put({'name':' \n'+self.name, 'text':f'cognitive cycle'})
@@ -2528,7 +2749,11 @@ End your response with:
             if focus_goal_satisfied:
                 self.driveSignalManager.recluster()
                 self.generate_goal_alternatives()
+                await self.request_goal_choice(self.goals)
                 self.generate_task_alternatives()
+        elif len(self.goals) > 0:
+            # Send choice request to UI
+            await self.request_goal_choice(self.goals)
 
         if self.focus_task.peek():
             self.clear_task_if_satisfied(self.focus_task.peek())
@@ -2536,6 +2761,7 @@ End your response with:
         if not self.focus_task.peek():
             if not self.focus_goal:
                 self.generate_goal_alternatives()
+                await self.request_goal_choice(self.goals)
             self.generate_task_alternatives()
 
         await self.step_task()

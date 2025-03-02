@@ -12,7 +12,6 @@ from sim.memory.core import MemoryEntry, AbstractMemory, StructuredMemory
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryRetrieval
 from sim.memory.core import NarrativeSummary
-from sim.memory.core import Drive
 
 class TestMemorySystem(unittest.TestCase):
     def setUp(self):

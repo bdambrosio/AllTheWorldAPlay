@@ -1,9 +1,16 @@
 # memory/consolidation.py
+from __future__ import annotations
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from sim.cognitive.knownActor import KnownActorManager
 from utils.Messages import UserMessage
-from .core import Drive, StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
+from .core import StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sim.cognitive.driveSignal import Drive
+    from sim.cognitive.EmotionalStance import EmotionalStance
+    from sim.cognitive.driveSignal import SignalCluster
 import numpy as np
 
 class MemoryConsolidator:

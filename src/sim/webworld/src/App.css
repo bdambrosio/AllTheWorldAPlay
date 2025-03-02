@@ -121,29 +121,60 @@ body {
 }
 
 .control-panel {
-  grid-column: 3;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 120px;  /* Narrower than grid column */
+  padding: 10px;
+  background: #333;
+  border-left: 1px solid #444;
+}
+
+.control-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .control-button {
-  width: 100%;
-  padding: 8px;
-  background-color: #444;
+  padding: 8px 12px;
+  background: #444;
+  border: none;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.control-button:hover {
+  background: #555;
+}
+
+.control-button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.status-area {
+  margin: 10px 0;
+  padding: 10px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+.director-chair-button {
+  margin-top: auto;
+  padding: 12px;
+  background: #2c5282;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
-  width: 150px;
-  text-align: center;
-  font-size: .9em;
+  font-weight: bold;
 }
 
-.control-button:hover {
-  background-color: #505050;
+.director-chair-button:hover {
+  background: #2a4365;
 }
 
 .command-panel {
@@ -227,16 +258,6 @@ h3 {
 .dialog button {
   margin: 5px;
   padding: 5px 10px;
-}
-
-.status-area {
-  margin-top: 20px;
-  font-size: 0.9em;
-  color: #ccc;
-}
-
-.status-area div {
-  margin: 5px 0;
 }
 
 /* Ensure image fits container */

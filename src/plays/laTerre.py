@@ -1,5 +1,5 @@
 from enum import Enum
-from sim.memory.core import Drive
+from sim.cognitive.driveSignal import Drive
 import sim.worldsim as worldsim
 import sim.agh as agh
 from sim.context import Context

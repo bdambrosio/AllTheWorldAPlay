@@ -154,7 +154,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 continue
                 
             if data.get('type') == 'command':
-                # just pass commands through
                 await sim_manager.send_command(data)
                 
     except WebSocketDisconnect:

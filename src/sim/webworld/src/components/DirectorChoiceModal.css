@@ -1,0 +1,69 @@
+.director-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.director-modal-content {
+  background: #333;
+  padding: 20px;
+  border-radius: 4px;
+  width: 500px;
+  max-width: 90%;
+}
+
+.director-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.director-modal-context {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #222;
+  border-radius: 4px;
+}
+
+.director-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice-option {
+  background: #444;
+  border: none;
+  padding: 10px;
+  text-align: left;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.choice-option:hover {
+  background: #555;
+}
+
+.option-name {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.option-description {
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.option-termination {
+  font-size: 0.8em;
+  color: #aaa;
+} 
