@@ -319,7 +319,14 @@ class SimulationServer:
             state['explorer_state'] = char.get_explorer_state()  # Added here
             states[char.name] = state
         return states
-        
+
+    async def set_autonomy_cmd(self, command):
+        """Set autonomy for all characters"""
+        for char_name in command.get('autonomy'):
+            char = self.sim_context.get_actor_by_name(char_name)
+            if char:
+                char.set_autonomy(command.get('autonomy')[char_name])
+
     async def process_command(self, command):
         try:
             cmd_name = command.get('action')
@@ -372,6 +379,9 @@ class SimulationServer:
                         'selected_id': command.get('selected_id')
                     })
                 await asyncio.sleep(0.1)
+            elif cmd_name == 'set_autonomy':
+                await self.set_autonomy_cmd(command)
+                await asyncio.sleep(0.1)
             else:
                 await self.send_result({
                     'type': 'error',
@@ -397,7 +407,7 @@ class SimulationServer:
                         'char_name': message['name'],
                         'text': message['text']
                     })
-                elif message.get('text') in ['goal_choice', 'task_choice']:
+                elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice']:
                     await self.send_result(message)
                 else:
                     await self.send_result({

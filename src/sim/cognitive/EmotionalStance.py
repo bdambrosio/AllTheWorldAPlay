@@ -1,6 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Any
+from src.utils import hash_utils
 from src.utils.Messages import UserMessage
 import utils.xml_utils as xml
 from src.sim.cognitive.driveSignal import Drive, SignalCluster
@@ -80,7 +81,7 @@ class EmotionalStance:
 
     @staticmethod
     def from_signalCluster(signalCluster: SignalCluster, character: Character):
-        prompt = [UserMessage(content=f"""You are an expert in emotional tone and orientation.
+        prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
 You are given a signal cluster that represents the interaction between the basic drives of a character and recent events.
 Your task is to extract the arousal, tone and orientation of the character resulting from the signal cluster and the character's awareness of it.
  
@@ -123,15 +124,15 @@ There are three dimensions to your response:
     Observing = "gathering social information"
     Defending = "protecting position/resources"
 
-Your response should be in XML format as follows:
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
 
-<EmotionalStance>
-    <Arousal> Alert / Anticipatory / Agitated =/ Relaxed / Exhausted / Compelled </Arousal>
-    <Tone>Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content</Tone>
-    <Orientation>Controlling / Challenging / Appeasing / Avoiding / Supportive / SeekingSupport / Connecting / Performing / Observing / Defending</Orientation>
-</EmotionalStance>
+#arousal Alert / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
+#tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
+#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / SeekingSupport / Connecting / Performing / Observing / Defending
+##
 
-Respond only with the XML format, nothing else.
+Respond only with the hash-formatted text, nothing else.
 End your response with the:
 <end/>
 """)]
@@ -139,19 +140,21 @@ End your response with the:
         response = character.llm.ask({"signalCluster": signalCluster.to_string(), 
                                       "character": character.character
                                       }, prompt, stops=["<end/>"], max_tokens = 100)
-        if xml.find('<Arousal>', response):
+        response = hash_utils.clean(response)
+
+        if hash_utils.find('arousal', response):
             try:
-                arousal = Arousal(xml.find('<Arousal>', response).strip().capitalize())
+                arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())
             except Exception as e:
                 arousal = Arousal.Relaxed
-        if xml.find('<Tone>', response):
+        if hash_utils.find('tone', response):
             try:
-                tone = Tone(xml.find('<Tone>', response).strip().capitalize())   
+                tone = Tone(hash_utils.find('tone', response).strip().capitalize())   
             except Exception as e:
                 tone = Tone.Content
-        if xml.find('<Orientation>', response):
+        if hash_utils.find('orientation', response):
             try:
-                orientation = Orientation(xml.find('<Orientation>', response).strip().capitalize())
+                orientation = Orientation(hash_utils.find('orientation', response).replace('##','').strip().capitalize())
             except Exception as e:
                 orientation = Orientation.Connecting
         return EmotionalStance(arousal, tone, orientation)

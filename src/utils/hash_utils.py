@@ -2,11 +2,11 @@ import re
 from typing import List
 
 def _validate_tag(tag):
-    """Validate tag contains only letters a-zA-Z"""
+    """Validate tag contains only letters a-zA-Z and underscores"""
     if not tag or not isinstance(tag, str):
         raise ValueError("Tag must be a non-empty string")
-    if not re.match(r'^[a-zA-Z]+$', tag):
-        raise ValueError("Tag must contain only letters a-zA-Z")
+    if not re.match(r'^[a-zA-Z][a-zA-Z_]*$', tag):
+        raise ValueError("Tag must start with a letter and contain only letters and underscores")
     return tag.lower()
 
 def findall(tag, text):
@@ -180,9 +180,37 @@ def add(tag, text, value):
     # Otherwise just append tag and ##
     return f'{text}\n#{tag} {value}\n##'
 
+def clean(text: str) -> str:
+    """Clean up common formatting issues in hash-formatted LLM responses.
+    Handles cases like missing newlines before ##, multiple ##, or missing ##.
+    Standardizes form separation using ## markers.
+    
+    Args:
+        text: String containing hash-formatted text with potential formatting issues
+    Returns:
+        Cleaned text with proper hash format, forms separated by ## markers
+    """
+    if not text or not isinstance(text, str):
+        return ""
+        
+    # Split into lines but preserve empty lines initially
+    lines = [line.strip() for line in text.split('\n')]
+    
+    # Handle ## attached to any line
+    cleaned_lines = []
+    for line in lines:
+        if line.endswith('##'):
+            # Split at ## and add parts
+            cleaned_lines.append(line[:-2].strip())
+            cleaned_lines.append('##')
+        else:
+            cleaned_lines.append(line)
+    
+    return '\n'.join(cleaned_lines)
+
 def findall_forms(text: str) -> List[str]:
     """Find all hash-formatted forms in text.
-    A form starts with a #key and ends with ##.
+    A form starts with a #key and ends with ## or blank line.
     Args:
         text: String containing hash-formatted text
     Returns:
@@ -191,6 +219,9 @@ def findall_forms(text: str) -> List[str]:
     if not text or not isinstance(text, str):
         return []
         
+    # First clean the text to standardize format
+    text = clean(text)
+    
     forms = []
     current_form = []
     in_form = False
@@ -198,23 +229,54 @@ def findall_forms(text: str) -> List[str]:
     lines = text.split('\n')
     for line in lines:
         stripped = line.strip()
-        if not in_form and stripped.startswith('#'):
+        if len(stripped) == 0:
+            continue
+        if not in_form and stripped.startswith('#') and not stripped == '##':
             # Start of new form
             in_form = True
-            current_form = [stripped]
-        elif in_form:
-            if stripped == '##':
-                # End of current form
-                current_form.append(stripped)
+            current_form = [line]  # Keep original line with whitespace
+            formTags = {}
+        if in_form:
+            tag = stripped[1:].split(' ')[0]
+            if stripped == '##' or tag in formTags:
+                # End of current form 
+                current_form.append('##')
                 forms.append('\n'.join(current_form))
-                current_form = []
-                in_form = False
+                if tag in formTags:
+                    current_form = [stripped]
+                    formTags = {tag:tag}
+                else:
+                    current_form = []
+                    in_form = False
             else:
                 current_form.append(stripped)
-                
-    # Handle case where last form isn't terminated
+                formTags[tag] = tag
     if in_form and current_form:
-        current_form.append('##')
+        current_form.append('##')  # Add terminator if missing
         forms.append('\n'.join(current_form))
         
     return forms
+
+if __name__ == "__main__":
+    text = """
+#goal Balance Work Life
+#description Find harmony in life
+#otherActorName None
+#signalCluster_id sc17
+#termination Achieved life balance
+
+#goal Resolve Ambition
+#description Weigh career options carefully
+#otherActorName Elijah
+#signalCluster_id sc11
+#termination Made informed decision
+
+#goal Pursue Artistic Goal
+#description Showcase art in gallery
+#otherActorName None
+#signalCluster_id sc14
+#termination Exhibition scheduled
+"""
+    #print(clean(text))
+    print('\n\n'.join(findall_forms(text)))
+    print(len(findall_forms(text)))

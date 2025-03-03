@@ -17,6 +17,8 @@
   border-radius: 4px;
   width: 500px;
   max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .director-modal-header {
@@ -42,11 +44,12 @@
 .choice-option {
   background: #444;
   border: none;
-  padding: 10px;
+  padding: 15px;
   text-align: left;
   color: white;
   cursor: pointer;
   border-radius: 4px;
+  transition: background 0.2s;
 }
 
 .choice-option:hover {
@@ -55,15 +58,48 @@
 
 .option-name {
   font-weight: bold;
-  margin-bottom: 5px;
+  font-size: 1.1em;
+  margin-bottom: 8px;
+  color: #fff;
 }
 
 .option-description {
+  font-size: 0.95em;
+  margin-bottom: 8px;
+  color: #ddd;
+}
+
+.option-mode,
+.option-action,
+.option-reason,
+.option-target {
   font-size: 0.9em;
-  margin-bottom: 5px;
+  margin-top: 4px;
+  color: #bbb;
+  padding-left: 8px;
+  border-left: 2px solid #555;
 }
 
 .option-termination {
-  font-size: 0.8em;
+  font-size: 0.85em;
+  color: #999;
+  margin-top: 8px;
+}
+
+.option-context {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.signal-cluster {
+  font-size: 0.9em;
   color: #aaa;
+  margin-bottom: 4px;
+}
+
+.emotional-stance {
+  font-size: 0.85em;
+  color: #888;
 } 

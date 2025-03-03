@@ -1,7 +1,7 @@
 import React from 'react';
 import './DirectorChairModal.css';
 
-function DirectorChairModal({ characters, onClose }) {
+function DirectorChairModal({ characters, onClose, sendCommand }) {
   const controlTypes = ['Signal', 'Goal', 'Task', 'Action'];
 
   return (
@@ -9,7 +9,22 @@ function DirectorChairModal({ characters, onClose }) {
       <div className="director-chair-content">
         <div className="director-chair-header">
           <h3>Director's Chair</h3>
-          <button onClick={onClose}>×</button>
+          <div>
+            <button onClick={() => {
+              const autonomySettings = {};
+              Object.values(characters).forEach(character => {
+                autonomySettings[character.name] = {
+                  signal: document.querySelector(`[data-character="${character.name}"][data-control="Signal"]`).classList.contains('automatic'),
+                  goal: document.querySelector(`[data-character="${character.name}"][data-control="Goal"]`).classList.contains('automatic'),
+                  task: document.querySelector(`[data-character="${character.name}"][data-control="Task"]`).classList.contains('automatic'),
+                  action: document.querySelector(`[data-character="${character.name}"][data-control="Action"]`).classList.contains('automatic')
+                };
+              });
+              sendCommand('set_autonomy', { autonomy: autonomySettings });
+              onClose();
+            }}>Save</button>
+            <button onClick={onClose}>×</button>
+          </div>
         </div>
         
         <div className="character-columns">
@@ -22,13 +37,15 @@ function DirectorChairModal({ characters, onClose }) {
                     <span className="control-label">{controlType}</span>
                     <button 
                       className="control-toggle automatic"
+                      data-character={character.name}
+                      data-control={controlType}
                       onClick={(e) => {
                         e.target.classList.toggle('automatic');
                         e.target.classList.toggle('manual');
-                        e.target.textContent = e.target.classList.contains('automatic') ? 'Automatic' : 'Manual';
+                        e.target.textContent = e.target.classList.contains('automatic') ? 'Autonomous' : 'Manual';
                       }}
                     >
-                      Automatic
+                      Autonomous
                     </button>
                   </div>
                 ))}

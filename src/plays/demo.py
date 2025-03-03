@@ -25,6 +25,7 @@ class TownResource(Enum):
     Workshop = 3
     Bridge = 4
     Boat = 5
+    CityGallery = 6
 
 # Main character - a person facing a difficult decision with competing drives
 Maya = agh.Character("Maya", """You are Maya, a talented 32-year-old female artist,

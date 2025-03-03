@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 import math
 import numpy as np
-from typing import List, Dict, Optional, Tuple, Set
+from typing import ClassVar, List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass, field
 import traceback
 from utils import hash_utils
@@ -15,6 +15,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
+from weakref import WeakValueDictionary
 
 from typing import TYPE_CHECKING
 
@@ -27,14 +28,19 @@ _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 @dataclass(frozen=True)
 class Drive:
     """Represents a character drive with semantic embedding"""
+    _id_counter: ClassVar[int] = 0
+    _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
     text: str
     embedding: Optional[np.ndarray] = None
+    id: str = field(init=False)
     
     def __post_init__(self):
+        Drive._id_counter += 1
+        id_val = f"d{Drive._id_counter}"
+        object.__setattr__(self, 'id', id_val)
+        Drive._instances[id_val] = self
         if self.embedding is None:
-            # Use object.__setattr__ to set field of frozen instance
-            object.__setattr__(self, 'embedding', 
-                _embedding_model.encode(self.text))
+            object.__setattr__(self, 'embedding', _embedding_model.encode(self.text))
     
     def __hash__(self):
         return hash(self.text)
@@ -43,6 +49,10 @@ class Drive:
         if not isinstance(other, Drive):
             return False
         return self.text == other.text
+
+    @classmethod
+    def get_by_id(cls, id: str):
+        return cls._instances.get(id)
 
 @dataclass
 class DriveSignal:
@@ -68,27 +78,47 @@ class DriveSignal:
 @dataclass
 class SignalCluster:
     """Represents a cluster of similar drive signals"""
+    _id_counter: ClassVar[int] = 0
+    _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
     manager: 'DriveSignalManager'
     centroid: np.ndarray   # Center of the cluster
     signals: List[DriveSignal]
-    drives: Set[Drive]     # The drives this cluster relates to
+    drives: List[Drive]     # The drives this cluster relates to
     is_opportunity: bool   # True if opportunity cluster
     text: str            # Label for the cluster
     history: List[str] = field(default_factory=list)
     score: float = 0.0
     emotional_stance: Optional[EmotionalStance] = None
+    id: str = field(init=False)
+    
+    def __post_init__(self):
+        SignalCluster._id_counter += 1
+        self.id = f"sc{SignalCluster._id_counter}"
+        SignalCluster._instances[self.id] = self
+
+    @classmethod
+    def get_by_id(cls, id: str):
+        try:
+            return cls._instances.get(id)
+        except:
+            return None
 
     def to_string(self):
-        return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
+        return f'{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
     
     def to_full_string(self):
-        return f'Name: {self.text}\n    {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    {self.emotional_stance.to_definition()}\n    signals:{"\n      ".join([s.text for s in self.signals[:10]])}\n'
+        return f'{self.id} Name: {self.text}\n    {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    {self.emotional_stance.to_definition()}\n    signals:{"\n      ".join([s.text for s in self.signals[:10]])}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
         self.signals.append(signal)
         # Update centroid as mean of all embeddings
-        self.drives.update(signal.drives)
+        for drive in signal.drives:
+            for d2 in self.drives:
+                if d2.id == drive.id:
+                    break
+            else:
+                self.drives.append(drive)
         embeddings = [s.embedding for s in self.signals]
         self.centroid = np.mean(embeddings, axis=0)
 
@@ -187,7 +217,7 @@ class DriveSignalManager:
         signal_type = hash_utils.find('type', signal_hash).strip()
         desc = hash_utils.find('description', signal_hash).strip()
         signal_text = hash_utils.find('signal', signal_hash).strip()
-        drive_names = hash_utils.find('drive', signal_hash).strip()
+        drive_ids = hash_utils.find('drive_ids', signal_hash).strip()
         if desc is None or desc == '':
             return None
         try:
@@ -200,9 +230,14 @@ class DriveSignalManager:
             return None
                     
         embedding = self._get_embedding(desc)
-        drive_names = drive_names.split('@')
-        drive_names = [d.strip() for d in drive_names]
-        signal_drives = set([d for d in drives if d.text in drive_names])
+        drive_ids = drive_ids.split('@')
+        drive_ids = [d.strip() for d in drive_ids]
+        signal_drives = []
+        for id in drive_ids:
+            if id in Drive._instances:  
+                signal_drives.append(Drive._instances[id])
+            else:
+                print(f"Warning: Drive {id} not found")
                     
         signal = DriveSignal(
             text=f'{signal_text}: {desc}',
@@ -239,7 +274,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #signal 3-4 words naming the issue or opportunity detected
 #type opportunity / issue
 #description 6-8 words further detailing the opportunity or issue
-#drive a @ separated list of drives this signal is related to
+#drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
 #importance 0-1
 #urgency 0-1
 ##
@@ -250,7 +285,7 @@ End your response with:
 </end>
 """)]
             
-            response = self.llm.ask({"text": text, "drives": '\n'.join([d.text for d in drives])}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives])}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
             if not response:
                 return []
                     
