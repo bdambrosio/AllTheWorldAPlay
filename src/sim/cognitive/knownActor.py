@@ -109,6 +109,8 @@ class KnownActorManager:
             actor.visible = False
 
     def update_all_relationships(self, all_texts):
+        valid_chars = [a.name for a in self.context.actors if a.name != self.owner.name] + [a.name for a in self.context.npcs]
+        all_chars = set(valid_chars) & set(self.names())
         for actor in self.known_actors.values():
             #actor is a KnownActor instance, a model of the owner's relationship to this actor
             actor.update_relationship(all_texts)

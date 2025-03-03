@@ -1,4 +1,6 @@
 import os, sys
+
+from src.sim.cognitive.driveSignal import Drive
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from sim.agh import Agh
@@ -21,7 +23,7 @@ class TestMemorySystem(unittest.TestCase):
         meow_meow = Agh('Meow-Meow','I am a cat',server='local')
         self.memory.owner.context = Context([self.memory.owner, meow_meow], situation='test', step='1 hour')
         self.llm = LLM('local')
-        self.consolidator = MemoryConsolidator(self.llm)
+        self.consolidator = MemoryConsolidator(self.llm, self.memory.owner.context)
         
         # Create test drives
         self.test_drives = [

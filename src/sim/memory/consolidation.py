@@ -14,8 +14,10 @@ if TYPE_CHECKING:
 import numpy as np
 
 class MemoryConsolidator:
-    def __init__(self, llm):
+    def __init__(self, owner, llm, context):
+        self.owner = owner
         self.llm = llm
+        self.context = context
 
     def set_llm(self, llm):
         self.llm = llm
@@ -24,8 +26,8 @@ class MemoryConsolidator:
         """Periodic memory maintenance and optimization"""
         # Get memories by drive using retrieval system
         drive_memories = {}
-        for drive in memory.owner.drives:  # Now using Drive objects
-            memories = memory.owner.memory_retrieval.get_by_drive(
+        for drive in self.owner.drives:  # Now using Drive objects
+            memories = self.owner.memory_retrieval.get_by_drive(
                 memory=memory,
                 drive=drive,
                 threshold=0.1,
@@ -224,8 +226,8 @@ End with:
                 narrative.recent_events = new_events.strip()
         
         # Update key relationships
-        valid_chars = [a.name for a in memory.owner.context.actors 
-                      if a.name != memory.owner.name]
+        valid_chars = [a.name for a in self.context.actors 
+                      if a.name != self.owner.name] + self.owner.actor_models.names()
         
         # Extract character names from memory text
         all_abstracts = memory.get_recent_abstractions(10)

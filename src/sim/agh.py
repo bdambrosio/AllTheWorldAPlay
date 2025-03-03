@@ -31,6 +31,7 @@ from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, Sens
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
 import asyncio
+from weakref import WeakValueDictionary
 
 class Mode(Enum):
     Think = "Think"
@@ -75,7 +76,13 @@ class Stack:
         return len(self.stack)
 
 class Goal:
+    _id_counter = 0
+    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
+    
     def __init__(self, name, actors, description, termination, signalCluster, drives):
+        Goal._id_counter += 1
+        self.id = f"g{Goal._id_counter}"
+        Goal._instances[self.id] = self
         self.name = name
         self.actors = actors
         self.description = description
@@ -85,27 +92,37 @@ class Goal:
         self.progress = 0
         self.tasks = []
 
+    @classmethod
+    def get_by_id(cls, id: str):
+        return cls._instances.get(id)
+    
     def short_string(self):
         return f'{self.name}: {self.description}; \n termination: {self.termination}'
     
     def to_string(self):
         return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; signals: {self.signalCluster.text}; termination: {self.termination}'
     
-    def test_termination(self, events=''):
-        """Test if recent acts, events, or world update have satisfied termination"""
-        pass
-
 class Task:
+    _id_counter = 0
+    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
+    
     def __init__(self, name, description, reason, termination, goal, actors):
+        Task._id_counter += 1
+        self.id = f"t{Task._id_counter}"
+        Task._instances[self.id] = self
         self.name = name
         self.description = description
         self.reason = reason
         self.termination = termination
-        self.actors = actors
         self.goal = goal
+        self.actors = actors
+        self.needs = []
         self.acts = []
-        self.progress = 0
 
+    @classmethod
+    def get_by_id(cls, id: str):
+        return cls._instances.get(id)
+    
     def short_string(self):
         return f'{self.name}: {self.description} \n reason: {self.reason} \n termination: {self.termination}'
 
@@ -117,18 +134,35 @@ class Task:
         pass
     
 class Act:
+    _id_counter = 0
+    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
+    
     def __init__(self, name, mode, action, actors, reason, source, target=None, result=''):
+        Act._id_counter += 1
+        self.id = f"a{Act._id_counter}"
+        Act._instances[self.id] = self
         self.name = name
         self.mode = mode
         self.action = action
         self.actors = actors
         self.reason = reason
-        self.source = source # a task
-        self.target = target # an actor
+        self.source = source  # a task
+        self.target = target  # an actor
         self.result = result
 
+    @classmethod
+    def get_by_id(cls, id: str):
+        return cls._instances.get(id)
+
     def to_string(self):
-        return f'Act {self.name}: {self.action}; reason: {self.reason}; result: {self.result}'
+        return f'Act t{self.id} {self.name}: {self.action}; reason: {self.reason}; result: {self.result}'
+
+class Autonomy:
+    def __init__(self, signal=True, goal=True, task=True, action=True):
+        self.signal = signal
+        self.goal = goal
+        self.task = task
+        self.action = action
 
 # Character base class
 class Character:
@@ -185,7 +219,7 @@ class Character:
         
         # Initialize memory systems
         self.structured_memory = StructuredMemory(owner=self)
-        self.memory_consolidator = MemoryConsolidator(self.llm)
+        self.memory_consolidator = MemoryConsolidator(self, self.llm, self.context)
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
         self.next_task = None  # Add this line
@@ -193,16 +227,33 @@ class Character:
         self.driveSignalManager.set_context(self.context)
         self.focus_goal = None
         self.focus_task = Stack()
+        self.last_task = None
+        self.focus_action = None
         self.goals = []
         self.tasks = [] 
         self.intensions = []
+        self.actions = []
+        self.autonomy = Autonomy()
 
     def set_context(self, context):
         self.context = context
         self.actor_models = KnownActorManager(self, context)
         if self.driveSignalManager:
             self.driveSignalManager.context = context
+        if self.memory_consolidator:
+            self.memory_consolidator.context = context
  
+
+    def set_autonomy(self, autonomy_json):
+        if 'signal' in autonomy_json:
+            self.autonomy.signal = autonomy_json['signal']
+        if 'goal' in autonomy_json:
+            self.autonomy.goal = autonomy_json['goal']
+        if 'task' in autonomy_json:
+            self.autonomy.task = autonomy_json['task']
+        if 'action' in autonomy_json:
+            self.autonomy.action = autonomy_json['action']
+
 
     def validate_and_create_goal(self, goal_hash, signalCluster=None):
         """Validate a goal hash and create a goal object
@@ -211,14 +262,14 @@ class Character:
             goal_hash: Hash-formatted goal definition
             signalCluster: SignalCluster this goal is for
         """
-        name = hash_utils.find('name', goal_hash)
+        name = hash_utils.find('goal', goal_hash)
         description = hash_utils.find('description', goal_hash)
         other_actor_name = hash_utils.find('otherActorName', goal_hash)
-        primary_signalCluster = hash_utils.find('primarySignalCluster', goal_hash)
+        signalCluster_id = hash_utils.find('signalCluster_id', goal_hash)
         termination = hash_utils.find('termination', goal_hash)
 
-        if primary_signalCluster:
-            primary_signalCluster = self.driveSignalManager.get_signal_cluster_by_name(primary_signalCluster, create_if_missing=True)
+        if signalCluster_id:
+            signalCluster = SignalCluster.get_by_id(signalCluster_id.strip())
         if other_actor_name and other_actor_name.strip().lower() != None:
             other_actor = self.context.resolve_reference(other_actor_name, create_if_missing=True)
 
@@ -227,8 +278,8 @@ class Character:
                         actors=[self, other_actor] if other_actor else [self],
                         description=description, 
                         termination=termination.replace('##','').strip(), 
-                        signalCluster=primary_signalCluster, 
-                        drives=primary_signalCluster.drives)
+                        signalCluster=signalCluster, 
+                        drives=signalCluster.drives)
             return goal
         else:
             print(f"Warning: Invalid goal generation response for {goal_hash}") 
@@ -267,14 +318,14 @@ class Character:
             return None
         
     def validate_and_create_act(self, xml_string, task):
-        """Validate an XML actionable and create an Act object
+        """Validate an XML act and create an Act object
         
         Args:
-            xml_string: XML-formatted actionable definition
+            xml_string: XML-formatted act definition
             task: Task this act is for
         """
         mode = xml.find('<mode>', xml_string)
-        action = xml.find('<specificAct>', xml_string)
+        action = xml.find('<action>', xml_string)
         try:
             target_name = xml.find('<target>', xml_string)
             if target_name:
@@ -295,10 +346,10 @@ class Character:
         if mode and action:
             act = Act(
                 name=mode,
-                mode=mode, 
+                mode=mode,
                 action=action,
                 actors=[self, target] if target else [self],
-                reason=task.reason,
+                reason=action,
                 source=task,
                 target=target
             )
@@ -906,7 +957,7 @@ End response with:
         else:
             return False
 
-    def clear_task_if_satisfied(self, task, consequences='', world_updates=''):
+    def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
         termination_check = task.termination if task != None else None
         if termination_check is None or termination_check == '':
@@ -921,13 +972,16 @@ End response with:
             type='task'
         )
 
-        if satisfied or type(object) is Task and len(object.acts) > random.randint(3,5): # basic timeout on task
+        weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode == Mode.Say])
+        if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
             if task == self.focus_task.peek():
                 self.focus_task.pop()
+            if task in self.tasks:
+                self.tasks.remove(task)
 
         return satisfied
 
-    def clear_goal_if_satisfied(self, goal, consequences='', world_updates=''):
+    def clear_goal_if_satisfied(self, goal: Goal, consequences='', world_updates=''):
         """Check if goal is complete and update state"""
         termination_check = goal.termination if goal != None else None
         if termination_check is None or termination_check == '':
@@ -945,6 +999,7 @@ End response with:
         if satisfied:
             if goal == self.focus_goal:
                 self.focus_goal = None
+                self.goals = [] # force regeneration. Why not reuse remaining goals?
 
         return satisfied
 
@@ -1020,7 +1075,7 @@ End response with:
 
         if act_name == 'Think': # Say is handled below
             # Update actions based on thought
-            self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
+            # self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
             self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
             await asyncio.sleep(0.1)
         # After action completes, update record with results
@@ -1122,17 +1177,17 @@ Respond with up to three goals, each in the following parts:
     name - a terse (3-4 words) name for the goal, 
     description - a concise (5-8 words) description of the goal, intended to guide task generation, 
     other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
-    primary_signalCluster - the signalCluster that is the primary source for this goal
+    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is the primary source for this goal
     and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#goal 
-#name terse (3-4 words) name for this goal
+#goal terse (3-4 words) name for this goal
 #description concise (5-8 words) description of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
-#primarySignalCluster name of the signalCluster that is the primary source for this goal   
+#signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
 
@@ -1150,152 +1205,19 @@ End response with:
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, temp=0.3, stops=['<end/>'], max_tokens=240)
         goals = []
-        for goal_hash in hash_utils.findall_forms(response):
+        forms = hash_utils.findall_forms(response)
+        for goal_hash in forms:
             goal = self.validate_and_create_goal(goal_hash)
             if goal:
                 goals.append(goal)
+            else:
+                print(f'Warning: Invalid goal generation response for {goal_hash}')
+        if len(goals) < 3:
+            print(f'Warning: Only {len(goals)} goals generated for {self.name}')
         self.goals = goals
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
-    def generate_goal(self, signalCluster, emotional_stance):
-        """Generate a goal for a signalCluster"""
-        drives = signalCluster.drives
-        
-        prompt = [UserMessage(content="""Given a signalCluster, generate a goal to achieve the opportunity or ameliorate the issue.
-
-<signalCluster>
-{{$signalCluster}}
-</signalCluster>
-
-The character's emotional stance wrt this signalCluster is crucial in determining the goal formed in response. for examples the character likely to rise to the challenge or seek to avoid it?
-                              
-<emotionalStance>
-{{$emotionalStance}}
-</emotionalStance>
-
-<drives>
-{{$drives}}
-</drives>
-
-<situation>
-{{$situation}}
-</situation>
-
-<character>
-{{$character}}
-</character>
-
-<relationships>
-{{$relationships}}
-</relationships>
-                              
-<recent_memories>
-{{$recent_memories}}
-</recent_memories>
-
-<drive_related_memories>
-{{$drive_memories}}
-</drive_related_memories>
-
-
-Consider this signalCluster and and your drives, memories, situation, and character, paying special attention to the signalCluster's related drives in drive_memories.
-Consider:
-1. What is the central issue / opportunity this signalCluster indicates wrt your drives in the context of your character, situation, etc?
-2. Recent events that affect the drive.
-3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
-
-Respond with a goal, in the following parts: 
-    name - a terse (3-4 words) name for the goal, 
-    description - a concise (5-8 words) description of the goal, intended to guide task generation, 
-    other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
-    primary_signalCluster - the signalCluster that is the primary source for this goal
-    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#goal 
-#name terse (3-4 words) name for this goal
-#description concise (5-8 words) description of this goal
-#otherActorName name of the other actor involved in this goal, or None if no other actor is involved
-#primarySignalCluster name of the signalCluster that is the primary source for this goal   
-#termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
-##
-
-Respond ONLY with the above hash-formatted text.
-End response with:
-<end/>
-""")]
-
-        print(f'\n{self.name} generating goal for signalCluster: {signalCluster.to_string()}')
-            
-        # Get relevant memories
-        drive_memories = set()
-        for drive in signalCluster.drives:
-            drive_memories.update([m.text for m in self.memory_retrieval.get_by_drive(
-                memory=self.structured_memory,
-                drive=drive,
-                threshold=0.1,
-                max_results=5
-            )])
-            
-            # Get recent memories regardless of drive
-        recent_memories = self.structured_memory.get_recent(5)
-            
-        # Format memories for LLM
-        drive_memories_text = "\n".join(drive_memories)
-            
-        recent_memories_text = "\n".join([mem.text for mem in recent_memories])
-            
-        # Generate state assessment
-        response = self.llm.ask({
-            "signalCluster": signalCluster.to_string(),
-            "emotionalStance": emotional_stance.to_definition(),
-            "drives": "\n".join([d.text for d in signalCluster.drives]),
-            "recent_memories": recent_memories_text,
-            "drive_memories": drive_memories_text,
-            "relationships": self.actor_models.format_relationships(include_transcript=True),
-            "situation": self.context.current_state if self.context else "",
-            "character": self.character
-        }, prompt, temp=0.3, stops=['<end/>'])     
-            
-        # Parse response
-        try:
-            name = hash_utils.find('name', response)
-            description = hash_utils.find('description', response)
-            other_actor_name = hash_utils.find('otherActorName', response)
-            primary_signalCluster = hash_utils.find('primarySignalCluster', response)
-            termination = hash_utils.find('termination', response)
-                
-            if other_actor_name:
-                other_actor = self.context.resolve_reference(other_actor_name, create_if_missing=True)
-                if other_actor is None:
-                    actors = [self]
-                else:
-                    actors = [self, other_actor]
-            else:
-                actors = [self]
-
-            if primary_signalCluster:
-                primary_signalCluster = self.driveSignalManager.get_signal_cluster_by_name(primary_signalCluster, create_if_missing=True)
-            if name and description and termination:
-                goal = Goal(name=name, 
-                            actors=[self],
-                            description=description, 
-                            termination=termination.replace('##','').strip(), 
-                            signalCluster=primary_signalCluster, 
-                            drives=signalCluster.drives)
-                print(f'   generated goal: '+goal.to_string())
-                return goal
-            else:
-                print(f"Warning: Invalid goal generation response for {signalCluster.to_string()}")
-                return None
-        except Exception as e:
-            print(f"Error parsing goal generation response: {e}")
-            traceback.print_exc()
-                
-        return None
 
     def generate_task_alternatives(self):
         if not self.focus_goal:
@@ -1358,6 +1280,7 @@ The new tasks should be distinct from one another, and cover both the focus goal
 Where possible, use one or more of your intensions in generating task alternatives.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #task
@@ -1402,17 +1325,16 @@ End response with:
             task = self.validate_and_create_task(task_hash, self.focus_goal)
             if task:
                 task_alternatives.append(task)
-        focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=3, n=1)
-        focus_task = focus_task[0] if focus_task else None
-        if not focus_task:
-            raise ValueError(f'No task alternatives for {self.name}')
+        self.tasks = task_alternatives
+        return task_alternatives
+        #focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=3, n=1)
+        #focus_task = focus_task[0] if focus_task else None
+        #if not focus_task:
+        #    raise ValueError(f'No task alternatives for {self.name}')
         self.focus_task = Stack()
         self.focus_task.push(focus_task)
         return focus_task
 
-    def choose_task_to_activate(self):
-        """Choose the best task to activate based on the task alternatives"""
-        pass
 
     def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
@@ -1549,11 +1471,11 @@ End response with:
 
         return act
 
-    def actualize_task(self, task):
+    def generate_acts(self, task):
 
-        print(f'\n{self.name} actualizing task: {task.to_string()}')
+        print(f'\n{self.name} generating acts for task: {task.to_string()}')
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate an Actionable (a 'Think', 'Say', 'Look', Move', or 'Do') for the next step of the following task.
+Your task is to generate a a set of three alternative Acts (a 'Think', 'Say', 'Look', Move', or 'Do') for the next step of the following task.
 
 <task>
 {{$task}}
@@ -1594,20 +1516,21 @@ Recent history includes:
 {{$history}}
 </history>
 
-The previous specific act for this task, if any, was:
+The previous act for this task, if any, was:
 
-<previousSpecificAct>
+<previousAct>
 {{$lastAct}}
-</previousSpecificAct>
+</previousAct>
 
 And the observed result of that was:
 <observed_result>
 {{$lastActResult}}.
 </observed_result>
 
-Respond with an Actionable, including its Mode and SpecificAct. 
+Respond with three alternative Acts, including their Mode and action. 
+The Acts should vary in mode and action.
 
-In choosing an Actionable (see format below), you can choose from these Modes:
+In choosing an Act (see format below), you can choose from these Modes:
 - Think - reason about the current situation wrt your state and the task.
 - Say - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
     Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
@@ -1618,11 +1541,11 @@ In choosing an Actionable (see format below), you can choose from these Modes:
 - Do - perform an act (other than move) with physical consequences in the world. 
     This is often appropriate when the task involves interacting with a resource or actor, particularly when the actor is not in {{$known_actor_names}}.
 
-Review your character and current emotional stance when Mode preference and specific Act. 
-(e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Actionables.) 
+Review your character and current emotional stance when choosing Mode and action. 
+(e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Acts.) 
 likewise, emotional tone and orientation can heavily influence the phrasing and style of expression for a Say, Think, or Do.
 
-A SpecificAct is one which:
+An Act is one which:
 - Is a specific thought, spoken text, physical movement or action.
 - Includes only the actual thoughts, spoken words, physical movement, or action.
 - Has a clear beginning and end point.
@@ -1659,11 +1582,11 @@ Consider the previous act. E.G.:
 - If the previous act was a Look, what did you learn?
                               
 Respond in XML:
-<actionable>
+<act>
   <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
-  <specificAct>thoughts, words to speak, direction to move, or physical action</specificAct>
+  <action>thoughts, words to speak, direction to move, or physical action</action>
   <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.</target>
-</actionable>
+</act>
 
 ===Examples===
 
@@ -1671,11 +1594,11 @@ Task:
 Situation: increased security measures; State: fear of losing Annie
 
 Response:
-<actionable>
+<act>
   <mode>Do</mode>
-  <specificAct>Call a meeting with the building management to discuss increased security measures for Annie and the household.</specificAct>
+  <action>Call a meeting with the building management to discuss increased security measures for Annie and the household.</action>
   <target>building management</target>
-</actionable>
+</act>
 
 ----
 
@@ -1683,11 +1606,11 @@ Task:
 Establish connection with Joe given RecentHistory element: "Who is this guy?"
 
 Response:
-<actionable>
+<act>
   <mode>Say</mode>
-  <specificAct>Hi, who are you?</specificAct>
+  <action>Hi, who are you?</action>
   <target>Joe</target>
-</actionable>
+</act>
 
 ----
 
@@ -1695,11 +1618,11 @@ Task:
 Find out where I am given Situation element: "This is very very strange. Where am I?"
 
 Response:
-<actionable>
+<act>
   <mode>Look</mode>
-  <specificAct>look around for landmarks or signs of civilization</specificAct>
+  <action>look around for landmarks or signs of civilization</action>
   <target>Samantha</target>
-</actionable>
+</act>
 
 ----
 
@@ -1708,28 +1631,28 @@ Find food.
 
 
 Response:
-<actionable>
+<act>
   <mode>Move</mode>
-  <specificAct>SouthWest</specificAct>
+  <action>SouthWest</action>
   <target>Samantha</target>
-</actionable>
+</act>
 
 ===End Examples===
 
-Use the XML format for the actionable:
+Use the XML format for the act:
 
-<actionable> 
+<act> 
   <mode>Think, Say, Do, Look, or Move</mode>
-  <specificAct>thoughts, words to say, direction to move, or physical action</specificAct> 
+  <action>thoughts, words to say, direction to move, or physical action</action> 
   <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.</target>
-</actionable>
+</act>
 
 Respond ONLY with the above XML.
 Your name is {{$name}}, phrase the statement of specific action in your voice.
 Ensure you do not duplicate content of a previous specific act.
 {{$duplicative}}
 
-Again, the task to translate into an Actionable is:
+Again, the task to translate into an Act is:
 <task>
 {{$task}} 
 </task>
@@ -1749,75 +1672,40 @@ End your response with:
         recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
-        #print("Actualize Task",end=' ')
-        while act is None and tries < 2:
-            response = self.llm.ask({
-                'character': self.character.replace('\n', ' '),
-                'memories': memory_text,  # Updated from 'memory'
-                'duplicative': duplicative_insert,
-                'history': self.narrative.get_summary('medium'),
-                'name': self.name,
-                "situation": self.context.current_state.replace('\n', ' ') + '\n\n' + self.look_percept + '\n',
-                "goals": mapped_goals,
-                "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
-                "task": task.to_string(),
-                "focus_goal_emotional_stance": self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal and self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
-                "reason": task.reason,
-                "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
-                "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
-                "known_actor_names": ', '.join(actor.name for actor in task.actors)
-            }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=180)
+        response = self.llm.ask({
+            'character': self.character.replace('\n', ' '),
+            'memories': memory_text,  # Updated from 'memory'
+            'duplicative': duplicative_insert,
+            'history': self.narrative.get_summary('medium'),
+            'name': self.name,
+            "situation": self.context.current_state.replace('\n', ' ') + '\n\n' + self.look_percept + '\n',
+            "goals": mapped_goals,
+            "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
+            "task": task.to_string(),
+            "focus_goal_emotional_stance": self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal and self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
+            "reason": task.reason,
+            "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
+            "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
+            "known_actor_names": ', '.join(actor.name for actor in task.actors)
+        }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=240)
 
-            # Rest of existing while loop...
+        # Rest of existing while loop...
+        act_xmls = xml.findall('act', response)
+        act_alternatives = []
+        if len(act_xmls) == 0:
+            print(f'No act found in response: {response}')
+            self.actions = []
+            return []
+        for act_xml in act_xmls:
             try:
-                act = self.validate_and_create_act(response, task)
+                act = self.validate_and_create_act(act_xml, task)
+                if act:
+                    act_alternatives.append(act)
             except Exception as e:
                 raise Exception(f"Error parsing XML, Invalid Act: {e}")
-            # test for dup act
-            if act.mode == 'Say':
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(6))
-                if dup:
-                    #print(f' Duplicate test failed\n    previous act: {last_act}\n    candidate act: {act}\n')
-                    duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****"""
-                    if tries == 0:
-                        act = None  # force redo
-                        temp += .3
-                    else:
-                        pass
+        self.actions = act_alternatives
+        return act_alternatives
 
-            elif act.mode == 'Do' or act.mode == 'Move':
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(4))
-                if dup:
-                    # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ""}\n    candidate act: {act}\n')
-                    #print(f'*****Response: {mode+': '+act} is repetitive of an earlier statement.****')
-                    if tries < 1:
-                        #act = None  # force redo
-                        temp += .3
-                    else:
-                        pass
-            elif act.mode == self.previous_action_name:
-                dup = self.repetitive(act.mode+': '+act.action, task.acts[-1] if task.acts and len(task.acts) > 0 else '', self.format_history_for_UI(4))
-                if dup:
-                    # print(f' Duplicate test failed\n    previous act: {task.acts[-1] if task.acts and len(task.acts) > 0 else ''}\n    candidate act: {act}\n')
-                    #print(f'\n*****Repetitive act test failed*****\n  {act}\n')
-                    duplicative_insert = f"""\n****\nResponse:\n{act.mode+': '+act.action}\n is repetitive. Try something new\n****\n"""
-                if tries < 1:
-                    act = None  # force redo
-                    temp += .3
-                else:
-                    pass
-            tries += 1
-
-        
-        if act.mode is not None and act.mode == 'Say':
-            act = self.refine_say_act(act, task)
-        
-        if act is not None:
-            print(f'actualized task: {act.to_string()}')
-            return act
-        else:
-            print(f'No action constructed, presumably duplicate')
-            return None
 
     def validate_task(self, task):
         """Validate a task"""
@@ -1899,7 +1787,7 @@ You have already formed the following intensions:
 
 Does it include an intension for 'I' to act, that is, a new task being committed to? 
 An action can be physical or verbal.
-Thought, e.g. 'reflect on my situation', should NOT be reported as an intension to act.
+
 Consider the current task and action reason in determining if there is a new task being committed to.
 
 Do not include any intensions that are similar to those already formed.
@@ -1915,7 +1803,6 @@ be careful to insert line breaks only where shown, separating a value from the n
 #reason (6-7 words) on why this action is important now
 #termination (5-7 words) condition test which, if met, would satisfy the goal of this action
 #actors {{$name}}
-#committed True
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
@@ -1937,9 +1824,9 @@ Response:
 #description Head to the office for the day.
 #reason Need to go to work.
 #termination Leave for the office
-#actors {{$name}}
-#committed True
+#actors Madam
 ##
+
 
 Text:
 'I really should reassure annie.'
@@ -1954,21 +1841,9 @@ Response:
 #description Reassure Annie
 #reason Need to reassure Annie
 #termination Reassured Annie
-#actors {{$name}}
-#committed True
+#actors Hank
 ##
 
-Text:
-'Good morning Annie. Call maintenance about the disposal noise please.'
-
-<name>
-Annie
-</name>
-
-Response:
-#task
-#name Call maintenance about the disposal noise
-#description Call maintenance about the disposal noise
 
 Text:
 'Reflect on my thoughts and feelings to gain clarity and understanding, which will ultimately guide me towards finding my place in the world.'
@@ -1980,7 +1855,6 @@ Response:
 #reason Gain clarity and understanding
 #termination Gained clarity and understanding
 #actors Annie
-#committed True
 ##
 
 ===End Examples===
@@ -2039,16 +1913,17 @@ End your response with:
 {{$joint_tasks}}
 </joint_tasks>
 
-Extract from this transcript up to three new commitments to act made by self, {{$name}}, to other, {{$target_name}}.
+Extract from this transcript a new commitment to act made by self, {{$name}}, to other, {{$target_name}}.
 
-Extract only commitments made by self that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
-Note that the joint_tasks, as listed above, are commitments made by both self and other to work together, and should not be reported as new commitments here.
+Extract only commitments made by {{$name}} that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
+Note that the joint_tasks listed above, are commitments made by both {{$name}} and {{$target_name}} to work together, and should not be reported as new commitments here.
                             
-Does the transcript include an intension for 'I' to act alone, that is, a new task being committed to individually? 
+Does the transcript include an intension for {{$name}} to act alone, that is, a new task being committed to individually? 
 An action can be physical or verbal.
 Thought, e.g. 'reflect on my situation', should NOT be reported as an action.
 Consider the all_tasks pendingand current task and action reason in determining if a candidate task is in fact new.
 
+Respond only with at most one intension, the single most concrete, immediate, prominent one in the transcript, if any.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
@@ -2058,14 +1933,13 @@ be careful to insert line breaks only where shown, separating a value from the n
 #actors {{$name}}
 #reason (6-7 words) on why this action is important now
 #termination (5-7 words) condition test which, if met, would satisfy the goal of this action
-#committed True
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
 and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
                             
 
-===Examples===
+===Example===
 
 <transcript>
 Jean says: Hey Francoise, what needs doin' on the farm today?
@@ -2094,7 +1968,7 @@ Response:
 ##
 
 
-===End Examples===
+===End Example===
 
 Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the action analysis in hash-formatted text as shown above.
@@ -2148,9 +2022,8 @@ End your response with:
 
 
 Extract from this transcript the single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
-Extract only new joint actions that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
-If more than one joint action is found, and they are similar, combine them into a single commitment.
-If more than one joint action is found, and they are different, and there are dependencies among them, use the 'needs' tag to indicate the dependencies.
+Extract only an express commitment appear in the transcript and remaining unfulfilled at the end of the transcript.
+If more than one joint action commitmentis found, report the most concrete, immediate, prominent one in the transcript.
                             
 An action can be physical or verbal.
 Thought, e.g. 'reflect on our situation', should NOT be reported as a commitment to act.
@@ -2172,7 +2045,7 @@ In refering to other actors, always use their name, without other labels like 'A
 and do not use pronouns or referents like 'he', 'she', 'that guy', 'other', etc.
                             
 
-===Examples===
+===Example===
 
 <transcript>
 Jean says: Hey Francoise, what needs doin' on the farm today?
@@ -2197,25 +2070,8 @@ Response:
 #actors Jean, Francoise
 #reason get water for the south field
 #termination water bucket is full
-##
-#task
-#name Water south field
-#description Water the south field
-#needs Meet by the well
-#actors Jean, Francoise
-#reason crops are getting parched
-#termination south field is watered
-##
-#task
-#name Check the wheat
-#description Check the wheat
-#actors Jean, Francoise
-#reason To ensure it's not getting too ripe
-#termination wheat condition is checked
 
-##
-
-===End Examples===
+===End Example===
 
 Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the action analysis in hash-formatted text as shown above.
@@ -2324,6 +2180,7 @@ End your response with:
             # new dialog, create a new dialog task, but only if we don't already have a dialog task, no nested dialogs for now
             if self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog'):
                 print(f'{self.name} already has a dialog task, assertion error')
+                self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
                 raise Exception(f'{self.name} already has a dialog task, assertion error')
             # we don't have a dialog task, so we activate a new one
@@ -2345,8 +2202,10 @@ End your response with:
 
                 dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
                 self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
+                self.actor_models.get_actor_model(from_actor.name).update_relationship(self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog())
                 self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
                 self.focus_task.pop()
+                self.last_task = self.focus_task.peek()
                 if not self.focus_task.peek():
                     # no previous focus task!
                     print(f'{self.name} has no previous focus task!')
@@ -2359,8 +2218,10 @@ End your response with:
                 # it would probably be better to have the other actor deactivate the dialog itself
                 dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
                 from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
+                from_actor.actor_models.get_actor_model(self.name).update_relationship(from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
                 from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
                 if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
+                    from_actor.last_task = from_actor.focus_task.peek()
                     from_actor.focus_task.pop()
                 if not self.focus_task.peek():
                     # no previous focus task!
@@ -2380,14 +2241,14 @@ End your response with:
         await self.act_on_action(action, response_source)
 
     def generate_dialog_turn(self, from_actor, message, source=None):
-        self.memory_consolidator.update_cognitive_model(
-            memory=self.structured_memory,
-            narrative=self.narrative,
-            knownActorManager=self.actor_models,    
-            current_time=self.context.simulation_time,
-            character_desc=self.character,
-            relationsOnly=True
-        )
+        #self.memory_consolidator.update_cognitive_model(
+        #    memory=self.structured_memory,
+        #    narrative=self.narrative,
+        #    knownActorManager=self.actor_models,    
+        #    current_time=self.context.simulation_time,
+        #    character_desc=self.character,
+        #    relationsOnly=True
+        #)
             
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
@@ -2524,123 +2385,21 @@ End your response with:
             task_list.append(task_dscp)
         return '\n'.join(task_list)
     
-    
-    def choose(self, sense_data, task_choices):
-        if len(task_choices) == 1:
-            return 0
-        prompt = [UserMessage(content=self.character.replace('\n', ' ') + """The task is to order the execution of a set of task options, listed under <tasks> below.
-Your current situation is:
-
-<situation>
-{{$situation}}
-</situation>
-
-Your goals are:
-
-<goals>
-{{$goals}}
-</goals>
-
-Your recent memories include:
-
-<recent_memories>
-{{$memories}}
-</recent_memories>
-
-Especially relevant to your task options, you remember:
-                              
-{{$tasks_memories}}
-
-A summary of recent events is:
-<recent_history>
-{{$history}}
-</recent_history>
-
-Your current tasks include:
-<tasks>
-{{$tasks}}
-</tasks>
-
-Your task options are provided in the labelled list below.
-Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
-
-<tasks>
-{{$tasks}}
-</tasks>
-
-Please:
-1. Reason through the importance, urgency, dependencies, and strengths and weaknesses of the task options
-2. Order committed tasks early, especially if they are important and urgent or needed by other committed tasks.
-3. Reason carefully about dependencies among task options, timing of task options, and the order of execution.
-4. Compare them against your current goals and drives with respect to your memory and perception of your current situation
-5. Reason in keeping with your character. 
-6. Assign an execution order to each task option, ranging from 1 (execute as soon as possible) to {{$num_options}} (execute last), 
-    and respond with the following XML format:
-
-<task><label>label of chosen task</label><order>execution order (an int, 1-{{$num_options}})</order></task>
-<task>...</task>
-
-Review to ensure the assigned execution order is consistent with the task option dependencies, urgency, and importance.
-Respond only with the above XML, instantiated with the selected task label from the Task list. 
-Do not include any introductory, explanatory, or discursive text, 
-End your response with:
-</end>
-"""
-                              )]
-
-        mapped_goals = self.map_goals()
-        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega']
-        random.shuffle(labels)
-        
-        # Get recent memories from structured memory
-        recent_memories = self.structured_memory.get_recent(8)  # Get 5 most recent memories
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-        
-        # Change from dict to set for collecting memory texts
-        tasks_memories = set()  # This is correct
-        for task in task_choices:
-            memories = self.memory_retrieval.get_by_text(
-                memory=self.structured_memory,
-                search_text=hash_utils.find('name', task)+': '+hash_utils.find('description', task) + ' ' + hash_utils.find('reason', task),
-                threshold=0.1,
-                max_results=5
-            )
-            # More explicit memory text collection
-            for memory in memories:
-                tasks_memories.add(memory.text)  # Add each memory text individually
-                
-        tasks_memories = '\n'.join(tasks_memories)  # Join at the end
-        #print("Choose",end=' ')
-        response = self.llm.ask({
-                'input': sense_data + self.sense_input, 
-                'history': self.narrative.get_summary('medium'),
-                "memories": memory_text,
-                "situation": self.context.current_state,
-            "goals": mapped_goals, 
-                "drives": '\n'.join(drive.text for drive in self.drives),
-            "tasks": '\n'.join([str(hash_utils.find('name', task)) for task in self.tasks]),
-            "tasks_memories": tasks_memories,
-            "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
-            "num_options": len(task_choices)
-        }, prompt, temp=0.0, stops=['</end>'], max_tokens=150)
-        # print(f'sense\n{response}\n')
-        index = -1
-        ordering = xml.findall('<task>', response)
-        pairs = [(xml.find('<label>', item).strip(), xml.find('<order>', item).strip()) for item in ordering]
-        sorted_pairs = sorted(pairs, key=lambda x: x[1])
-        label_choice = choice.exp_weighted_choice(sorted_pairs, 0.75)
-        task_to_execute = task_choices[labels.index(label_choice[0])]
-        print(f'  Chosen label: {label_choice} task: {task_to_execute.replace('\n', '; ')}')
-        return task_to_execute
 
     async def request_goal_choice(self, goals):
         """Request a goal choice from the UI"""
-        if len(self.goals) > 0:
-            # Send choice request to UI
-            choice_request = {
-                'text': 'goal_choice',
-                'character_name': self.name,
-                'options': [{
+        if self.autonomy.goal:
+            self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
+            return self.focus_goal
+        else:
+            if len(self.goals) < 3:
+                print(f'{self.name} request_goal_choice: not enough goals')
+            if len(self.goals) > 0: # debugging
+                # Send choice request to UI
+                choice_request = {
+                    'text': 'goal_choice',
+                    'character_name': self.name,
+                    'options': [{
                     'id': i,
                     'name': goal.name,
                     'description': goal.description,
@@ -2653,38 +2412,46 @@ End your response with:
                             'orientation': str(goal.signalCluster.emotional_stance.orientation.value)
                         }
                     }
-                } for i, goal in enumerate(goals)]
-            }
-            # Drain any old responses from the queue
-            while not self.context.choice_response.empty():
-                _ = self.context.choice_response.get_nowait()
+                    } for i, goal in enumerate(goals)]
+                }
+                # Drain any old responses from the queue
+                while not self.context.choice_response.empty():
+                    _ = self.context.choice_response.get_nowait()
                 
-            # Send choice request to UI
-            self.context.message_queue.put(choice_request)
+                # Send choice request to UI
+                self.context.message_queue.put(choice_request)
             
-            # Wait for response with timeout
-            waited = 0
-            while waited < 40.0:
-                await asyncio.sleep(0.1)
-                waited += 0.1
-                if not self.context.choice_response.empty():
-                    try:
-                        response = self.context.choice_response.get_nowait()
-                        if response and response.get('selected_id') is not None:
-                            self.focus_goal = goals[response['selected_id']]
-                            return
-                    except Exception as e:
-                        print(f'{self.name} request_goal_choice error: {e}')
-                        break
+                # Wait for response with timeout
+                waited = 0
+                while waited < 40.0:
+                    await asyncio.sleep(0.1)
+                    waited += 0.1
+                    if not self.context.choice_response.empty():
+                        try:
+                            response = self.context.choice_response.get_nowait()
+                            if response and response.get('selected_id') is not None:
+                                self.focus_goal = goals[response['selected_id']]
+                                return self.focus_goal
+                        except Exception as e:
+                            print(f'{self.name} request_goal_choice error: {e}')
+                            break
             
-            # If we get here, either timed out or had an error
-            self.focus_goal = goals[random.randint(0, len(goals)-1)]
-        else:
-            self.focus_goal = None
+                # If we get here, either timed out or had an error
+                self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
+                return self.focus_goal
+            else:
+                self.focus_goal = None
+                return None
 
     async def request_task_choice(self, tasks):
         """Request an act choice from the UI"""
-        if len(tasks) > 0:
+        if self.autonomy.task:
+            self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
+            return self.focus_task
+        
+        if len(tasks) < 3:
+            print(f'{self.name} request_task_choice: not enough tasks')
+        if len(tasks) > 0: # debugging
             # Send choice request to UI
             choice_request = {
                 'text': 'task_choice',
@@ -2727,7 +2494,67 @@ End your response with:
                         break
             
             # If we get here, either timed out or had an error
-            self.focus_task.push(tasks[random.randint(0, len(tasks)-1)])
+            self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
+            return self.focus_task
+        else:
+            self.focus_task = None
+            return None
+
+    async def request_act_choice(self, acts):
+        """Request an act choice from the UI"""
+        if self.autonomy.action:
+            self.focus_action = choice.exp_weighted_choice(acts, 0.67)
+            return self.focus_action
+        
+        if len(acts) < 3:
+                print(f'{self.name} request_act_choice: not enough acts')
+        if len(acts) > 0: # debugging
+                # Send choice request to UI
+            choice_request = {
+                'text': 'act_choice',
+                'character_name': self.name,
+                'options': [{
+                    'id': i,
+                    'name': act.name,
+                    'mode': act.mode,
+                    'action': act.action,
+                    'reason': act.reason,
+                    'target': act.target.name if act.target else '',
+                    'context': {
+                        'signal_cluster': act.source.goal.signalCluster.to_string(),
+                        'emotional_stance': {
+                            'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value),
+                            'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value),
+                            'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value)
+                        }
+                    }
+                } for i, act in enumerate(acts)]
+            }
+            # Drain any old responses from the queue
+            while not self.context.choice_response.empty():
+                _ = self.context.choice_response.get_nowait()
+                
+            # Send choice request to UI
+            self.context.message_queue.put(choice_request)
+            
+            # Wait for response with timeout
+            waited = 0
+            while waited < 40.0:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                if not self.context.choice_response.empty():
+                    try:
+                        response = self.context.choice_response.get_nowait()
+                        if response and response.get('selected_id') is not None:
+                            self.focus_action = acts[response['selected_id']]
+                            return
+                    except Exception as e:
+                        print(f'{self.name} request_act_choice error: {e}')
+                        break
+            
+            # If we get here, either timed out or had an error
+            self.focus_action = choice.exp_weighted_choice(acts, 0.67)
+            return self.focus_action
 
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
@@ -2751,6 +2578,7 @@ End your response with:
                 self.generate_goal_alternatives()
                 await self.request_goal_choice(self.goals)
                 self.generate_task_alternatives()
+                await self.request_task_choice(self.tasks)
         elif len(self.goals) > 0:
             # Send choice request to UI
             await self.request_goal_choice(self.goals)
@@ -2763,7 +2591,7 @@ End your response with:
                 self.generate_goal_alternatives()
                 await self.request_goal_choice(self.goals)
             self.generate_task_alternatives()
-
+            await self.request_task_choice(self.tasks)
         await self.step_task()
 
        
@@ -2778,9 +2606,10 @@ End your response with:
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         while self.focus_task.peek() is task:
-            action = self.actualize_task(task)
-            if action:
-                await self.act_on_action(action, task)
+            action_alternatives = self.generate_acts(task)
+            await self.request_act_choice(action_alternatives)
+            if self.focus_action:
+                await self.act_on_action(self.focus_action, task)
                 #this will affect selected act and determine consequences
                 if self.context:
                     self.context.simulation_time += timedelta(minutes=15)
@@ -2824,6 +2653,8 @@ End your response with:
         reason = ''
         if self.focus_task.peek() and type(self.focus_task.peek()) == Task:
             reason = f'{self.focus_task.peek().reason}'
+        elif self.last_task:
+            reason = f'{self.last_task.reason}'
         return f'{self.thought.strip()}'
    
     def format_tasks_for_UI(self):
@@ -2833,6 +2664,8 @@ End your response with:
             tasks.append(f"Goal: {self.focus_goal.short_string()}")
         if self.focus_task.peek():
             tasks.append(f"Task: {self.focus_task.peek().short_string()}")
+        elif self.last_task:
+            tasks.append(f"Last Task: {self.last_task.short_string()}")
         return tasks
     
     #def format_history(self):

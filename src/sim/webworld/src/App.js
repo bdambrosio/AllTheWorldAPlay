@@ -48,10 +48,10 @@ function App() {
         websocket.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
           console.log('Message received:', data);  // See full message
-          if (data.text === 'goal_choice' || data.text === 'task_choice') {
+          if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice') {
             setChoiceRequest({
               ...data,
-              choice_type: data.text === 'goal_choice' ? 'goal' : 'task'
+              choice_type: data.text.split('_')[0]  // 'goal', 'task', or 'act'
             });
           } else {
             switch(data.type) {
@@ -343,6 +343,7 @@ function App() {
         <DirectorChairModal
           characters={characters}
           onClose={() => setShowDirectorChair(false)}
+          sendCommand={sendCommand}
         />
       )}
     </div>

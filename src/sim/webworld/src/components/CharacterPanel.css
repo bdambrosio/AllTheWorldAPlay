@@ -119,7 +119,6 @@
 .section-container {
   flex: 1;
   min-height: 100px;
-  overflow-y: auto;
   margin-bottom: 0;
 }
 
@@ -150,7 +149,6 @@
 
 .thoughts-content {
   max-height: 300px;
-  overflow-y: auto;
   padding-right: 5px;
 }
 
