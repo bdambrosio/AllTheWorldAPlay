@@ -86,7 +86,7 @@ class KnownActorManager:
         return self.known_actors.values()
     
     def add_actor_model(self, actor_name):
-        actor_agh = self.context.resolve_reference(actor_name)
+        actor_agh = self.context.resolve_reference(self.owner, actor_name.strip())
         if actor_agh and actor_agh.name not in self.known_actors:
             self.known_actors[actor_agh.name] = KnownActor(actor_agh, self)
         return self.known_actors[actor_name]

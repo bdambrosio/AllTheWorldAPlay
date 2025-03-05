@@ -1,7 +1,9 @@
+from __future__ import annotations
 import json
 import traceback
 import random
 from queue import Queue
+from typing import TYPE_CHECKING
 from sim import map
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage
@@ -9,6 +11,10 @@ import utils.xml_utils as xml
 from datetime import datetime, timedelta
 import utils.choice as choice
 import asyncio
+
+if TYPE_CHECKING:
+    from sim.agh import Character  # Only imported during type checking
+
 class Context():
     def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
         self.initial_state = situation
@@ -147,7 +153,7 @@ class Context():
             if actor.name == name or actor.name in name:
                 return actor
         # create a new NPC
-        if create_if_missing and self.plausible_npc(name):
+        if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
             npc = Character(name, character_description=f'{name} is a non-player character', server_name=self.llm.server_name)
             npc.set_context(self)
@@ -156,20 +162,16 @@ class Context():
             return npc
         return None
 
-    def resolve_reference(self, reference, create_if_missing=False):
-        """Resolve a reference to an actor"""
-        candidates = reference.strip().split()
-        for candidate in candidates:
-            if len(candidate) < 3 or candidate.lower() == 'none' or candidate[0].isdigit():
-                continue
-            actor = self.get_actor_by_name(candidate.strip())
-            if actor:
-                return actor
-            actor = self.get_npc_by_name(candidate.strip(), create_if_missing=create_if_missing)
-            if actor:
-                return actor
-        
-        return None
+    def resolve_reference(self, actor: Character, reference, create_if_missing=False):
+        """Resolve a reference to an actor. This is assumed to be a simple reference, not a complete phrase. e.g. John, Father, old man Henry, etc."""
+        "If you have a complete sentence, use Character.say_target to indentify the target reference."
+        if reference is None or reference == '' or reference.lower() == 'none':
+            return None
+        referenced_actor = self.get_actor_by_name(reference)
+        if referenced_actor is None:
+            referenced_actor = self.get_npc_by_name(reference, create_if_missing=create_if_missing)
+        return referenced_actor
+
     
     def world_updates_from_act_consequences(self, consequences):
         """ This needs overhaul to integrate and maintain consistency with world map."""

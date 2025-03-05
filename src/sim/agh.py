@@ -6,7 +6,7 @@ import random
 import string
 import traceback
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
 from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
@@ -32,6 +32,9 @@ from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
 import asyncio
 from weakref import WeakValueDictionary
+
+if TYPE_CHECKING:
+    from sim.context import Context  # Only imported during type checking
 
 class Mode(Enum):
     Think = "Think"
@@ -171,7 +174,7 @@ class Character:
         self.name = name
         self.character = character_description
         self.llm = llm_api.LLM(server_name)
-        self.context = None
+        self.context: Context = None
 
         self.show = ''  # to be displayed by main thread in UI public text widget
         self.reason = ''  # reason for action
@@ -235,7 +238,7 @@ class Character:
         self.actions = []
         self.autonomy = Autonomy()
 
-    def set_context(self, context):
+    def set_context(self, context: Context):
         self.context = context
         self.actor_models = KnownActorManager(self, context)
         if self.driveSignalManager:
@@ -271,7 +274,7 @@ class Character:
         if signalCluster_id:
             signalCluster = SignalCluster.get_by_id(signalCluster_id.strip())
         if other_actor_name and other_actor_name.strip().lower() != None:
-            other_actor = self.context.resolve_reference(other_actor_name, create_if_missing=True)
+            other_actor = self.context.resolve_reference(self, other_actor_name, create_if_missing=True)
 
         if name and description and termination:
             goal = Goal(name=name, 
@@ -305,7 +308,7 @@ class Character:
         except Exception as e:
             print(f"Warning: invalid actors field in {task_hash}") 
             actor_names = []
-        actors = [self.context.resolve_reference(actor_name) for actor_name in actor_names if actor_name]
+        actors = [self.context.resolve_reference(self, actor_name, create_if_missing=True) for actor_name in actor_names if actor_name]
         actors = [actor for actor in actors if actor is not None]
         if not self in actors:
             actors =  [self] + actors
@@ -329,7 +332,7 @@ class Character:
         try:
             target_name = xml.find('<target>', xml_string)
             if target_name:
-                target = self.context.resolve_reference(target_name, create_if_missing=True)
+                target = self.context.resolve_reference(self, target_name, create_if_missing=True)
             else:
                 target = None
         except Exception as e:
@@ -435,15 +438,15 @@ class Character:
         self.new_memory_cnt = 0
 
 
-    def say_target(self, act_name, text, source=None):
+    def say_target(self, act_mode, text, source=None):
         """Determine the intended recipient of a message"""
-        if len(self.context.actors) == 2:
-            for actor in self.context.actors:
-                if actor.name != self.name:
-                    if actor.name.lower() in text.lower():
-                        return actor.name
-        elif 'dialog with' in source.name:
-            return source.strip().split('dialog with ')[1].strip()
+        #if len(self.context.actors) == 2:
+        #    for actor in self.context.actors:
+        #        if actor.name != self.name:
+        #            if actor.name.lower() in text.lower():
+        #                return actor.name
+        if 'dialog with ' in source.name:
+            return source.name.strip().split('dialog with ')[1].strip()
         
         prompt = [UserMessage(content="""Determine the intended hearer of the following message spoken by you.
 {{$character}}
@@ -467,12 +470,11 @@ The message is an {{$action_type}} and its content is:
 </Message>
 
 If the message is an internal thought, respond with the name of the actor the thought is about.
-If the message is a spoken message, respond with the name of the intended recipient. An intended recipient may be another known actor or 
+If the message is a spoken message, respond with the name of the intended recipient. For example 'Ask Mary about John' would respond with 'Mary'.
+An intended recipient may be another known actor or a third party. Note that known actors are not always the intended recipient.
 Respond using the following XML format:
 
-<target>
   <name>intended recipient name</name>
-</target>
 
 End your response with:
 </end>
@@ -481,14 +483,14 @@ End your response with:
         response = self.llm.ask({
             'character': self.character,
             'history': self.narrative.get_summary('medium'),
-            'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]),
-            'action_type': 'internal thought' if act_name == 'Think' else 'spoken message',
+            'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]+[npc.name for npc in self.context.npcs]),
+            'action_type': 'internal thought' if act_mode == 'Think' else 'spoken message',
             "message": text
-        }, prompt, temp=0.2, stops=['</end>'], max_tokens=180)
+        }, prompt, temp=0.2, stops=['</end>'], max_tokens=20)
 
         candidate = xml.find('<name>', response)
         if candidate is not None:
-            target = self.context.resolve_reference(candidate)
+            target = self.context.resolve_reference(self, candidate.strip())
             if target:
                 return target.name
         return None
@@ -1004,33 +1006,27 @@ End response with:
         return satisfied
 
 
-    async def acts(self, act:Act, target: Character, act_name: str, act_arg: str='', reason: str='', source: Task=None):
+    async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
         # Create action record with state before action
         try:
-            mode = Mode(act_name.capitalize())
+            mode = Mode(act_mode.capitalize())
         except ValueError:
-            raise ValueError(f'Invalid action name: {act_name}')
+            raise ValueError(f'Invalid action name: {act_mode}')
         self.act_result = ''
     
         # Store current state and reason
         self.reason = reason
         self.show = ''
-        if act_name is None or act_arg is None or len(act_name) <= 0 or len(act_arg) <= 0:
+        if act_mode is None or act_arg is None or len(act_mode) <= 0 or len(act_arg) <= 0:
             return
 
 
         # Update thought display
-        if act_name == 'Think':
-            self.thought = act_arg
-            self.show += f" \n...{self.thought}..."
-            self.context.message_queue.put({'name':self.name, 'text':f"{self.show}"})  
-            await asyncio.sleep(0.1)
-        else:
-            self.thought +=  self.reason
+        self.thought +=  self.reason
 
         # Handle world interaction
-        if act_name == 'Do':
+        if act_mode == 'Do':
             # Get action consequences from world
             consequences, world_updates = self.context.do(self, act_arg)
         
@@ -1052,7 +1048,7 @@ End response with:
             if target is not None:
                 target.sense_input += '\n' + world_updates
             
-        elif act_name == 'Move':
+        elif act_mode == 'Move':
             moved = self.mapAgent.move(act_arg)
             if moved:
                 dx, dy = self.mapAgent.get_direction_offset(act_arg)
@@ -1064,8 +1060,9 @@ End response with:
                 self.show = '' # has been added to message queue!
                 await asyncio.sleep(0.1)
                 self.show = '' # has been added to message queue!
-                self.add_perceptual_input(f"\nYou {act_name}: {act_arg}\n  {percept}", mode='visual')
-        elif act_name == 'Look':
+                self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}\n  {percept}", mode='visual')
+
+        elif act_mode == 'Look':
             percept = self.look(interest=act_arg)
             self.show += act_arg + '.\n  sees ' + percept + '. '
             self.context.message_queue.put({'name':self.name, 'text':self.show})
@@ -1073,14 +1070,65 @@ End response with:
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
             await asyncio.sleep(0.1)
 
-        if act_name == 'Think': # Say is handled below
-            # Update actions based on thought
-            # self.update_actions_wrt_say_think(source, act_name, act_arg, reason, target) 
-            self.add_perceptual_input(f"\nYou {act_name}: {act_arg}", percept=False, mode='internal')
+        elif act_mode == 'Think': # Say is handled below
+            self.thought = act_arg
+            self.show += f" \n...{self.thought}..."
+            #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
+            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}..."})
             await asyncio.sleep(0.1)
-        # After action completes, update record with results
+
+            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog with '+self.name): # no nested inner dialogs for now
+                    # initiating an internal dialog
+                dialog_task = Task('internal dialog with '+self.name, 
+                                    description=self.name + ' thinks ' + act_arg, 
+                                    reason=reason, 
+                                    termination='natural end of internal dialog', 
+                                    goal=None,
+                                    actors=[self])
+                self.focus_task.push(dialog_task)
+                self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate()
+            await self.think(act_arg, source)
+            await asyncio.sleep(0.1)
+
+        elif act_mode == 'Say':# must be a say
+            self.show += f"{act_arg}'"
+            #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
+            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
+            await asyncio.sleep(0.1)
+            content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
+            if not target and act.target:
+                target=act.target
+            if target:
+                if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
+                    # start new dialog
+                    dialog_task = Task('dialog with '+target.name, 
+                                    description=self.name + ' talks with ' + target.name, 
+                                    reason=act_arg+'; '+reason, 
+                                    termination='natural end of dialog', 
+                                    goal=None,
+                                    actors=[self, target])
+                    self.focus_task.push(dialog_task)
+                    self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
+                    # new dialog, create a new dialog task, but only if we don't already have a dialog task, no nested dialogs for now
+                    if target.focus_task.peek() and target.focus_task.peek().name.startswith('dialog with '+self.name):
+                        target.focus_task.pop()
+                    # create a new dialog task
+                    dialog_task = Task('dialog with '+self.name, 
+                                    description='dialog with '+self.name, 
+                                    reason=act_arg+'; '+reason, 
+                                    termination='natural end of dialog', 
+                                    goal=None,
+                                    actors=[target, self])
+                    target.focus_task.push(dialog_task)
+                    target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
+
+                self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
+                target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(target, content)
+                await target.hear(self, act_arg, source)
+
+         # After action completes, update record with results
         # Notify other actors of action
-        if act_name != 'Say' and act_name != 'Look' and act_name != 'Think':  # everyone you do or move or look if they are visible
+        if act_mode != 'Say' and act_mode != 'Look' and act_mode != 'Think':  # everyone you do or move or look if they are visible
             for actor in self.context.actors:
                 if actor != self:
                     if actor != target:
@@ -1088,45 +1136,7 @@ End response with:
                         if actor_model != None and actor_model.visible:
                             percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
                             actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
-        elif act_name == 'Say':# must be a say
-            self.show += f"{act_arg}'"
-            #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
-            await asyncio.sleep(0.1)
-            content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
-            if target: 
-                # NPCs are initialized with a dialog task
-                if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
-                    # initiating a dialog
-                    dialog_task = Task('dialog with '+target.name, 
-                                        description=self.name + ' says ' + act_arg, 
-                                        reason=reason, 
-                                        termination='natural end of dialog', 
-                                        goal=None,
-                                        actors=[self, target])
-                    self.focus_task.push(dialog_task)
-                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
-                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
-                await target.hear(self, act_arg, source)
-            elif act.target:
-                # target is an NPC-like object
-                target_name = act.target.strip()
-                target = self.context.get_npc_by_name(target_name, create_if_missing=True)
-                if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog'): # no nested dialogs for now
-                    # initiating a dialog
-                    dialog_task = Task('dialog with '+target.name, 
-                                        description=self.name + ' says ' + act_arg, 
-                                        reason=reason, 
-                                        termination='natural end of dialog', 
-                                        goal=None,
-                                        actors=[self, target])
-                    self.focus_task.push(dialog_task)
-                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.activate()
-                self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.add_turn(self, content)
-
-                self.add_perceptual_input(f"You say: {act_arg}", mode='internal')
-
-        self.previous_action_name = act_name           
+        self.previous_action_mode = act_mode           
 
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
@@ -1322,9 +1332,14 @@ End response with:
         task_alternatives = []
         for task_hash in hash_utils.findall_forms(response):
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
+            if not self.focus_goal:
+                print(f'{self.name} generate_task_alternatives: no focus goal, skipping task')
+            task = self.validate_and_create_task(task_hash, self.focus_goal)
             task = self.validate_and_create_task(task_hash, self.focus_goal)
             if task:
                 task_alternatives.append(task)
+        if len(task_alternatives) < 3:
+            print(f'{self.name} generate_task_alternatives: only {len(task_alternatives)} tasks found')
         self.tasks = task_alternatives
         return task_alternatives
         #focus_task = choice.pick_weighted([(task, 1) for task in task_alternatives], weight=3, n=1)
@@ -1423,9 +1438,19 @@ End your response with:
         print(f'  **Not satisfied! {satisfied}, {progress}%**')
         return False, progress
 
-    def refine_say_act(self, act, task):
+    def refine_say_act(self, act: Act, task: Task):
         """Refine a say act to be more natural and concise"""
-        target_name = self.say_target(act.name, act.action, task)
+        if act.target:
+            target = act.target
+            target_name = act.target.name
+        elif task.actors:
+            for actor in task.actors:
+                if actor is not self:
+                    target = actor
+                    target_name = actor.name
+                    break
+        if not target or target_name is None:
+            target_name = self.say_target(act.mode, act.action, task)
         if target_name is None:
             return act
         
@@ -1461,6 +1486,7 @@ End response with:
 
         relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
         response = self.llm.ask({
+            "act_mode": act.mode,
             "act_name": act.name,
             "act_arg": act.action,
             "dialog": dialog,
@@ -1530,7 +1556,7 @@ And the observed result of that was:
 Respond with three alternative Acts, including their Mode and action. 
 The Acts should vary in mode and action.
 
-In choosing an Act (see format below), you can choose from these Modes:
+In choosing each Act (see format below), you can choose from these Modes:
 - Think - reason about the current situation wrt your state and the task.
 - Say - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
     Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
@@ -1639,7 +1665,7 @@ Response:
 
 ===End Examples===
 
-Use the XML format for the act:
+Use the XML format for each act:
 
 <act> 
   <mode>Think, Say, Do, Look, or Move</mode>
@@ -1647,12 +1673,14 @@ Use the XML format for the act:
   <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.</target>
 </act>
 
-Respond ONLY with the above XML.
+Respond ONLY with the above XML for each alternative act.
 Your name is {{$name}}, phrase the statement of specific action in your voice.
+If the mode is Say, the action should be the actual words to be spoken.
+    e.g. 'Maya, how do you feel about the letter from the city gallery?' rather than a description like 'ask Maya about the letter from the city gallery and how it's making her feel'. 
 Ensure you do not duplicate content of a previous specific act.
 {{$duplicative}}
 
-Again, the task to translate into an Act is:
+Again, the task to translate into alternative acts is:
 <task>
 {{$task}} 
 </task>
@@ -1687,7 +1715,10 @@ End your response with:
             "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
             "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
             "known_actor_names": ', '.join(actor.name for actor in task.actors)
-        }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=240)
+        }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=280)
+        response = response.strip()
+        if not response.endswith('</act>'):
+            response += '\n</act>'
 
         # Rest of existing while loop...
         act_xmls = xml.findall('act', response)
@@ -1696,6 +1727,13 @@ End your response with:
             print(f'No act found in response: {response}')
             self.actions = []
             return []
+        if not task.goal:
+            print(f'{self.name} generate_act_alternatives: task {task.name} has no goal!')
+            if not self.focus_goal:
+                print(f'{self.name} generate_act_alternatives: no focus goal either!')
+            task.goal = self.focus_goal
+        if len(act_xmls) < 3:
+            print(f'{self.name} generate_act_alternatives: only {len(act_xmls)} acts found')
         for act_xml in act_xmls:
             try:
                 act = self.validate_and_create_act(act_xml, task)
@@ -1739,13 +1777,16 @@ End your response with:
             return False
         return True
 
-    def update_actions_wrt_say_think(self, source, act_name, act_arg, reason, target=None):
+    def update_actions_wrt_say_think(self, source, act_mode, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
         if source.name.startswith('dialog'):
             # print(f' in dialog, no action updates')
             return
         if target is None:
-            target_name = self.say_target(act_name, act_arg, source)
+            if source and source.target and hasattr(source.target, 'name'):
+                target_name = source.target.name
+            else:
+                target_name = self.say_target(act_mode, act_arg, source)
         elif hasattr(target, 'name'):  # Check if target has name attribute instead of type
             target_name = target.name
         else:
@@ -1756,7 +1797,7 @@ End your response with:
             return
         
         # Rest of the existing function remains unchanged
-        print(f'\n{self.name} Update actions from say or think\n {act_name}, {act_arg};  reason: {reason}')
+        print(f'\n{self.name} Update actions from say or think\n {act_mode}, {act_arg};  reason: {reason}')
         
         if 'viewer' in source.name:  # Still skip viewer
             print(f' source is viewer, no action updates')
@@ -1863,7 +1904,7 @@ Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>""")]
-        response = self.llm.ask({"text":f'{act_name} {act_arg}',
+        response = self.llm.ask({"text":f'{act_mode} {act_arg}',
                                  "focus_task":self.focus_task.peek(),
                                  "reason":reason,
                                  "intensions":'\n'.join(task.to_string() for task in self.intensions[-5:]),
@@ -2154,6 +2195,40 @@ End your response with:
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
             
+    async def think(self, message: str, source: Task=None, respond: bool=True):
+        """ called from acts when a character says something to itself """
+        # Initialize dialog manager if needed
+        print(f'\n{self.name} thinks: {message}')
+       
+        # Remove text between ellipses - thoughts don't count as dialog
+        message = re.sub(r'\.\.\..*?\.\.\.', '', message)
+        if self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.active is False:
+            print(f'{self.name} has no active dialog, assertion error')
+            return
+        # otherwise, we have an active dialog in progress, decide whether to close it or continue it
+        else:
+            dialog_model = self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog
+            dialog_model.add_turn(self, message)
+            if self.natural_dialog_end(self) and dialog_model.turn_count>2: # test if the dialog has reached a natural end, set min for thinking.
+
+                dialog = dialog_model.get_current_dialog()
+                self.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='internal')
+                self.actor_models.get_actor_model(self.name).update_relationship(dialog)
+                dialog_model.deactivate_dialog()
+                self.last_task = self.focus_task.peek()
+                self.focus_task.pop()
+                if self.name != 'viewer':
+                    self.update_individual_commitments_following_conversation(self, 
+                                                                        dialog,
+                                                                        [])
+                self.driveSignalManager.recluster()
+                return
+
+        text, response_source = self.generate_dialog_turn(self, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        action = Act(name='Internal Dialog', mode='Think', action=text, actors=[self], reason=text, source=response_source, target=self)
+        await self.act_on_action(action, response_source)
+
+
     async def hear(self, from_actor: Character, message: str, source: Task=None, respond: bool=True):
         """ called from acts when a character says something to this character """
         # Initialize dialog manager if needed
@@ -2176,65 +2251,31 @@ End your response with:
 
         # Remove text between ellipses - thoughts don't count as dialog
         message = re.sub(r'\.\.\..*?\.\.\.', '', message)
-        if self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.active is False:
-            # new dialog, create a new dialog task, but only if we don't already have a dialog task, no nested dialogs for now
-            if self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog'):
-                print(f'{self.name} already has a dialog task, assertion error')
-                self.last_task = self.focus_task.peek()
-                self.focus_task.pop()
-                raise Exception(f'{self.name} already has a dialog task, assertion error')
-            # we don't have a dialog task, so we activate a new one
-            self.actor_models.get_actor_model(from_actor.name).dialog.activate(source)
-            # create a new dialog task
-            dialog_task = Task('dialog with '+from_actor.name, 
-                                description='dialog with '+from_actor.name, 
-                                reason=from_actor.name+' says '+message, 
-                                termination='natural end of dialog', 
-                                goal=None,
-                                actors=[self, from_actor])
-            self.focus_task.push(dialog_task)
-            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
 
-        # otherwise, we have an active dialog in progress, decide whether to close it or continue it
-        else:
-            self.actor_models.get_actor_model(from_actor.name, create_if_missing=True).dialog.add_turn(from_actor, message)
-            if self.natural_dialog_end(from_actor) or (self.name == 'viewer'): # test if the dialog has reached a natural end, or hearer is viewer.
-
-                dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
-                self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
-                self.actor_models.get_actor_model(from_actor.name).update_relationship(self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog())
-                self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-                self.focus_task.pop()
-                self.last_task = self.focus_task.peek()
-                if not self.focus_task.peek():
-                    # no previous focus task!
-                    print(f'{self.name} has no previous focus task!')
-                if self.name != 'viewer' and from_actor.name != 'viewer':
-                    joint_tasks = self.update_joint_commitments_following_conversation(from_actor, 
-                                                                                    from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
-                    self.update_individual_commitments_following_conversation(from_actor, 
-                                                                        self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
-                                                                        joint_tasks)
-                # it would probably be better to have the other actor deactivate the dialog itself
-                dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
-                from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
-                from_actor.actor_models.get_actor_model(self.name).update_relationship(from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
-                from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
-                if from_actor.focus_task.peek() and from_actor.focus_task.peek().name.startswith('dialog'):
-                    from_actor.last_task = from_actor.focus_task.peek()
-                    from_actor.focus_task.pop()
-                if not self.focus_task.peek():
-                    # no previous focus task!
-                    print(f'{from_actor.name} has no previous focus task!')
-                if from_actor.name != 'viewer' and self.name != 'viewer':
-                    joint_tasks = from_actor.update_joint_commitments_following_conversation(self, 
-                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog())
-                    from_actor.update_individual_commitments_following_conversation(self, 
-                                                                              from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
-                                                                              joint_tasks)
-                self.driveSignalManager.recluster()
-                from_actor.driveSignalManager.recluster()
-                return
+        if self.natural_dialog_end(from_actor) or (self.name == 'viewer'): # test if the dialog has reached a natural end, or hearer is viewer.
+            # close the dialog
+            dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+            self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
+            self.actor_models.get_actor_model(from_actor.name).update_relationship(dialog)
+            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+            self.last_task = self.focus_task.peek()
+            self.focus_task.pop()
+            if self.name != 'viewer' and from_actor.name != 'viewer':
+                joint_tasks = self.update_joint_commitments_following_conversation(from_actor, dialog)
+                self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
+            # it would probably be better to have the other actor deactivate the dialog itself
+            dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
+            from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
+            from_actor.actor_models.get_actor_model(self.name).update_relationship(dialog)
+            from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
+            from_actor.last_task = from_actor.focus_task.peek()
+            from_actor.focus_task.pop()
+            if from_actor.name != 'viewer' and self.name != 'viewer':
+                joint_tasks = from_actor.update_joint_commitments_following_conversation(self, dialog)
+                from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
+            self.driveSignalManager.recluster()
+            from_actor.driveSignalManager.recluster()
+            return
 
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         action = Act(name='Say', mode='Say', action=text, actors=[self, from_actor], reason=text, source=response_source, target=from_actor)
@@ -2253,8 +2294,9 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt = [UserMessage(content="""Given the following character description, current situation, goals, memories, and recent history, 
-generate a response to the statement below.
+        prompt_string = """Given the following character description, current situation, goals, memories, and recent history, """
+        prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
+        prompt_string += """
 
 {{$character}}.
 
@@ -2284,29 +2326,26 @@ Your relationship with the speaker is:
 {{$relationship}}
 </relationship>
                               
-Your dialog with the speaker up to this point has been:
-                              
+"""
+
+        prompt_string += """Your internal dialog up to this point has been:""" if self is from_actor else """Your dialog with the speaker up to this point has been:"""
+        prompt_string += """
 <dialog>
 {{$dialog}}
 </dialog>
-                              
-your commitments at present are (possibly as a result of this dialog) are:
 
-<commitments>
-{{$commitments}}
-</commitments>
+"""
 
-
-Given all the above, generate a response to the statement below:
-                              
+        prompt_string += """generate a next thought in the internal dialog below:""" if self is from_actor else """generate a response to the statement below:"""
+        prompt_string += """
 <statement>
 {{$statement}}
 </statement>
                               
 Use the following XML template in your response:
                               
-<response>response to this statement</response>
-<reason>terse (4-6 words) reason for this answer</reason>
+<response>response / next thought</response>
+<reason>terse (4-6 words) reason for this response / thought</reason>
 
 {{$duplicative_insert}}
 
@@ -2321,7 +2360,9 @@ Respond only with the above XML
 Do not include any additional text. 
 End your response with:
 </end>
-""")]
+"""
+
+        prompt = [UserMessage(content=prompt_string)]
 
         mapped_goals = self.map_goals()
         activity = ''
@@ -2338,7 +2379,7 @@ End your response with:
 
         answer_xml = self.llm.ask({
             'character': self.character,
-            'statement': f'{from_actor.name} says {message}',
+            'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
             "situation": self.context.current_state,
             "name": self.name,
                 "goals": mapped_goals,
@@ -2347,10 +2388,6 @@ End your response with:
             'history': self.narrative.get_summary('medium'),
                 'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
                 'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
-                'commitments': '\n'.join([str(hash_utils.find('name', task)) 
-                                          + ' - ' + str(hash_utils.find('description', task)) 
-                                          + ' - ' + str(hash_utils.find('reason', task)) 
-                                          for task in self.tasks if hash_utils.find('committed', task) == 'True']),
                 'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
@@ -2389,11 +2426,15 @@ End your response with:
     async def request_goal_choice(self, goals):
         """Request a goal choice from the UI"""
         if self.autonomy.goal:
-            self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
+            if self.focus_goal is None:
+                if len(goals) == 0:
+                    self.generate_goal_alternatives()
+                self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
             return self.focus_goal
         else:
-            if len(self.goals) < 3:
+            if len(self.goals) < 1:
                 print(f'{self.name} request_goal_choice: not enough goals')
+                self.generate_goal_alternatives()
             if len(self.goals) > 0: # debugging
                 # Send choice request to UI
                 choice_request = {
@@ -2508,6 +2549,9 @@ End your response with:
         
         if len(acts) < 3:
                 print(f'{self.name} request_act_choice: not enough acts')
+        for act in acts:
+            if not act.source or not act.source.goal or not act.source.goal.signalCluster:
+                print(f'{self.name} request_act_choice: act {act.name} has no source or goal or signal cluster')
         if len(acts) > 0: # debugging
                 # Send choice request to UI
             choice_request = {
@@ -2521,11 +2565,11 @@ End your response with:
                     'reason': act.reason,
                     'target': act.target.name if act.target else '',
                     'context': {
-                        'signal_cluster': act.source.goal.signalCluster.to_string(),
+                        'signal_cluster': act.source.goal.signalCluster.to_string() if act.source and act.source.goal and act.source.goal.signalCluster else '',
                         'emotional_stance': {
-                            'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value),
-                            'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value),
-                            'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value)
+                            'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
+                            'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
+                            'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value) if act.source and act.source.goal and act.source.goal.signalCluster else ''
                         }
                     }
                 } for i, act in enumerate(acts)]
@@ -2579,6 +2623,10 @@ End your response with:
                 await self.request_goal_choice(self.goals)
                 self.generate_task_alternatives()
                 await self.request_task_choice(self.tasks)
+            else:
+                # ask anyway just to confirm continuation of goal
+                await self.request_goal_choice(self.goals)
+
         elif len(self.goals) > 0:
             # Send choice request to UI
             await self.request_goal_choice(self.goals)
@@ -2624,32 +2672,32 @@ End your response with:
         self.act = action
         if task:
             task.acts.append(action)
-        act_name = action.name
-        if act_name is not None:
-            self.act_name = act_name.strip()
+        act_mode = action.mode
+        if act_mode is not None:
+            self.act_mode = act_mode.strip()
         act_arg = action.action
-        print(f'\n{self.name} act_on_action: {act_name} {act_arg}')
+        print(f'\n{self.name} act_on_action: {act_mode} {action.name} {act_arg}')
         self.reason = action.reason
         source = action.source
         #print(f'{self.name} choose {action}')
         target = None
             #responses, at least, explicitly name target of speech.
-        if action.target and action.target != self:
+        if action.target and (action.target != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
             target_name = action.target.name
             target = action.target
-        else:
-            target_name = self.say_target(act_name, act_arg, source)
+        elif act_mode == 'Say':
+#            target_name = self.say_target(act_mode, act_arg, source)
             if target_name != None:
                 target = self.context.get_actor_by_name(target_name)
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
-        await self.acts(action, target, act_name, act_arg, self.reason, source)
+        await self.acts(action, target, act_mode, act_arg, self.reason, source)
 
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'
         action = ''
         if self.act:
-            action = f'{self.act.name}: {self.act.action}'
+            action = f'{self.act.mode}: {self.act.action}'
         reason = ''
         if self.focus_task.peek() and type(self.focus_task.peek()) == Task:
             reason = f'{self.focus_task.peek().reason}'

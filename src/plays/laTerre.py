@@ -34,7 +34,7 @@ Drive("immediate needs of survival - food, shelter, health, rest from backbreaki
 ]
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", 'internal')
 J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", 'internal')
-F = agh.Character("Francoise", """You are Francoise Fouan, an attractive young woman from a neighboring peasant family.
+F = agh.Character("Francoise", """You are Francoise Fouan, an attractive young woman from a neighboring peasant family in the same village as Jean.
 You are hardworking and stoic, accustomed to the unending labor required on a farm.
 You conceal your feelings and speak carefully, knowing every word will be gossiped about in the village.
 You dream of marrying and having a farm of your own to manage one day.
