@@ -36,7 +36,7 @@ class Orientation(Enum):
     Appeasing = "Appeasing" #placating, avoiding conflict"
     Avoiding = "Avoiding" #minimizing interaction"
     Supportive = "Supportive" #assisting others' goals"
-    SeekingSupport = "SeekingSupport" #requesting assistance"
+    Seekingsupport = "Seekingsupport" #requesting assistance"
     Connecting = "Connecting" #building/strengthening relationships"
     Performing = "Performing" #seeking attention/approval"
     Observing = "Observing" #gathering social information"
@@ -63,7 +63,7 @@ stance_definitions = {
     "Appeasing": "placating, avoiding conflict",    
     "Avoiding": "minimizing interaction",
     "Supportive": "assisting others' goals",
-    "SeekingSupport": "requesting assistance",
+    "Seekingsupport": "requesting assistance",
     "Connecting": "building/strengthening relationships",
     "Performing": "seeking attention/approval",
     "Observing": "gathering social information",
@@ -118,7 +118,7 @@ There are three dimensions to your response:
     Appeasing = "placating, avoiding conflict"
     Avoiding = "minimizing interaction"
     Supportive = "assisting others' goals"
-    SeekingSupport = "requesting assistance"
+    Seekingsupport = "requesting assistance"
     Connecting = "building/strengthening relationships"
     Performing = "seeking attention/approval"
     Observing = "gathering social information"
@@ -129,7 +129,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 
 #arousal Alert / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
 #tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
-#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / SeekingSupport / Connecting / Performing / Observing / Defending
+#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / Seekingsupport / Connecting / Performing / Observing / Defending
 ##
 
 Respond only with the hash-formatted text, nothing else.

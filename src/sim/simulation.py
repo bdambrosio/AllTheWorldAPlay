@@ -178,9 +178,10 @@ class SimulationServer:
                     if char:
                         print(f'{char.name} cognitive cycle')   
                         await char.cognitive_cycle()
+                        await self.send_character_update(char)
                         break # only execute for first available actor
             
-                await self.update_character_states()
+                #await self.update_character_states()
                 #now handle context
                 if self.steps_since_last_update > random.randint(4, 6):    
                     await asyncio.sleep(0.1)
@@ -284,13 +285,13 @@ class SimulationServer:
         """Route inject command using watcher pattern from worldsim"""
         try:
             target_name = command.get('target')
-            target = self.sim_context.resolve_reference(target_name)
+            target = self.sim_context.resolve_reference(target_name.strip())
             if target is None:
                 raise ValueError(f"Target {target_name} not found")
             text = command.get('text')
-            viewer = self.sim_context.resolve_reference('viewer', create_if_missing=True)
-            # does an npc have a task or goal?
-            task = Task(name='dialog with '+target_name, description='inject', reason='inject', termination='', goal=None, actors=[viewer, target])
+            viewer = self.sim_context.resolve_reference(target, 'viewer', create_if_missing=True)
+            # does an npc have a task or goal? - acts say will handle this automagically
+            task = Task(name='idle', description='inject', reason='inject', termination='', goal=None, actors=[viewer, target])
             viewer.focus_task.push(task)
             await viewer.act_on_action(Act('Say', 'Say', text, [viewer, target],'inject', None , target), task)
             await asyncio.sleep(0.1)

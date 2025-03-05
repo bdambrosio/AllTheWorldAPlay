@@ -30,6 +30,10 @@ try:
 except openai.OpenAIError as e:
    print(e)
 
+import utils.GrokClient as GrokClient
+grok_client = GrokClient
+
+
 deepseek_client = DeepSeekClient.DeepSeekClient()
 deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
@@ -94,32 +98,19 @@ class LLM():
         global vllm_model
         self.server_name = server_name
         print(f'will use {self.server_name} as llm')
-        if server_name.startswith('GPT') or server_name.startswith('deepseek'):
-            models = requests.get('http://127.0.0.1:5000/v1/models')
-            if models.status_code == 200:
-                vllm_model = models.json()['data'][0]['id']
-                print(f'vllm model: {vllm_model}')
-            else:
-                print(f'fail to get models {models.status_code}')
-            self.context_size = 16384
-        elif server_name.startswith('mistral'):
-            self.context_size = 32000  # I've read mistral uses sliding 8k window
-        elif server_name.startswith('claude'):
-            self.context_size = 32768  #
-        else:
-            self.context_size = 16384  # conservative local mis/mixtral default
-            try:
-                if 'deepseeklocal' not in self.server_name:
-                    response = requests.post('http://127.0.0.1:5000' + '/template')
-                    if response.status_code == 200:
-                        self.context_size = response.json()['context_size']
-                        print(f'context: {self.context_size}')
-            except Exception as e:
-                print(f' fail to get prompt template from server {str(e)}')
+        self.context_size = 16384  # conservative local mis/mixtral default
+        try:
+            if 'deepseeklocal' not in self.server_name:
+                response = requests.post('http://127.0.0.1:5000' + '/template')
+                if response.status_code == 200:
+                    self.context_size = response.json()['context_size']
+                    print(f'context: {self.context_size}')
+        except Exception as e:
+            print(f' fail to get prompt template from server {str(e)}')
 
-        if not IMAGE_PATH.exists():
-            IMAGE_PATH.mkdir(parents=True, exist_ok=True)
-            print(f"Directory '{IMAGE_PATH}' created.")
+    if not IMAGE_PATH.exists():
+        IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+        print(f"Directory '{IMAGE_PATH}' created.")
 
     def run_request(self, bindings, prompt, options):
         global vllm_model
@@ -158,6 +149,9 @@ class LLM():
             return response
         if 'Claude' in self.server_name:
             response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
+            return response
+        if 'Grok' in self.server_name:
+            response= GrokClient.executeRequest(prompt=substituted_prompt, options=options)
             return response
         if options.model is not None and 'gpt' in options.model:
             response= openai_client.executeRequest(prompt=substituted_prompt, options=options)
