@@ -133,7 +133,13 @@
   margin-bottom: 8px;
 }
 
-.goal-termination, .goal-progress, .goal-drives,
+.goal-termination,
+.goal-conditions {
+  font-size: 0.9em;
+  margin: 2px 0;
+}
+
+.goal-progress, .goal-drives,
 .task-reason, .task-actors, .task-needs {
   color: #ccc;
   font-size: 0.9em;
