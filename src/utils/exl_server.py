@@ -78,7 +78,7 @@ elif 'Mistral-Small-24B' in model_name or 'Llama-3.3-70B-Instruct' in model_name
     print(f"Loading model: {model_name}\n context {context_size}")
     model.load([38, 42])
 
-elif 'qwen' in model_name.lower():
+elif 'qwen' in model_name.lower() or 'QwQ' in model_name:
     print(f"Loading model: {model_name}\n context {context_size}")
     model.load([36,44])
 

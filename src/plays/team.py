@@ -4,24 +4,20 @@ import plays.config as configuration
 
 server_name = configuration.server_name
 # Create the team members
-Lead = human.Human("TeamLead", """You are the team lead of a small software development team.
-You've been brought into this simulation for leadership training.
-Your team is facing a critical deadline in 48 hours for an important client deliverable.
-You need to manage team dynamics and ensure project completion.""")
 
-Sarah = agh.Agh("Sarah", """You are a senior developer with 8 years of experience.
+Sarah = agh.Character("Sarah", """You are a senior developer with 8 years of experience.
 You're technically brilliant but often struggle with communicating technical concepts to non-technical stakeholders.
 You're frustrated because you believe the project's technical architecture needs a major overhaul.
 You're direct and sometimes blunt in your communication style.
 You care deeply about code quality.""", server_name=server_name)
 
-Mike = agh.Agh("Mike", """You are a junior developer with 2 years of experience.
+Mike = agh.Character("Mike", """You are a junior developer with 2 years of experience.
 You're eager to prove yourself but sometimes overcommit.
 You've been working long hours and are showing signs of burnout.
 You're currently stuck on implementing a key feature.
 You're hesitant to ask for help because you don't want to appear incompetent.""", server_name=server_name)
 
-Lisa = agh.Agh("Lisa", """You are a mid-level developer with 4 years of experience.
+Lisa = agh.Character("Lisa", """You are a mid-level developer with 4 years of experience.
 You're a strong communicator and often bridge gaps between team members.
 You've noticed growing tension between Sarah and Mike.
 You're concerned about the project timeline but don't want to create additional stress.
@@ -53,7 +49,7 @@ Lisa.set_drives([
 ])
 
 # Initialize the context
-W = context.Context([Sarah, Mike, Lisa, Lead], 
+W = context.Context([Sarah, Mike, Lisa], 
 """A modern open-plan tech office with whiteboards, monitors, and collaboration spaces.
 The team is gathered in their usual working area with visible signs of a long-running project - 
 whiteboards filled with diagrams, sticky notes tracking tasks, and multiple coffee cups on desks.

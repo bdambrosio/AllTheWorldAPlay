@@ -4,6 +4,9 @@ import utils.llm_api as LLM_API
 from utils.Messages import UserMessage
 llm = LLM_API.LLM(server_name='Grok')
 
-response = llm.ask({}, [UserMessage(content="Hello, world!")])
-print(response)
+try:
+    response = llm.ask({}, [UserMessage(content="Hello, world!")])
+    print(response)
+except Exception as e:
+    print(e)
 

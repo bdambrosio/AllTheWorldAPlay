@@ -1,6 +1,6 @@
 #server_name='deepseek'
 #server_name='deepseeklocal'
-server_name='local'
+#server_name='local'
 #server_name='Claude'
 #server_name='llama.cpp'
 #server_name='openai'

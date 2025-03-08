@@ -39,7 +39,10 @@ class Dialog:
         self.turn_count += 1
         self.fatigue += 1.0  # Basic increment
         # Could be modified based on turn length, emotion, etc.
-        self.transcript.append(f"{speaker.name} says: {message}")
+        if self.actor is not self.target:
+            self.transcript.append(f"{speaker.name} says: {message}")
+        else:
+            self.transcript.append(f"...{message}...")
 
     def is_fatigued(self) -> bool:
         """Check if conversation has become fatiguing"""

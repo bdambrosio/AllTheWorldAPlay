@@ -29,6 +29,8 @@ async def generate_image(prompt: str, size: str = "256X192"):
     print(f"Original prompt: {prompt}")
     #print(f"Processed prompt: {processedprompt}")
     image = pipe(prompt=prompt, 
+                 height=384,
+                 width=384,
                  num_inference_steps=40,
                  guidance_scale=4.00).images[0]
     

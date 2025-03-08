@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
 class Arousal(Enum):
-    Alert = "Alert" #vigilant, ready, focused"
+    Vigilant = "Vigilant" #vigilant, ready, focused"
     Anticipatory = "Anticipatory" #expectant, preparing"
     Agitated = "Agitated" #restless, unsettled"
     Relaxed = "Relaxed" #calm, at ease"
@@ -43,7 +43,7 @@ class Orientation(Enum):
     Defending = "Defending" #protecting position/resources"
 
 stance_definitions = {
-    "Alert": "vigilant, ready, focused",
+    "Vigilant": "vigilant, ready, focused",
     "Anticipatory": "expectant, preparing",
     "Agitated": "restless, unsettled",
     "Relaxed": "calm, at ease",
@@ -77,6 +77,9 @@ class EmotionalStance:
         self.orientation = orientation
 
     def to_definition(self):
+        return f'{str(self.arousal.value)}, {str(self.tone.value)}, {str(self.orientation.value)}'
+
+    def to_definition(self):
         return f'{str(self.arousal.value)} ({stance_definitions[self.arousal.value]}), {str(self.tone.value)} ({stance_definitions[self.tone.value]}), {str(self.orientation.value)} ({stance_definitions[self.orientation.value]})'
 
     @staticmethod
@@ -94,7 +97,7 @@ Character:
 There are three dimensions to your response:
 
 1. Arousal: The arousal of the character. This takes values from the following list:
-    Alert = "vigilant, ready, focused"
+    Vigilant = "vigilant, ready, focused"
     Anticipatory = "expectant, preparing"
     Agitated = "restless, unsettled"
     Relaxed = "calm, at ease"
@@ -127,7 +130,7 @@ There are three dimensions to your response:
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#arousal Alert / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
+#arousal Vigilant / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
 #tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
 #orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / Seekingsupport / Connecting / Performing / Observing / Defending
 ##

@@ -57,13 +57,19 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
             
     try:
         print(msgs)
-        response = client.messages.create(model="grok-2-latest",
-                                                       messages = msgs,
-                                                       #system = system_msg,
-                                                       temperature=temp,
-                                                       stop_sequences = stop_sequences,
-                                                       max_tokens = max_t)
-        print(response)
-        return json.loads(response.json())["content"][0]["text"]
+        response = client.messages.create(#model = 'grok-beta', 
+                                          #model = 'grok-mini-beta', 
+                                          model="grok-2-latest",
+                                          messages = msgs,
+                                          stop_sequences = stop_sequences,
+                                          max_tokens = max_t)
+        #print(json.loads(response.json())["content"][0]["text"])
     except Exception as e:
+        print(e)
         return {"status":'error', "message":{"content": str(e)}}
+
+    #print(json.loads(response.json())["content"][0]["text"])
+    response_text = json.loads(response.json())["content"][0]["text"].strip()
+    if type(stop_sequences) == list and len(stop_sequences) > 0 and response_text.endswith(stop_sequences[0]):
+        response_text = response_text[:-len(stop_sequences[0])]
+    return response_text

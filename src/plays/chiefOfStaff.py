@@ -4,15 +4,13 @@ import plays.config as configuration
 
 server = configuration.server
 # Create characters
-#server='deepseeklocal'
-#server='local'
-maam = agh.Agh("Madam", \
+aam = agh.Character("Madam", \
                """You are a human female, a busy working executive. 
 You depend on Jeff, your AI, to keep your house in order. 
 However, your are increasingly frustrated with him performance, perhaps due to tensions you bring home from work.""", server=server)
 maam.add_to_history('You think Jeff has been getting sloppy lately, I need to replace him.')
 
-jeff = agh.Agh("Jeff", """You are an AI humanoid male young adult. 
+jeff = agh.Character("Jeff", """You are an AI humanoid male young adult. 
 You are in charge of Madam's household. 
 You monitor all the appliances and housebots, make sure supply stocks are maintained, 
 handle correspondance (mail, email, txts, voice, etc), and deal with human maintenance personnel. 
