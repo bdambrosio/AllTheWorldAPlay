@@ -285,7 +285,7 @@ class SimulationServer:
         """Route inject command using watcher pattern from worldsim"""
         try:
             target_name = command.get('target')
-            target = self.sim_context.resolve_reference(target_name.strip())
+            target = self.sim_context.resolve_reference(None, target_name.strip())
             if target is None:
                 raise ValueError(f"Target {target_name} not found")
             text = command.get('text')

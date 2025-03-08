@@ -45,8 +45,9 @@ End with:
         char_memories = [text for text in all_texts if self.name.lower() in text.lower()]
         if char_memories is None or len(char_memories) == 0:
             return
-        prompt = [UserMessage(content=f"""Analyze the relationship between these characters based on recent interactions.
-
+        prompt_prefix = f"""Analyze the """\
+            +"""relationship between these characters based on recent interactions.""" if self.manager.owner is not self.actor else """self-model of this character based on recent thoughts.""" 
+        prompt = [UserMessage(content=prompt_prefix +f"""
 Character: 
 {self.manager.owner.character}
 

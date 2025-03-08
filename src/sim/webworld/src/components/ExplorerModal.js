@@ -196,12 +196,12 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
             <h4>Goals</h4>
             <div className="goals-list">
               {explorerState.cognitive?.goals?.map((goal, i) => (
-                <div key={i} className="goal-item">
-                  <div className="goal-name">{goal.name}</div>
+                <div className="goal-item" key={goal.id}>
+                  <div>{goal.name}</div>
                   <div className="goal-description">{goal.description}</div>
                   <div className="goal-termination">Termination: {goal.termination}</div>
+                  <div className="goal-conditions">Preconditions: {goal.preconditions}</div>
                   <div className="goal-progress">Progress: {goal.progress}</div>
-                  <div className="goal-drives">Drives: {goal.drives?.join(', ')}</div>
                 </div>
               ))}
             </div>

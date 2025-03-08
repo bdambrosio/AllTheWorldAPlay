@@ -204,33 +204,28 @@ class DriveSignal:
         else:
             return 1.0  
 
-@dataclass
 class SignalCluster:
     """Represents a cluster of similar drive signals"""
     _id_counter: ClassVar[int] = 0
     _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
-    manager: 'DriveSignalManager'
-    centroid: np.ndarray   # Center of the cluster
-    signals: List[DriveSignal]
-    drives: List[Drive]     # The drives this cluster relates to
-    is_opportunity: bool   # True if opportunity cluster
-    text: str            # Label for the cluster
-    history: List[str] = field(default_factory=list)
-    score: float = 0.0
-    emotional_stance: Optional[EmotionalStance] = None
-    id: str = field(init=False)
-    
-    def __post_init__(self):
-        SignalCluster._id_counter += 1
+
+    def __init__(self, manager: 'DriveSignalManager', centroid: np.ndarray, signals: List[DriveSignal], drives: List[Drive], is_opportunity: bool, text: str):
+        self.manager = manager
+        self.centroid = centroid
+        self.signals = signals
+        self.drives = drives
+        self.is_opportunity = is_opportunity
+        self.text = text.lstrip(":")
+        self.history = []
+        self.score = 0.0
+        self.emotional_stance = None
         self.id = f"sc{SignalCluster._id_counter}"
         SignalCluster._instances[self.id] = self
+        SignalCluster._id_counter += 1
 
     @classmethod
     def get_by_id(cls, id: str):
-        try:
-            return cls._instances.get(id)
-        except:
-            return None
+        return cls._instances.get(id)
 
     def to_string(self):
         return f'{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
@@ -298,7 +293,7 @@ End your response with:
         return max(s.timestamp for s in self.signals)
 
 class DriveSignalManager:
-    def __init__(self, llm: LLM, context=None, embedding_dim=384):
+    def __init__(self, owner: Character, llm: LLM, context=None, embedding_dim=384):
         """Initialize detector with given embedding dimension"""
         self.clusters: List[SignalCluster] = []
         self.embedding_dim = embedding_dim
@@ -306,6 +301,7 @@ class DriveSignalManager:
         self.llm = llm
         self.context = context
         self.current_time = None
+        self.owner = owner
         self.clustering_eps = 0.40
 
     def set_llm(self, llm: LLM):
@@ -397,6 +393,10 @@ class DriveSignalManager:
 {{$text}}
 </Text>
 
+<Surroundings>
+{{$surroundings}}
+</Surroundings>
+
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
                                     
@@ -414,7 +414,7 @@ End your response with:
 </end>
 """)]
             
-            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives])}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives]), "surroundings": self.owner.look_percept}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
             if not response:
                 return []
                     
@@ -560,7 +560,7 @@ End your response with:
                     signals=[signals[0]],
                     drives=signals[0].drives,
                     is_opportunity=signals[0].is_opportunity,
-                    text=signals[0].text
+                    text=signals[0].text.lstrip(':')
                 )
                 # Add remaining signals
                 for signal in signals[1:]:
@@ -589,7 +589,7 @@ End your response with:
                     signals=[outlier_signal],
                     drives=outlier_signal.drives,
                     is_opportunity=outlier_signal.is_opportunity,
-                    text='outliner_'+outlier_signal.text
+                    text='outlier_'+outlier_signal.text.lstrip(':')
                 )
                 # Add remaining signals
                 outlier_cluster.cluster_name()
