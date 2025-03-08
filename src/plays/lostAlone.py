@@ -5,8 +5,6 @@ import sim.context as context, sim.agh as agh
 import config
 # the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario.
 
-server_name='deepseeklocal'
-#server_name='local'
 server_name = config.server_name
 # Create characters
 # I like looking at pretty women. pbly because I'm male hetero-oriented. Change to suit your fancy.

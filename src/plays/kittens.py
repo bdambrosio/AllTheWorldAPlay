@@ -24,7 +24,7 @@ class GardenResource(Enum):
 # I like looking at pretty women. pbly because I'm male hetero oriented. If that offends, please change to suit your fancy.
 # I find it disorienting for characters to change ethnic characteristics every time they are rendered, so they are nailed down here.
 # I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
-lemon = agh.Agh("Lemonade", """I am a pale grey kitten. 
+lemon = agh.Character("Lemonade", """I am a pale grey kitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
 My name is Lemonade, others often call me Lemon""", server_name=server_name)
@@ -49,7 +49,7 @@ lemon.set_drives([
 #lemon.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
 
-meow = agh.Agh("Meow-Meow", """I am a grey full-grown tabby cat. 
+meow = agh.Character("Meow-Meow", """I am a grey full-grown tabby cat. 
 I love Lemonade, but sometimes need a break from her playfulness.
 I like to sleep, and occasionally hunt bugs and butterflys.
 My name is Meow-Meow""", server_name=server_name)

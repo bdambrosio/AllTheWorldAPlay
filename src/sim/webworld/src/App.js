@@ -5,6 +5,8 @@ import ShowPanel from './components/ShowPanel';
 import WorldPanel from './components/WorldPanel';
 import DirectorChoiceModal from './components/DirectorChoiceModal';
 import DirectorChairModal from './components/DirectorChairModal';
+import TabPanel from './components/TabPanel';
+import './components/TabPanel.css';
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
@@ -245,8 +247,8 @@ function App() {
   return (
     <div className="app-container">
       <div className="character-panels">
-        {Object.values(characters)
-          .filter(character => character && character.name) // Only render valid characters
+        <TabPanel characters={Object.values(characters)
+          .filter(character => character && character.name)
           .map(character => (
             <CharacterPanel 
               key={character.name} 
@@ -255,6 +257,7 @@ function App() {
               sendCommand={sendCommand}
             />
           ))}
+        />
       </div>
       <div className="center-panel">
         <div className="world-container">

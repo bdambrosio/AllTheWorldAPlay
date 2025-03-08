@@ -39,6 +39,7 @@ deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 vllm_model = 'deepseek-r1-distill-llama-70b-awq'
+vllm_model = '/home/bruce/Downloads/models/Qwen2.5-32B-Instruct'
 
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
@@ -99,14 +100,6 @@ class LLM():
         self.server_name = server_name
         print(f'will use {self.server_name} as llm')
         self.context_size = 16384  # conservative local mis/mixtral default
-        try:
-            if 'deepseeklocal' not in self.server_name:
-                response = requests.post('http://127.0.0.1:5000' + '/template')
-                if response.status_code == 200:
-                    self.context_size = response.json()['context_size']
-                    print(f'context: {self.context_size}')
-        except Exception as e:
-            print(f' fail to get prompt template from server {str(e)}')
 
     if not IMAGE_PATH.exists():
         IMAGE_PATH.mkdir(parents=True, exist_ok=True)

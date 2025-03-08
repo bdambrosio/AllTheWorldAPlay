@@ -9,7 +9,7 @@ from utils import hash_utils
 import utils.xml_utils as xml
 from utils.llm_api import LLM
 import sim.context
-from utils.Messages import SystemMessage
+from utils.Messages import SystemMessage, UserMessage
 import utils.llm_api as llm_api
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -20,7 +20,7 @@ from weakref import WeakValueDictionary
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sim.agh import Character  # Only imported during type checking
+    from sim.agh import Character, Goal  # Only imported during type checking
     from sim.cognitive.EmotionalStance import EmotionalStance
 
 _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -32,6 +32,9 @@ class Drive:
     _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
     text: str
     embedding: Optional[np.ndarray] = None
+    attempted_goals: List[Goal] = field(default_factory=list)   
+    satisfied_goals: List[Goal] = field(default_factory=list)   
+
     id: str = field(init=False)
     
     def __post_init__(self):
@@ -48,7 +51,133 @@ class Drive:
     def __eq__(self, other):
         if not isinstance(other, Drive):
             return False
-        return self.text == other.text
+        return self.id == other.id
+    
+    def update_on_goal_completion(self, character: Character, goal: Goal) -> Optional[Drive]:
+        """Update drive based on goal completion
+        Core Transformation Patterns
+1. Scope Transformations
+Generalize: Expand concern from individual to collective or systemic level.
+
+Example: "Securing my inheritance" → "Fighting for fair inheritance laws for all farmers"
+Trigger: Recognition that personal problems reflect broader patterns
+
+Particularize: Narrow concern from abstract/general to specific/individual.
+
+Example: "Finding justice in society" → "Ensuring my family acknowledges my contributions"
+Trigger: Frustration with abstract goals; discovery of specific leverage point
+
+2. Temporal Transformations
+Future-Shift: Reorient from past grievances to future possibilities.
+
+Example: "Reclaiming what I deserved" → "Building what I desire"
+Trigger: New relationships or opportunities that make future more salient than past
+
+Legacy-Shift: Reorient from immediate outcomes to long-term impact.
+
+Example: "Acquiring farmland" → "Creating an agricultural legacy for generations"
+Trigger: Confrontation with mortality or contemplation of one's lasting impact
+
+3. Agency Transformations
+Internalize: Shift from external validation to internal standards.
+
+Example: "Gaining others' recognition" → "Achieving personal standards of excellence"
+Trigger: Repeated disappointment with external validation sources
+
+Collectivize: Shift from individual to collaborative agency.
+
+Example: "Succeeding through my own efforts" → "Building success through partnership"
+Trigger: Powerful cooperative experiences; recognition of interdependence
+
+4. Value Transformations
+Means-Ends Inversion: What was once a means becomes an end in itself.
+
+Example: "Working the land to earn a living" → "Finding fulfillment in agricultural craft"
+Trigger: Discovery of unexpected satisfaction in process rather than outcome
+
+Value Transcendence: Replace concrete goal with abstract value it represents.
+
+Example: "Owning this specific farm" → "Creating a place that embodies security and belonging"
+Trigger: Reflection on deeper motivations underlying concrete desires
+
+5. Compensation Transformations
+Substitution: Replace blocked goal with achievable alternative that satisfies same need.
+
+Example: "Inheriting family land" → "Purchasing and revitalizing abandoned farmland"
+Trigger: Repeated failure combined with discovery of alternative path
+
+Sublimation: Transform problematic desire into socially valuable alternative.
+
+Example: "Violently confronting those who wronged me" → "Becoming an advocate for justice through legal means"
+Trigger: Ethical growth or social pressure against original expression
+
+6. Integration Transformations
+Synthesis: Merge competing drives into unified higher-order drive.
+
+Example: "Finding love" + "Securing land" → "Building a family legacy through shared stewardship"
+Trigger: Recognition of how seemingly separate goals can mutually reinforce
+
+Differentiation: Break general drive into more specific components.
+
+Example: "Achieving success" → "Mastering agricultural techniques, building community standing, ensuring financial stability"
+Trigger: Growing sophistication in understanding of complex goal"""
+
+        prompt = [UserMessage(content="""Given the following goal, update the motivating drive to reflect the goal completion.
+        
+Goal just satisfied:
+{{$goal}}
+
+Drive to update:
+{{$drive}}
+                              
+Goals attempted for this drive: 
+{{$attempted_goals}}
+
+Goals known to have been satisfied for this drive: 
+{{$satisfied_goals}}
+
+A number of goals attempted but not satisfied may indicate this drive is not a good fit for the character at this time. 
+The character might respond, for example, by 
+ - becoming more determined, 
+ - changing the target to something more abstract (e.g., a thing like this rather than this thing).
+ - changing the target to something more specific (e.g., this thing here rather than my ideal thing).
+ - changing the target to something more modest (e.g. from 'my ideal house' to 'a house').
+ - rejecting the drive (e.g. from 'to be rich' to 'resent the rich' or in the extreme case 'kill the rich').
+
+Alternatively, a number of satisfied goals may indicate the character is ready for expansion of the drive in space, time, or scope.
+In this case the character might respond by 
+ - broadening the scope of the drive (e.g., from 'my' to 'my family' or 'my community' or 'my society'),
+ - deepening the motivation (e.g., from 'to be accepted' to 'to be respected' or 'to be loved' or 'to be happy'),
+ - changing the target to something more specific (e.g., this thing here rather than my ideal thing).
+
+Some drives are recurring, and will ebb or strengthen with goal satisfaction.
+Other drives evolve over time into new, more ambitious or more modest goals. 
+                              
+The basic personality of the character for whom you are updating the drive is:
+
+{{$character}}
+
+
+Use your knowledge of human and animal nature, together with your understanding of story and narrative arc, to create a significant update to this drive.
+                              
+Respond with the updated drive (8-12 words) only.
+Do not include any introductory, explanatory, formative or discursive text.
+End your response with:
+</end>
+""")]       
+        result = character.llm.ask({"goal": f'{goal.name}: {goal.description}; termination criterion: {goal.termination}', 
+                                    "drive": f'{self.text}', 
+                                    "attempted_goals": '\n'.join([f'{g.name}: {g.description}; termination criterion: {g.termination}' for g in self.attempted_goals]),
+                                    "satisfied_goals": '\n'.join([f'{g.name}: {g.description}; termination criterion: {g.termination}' for g in self.satisfied_goals]),
+                                    "character": f'{character.character}'}, prompt, temp=0.1, stops=['</end>'], max_tokens=30)
+        if result:
+            try:
+                return Drive(result.strip())
+            except:
+                return None
+        else:
+            return None
+        
 
     @classmethod
     def get_by_id(cls, id: str):
@@ -107,7 +236,7 @@ class SignalCluster:
         return f'{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
     
     def to_full_string(self):
-        return f'{self.id} Name: {self.text}\n    {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    {self.emotional_stance.to_definition()}\n    signals:{"\n      ".join([s.text for s in self.signals[:10]])}\n'
+        return f'{self.id} Name: {self.text};  {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n    drives:{"\n      ".join([d.text for d in self.drives])}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""

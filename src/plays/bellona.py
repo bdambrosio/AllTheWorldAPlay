@@ -22,7 +22,7 @@ class UrbanResource(Enum):
 
 
 server_name = configuration.server_name
-K = agh.Agh("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
+K = agh.Character("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
 You are a newcomer to the strange, isolated city of Bellona.
 You are intelligent, introspective, and somewhat disoriented by your new surroundings.
 You are curious about the city and its inhabitants, driven by a deep loneliness and longing for something more from life.
@@ -36,7 +36,7 @@ K.set_drives([
     "expressing yourself through writing and art.",
 ])
 K.add_to_history("You think: Where am I? This city seems so strange and unfamiliar. I feel disoriented, but also intrigued by the unusual atmosphere.")
-L = agh.Agh("Lanya", """You are a young, attractive woman living in the city of Bellona.
+L = agh.Character("Lanya", """You are a young, attractive woman living in the city of Bellona.
 You are confident, independent, and adapted to the city's unconventional way of life.
 You are open-minded and comfortable with your sexuality.
 You have a strong sense of self and a deep understanding of the city's dynamics.
@@ -45,7 +45,7 @@ You quickly fall in love with him, but realize his instability. This causes stre
 You speak in flirty, playful, teen chatter, terse and informal, but morose and low-key.
 Your name is Lanya.""", server_name=server_name)
 L.set_drives([
-    "sex.",
+    "sex",
     "developing a close relationship with the Kidd and helping him navigate the city.",
     "exploring new experiences and pushing personal boundaries.",
     "soothing, exploring, and expressing yourself through music and performance.",
@@ -55,5 +55,3 @@ W = context.Context([K, L],
 """A post-apocalyptic urban landscape, the city of Bellona is isolated, lawless, and filled with strange phenomena. 
 The sun hangs low in the hazy sky, casting an eerie light over the buildings and deserted streets.
 """, terrain_types=UrbanTerrain, resources=UrbanResource, server_name=server_name)
-#worldsim.IMAGEGENERATOR = 'tti_serve'
-#worldsim.main(W)

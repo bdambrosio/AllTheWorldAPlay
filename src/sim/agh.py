@@ -95,6 +95,14 @@ class Goal:
         self.progress = 0
         self.tasks = []
 
+    def __eq__(self, other):
+        if not isinstance(other, Goal):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+    
     @classmethod
     def get_by_id(cls, id: str):
         return cls._instances.get(id)
@@ -119,9 +127,18 @@ class Task:
         self.termination = termination
         self.goal = goal
         self.actors = actors
-        self.needs = []
+        self.needs = ''
+        self.result = ''
         self.acts = []
 
+    def __eq__(self, other):
+        if not isinstance(other, Task):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+    
     @classmethod
     def get_by_id(cls, id: str):
         return cls._instances.get(id)
@@ -295,7 +312,7 @@ class Character:
             task_hash: Hash-formatted task definition
             goal: Goal this task is for
         """
-        name = hash_utils.find('name', task_hash)
+        name = hash_utils.find('task', task_hash)
         description = hash_utils.find('description', task_hash)
         reason = hash_utils.find('reason', task_hash)
         termination = hash_utils.find('termination', task_hash)
@@ -959,6 +976,20 @@ End response with:
         else:
             return False
 
+    def update_drives(self, goal: Goal):
+        """Update drives based on goal satisfaction"""
+        if hasattr(goal, 'drives'):
+            for drive in goal.drives:
+                drive.satisfied_goals.append(goal)
+                if len(drive.attempted_goals) > 3:
+                    update = drive.update_on_goal_completion(self, goal)
+                    if update:
+                        try:
+                            self.drives.remove(drive)
+                        except:
+                            pass
+                        self.drives.append(update)
+
     def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
         termination_check = task.termination if task != None else None
@@ -1002,6 +1033,8 @@ End response with:
             if goal == self.focus_goal:
                 self.focus_goal = None
                 self.goals = [] # force regeneration. Why not reuse remaining goals?
+
+                self.update_drives(goal)
 
         return satisfied
 
@@ -1077,7 +1110,7 @@ End response with:
             self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}..."})
             await asyncio.sleep(0.1)
 
-            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog with '+self.name): # no nested inner dialogs for now
+            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('internal dialog with '+self.name): # no nested inner dialogs for now
                     # initiating an internal dialog
                 dialog_task = Task('internal dialog with '+self.name, 
                                     description=self.name + ' thinks ' + act_arg, 
@@ -1289,12 +1322,12 @@ Create up to {{$n_new_tasks}} specific, actionable tasks.
 The new tasks should be distinct from one another, and cover both the focus goal.
 Where possible, use one or more of your intensions in generating task alternatives.
 
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+A task has a name, description, reason, list of actors, and a termination criterion as shown below.
+Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
 Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#task
-#name brief (4-6 words) action name
+#task brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
 #actors the names of any other actors involved in this task. if no other actors, use None
@@ -1335,7 +1368,7 @@ End response with:
             if not self.focus_goal:
                 print(f'{self.name} generate_task_alternatives: no focus goal, skipping task')
             task = self.validate_and_create_task(task_hash, self.focus_goal)
-            task = self.validate_and_create_task(task_hash, self.focus_goal)
+
             if task:
                 task_alternatives.append(task)
         if len(task_alternatives) < 3:
@@ -1425,12 +1458,12 @@ End your response with:
             self.add_perceptual_input(f" {object.name} is complete: {termination_check}", mode='internal')
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
-            if progress/100.0 > 0.67 * random.random():
+            if progress/100.0 > random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
                 self.add_perceptual_input(f" {object.name} is pretty much complete: {termination_check}", mode='internal')
                 return True, progress
         elif satisfied != None and 'insufficient' in satisfied.lower():
-            if progress/100.0 > random.random():
+            if progress/100.0 > random.random() + 0.5:
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
                 self.add_perceptual_input(f"{object.name} is sufficiently complete: {termination_check}", mode='internal')
                 return True, progress
@@ -1489,7 +1522,7 @@ End response with:
             "act_mode": act.mode,
             "act_name": act.name,
             "act_arg": act.action,
-            "dialog": dialog,
+        "dialog": dialog,
             "target": target_name,
             "relationship": relationship,
             "character": self.character
@@ -1501,7 +1534,7 @@ End response with:
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate a a set of three alternative Acts (a 'Think', 'Say', 'Look', Move', or 'Do') for the next step of the following task.
+Your task is to generate a a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
 
 <task>
 {{$task}}
@@ -1557,19 +1590,19 @@ Respond with three alternative Acts, including their Mode and action.
 The Acts should vary in mode and action.
 
 In choosing each Act (see format below), you can choose from these Modes:
-- Think - reason about the current situation wrt your state and the task.
-- Say - speak, to motivate others to act, to align or coordinate with them, to reason jointly, or to establish or maintain a bond. 
-    Say is especially appropriate when there is an actor you are unsure of, you are feeling insecure or worried, or need help.
+- Say - speak, to obtain or share information, to align or coordinate with others, to reason jointly, or to establish or maintain a bond. 
     For example, if you want to build a shelter with Samantha, it might be effective to Say: 'Samantha, let's build a shelter.'
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-- Do - perform an act (other than move) with physical consequences in the world. 
-    This is often appropriate when the task involves interacting with a resource or actor, particularly when the actor is not in {{$known_actor_names}}.
+    Useful when you need to move towards a resource or actor.
+- Do - perform an act (other than move) to achieve physical consequences in the world. 
+    This is often appropriate when the task involves interacting physically with a resource or actor.
+- Think - mental reasoning about the current situation wrt your state and the task.
+    Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
 Review your character and current emotional stance when choosing Mode and action. 
-(e.g., 'xxx is thoughtful' implies higher percentage of 'Think' Acts.) 
-likewise, emotional tone and orientation can heavily influence the phrasing and style of expression for a Say, Think, or Do.
+Emotional tone and orientation can (and should!)heavily influence the phrasing and style of expression for a Say, Think, or Do.
 
 An Act is one which:
 - Is a specific thought, spoken text, physical movement or action.
@@ -1590,7 +1623,7 @@ Prioritize actions that lead to meaningful progress in the narrative.
 Dialog guidance:
 - If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
-- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language. Speak in the first person.
+- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language appropriate to the character's emotional tone and orientation. Speak in the first person.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
@@ -1609,7 +1642,7 @@ Consider the previous act. E.G.:
                               
 Respond in XML:
 <act>
-  <mode>Think, Say, Look, Move, or Do, corresponding to whether the act is a reasoning, speech, or physical act</mode>
+  <mode>Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning</mode>
   <action>thoughts, words to speak, direction to move, or physical action</action>
   <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.</target>
 </act>
@@ -1647,7 +1680,6 @@ Response:
 <act>
   <mode>Look</mode>
   <action>look around for landmarks or signs of civilization</action>
-  <target>Samantha</target>
 </act>
 
 ----
@@ -1744,38 +1776,6 @@ End your response with:
         self.actions = act_alternatives
         return act_alternatives
 
-
-    def validate_task(self, task):
-        """Validate a task"""
-        if task is None:
-            return False
-        name = hash_utils.find('name', task)
-        if name is None or len(name) < 3:
-            return False
-        description = hash_utils.find('description', task)
-        if description is None or len(description) < 3:
-            return False
-        reason = hash_utils.find('reason', task)
-        if reason is None or len(reason) < 3:
-            return False
-        termination = hash_utils.find('termination', task)
-        if termination is None or len(termination) < 3:
-            return False
-        actors = hash_utils.find('actors', task)
-        if actors is None :
-            return False
-        actors = actors.split(',')
-        if len(actors) == 0:
-            return False
-        for actor in actors:
-            if self.context.get_actor_by_name(actor.strip()) is None:
-                # not an actor in the context, try to resolve reference?
-                pass
-        committed = hash_utils.find('committed', task)
-        #committed is optional, but if present, must be true
-        if not (committed is None or committed=='' or committed.lower().strip() == 'true' or committed.lower().strip() == 'false'):
-            return False
-        return True
 
     def update_actions_wrt_say_think(self, source, act_mode, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
@@ -2186,7 +2186,7 @@ End your response with:
         if response is None:
             return False
         try:
-            rating = int(response.lower().strip())
+            rating = int(response.lower().replace('</end>','').strip())
         except ValueError:
             print(f'{self.name} natural_dialog_end: invalid rating: {response}')
             rating = 7
@@ -2320,7 +2320,9 @@ Your last action was:
 
 {{$activity}}
 
-Your relationship with the speaker is:
+"""
+        prompt_string += """You think of yourself as:""" if self is from_actor else """You think of the speaker as:"""
+        prompt_string += """
                               
 <relationship>
 {{$relationship}}
@@ -2368,7 +2370,8 @@ End your response with:
         activity = ''
         if self.focus_task.peek() != None and self.focus_task.peek().name.startswith('dialog'):
             activity = f'You are currently actively engaged in {self.focus_task.peek().name}'
-
+        elif self.focus_task.peek() != None and self.focus_task.peek().name.startswith('internal dialog'):
+            activity = f'You are currently actively engaged in an internal dialog'
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(6)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
@@ -2382,13 +2385,13 @@ End your response with:
             'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
             "situation": self.context.current_state,
             "name": self.name,
-                "goals": mapped_goals,
+            "goals": mapped_goals,
             "memories": memory_text,  # Updated from 'memory'
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
-                'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
-                'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
-                'duplicative_insert': duplicative_insert
+            'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
+            'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
+            'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -2429,7 +2432,7 @@ End your response with:
             if self.focus_goal is None:
                 if len(goals) == 0:
                     self.generate_goal_alternatives()
-                self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
+                self.focus_goal = choice.exp_weighted_choice(goals, 0.9)
             return self.focus_goal
         else:
             if len(self.goals) < 1:
@@ -2478,7 +2481,7 @@ End your response with:
                             break
             
                 # If we get here, either timed out or had an error
-                self.focus_goal = choice.exp_weighted_choice(goals, 0.67)
+                self.focus_goal = choice.exp_weighted_choice(goals, 0.9)
                 return self.focus_goal
             else:
                 self.focus_goal = None
@@ -2541,10 +2544,20 @@ End your response with:
             self.focus_task = None
             return None
 
+
+    def ActWeight(self, count, n, act):
+        """Weight for act choice using exponential decay"""
+        base = 0.75  # Controls how quickly weights decay
+        raw = pow(base, n)  # Exponential decay
+        if act.mode == 'Think':
+            return raw * 0.67
+        return raw
+
+
     async def request_act_choice(self, acts):
         """Request an act choice from the UI"""
         if self.autonomy.action:
-            self.focus_action = choice.exp_weighted_choice(acts, 0.67)
+            self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
             return self.focus_action
         
         if len(acts) < 3:
@@ -2597,7 +2610,7 @@ End your response with:
                         break
             
             # If we get here, either timed out or had an error
-            self.focus_action = choice.exp_weighted_choice(acts, 0.67)
+            self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
             return self.focus_action
 
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
@@ -2666,9 +2679,13 @@ End your response with:
             else:
                 print(f'No action for task {task.name}')
                 return
-                return
 
-    async def act_on_action(self, action, task):
+
+    async def act_on_action(self, action: Act, task: Task):
+        if task and task.goal:
+            for drive in task.goal.drives:
+                if task.goal not in drive.attempted_goals:
+                    drive.attempted_goals.append(task.goal)
         self.act = action
         if task:
             task.acts.append(action)
@@ -2681,13 +2698,17 @@ End your response with:
         source = action.source
         #print(f'{self.name} choose {action}')
         target = None
+        target_name = None
             #responses, at least, explicitly name target of speech.
         if action.target and (action.target != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
             target_name = action.target.name
             target = action.target
+        elif self.focus_task.peek() and self.focus_task.peek().name.startswith('internal dialog'):
+            target_name = self.name
+            target = self
         elif act_mode == 'Say':
 #            target_name = self.say_target(act_mode, act_arg, source)
-            if target_name != None:
+            if target_name != None and target is None:
                 target = self.context.get_actor_by_name(target_name)
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
