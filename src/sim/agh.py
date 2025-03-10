@@ -986,13 +986,15 @@ End response with:
             for drive in goal.drives:
                 drive.satisfied_goals.append(goal)
                 if len(drive.attempted_goals) > 3:
-                    update = drive.update_on_goal_completion(self, goal)
-                    if update:
-                        try:
-                            self.drives.remove(drive)
-                        except:
-                            pass
-                        self.drives.append(update)
+                    if drive in self.drives: # only update if drive still exists, may have already been rewritten
+                        update = drive.update_on_goal_completion(self, goal)
+                        if update:
+                            try:
+                                self.drives.remove(drive)
+                                # remove from any signalClusters too!
+                            except:
+                                pass
+                            self.drives.append(update)
 
     def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
@@ -1180,7 +1182,8 @@ End response with:
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:5]] # first 5 in score order
         for sc in focus_signalClusters:
             sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
         prompt = [UserMessage(content="""Following are up to 5 signalClusters ranked by impact on the actor's drives. These clusters may overlap.
@@ -1227,19 +1230,19 @@ Consider:
 3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
 
 Respond with up to three goals, each in the following parts: 
-    name - a terse (3-4 words) name for the goal, 
-    description - a concise (5-8 words) description of the goal, intended to guide task generation, 
-    other_actor_name - name of the other actor involved in this goal, or None if no other actor is involved, 
+    goal - a terse (3-4 words) name for the goal, 
+    description - concise (5-8 words) further details of the goal, intended to guide task generation, 
+    otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
     signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is the primary source for this goal
     preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
-    and termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #goal terse (3-4 words) name for this goal
-#description concise (5-8 words) description of this goal
+#description concise (5-8 words) further details of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
 #signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
@@ -1265,6 +1268,7 @@ End response with:
         for goal_hash in forms:
             goal = self.validate_and_create_goal(goal_hash)
             if goal:
+                print(f'{self.name} generated goal: {goal.to_string()}')
                 goals.append(goal)
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
@@ -1279,7 +1283,7 @@ End response with:
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
-        prompt = [UserMessage(content="""Given your character, drives, current goal, intensions, and recent memories, create up to {{$n_new_tasks}} task alternatives.
+        prompt = [UserMessage(content="""Given your character, drives, current goal, intensions, and recent memories, create up to {{$n_new_tasks}} task alternatives to advance the focus goal.
 
 <character>
 {{$character}}
@@ -1336,8 +1340,9 @@ Crucial to the generation of tasks is the emotional stance wrt the focus goal.
 
 Create up to {{$n_new_tasks}} specific, actionable tasks.
                               
-The new tasks should be distinct from one another, and cover both the focus goal.
-Where possible, use one or more of your intensions in generating task alternatives.
+A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 2-3 steps at most)in satisfying the focus goal.
+The new tasks should be distinct from one another, and advance the focus goal.
+Where possible, include one or more of your intensions in generating task alternatives.
 
 A task has a name, description, reason, list of actors, and a termination criterion as shown below.
 Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
@@ -1552,7 +1557,7 @@ End response with:
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
         prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate a a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
+Your task is to generate a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
 
 <task>
 {{$task}}
@@ -1586,6 +1591,13 @@ Your emotional stance wrt the focus goal is:
 {{$focus_goal_emotional_stance}}
 </focus_goal_emotional_stance>
 
+However, this is only a guide. Your current dominant overall emotional state is:
+
+<emotional_state>
+{{$emotionalState}}
+</emotional_state>
+                              
+                              
 Your recent memories include:
 
 <recent_memories>
@@ -1624,7 +1636,7 @@ In choosing each Act (see format below), you can choose from these Modes:
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
 Review your character and current emotional stance when choosing Mode and action. 
-Emotional tone and orientation can (and should!)heavily influence the phrasing and style of expression for a Say, Think, or Do.
+Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for a Say, Think, or Do.
 
 An Act is one which:
 - Is a specific thought, spoken text, physical movement or action.
@@ -1634,7 +1646,7 @@ An Act is one which:
 - Can be easily visualized or imagined as a film clip.
 - Makes sense as the next action given observed results of previous act . 
 - Is consistent with any incomplete action commitments made in your last statements in RecentHistory.
-- Does NOT repeat, literally or substantively, the previous specific act or other acts by you in RecentHistory.
+- Does NOT repeat, literally or substantively, a previous act by you in RecentHistory, unless it is a continuation of the same action.
 - Significantly advances the story or task at hand.
 - Is stated in the appropriate person (voice):
         If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
@@ -1753,9 +1765,12 @@ End your response with:
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
+        self.driveSignalManager.get_scored_clusters()   
+        emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)        
 
         response = self.llm.ask({
             'character': self.character.replace('\n', ' '),
+            'emotionalState': emotionalState.to_definition(),
             'memories': memory_text,  # Updated from 'memory'
             'duplicative': duplicative_insert,
             'history': self.narrative.get_summary('medium'),
@@ -1927,6 +1942,8 @@ Do NOT include any introductory, explanatory, or discursive text.
 Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>""")]
+
+
         response = self.llm.ask({"text":f'{act_mode} {act_arg}',
                                  "focus_task":self.focus_task.peek(),
                                  "reason":reason,
@@ -2235,7 +2252,7 @@ End your response with:
             if self.natural_dialog_end(self) and dialog_model.turn_count>2: # test if the dialog has reached a natural end, set min for thinking.
 
                 dialog = dialog_model.get_current_dialog()
-                self.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='internal')
+                self.add_perceptual_input(f'Internal monologue:\n {dialog}', percept=False, mode='internal')
                 self.actor_models.get_actor_model(self.name).update_relationship(dialog)
                 dialog_model.deactivate_dialog()
                 self.last_task = self.focus_task.peek()
@@ -2317,11 +2334,15 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt_string = """Given the following character description, current situation, goals, memories, and recent history, """
+        prompt_string = """Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
         prompt_string += """
 
 {{$character}}.
+
+<emotional_state>
+{{$emotionalState}}
+</emotional_state>
 
 <situation>
 {{$situation}}
@@ -2379,6 +2400,7 @@ Reminders:
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step.
 - If the intent is to agree, state agreement without repeating the statement.
 - Speak in your own voice. Do not echo the speech style of the Input. 
+- Character emotional state should have maximum impact on the tone, phrasing, and content of the response.
 - Respond in the style of natural spoken dialog. Use short sentences and casual language.
  
 Respond only with the above XML
@@ -2403,8 +2425,11 @@ End your response with:
         duplicative_insert = ''
         trying = 0
 
+        emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)
+
         answer_xml = self.llm.ask({
             'character': self.character,
+            'emotionalState': emotionalState.to_definition(),
             'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
             "situation": self.context.current_state,
             "name": self.name,
@@ -2623,7 +2648,7 @@ End your response with:
 
     def ActWeight(self, count, n, act):
         """Weight for act choice using exponential decay"""
-        base = 0.75  # Controls how quickly weights decay
+        base = 0.67  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
             return raw * 0.67

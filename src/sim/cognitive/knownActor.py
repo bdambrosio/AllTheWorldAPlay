@@ -5,7 +5,7 @@ from utils.Messages import UserMessage
 
 class KnownActor:
     def __init__(self, actor, manager):
-        """An instance of a self-model of another actor"""
+        """An instance of a character internalmodel of another actor"""
         self.manager = manager
         self.actor = actor
         self.name = actor.name
@@ -45,9 +45,9 @@ End with:
         char_memories = [text for text in all_texts if self.name.lower() in text.lower()]
         if char_memories is None or len(char_memories) == 0:
             return
-        prompt_prefix = f"""Analyze the """\
-            +"""relationship between these characters based on recent interactions.""" if self.manager.owner is not self.actor else """self-model of this character based on recent thoughts.""" 
-        prompt = [UserMessage(content=prompt_prefix +f"""
+
+        if self.manager.owner.name is not self.actor.name:
+            prompt = [UserMessage(content=f"""Analyze relationship between these characters based on recent interactions.
 Character: 
 {self.manager.owner.character}
 
@@ -66,6 +66,27 @@ Describe their current relationship in a brief statement that captures:
 4. Ongoing dynamics
 
 Respond with a concise updated relationship description of up to 100 tokens, no additional text.
+End with:
+</end>
+""")]
+        else:
+            prompt = [UserMessage(content=f"""Analyze self-model of this character based on recent thoughts.
+Character: 
+{self.manager.owner.character}
+
+Previous self-model:
+{self.relationship}
+
+Recent Thoughts:
+{chr(10).join(f"- {text}" for text in char_memories)}
+
+Describe their current self-model in a brief statement that captures:
+1. Character's perception of his/her own nature
+2. Character's current emotional comfort level with his/her own nature
+3. Any recent changes in their self-model
+4. Ongoing dynamics
+
+Respond with a concise updated self-model description of up to 100 tokens, no additional text.
 End with:
 </end>
 """)]

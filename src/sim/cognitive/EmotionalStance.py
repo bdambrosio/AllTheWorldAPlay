@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ast import List
 from enum import Enum
 from typing import Any
 from src.utils import hash_utils
@@ -164,3 +165,85 @@ End your response with the:
 
     def to_string(self):
         return "Stance:{"+str(self.arousal)+'+, '+str(self.tone)+', '+str(self.orientation)+'}'
+
+    def from_signalClusters(signalClusters: List[SignalCluster], character: Character):
+        prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
+You are given a set of signalClusters that represents the interaction between the basic drives of a character and recent events.
+Your task is to extract the arousal, tone and orientation of the character resulting from the signalClusters and the character's awareness of it.
+Note that each signalCluster has a score. The score is a measure of the importance of the signalCluster to the character.
+You should seek to identify the dominant arousal, tone, and orientation of the character. Do not merely average the values implied by various signalClusters.
+Rather, imagine a quasi-stable emotional equilibrium that is being perturbed by the signalClusters, and is more or less labile and volatile according to the character.
+ 
+Signal Clusters:
+{{$signalClusters}}
+
+Character:
+{{$character}} 
+
+There are three dimensions to your response:
+
+1. Arousal: The arousal of the character. This takes values from the following list:
+    Vigilant = "vigilant, ready, focused"
+    Anticipatory = "expectant, preparing"
+    Agitated = "restless, unsettled"
+    Relaxed = "calm, at ease"
+    Exhausted = "depleted, drained"
+    Compelled = "biologically / unconsciously motivated - includes sexual arousal, hunger, etc."
+
+2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
+    Angry = "hostile, enraged"
+    Fearful = "threatened, scared"
+    Anxious = "worried, uneasy"
+    Sad = "sorrowful, grieving"
+    Disgusted = "revolted, repulsed, contemptuous"
+    Surprised = "astonished, startled"
+    Curious = "curious, engaged"
+    Joyful = "happy, elated"
+    Content = "satisfied, peaceful"
+
+3. Orientation: The orientation of the character resulting from the signal cluster and the character's awareness of it.
+    Controlling = "directing, managing others"
+    Challenging = "testing, confronting others"
+    Appeasing = "placating, avoiding conflict"
+    Avoiding = "minimizing interaction"
+    Supportive = "assisting others' goals"
+    Seekingsupport = "requesting assistance"
+    Connecting = "building/strengthening relationships"
+    Performing = "seeking attention/approval"
+    Observing = "gathering social information"
+    Defending = "protecting position/resources"
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#arousal Vigilant / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
+#tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
+#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / Seekingsupport / Connecting / Performing / Observing / Defending
+##
+
+Respond only with the hash-formatted text, nothing else.
+End your response with the:
+<end/>
+""")]
+        
+        response = character.llm.ask({"signalClusters": '\n'.join([signalCluster.to_string() for signalCluster in signalClusters]), 
+                                      "character": character.character
+                                      }, prompt, stops=["<end/>"], max_tokens = 100)
+        response = hash_utils.clean(response)
+
+        if hash_utils.find('arousal', response):
+            try:
+                arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())
+            except Exception as e:
+                arousal = Arousal.Relaxed
+        if hash_utils.find('tone', response):
+            try:
+                tone = Tone(hash_utils.find('tone', response).strip().capitalize())   
+            except Exception as e:
+                tone = Tone.Content
+        if hash_utils.find('orientation', response):
+            try:
+                orientation = Orientation(hash_utils.find('orientation', response).replace('##','').strip().capitalize())
+            except Exception as e:
+                orientation = Orientation.Connecting
+        return EmotionalStance(arousal, tone, orientation)

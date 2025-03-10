@@ -197,6 +197,11 @@ class DriveSignal:
     def to_string(self):
         return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {[d.text for d in self.drives]} {self.importance:.2f} {self.urgency:.2f} {self.timestamp}'
     
+    def to_full_string(self):
+        return f"""{self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"} Importance: {self.importance:.2f} Urgency: {self.urgency:.2f}
+{'\n    '.join(['Drive: ' + d.text for d in self.drives])}"""
+
+
     def get_age_factor(self, current_time: datetime, min_age: int, age_range: int) -> float:
         """Get age factor for signal"""
         if age_range > 0:
@@ -228,10 +233,11 @@ class SignalCluster:
         return cls._instances.get(id)
 
     def to_string(self):
-        return f'{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"} {len(self.signals)} signals, score {self.score}'
+        return f"""{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"}; {len(self.signals)} signals; score: {self.score}
+{'\n    '.join(['Signal: ' + s.to_string() for s in self.signals])}"""
     
     def to_full_string(self):
-        return f'{self.id} Name: {self.text};  {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n    drives:{"\n      ".join([d.text for d in self.drives])}\n'
+        return f'{self.id} Name: {self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n    drives:{"\n      ".join([d.text for d in self.drives])}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
@@ -241,8 +247,8 @@ class SignalCluster:
             for d2 in self.drives:
                 if d2.id == drive.id:
                     break
-            else:
-                self.drives.append(drive)
+                else:
+                    self.drives.append(drive)
         embeddings = [s.embedding for s in self.signals]
         self.centroid = np.mean(embeddings, axis=0)
 
@@ -254,21 +260,25 @@ class SignalCluster:
         else:
             prompt = [SystemMessage(content="""Given the following texts contained in a cluster, determine the most appropriate label for the cluster.
 The label should be 8 - 10 words , and most closely represent the central theme of the cluster: 
-                                
+
 <texts>
 {{$signals}}
 </texts>
 
-Respond in this format:
-<label>Label for the cluster</label>
+Respond in this hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with a separate line containing only ##
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#label Label for the cluster
+##
 
 Only respond with the label, no other text.
 End your response with:
 </end>
 """)]
             response = self.manager.llm.ask({"signals": '\n'.join([signal.text for signal in self.signals])}, prompt, temp=0.1, stops=['</end>'], max_tokens=20)
-            if xml.find('<label>', response):
-                self.text = xml.find('<label>', response).strip()
+            if hash_utils.find('label', response):
+                self.text = hash_utils.find('label', response).strip()
             else:
                 self.text = self.signals[0].text
         return self.text
@@ -384,11 +394,11 @@ class DriveSignalManager:
             signals = []
 
             prompt = [SystemMessage(content="""Analyze the following text for issues or opportunities related to these drives: 
-        
+
 <Drives>
 {{$drives}}
 </Drives>
-           
+
 <Text>
 {{$text}}
 </Text>
@@ -399,7 +409,7 @@ class DriveSignalManager:
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
-                                    
+
 #signal 3-4 words naming the issue or opportunity detected
 #type opportunity / issue
 #description 6-8 words further detailing the opportunity or issue
@@ -417,10 +427,11 @@ End your response with:
             response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives]), "surroundings": self.owner.look_percept}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
             if not response:
                 return []
-                    
+            print(f'\npercept {text}')        
             for signal_hash in hash_utils.findall_forms(response):
-                signal = self.construct_signal(signal_hash, drives, current_time)
-                if signal:
+               signal = self.construct_signal(signal_hash, drives, current_time)
+               print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
+               if signal:
                     signals.append(signal)
                    
             self.process_signals(signals)

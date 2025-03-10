@@ -10,6 +10,7 @@ from utils.Messages import UserMessage
 import utils.xml_utils as xml
 from datetime import datetime, timedelta
 import utils.choice as choice
+from typing import List
 import asyncio
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ class Context():
     def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
         self.initial_state = situation
         self.current_state = situation
-        self.actors = actors
+        self.actors: List[Character] = actors
         self.npcs = [] # created as needed
         self.map = map.WorldMap(60, 60, terrain_types, resources)
         self.step = step  # amount of time to step per scene update
@@ -42,7 +43,6 @@ class Context():
             actor.set_context(self)
             if mapContext:
                 actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
-                #actor.look() # provide initial local view
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]

@@ -1,15 +1,17 @@
 from fastapi import FastAPI, Response
 import torch
 from diffusers import StableDiffusion3Pipeline # type: ignore
+import bitsandbytes as bnb
+
 
 #pipe = StableDiffusion3Pipeline.from_pretrained(
 #    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16,
 #).to("cuda")
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.bfloat16,
-    device_map=None
-).to("cuda", dtype=torch.bfloat16)
+    "stabilityai/stable-diffusion-3.5-medium", torch_dtype=torch.float16,variant="fp16",
+    device_map='balanced'
+)
 
 #pipe = StableDiffusion3Pipeline.from_pretrained(
 #    "stabilityai/stable-diffusion-3.5-large", torch_dtype=torch.bfloat16
