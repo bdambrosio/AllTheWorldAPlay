@@ -1,6 +1,7 @@
 import asyncio
 from enum import Enum
 import sys, os
+import wave
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import sim.context as context
@@ -31,10 +32,9 @@ class TownResource(Enum):
 Maya = agh.Character("Maya", """You are Maya, a talented 32-year-old female artist,
 You are living in a small coastal town.
 You're warm, thoughtful, and value deep connections with others.
-You've received a prestigious job offer from Chrys in the city that would advance your career significantly.
-However, you're deeply connected to your community, especially to Elijah, with whom you've developed a close relationship.
-You're torn between personal ambition and the relationships you've built here, and angry at times that you have to make this decision.
 You express yourself with careful consideration, often using artistic metaphors.
+
+
 """, server_name=server_name)
 
 Maya.drives = [
@@ -44,13 +44,13 @@ Maya.drives = [
     Drive("achieving stability and security for your future.")
 ]
 
-Maya.add_perceptual_input("""You received the job offer letter yesterday. The gallery in the city wants you as their creative director. 
-It's everything you've worked for, but accepting means leaving this place... and Elijah.""", 'internal')
+Maya.add_perceptual_input("""Wow - a job offer letter! Chrys, the owner of the gallery in the city wants me as their creative director.""", 'internal') 
+Maya.add_perceptual_input("""It's everything I've worked for, but accepting means leaving this place... and Elijah.""", 'internal')
 
 
 # Supporting character with their own goals that create natural tension
 Elijah = agh.Character("Elijah", """You are Elijah, a 35-year-old male boat builder.
-You have deep roots in this small coastal town.
+You wave deep roots in this small coastal town.
 You're steady, reliable, and deeply connected to the natural rhythms of this place.
 You've been building a life here, including a deepening relationship with Maya.
 You care deeply about Maya and understand the importance of her dreams. At the same time, you are also ambitious and want to expand your boat-building business locally, which would root you even more firmly here. 
