@@ -230,7 +230,10 @@ class SignalCluster:
 
     @classmethod
     def get_by_id(cls, id: str):
-        return cls._instances.get(id)
+        if id in cls._instances:
+            return cls._instances[id]
+        else:
+            return None
 
     def to_string(self):
         return f"""{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"}; {len(self.signals)} signals; score: {self.score}

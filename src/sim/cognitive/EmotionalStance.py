@@ -151,16 +151,22 @@ End your response with the:
                 arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())
             except Exception as e:
                 arousal = Arousal.Relaxed
+        else:
+            arousal = Arousal.Relaxed
         if hash_utils.find('tone', response):
             try:
                 tone = Tone(hash_utils.find('tone', response).strip().capitalize())   
             except Exception as e:
                 tone = Tone.Content
+        else:
+            tone = Tone.Content
         if hash_utils.find('orientation', response):
             try:
                 orientation = Orientation(hash_utils.find('orientation', response).replace('##','').strip().capitalize())
             except Exception as e:
                 orientation = Orientation.Connecting
+        else:
+            orientation = Orientation.Connecting
         return EmotionalStance(arousal, tone, orientation)
 
     def to_string(self):

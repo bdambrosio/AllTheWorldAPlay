@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
 class Context():
-    def __init__(self, actors, situation, step='4 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
+    def __init__(self, actors, situation, step='0 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
         self.initial_state = situation
         self.current_state = situation
         self.actors: List[Character] = actors
@@ -37,6 +37,7 @@ class Context():
         self.choice_response = asyncio.Queue()  # Queue for receiving choice responses from UI
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
+        self.simulation_time = self.extract_simulation_time(situation)
         
         for actor in self.actors:
             #place all actors in the world
@@ -54,6 +55,56 @@ class Context():
             actor.generate_goal_alternatives()
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
+
+    def extract_simulation_time(self, situation):
+        # Extract simulation time from situation description
+        prompt = [UserMessage(content="""You are a simulation time extractor.
+Your task is to extract the exact time of day and datefrom the following situation description:
+
+<situation>
+{{$situation}}
+</situation>
+
+Respond with the simulation time in a format that can be parsed by the datetime.parse function, assuming reasonable defaults for missing components based on the context of the situation.
+Respond with two lines in exactly this format:
+TIME: HH:MM AM/PM
+DATE: Month DD
+
+If either piece of information is not explicitly stated in the text, make a reasonable inference based on context clues (e.g., "early morning" suggests morning time, "soft light" might suggest spring or summer). 
+If absolutely no information is available for either field, use "unknown" for that field.
+""")]
+        response = self.llm.ask({"situation": situation}, prompt, temp=0.5, max_tokens=10)
+        lines = response.strip().split('\n')
+        time_str = None
+        date_str = None
+        
+        # Extract time and date from response
+        for line in lines:
+            if line.startswith('TIME:'):
+                time_str = line.replace('TIME:', '').strip()
+            elif line.startswith('DATE:'):
+                date_str = line.replace('DATE:', '').strip()
+    
+        # Handle unknown values
+        if not time_str or time_str == 'unknown':
+            time_str = '12:00 PM'  # Default to noon
+        if not date_str or date_str == 'unknown':
+            date_str = 'January 1'  # Default to January 1
+        
+        # Combine date and time strings
+        datetime_str = f"{date_str} {time_str}"
+    
+        # Use current year as default
+        current_year = datetime.now().year
+    
+        try:
+            # Parse the combined string
+            dt = datetime.strptime(f"{datetime_str} {current_year}", "%B %d %I:%M %p %Y")
+            return dt
+        except ValueError as e:
+            print(f"Error parsing datetime: {e}")
+            return None
+
 
     def to_json(self):
         return {
@@ -75,7 +126,7 @@ class Context():
         self.llm = llm
         for actor in self.actors:
             actor.set_llm(llm)
-            actor.last_sense_time = datetime.now()
+            actor.last_sense_time = self.simulation_time
 
     def load(self, dir):
         try:
@@ -268,7 +319,7 @@ End your response with:
     async def senses(self, sense_data='', ui_task_queue=None):
         """ This is where the world advances the timeline in the scenario """
         # Debug prints
-        self.message_queue.put({'name':self.name, 'text':'\n\n-----scene-----\n'})
+        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
         await asyncio.sleep(0.1)
         history = self.history()
         if self.step == 'static': # static world, nothing changes!
@@ -368,7 +419,7 @@ Your response should be concise, and only include only an update of the physical
         """ + event + """
 Your situation description should be dispassionate, 
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-The situation as of {{$step}} ago was:
+The situation previously was:
 
 <previousSituation>
 {{$situation}}
@@ -414,7 +465,7 @@ End your response with:
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            actor.forward(self.step)  # forward three hours and update history, etc
+            actor.forward(self.step)  # forward actors
             await asyncio.sleep(0.1)
         return response
 
