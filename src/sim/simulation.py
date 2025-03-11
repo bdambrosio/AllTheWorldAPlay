@@ -126,21 +126,28 @@ class SimulationServer:
             """Initialize new simulation instance"""
             if play_path is None:
                 raise ValueError("Play path is required")
+
             import importlib.util
-            spec = importlib.util.spec_from_file_location("configuration", config_path)
+            if 'webworld_config' in sys.modules:
+                del sys.modules['webworld_config']
+            spec = importlib.util.spec_from_file_location("webworld_config", config_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            if not hasattr(module, 'server_name'):
+                raise ValueError("config.py must define a 'server_name' variable")
             server_name = module.server_name
-            spec = importlib.util.spec_from_file_location("play_module", play_path)
+
+            if 'webworld_play' in sys.modules:
+                del sys.modules['webworld_play']
+            spec = importlib.util.spec_from_file_location("webworld_play", play_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
             if not hasattr(module, 'W'):
-                raise ValueError("Play file must define a 'W' variable")
+                raise ValueError("Play file must define a 'W' variable holding context")
             if hasattr(module, 'server_name'):
+                # scenario specific server name
                 self.server_name = module.server_name
-            else:
-                self.server_name = 'deepseek'
             if hasattr(module, 'world_name'):
                 self.world_name = module.world_name
             else:

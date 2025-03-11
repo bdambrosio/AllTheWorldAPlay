@@ -110,7 +110,7 @@ End your response with:
 
     def _cleanup_abstractions(self, memory: StructuredMemory):
         """Remove or archive old/unimportant abstract memories"""
-        cutoff = datetime.now() - timedelta(days=7)  # Keep week of abstractions
+        cutoff = self.owner.context.simulation_time - timedelta(days=7)  # Keep week of abstractions
         memory.abstract_memories = [
             mem for mem in memory.abstract_memories
             if mem.end_time > cutoff or mem.is_active
@@ -122,7 +122,7 @@ End your response with:
             return
             
         # Keep very recent memories regardless
-        recent_cutoff = datetime.now() - timedelta(hours=1)
+        recent_cutoff = self.owner.context.simulation_time - timedelta(hours=1)
         
         # Remove concrete memories that are:
         # 1. In pending_cleanup

@@ -70,7 +70,7 @@ class PerceptualState:
     
     def clear_old_percepts(self, max_age_seconds: float = 300) -> None:
         """Remove percepts older than specified age"""
-        current_time = datetime.now()
+        current_time = self.owner.context.simulation_time
         for mode in SensoryMode:
             self.current_inputs[mode] = [
                 p for p in self.current_inputs[mode]
