@@ -322,6 +322,9 @@ class DriveSignalManager:
         
     def set_context(self, context):
         self.context = context
+
+    def clear_clusters(self):
+        self.clusters = []
         
     def _get_embedding(self, text: str) -> np.ndarray:
         """Get vector embedding for text using memory consolidation's embedding"""
@@ -432,9 +435,9 @@ End your response with:
                 return []
             print(f'\npercept {text}')        
             for signal_hash in hash_utils.findall_forms(response):
-               signal = self.construct_signal(signal_hash, drives, current_time)
-               print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
-               if signal:
+                signal = self.construct_signal(signal_hash, drives, current_time)
+                if signal:
+                    print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
                     signals.append(signal)
                    
             self.process_signals(signals)
