@@ -112,7 +112,7 @@ class Goal:
         return f'{self.name}: {self.description}; \n preconditions: {self.preconditions}; \n termination: {self.termination}'
     
     def to_string(self):
-        return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions}; signals: {self.signalCluster.text}; termination: {self.termination}'
+        return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions};  termination: {self.termination}'
     
 class Task:
     _id_counter = 0
@@ -302,7 +302,7 @@ class Character:
                         preconditions=preconditions,
                         termination=termination.replace('##','').strip(), 
                         signalCluster=signalCluster, 
-                        drives=signalCluster.drives
+                        drives=signalCluster.drives if signalCluster else []
             )
             return goal
         else:
@@ -1197,22 +1197,9 @@ End response with:
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:5]] # first 5 in score order
         for sc in focus_signalClusters:
             sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
-        prompt = [UserMessage(content="""Following are up to 5 signalClusters ranked by impact on the actor's drives. These clusters may overlap.
-Choose up to three with the least overlap and generate a goal for each. At least one of the chosen signalClusters should be of type 'opportunity', 
-and at least one should be of type 'issue', if possible.
+        prompt = [UserMessage(content="""Identify the highest priority goal the actor should focus on given the following information.
+A goal in this context is an overarching objective that captures the central topic of the entire situation and character described below.
                               
-<signalClusters>
-{{$signalClusters}}
-</signalClusters>
-
-The actor's emotional stance wrt a signalCluster is crucial in determining the goal formed in response. for example is the actor likely to rise to the challenge, or seek to avoid it?
-                              
-Additional information about the character to support developing your response:
-
-<drives>
-{{$drives}}
-</drives>
-
 <situation>
 {{$situation}}
 </situation>
@@ -1225,6 +1212,14 @@ Additional information about the character to support developing your response:
 {{$character}}
 </character>
 
+                              
+Additional information about the character to support developing your response:
+
+<drives>
+{{$drives}}
+</drives>
+
+
 <relationships>
 {{$relationships}}
 </relationships>
@@ -1234,17 +1229,23 @@ Additional information about the character to support developing your response:
 </recent_memories>
 
 
-Consider the signalCluster and the actor's drives, memories, situation, and character, paying special attention to the signalCluster's related drives in drive_memories.
-Consider:
-1. What is the central issue / opportunity this signalCluster indicates wrt your drives in the context of your character, situation, etc?
-2. Recent events that affect the drive.
-3. Any patterns or trends in the past goals, tasks, or actions related to this signalCluster.
+Following are up to 5 signalClusters ranked by impact on the actor's drives. These are issues or opportunities nagging at the periphery of the character's consciousness.
+These clusters may overlap.
+                              
+<signalClusters>
+{{$signalClusters}}
+</signalClusters>
 
-Respond with up to three goals, each in the following parts: 
-    goal - a terse (3-4 words) name for the goal, 
-    description - concise (5-8 words) further details of the goal, intended to guide task generation, 
+Consider:
+1. What is the central issue / opportunity / obligation demanding the character's attention?
+2. Any patterns or trends in the past goals, tasks, or actions that might affect the choice of goal?
+
+
+Respond with the highest priority, most encompassing goal, in the following parts: 
+    goal - a terse (5-8 words) name for the goal, 
+    description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
-    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is the primary source for this goal
+    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
     preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
     termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
 
@@ -1252,14 +1253,15 @@ Respond using the following hash-formatted text, where each tag is preceded by a
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#goal terse (3-4 words) name for this goal
-#description concise (5-8 words) further details of this goal
+#goal terse (5-8) words) name for this goal
+#description concise (8-14) words) further details of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
 #signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
 
+Reason step-by-step to ensure your response comprehensively captures the highest-level goal of the character in the situation.
 Respond ONLY with the above hash-formatted text.
 End response with:
 <end/>
@@ -1286,6 +1288,7 @@ End response with:
         if len(goals) < 3:
             print(f'Warning: Only {len(goals)} goals generated for {self.name}')
         self.goals = goals
+        self.driveSignalManager.clear_clusters()
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
@@ -1498,11 +1501,11 @@ End your response with:
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
                 self.add_perceptual_input(f" {object.name} is pretty much complete: {termination_check}", mode='internal')
                 return True, progress
-        elif satisfied != None and 'insufficient' in satisfied.lower():
-            if progress/100.0 > random.random() + 0.5:
-                print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                self.add_perceptual_input(f"{object.name} is sufficiently complete: {termination_check}", mode='internal')
-                return True, progress
+        #elif satisfied != None and 'insufficient' in satisfied.lower():
+        #    if progress/100.0 > random.random() + 0.5:
+        #        print(f'  **Satisfied partially! {satisfied}, {progress}%**')
+        #        self.add_perceptual_input(f"{object.name} is sufficiently complete: {termination_check}", mode='internal')
+        #        return True, progress
             
         print(f'  **Not satisfied! {satisfied}, {progress}%**')
         return False, progress
@@ -2194,6 +2197,8 @@ End your response with:
                       description='dialog with '+target.name, 
                       reason='dialog with '+target.name, 
                       termination='natural end of dialog', 
+                      start_time=self.context.simulation_time,
+                      duration=0,
                       goal=None,
                       actors=[self, target])    
         intension_hashes = hash_utils.findall('task', response)
@@ -2755,17 +2760,15 @@ End your response with:
                                                   self.character.strip(),
                                                   relationsOnly=True )
 
-
-        # clear intension tasks that are satisfied - a temporary hack to check if others actions satisfied a task.
-
-        self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
-        if not self.focus_goal:
-            if len(self.goals) < 2: # always have at least 2 goals
-                self.driveSignalManager.recluster()
-                self.generate_goal_alternatives()
-            await self.request_goal_choice(self.goals)
-        if not self.focus_goal:
-            return # no admissible goal at this time
+        if not self.focus_task.peek(): # if we're not in the middle of a task plan
+            self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
+            if not self.focus_goal: # goal is completed!
+                if len(self.goals) < 2: # always have at least 2 goals
+                    self.driveSignalManager.recluster()
+                    self.generate_goal_alternatives()
+                await self.request_goal_choice(self.goals)
+                if not self.focus_goal:
+                    return # no admissible goal at this time
 
         # now we have a focus goal
         if self.focus_task.peek():
@@ -2779,9 +2782,18 @@ End your response with:
                 self.generate_task_plan()
                 await self.request_task_choice(self.tasks)
             
-        await self.step_task()
+        await self.step_tasks()
 
        
+    async def step_tasks(self):
+        while self.focus_task.peek():
+            await self.step_task()
+            if not self.focus_task.peek() and self.tasks and len(self.tasks) > 0:
+                self.focus_task.push(self.tasks[0])
+                self.tasks.pop(0)
+                # return allows yield to other coroutines / actors
+                return
+        
     async def step_task(self, sense_data='', ui_queue=None):
   
         # if I have an active task, keep on with it.
@@ -2883,7 +2895,7 @@ End your response with:
                 'ongoing_activities': self.narrative.ongoing_activities,
                 'relationships': self.actor_models.get_known_relationships(),
             },
-            'signals': self.driveSignalManager.get_scored_clusters()[0][0].text
+            'signals': self.focus_goal.name if self.focus_goal else ''
         }
 
     def find_say_result(self) -> str:
