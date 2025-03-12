@@ -52,7 +52,7 @@ class Context():
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
             actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
-            actor.generate_goal_alternatives()
+            #actor.generate_goal_alternatives()
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
 

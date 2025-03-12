@@ -343,17 +343,18 @@ class Character:
             print(f"Warning: Invalid task generation response for {task_hash}") 
             return None
         
-    def validate_and_create_act(self, xml_string, task):
+    def validate_and_create_act(self, hash_string, task):
         """Validate an XML act and create an Act object
         
         Args:
-            xml_string: XML-formatted act definition
+            hash_string: Hash-formatted act definition
             task: Task this act is for
         """
-        mode = xml.find('<mode>', xml_string)
-        action = xml.find('<action>', xml_string)
+        mode = hash_utils.find('mode', hash_string)
+        action = hash_utils.find('action', hash_string)
+        duration = hash_utils.find('duration', hash_string)
         try:
-            target_name = xml.find('<target>', xml_string)
+            target_name = hash_utils.find('target', hash_string)
             if target_name:
                 target = self.context.resolve_reference(self, target_name, create_if_missing=True)
             else:
@@ -374,6 +375,7 @@ class Character:
                 name=mode,
                 mode=mode,
                 action=action,
+                duration=duration,
                 actors=[self, target] if target else [self],
                 reason=action,
                 source=task,
@@ -381,7 +383,7 @@ class Character:
             )
             return act
         else:
-            raise ValueError(f"Invalid actionable XML: {xml_string}")
+            raise ValueError(f"Invalid actionable Hash: {hash_string}")
 
     def format_history(self, n=2):
         """Get memory context including both concrete and abstract memories"""
@@ -987,7 +989,7 @@ End response with:
         if hasattr(goal, 'drives'):
             for drive in goal.drives:
                 drive.satisfied_goals.append(goal)
-                if len(drive.attempted_goals) > 3:
+                if len(drive.attempted_goals) > 0:
                     if drive in self.drives: # only update if drive still exists, may have already been rewritten
                         update = drive.update_on_goal_completion(self, goal)
                         if update:
@@ -1212,7 +1214,10 @@ A goal in this context is an overarching objective that captures the central top
 {{$character}}
 </character>
 
-                              
+<recent_events>
+{{$recent_events}}
+</recent_events>
+
 Additional information about the character to support developing your response:
 
 <drives>
@@ -1229,7 +1234,7 @@ Additional information about the character to support developing your response:
 </recent_memories>
 
 
-Following are up to 5 signalClusters ranked by impact on the actor's drives. These are issues or opportunities nagging at the periphery of the character's consciousness.
+Following are a few signalClusters ranked by impact. These are issues or opportunities nagging at the periphery of the character's consciousness.
 These clusters may overlap.
                               
 <signalClusters>
@@ -1239,6 +1244,8 @@ These clusters may overlap.
 Consider:
 1. What is the central issue / opportunity / obligation demanding the character's attention?
 2. Any patterns or trends in the past goals, tasks, or actions that might affect the choice of goal?
+3. Identify any other actors involved in the goal, and their relationships to the character.
+4. Try to identify a goal that might be the center of an overall story arc of a play or movie.
 
 
 Respond with the highest priority, most encompassing goal, in the following parts: 
@@ -1272,6 +1279,7 @@ End response with:
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
                                  "character": self.character,
+                                 "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
@@ -1311,11 +1319,7 @@ End response with:
 {{$surroundings}}
 </surroundings>
 
-<goals>
-{{$goals}}
-</goals>
-
-While you would like to achieve all goals, you have chosen to focus on:
+The goal you are focusing on is:
                               
 <focus_goal>
 {{$focus_goal}}
@@ -1357,8 +1361,9 @@ And, finally, the current time and date:
 {{$current_time}}
 </current_time>
 
-Create up to {{$n_new_tasks}} specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
+Create about {{$n_new_tasks}} specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
 Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
+Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
                               
 A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 3-4 steps at most) in satisfying the focus goal.
@@ -1651,6 +1656,7 @@ In choosing each Act (see format below), you can choose from these Modes:
 - Think - mental reasoning about the current situation wrt your state and the task.
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
+Prefer acts that, when performed, will satisfy the task termination directly.
 Review your character and current emotional stance when choosing Mode and action. 
 Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for a Say, Think, or Do.
 
@@ -1690,12 +1696,13 @@ Consider the previous act. E.G.:
     Gather or use a resource? Talk to someone there? Do something else at your new location?
 - If the previous act was a Look, what did you learn?
                               
-Respond in XML:
-<act>
-  <mode>Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning</mode>
-  <action>thoughts, words to speak, direction to move, or physical action</action>
-  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.</target>
-</act>
+Respond in hash-formatted text:
+
+#mode Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning
+#action thoughts, words to speak, direction to move, or physical action
+#target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.
+#duration expected duration of the action in minutes
+##
 
 ===Examples===
 
@@ -1703,10 +1710,10 @@ Task:
 Situation: increased security measures; State: fear of losing Annie
 
 Response:
-<act>
-  <mode>Do</mode>
-  <action>Call a meeting with the building management to discuss increased security measures for Annie and the household.</action>
-  <target>building management</target>
+#mode Do
+#action Call a meeting with the building management to discuss increased security measures for Annie and the household.
+#target building management
+#duration 10 minutes
 </act>
 
 ----
@@ -1715,10 +1722,11 @@ Task:
 Establish connection with Joe given RecentHistory element: "Who is this guy?"
 
 Response:
-<act>
-  <mode>Say</mode>
-  <action>Hi, who are you?</action>
-  <target>Joe</target>
+#mode Say
+#action Hi, who are you?
+#duration 1 minute
+#target Joe
+##
 </act>
 
 ----
@@ -1727,10 +1735,10 @@ Task:
 Find out where I am given Situation element: "This is very very strange. Where am I?"
 
 Response:
-<act>
-  <mode>Look</mode>
-  <action>look around for landmarks or signs of civilization</action>
-</act>
+#mode Look
+#action look around for landmarks or signs of civilization
+#duration 1 minute
+##
 
 ----
 
@@ -1739,23 +1747,26 @@ Find food.
 
 
 Response:
-<act>
-  <mode>Move</mode>
-  <action>SouthWest</action>
-  <target>Samantha</target>
+#mode Move
+#action SouthWest
+#duration 15 minute
+#target Samantha
+##
 </act>
 
 ===End Examples===
 
-Use the XML format for each act:
+Use the following hash-formatted text format for each act.
+Each act should be closed by a ## tag on a separate line.
+be careful to insert line breaks only where shown, separating a value from the next tag:
 
-<act> 
-  <mode>Think, Say, Do, Look, or Move</mode>
-  <action>thoughts, words to say, direction to move, or physical action</action> 
-  <target>name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.</target>
-</act>
+#mode Think, Say, Do, Look, or Move
+#action thoughts, words to say, direction to move, or physical action
+#duration expected duration of the action in minutes
+#target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.
+##
 
-Respond ONLY with the above XML for each alternative act.
+Respond ONLY with the above hash-formatted text for each alternative act.
 Your name is {{$name}}, phrase the statement of specific action in your voice.
 If the mode is Say, the action should be the actual words to be spoken.
     e.g. 'Maya, how do you feel about the letter from the city gallery?' rather than a description like 'ask Maya about the letter from the city gallery and how it's making her feel'. 
@@ -1807,9 +1818,9 @@ End your response with:
             response += '\n</act>'
 
         # Rest of existing while loop...
-        act_xmls = xml.findall('act', response)
+        act_hashes = hash_utils.findall_forms(response)
         act_alternatives = []
-        if len(act_xmls) == 0:
+        if len(act_hashes) == 0:
             print(f'No act found in response: {response}')
             self.actions = []
             return []
@@ -1818,15 +1829,15 @@ End your response with:
             if not self.focus_goal:
                 print(f'{self.name} generate_act_alternatives: no focus goal either!')
             task.goal = self.focus_goal
-        if len(act_xmls) < 3:
-            print(f'{self.name} generate_act_alternatives: only {len(act_xmls)} acts found')
-        for act_xml in act_xmls:
+        if len(act_hashes) < 3:
+            print(f'{self.name} generate_act_alternatives: only {len(act_hashes)} acts found')
+        for act_hash in act_hashes:
             try:
-                act = self.validate_and_create_act(act_xml, task)
+                act = self.validate_and_create_act(act_hash, task)
                 if act:
                     act_alternatives.append(act)
             except Exception as e:
-                raise Exception(f"Error parsing XML, Invalid Act: {e}")
+                raise Exception(f"Error parsing Hash, Invalid Act: {e}")
         self.actions = act_alternatives
         return act_alternatives
 
@@ -2278,7 +2289,7 @@ End your response with:
         else:
             dialog_model = self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog
             dialog_model.add_turn(self, message)
-            if self.natural_dialog_end(self) and dialog_model.turn_count>2: # test if the dialog has reached a natural end, set min for thinking.
+            if True: #self.natural_dialog_end(self): short-circuit for testing
 
                 dialog = dialog_model.get_current_dialog()
                 self.add_perceptual_input(f'Internal monologue:\n {dialog}', percept=False, mode='internal')
@@ -2685,7 +2696,7 @@ End your response with:
         base = 0.67  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
-            return raw * 0.67
+            return raw * 0.5
         return raw
 
 
@@ -2750,7 +2761,7 @@ End your response with:
 
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
-        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n'})
+        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----cognitive cycle----- {self.contex.simulation_time.isoformat()}\n'})
         await asyncio.sleep(0.1)
         self.thought = ''
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
@@ -2763,9 +2774,8 @@ End your response with:
         if not self.focus_task.peek(): # if we're not in the middle of a task plan
             self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
             if not self.focus_goal: # goal is completed!
-                if len(self.goals) < 2: # always have at least 2 goals
-                    self.driveSignalManager.recluster()
-                    self.generate_goal_alternatives()
+                self.driveSignalManager.recluster()
+                self.generate_goal_alternatives()
                 await self.request_goal_choice(self.goals)
                 if not self.focus_goal:
                     return # no admissible goal at this time
@@ -2812,6 +2822,7 @@ End your response with:
                 #this will affect selected act and determine consequences
                 act_duration = timedelta(minutes=10)
                 if self.focus_action.mode == 'Think': act_duration = timedelta(seconds=15)
+                if self.focus_action.mode == 'Say': act_duration = timedelta(minutes=2)
                 elif hasattr(self.focus_action, 'duration'):
                     act_duration = self.focus_action.duration
                 self.context.simulation_time += act_duration
