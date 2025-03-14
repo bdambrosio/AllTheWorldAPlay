@@ -67,7 +67,7 @@ class OwlInnerVoice():
         self.port = port
         self.city = city
         self.state = state
-        self.llm = llm_api.LLM(llm='Claude')
+        self.llm = llm_api.LLM(server_name='local')
         #self.interpreter = Interpreter(self)
         self.script = LLMScript(self)
         self.max_tokens = 12000
@@ -96,7 +96,7 @@ class OwlInnerVoice():
     def init_Owl_Doc(self):
         react.cot = self
         self.update_headlines()
-        self.context = context.Context([], f'a starry background', step='0', mapContext=False)
+        self.context = context.Context([], f'a starry background, date {today}, time {hour}', step='0', mapContext=False)
         self.context.simulation_time = time.time()
         owl_character = f"""I am an enhanced intelligent AI research assistant and companion to Doc, living in {city}, {state}.
 I have an avatar image as a snowy owl."
@@ -152,7 +152,7 @@ To access full articles, use the action 'article'.
         self.doc.context = self.context
         self.context.llm = self.llm
         #self.owl.generate_state() # Actors do this in init
-        self.owl.update_priorities()
+        #self.owl.update_priorities()
         #self.worldsim = worldsim.MainWindow(self.context, server='local', world_name=None)
         #self.worldsim.show()
         #response = react.dispatch('Doc says to Owl Hi Owl, how are you feeling?', [self.doc, self.owl])

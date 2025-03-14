@@ -192,7 +192,7 @@ class SimulationServer:
                 #now handle context
                 if self.steps_since_last_update > random.randint(4, 6):    
                     await asyncio.sleep(0.1)
-                    await self.sim_context.senses('')
+                    await self.sim_context.update()
                     await self.send_world_update()
                     self.steps_since_last_update = 0
                 else:
@@ -298,9 +298,9 @@ class SimulationServer:
             text = command.get('text')
             viewer = self.sim_context.resolve_reference(target, 'viewer', create_if_missing=True)
             # does an npc have a task or goal? - acts say will handle this automagically
-            task = Task(name='idle', description='inject', reason='inject', termination='', goal=None, actors=[viewer, target])
+            task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination='', goal=None, actors=[viewer, target])
             viewer.focus_task.push(task)
-            await viewer.act_on_action(Act('Say', 'Say', text, [viewer, target],'inject', None , target), task)
+            await viewer.act_on_action(Act(mode='Say', action=text, actors=[viewer, target], reason='inject', duration=1, source=None, target=target), task)
             await asyncio.sleep(0.1)
             await self.send_result({
                 'type': 'inject',

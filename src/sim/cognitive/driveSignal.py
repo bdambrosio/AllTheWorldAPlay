@@ -240,7 +240,7 @@ class SignalCluster:
 {'\n    '.join(['Signal: ' + s.to_string() for s in self.signals])}"""
     
     def to_full_string(self):
-        return f'{self.id} Name: {self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n    drives:{"\n      ".join([d.text for d in self.drives])}\n'
+        return f'{self.id} Name: {self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
@@ -248,7 +248,7 @@ class SignalCluster:
         # Update centroid as mean of all embeddings
         for drive in signal.drives:
             for d2 in self.drives:
-                if d2.id == drive.id:
+                if d2.text == drive.text:
                     break
                 else:
                     self.drives.append(drive)

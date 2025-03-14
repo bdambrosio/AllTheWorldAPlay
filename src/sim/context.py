@@ -264,6 +264,49 @@ End your response with:
             updates = ''
         return updates
 
+    def character_updates_from_act_consequences(self, consequences, actor):
+        """ This needs overhaul to integrate and maintain consistency with world map."""
+        prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the actor's state description.
+It may be there are no significant updates to report.
+Limit your changes to the consequences for elements in the existing state or new elements added to the state.
+Most important are those consequences that might activate or inactive tasks or actions by actors.
+
+<actionEffects>
+{{$consequences}}
+</actionEffects>
+
+<environment>
+{{$state}}
+</environment>
+                              
+<actor state>
+{{$actor_state}}
+</actor state>
+
+Your response should be concise, and only include only statements about changes to the actor's state.
+Do NOT repeat elements of the existing actor's state, respond only with significant changes.
+Do NOT repeat as an update items already present at the end of the actor state statement.
+Your updates should be dispassionate. 
+Use the following XML format:
+<updates>
+concise statement(s) of significant changes to Environment, if any, one per line.
+</updates>
+
+Include ONLY the concise updated state description in your response. 
+Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+End your response with:
+</end>""")
+                  ]
+
+        response = self.llm.ask({"consequences": consequences, "actor_state": actor.narrative.get_summary('medium')},
+                                prompt, temp=0.5, stops=['</end>'], max_tokens=60)
+        updates = xml.find('<updates>', response)
+        if updates is not None:
+            self.current_state += '\n' + updates.strip()
+        else:
+            updates = ''
+        return updates
+    
     def do(self, actor, action):
         """ This is the world determining the effects of an actor action"""
         prompt = [UserMessage(content="""You are simulating a dynamic world. 
@@ -283,10 +326,23 @@ given {{$name}} local map is:
 
 <localMap>
 {{$local_map}}
-</localMap
+</localMap>
+
+And character {{$name}} is:
+
+<character>
+{{$character}}
+</character>
+
+with current situation:
+
+<situation>
+{{$narrative}}
+</situation>
 
 Respond with the observable result.
 Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
+Be careful to include any effects on the state of {{$name}} in your response.
 It is usually not necessary or desirable to repeat the above action statement in your response.
 Observable result must be consistent with information provided in the LocalMap.
 Format your response as one or more simple declarative sentences.
@@ -307,78 +363,22 @@ End your response with:
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state}, prompt, temp=0.7, stops=['<end/>'], max_tokens=300)
+                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, prompt, temp=0.7, stops=['<end/>'], max_tokens=300)
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
         world_updates = self.world_updates_from_act_consequences(consequences)
+        character_updates = self.character_updates_from_act_consequences(consequences, actor)   
         print(f'\nContext Do consequences:\n {consequences}')
         print(f' Context Do world_update:\n {world_updates}\n')
-        return consequences, world_updates
+        return consequences, world_updates, character_updates
 
-    async def senses(self, sense_data='', ui_task_queue=None):
-        """ This is where the world advances the timeline in the scenario """
-        # Debug prints
-        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
-        await asyncio.sleep(0.1)
+
+    async def update(self):
+
         history = self.history()
-        if self.step == 'static': # static world, nothing changes!
-            prompt = [UserMessage(content="""You are a static world. Your task is to update the environment description. 
-            Update location and other physical situation characteristics as indicated in the History
-            Your response should be concise, and only include only an update of the physical situation.
-            Introduce new elements only when specifically appearing in History
-            Do NOT add description not present in the PreviousState or History below.
-            Your situation description should be dispassionate, 
-            and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
-            The previous state was:
 
-            <previousState>
-            {{$situation}}
-            </previousState> 
-
-            In the interim, the characters in the world had the following interactions:
-
-            <history>
-            {{$history}}
-            </history>
-
-            All actions performed by actors since the last situation update are including in the above History.
-            Do not include in your updated situation any actions not listed above.
-            Do not include any comments on actors or their actions. Only report the resulting world state
-
-            Respond using the following XML format:
-
-            <situation>
-            Sentence describing physical space, suitable for image generator,
-            Updated State description of about 300 words
-            </situation>
-
-            Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
-            Include ONLY the concise updated situation description in your response. 
-            Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
-            .
-            Limit your total response to about 330 words
-            End your response with:
-            <end/>""")]
-
-            response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
-                                    temp=0.6, stops=['<end/>'], max_tokens=500)
-            new_situation = xml.find('<situation>', response)
-            if new_situation is not None:
-                updates = self.world_updates_from_act_consequences(new_situation)
-                self.current_state = new_situation
-                self.show = new_situation
-                self.message_queue.put({'name':self.name, 'text':self.show})
-                self.show = '' # has been added to message queue!
-                await asyncio.sleep(0.1)
-            # self.current_state += '\n'+updates
-            print(f'World updates:\n{updates}')
-            for actor in self.actors:
-                actor.add_to_history(f"you notice {updates}\n")
-                actor.forward(self.step)  # forward three hours and update history, etc
-            return response
-
-
+        event = ""
         if random.randint(1, 7) == 1:
             event = """
 Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
@@ -409,11 +409,9 @@ Joe finds a sharp object that can be used as a tool.
 ===End Examples===
 
 """
-        else:
-            event = ""
 
         prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
-Include day/night cycles and weather patterns. 
+Include day/night cycles and weather patterns. It is now {{$time}}.
 Update location and other physical situation characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical situation.
         """ + event + """
@@ -451,23 +449,28 @@ Ensure your response is surrounded with <situation> and </situation> tags as sho
 End your response with:
 <end/>""")]
 
-        response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step}, prompt,
+        response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
                                 temp=0.6, stops=['<end/>'], max_tokens=450)
-        new_situation = xml.find('<situation>', response)
-        if new_situation is not None:
-            updates = self.world_updates_from_act_consequences(new_situation)
-            self.current_state = new_situation.replace('\n\n','\n')
-            self.show = new_situation
-            self.message_queue.put({'name':self.name, 'text':self.show})
-            self.show = '' # has been added to message queue!
-            await asyncio.sleep(0.1)
+        new_situation = xml.find('<situation>', response)       
+        # Debug prints
+        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
+        await asyncio.sleep(0.1)
+         
+        if new_situation is None:
+            return
+        updates = self.world_updates_from_act_consequences(new_situation)
+        self.current_state = new_situation
+        self.show = new_situation
+        self.message_queue.put({'name':self.name, 'text':self.show})
+        self.show = '' # has been added to message queue!
+        await asyncio.sleep(0.1)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            actor.forward(self.step)  # forward actors
-            await asyncio.sleep(0.1)
+            actor.forward(self.step)  # forward three hours and update history, etc
         return response
+
 
     def advance_time(self):
         """Advance simulation clock by time_step"""

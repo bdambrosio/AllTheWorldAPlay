@@ -1,4 +1,8 @@
 from __future__ import annotations
+import os, json, math, time, requests, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+# Add parent directory to path to access existing simulation
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timedelta
 from enum import Enum
 import json
@@ -32,6 +36,8 @@ from sim.cognitive.knownActor import KnownActor, KnownActorManager
 import re
 import asyncio
 from weakref import WeakValueDictionary
+
+from sim.prompt import ask as default_ask
 
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
@@ -114,6 +120,38 @@ class Goal:
     def to_string(self):
         return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions};  termination: {self.termination}'
     
+from datetime import timedelta
+
+def parse_duration(duration_str: str) -> timedelta:
+    """Convert duration string to timedelta
+    Args:
+        duration_str: Either minutes as int ("5") or with units ("2 minutes")
+    Returns:
+        timedelta object
+    """
+    try:
+        # Try simple integer (minutes)
+        return timedelta(minutes=int(duration_str))
+    except ValueError:
+        # Try "X units" format
+        try:
+            amount, unit = duration_str.strip().split()
+            amount = int(amount)
+            unit = unit.lower().rstrip('s')  # handle plural
+            
+            if unit == 'minute':
+                return timedelta(minutes=amount)
+            elif unit == 'hour':
+                return timedelta(hours=amount)
+            elif unit == 'day':
+                return timedelta(days=amount)
+            else:
+                # Default to minutes if unit not recognized
+                return timedelta(minutes=amount)
+        except:
+            # If all parsing fails, default to 1 minute
+            return timedelta(minutes=1)
+        
 class Task:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
@@ -125,6 +163,8 @@ class Task:
         self.name = name
         self.description = description
         self.reason = reason
+        self.start_time = start_time
+        self.duration = parse_duration(duration)
         self.termination = termination
         self.goal = goal
         self.actors = actors
@@ -150,6 +190,9 @@ class Task:
     def to_string(self):
         return f'Task {self.name}: {self.description}; actors: {[actor.name for actor in self.actors]}; reason: {self.reason}; termination: {self.termination}'
     
+    def to_fullstring(self):
+        return f'Task {self.name}: {self.description}. Reason: {self.reason}.   Actors: {[actor.name for actor in self.actors]}\n    Start time: {self.start_time};  Duration: {self.duration}\n    Termination: {self.termination}'
+ 
     def test_termination(self, events=''):
         """Test if recent acts, events, or world update have satisfied termination"""
         pass
@@ -158,15 +201,15 @@ class Act:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
     
-    def __init__(self, name, mode, action, actors, reason, source, target=None, result=''):
+    def __init__(self, mode, action, actors, reason='', duration=1, source=None, target=None, result=''):
         Act._id_counter += 1
         self.id = f"a{Act._id_counter}"
         Act._instances[self.id] = self
-        self.name = name
         self.mode = mode
         self.action = action
         self.actors = actors
         self.reason = reason
+        self.duration = parse_duration(duration)
         self.source = source  # a task
         self.target = target  # an actor
         self.result = result
@@ -176,7 +219,7 @@ class Act:
         return cls._instances.get(id)
 
     def to_string(self):
-        return f'Act t{self.id} {self.name}: {self.action}; reason: {self.reason}; result: {self.result}'
+        return f'Act t{self.id} {self.mode}: {self.action}; reason: {self.reason}; result: {self.result}'
 
 class Autonomy:
     def __init__(self, signal=True, goal=True, task=True, action=True):
@@ -290,8 +333,10 @@ class Character:
         preconditions = hash_utils.find('preconditions', goal_hash)
         termination = hash_utils.find('termination', goal_hash)
 
+        signalCluster = None
         if signalCluster_id:
             signalCluster = SignalCluster.get_by_id(signalCluster_id.strip())
+        other_actor = None
         if other_actor_name and other_actor_name.strip().lower() != None:
             other_actor = self.context.resolve_reference(self, other_actor_name, create_if_missing=True)
 
@@ -372,19 +417,19 @@ class Character:
         
         if mode and action:
             act = Act(
-                name=mode,
                 mode=mode,
                 action=action,
-                duration=duration,
                 actors=[self, target] if target else [self],
                 reason=action,
+                duration=duration,
                 source=task,
                 target=target
             )
             return act
         else:
-            raise ValueError(f"Invalid actionable Hash: {hash_string}")
-
+            print(f"Invalid actionable Hash: {hash_string}")
+            return None
+        
     def format_history(self, n=2):
         """Get memory context including both concrete and abstract memories"""
         # Get recent concrete memories
@@ -1046,6 +1091,7 @@ End response with:
         if satisfied:
             if goal == self.focus_goal:
                 self.focus_goal = None
+                self.context.update()
                 self.goals = [] # force regeneration. Why not reuse remaining goals?
 
                 self.update_drives(goal)
@@ -1072,10 +1118,28 @@ End response with:
         # Update thought display
         self.thought +=  self.reason
 
+            
+        if act_mode == 'Move':
+            moved = self.mapAgent.move(act_arg)
+            if moved:
+                dx, dy = self.mapAgent.get_direction_offset(act_arg)
+                self.x = self.x + dx
+                self.y = self.y + dy
+                percept = self.look(interest=act_arg)
+                self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
+                self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.show = '' # has been added to message queue!
+                await asyncio.sleep(0.1)
+                self.show = '' # has been added to message queue!
+            if len(act_arg) > 10: # more than just a direction
+                act_mode = 'Do' # some moves are text, not map directions
+
         # Handle world interaction
         if act_mode == 'Do':
             # Get action consequences from world
-            consequences, world_updates = self.context.do(self, act_arg)
+            consequences, world_updates, character_updates = self.context.do(self, act_arg)
+            if len(character_updates) > 0:
+                self.add_perceptual_input(f'{character_updates}', mode='internal')  
         
             if source == None:
                 source = self.focus_task.peek()
@@ -1088,26 +1152,13 @@ End response with:
             self.show = ''
             await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
-            self.add_perceptual_input(f"You observe {world_updates}", mode='visual')
-            self.act_result = world_updates
+            if len(world_updates) > 0:
+                self.add_perceptual_input(f"{world_updates}", mode='visual')
+            self.act_result = world_updates +'. '+character_updates
         
             # Update target's sensory input
             if target is not None:
                 target.sense_input += '\n' + world_updates
-            
-        elif act_mode == 'Move':
-            moved = self.mapAgent.move(act_arg)
-            if moved:
-                dx, dy = self.mapAgent.get_direction_offset(act_arg)
-                self.x = self.x + dx
-                self.y = self.y + dy
-                percept = self.look(interest=act_arg)
-                self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
-                self.context.message_queue.put({'name':self.name, 'text':self.show})
-                self.show = '' # has been added to message queue!
-                await asyncio.sleep(0.1)
-                self.show = '' # has been added to message queue!
-                self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}\n  {percept}", mode='visual')
 
         elif act_mode == 'Look':
             percept = self.look(interest=act_arg)
@@ -1196,7 +1247,7 @@ End response with:
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:5]] # first 5 in score order
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         for sc in focus_signalClusters:
             sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
         prompt = [UserMessage(content="""Identify the highest priority goal the actor should focus on given the following information.
@@ -1301,7 +1352,7 @@ End response with:
         return goals
 
 
-    def generate_task_plan(self):
+    def generate_task_plan_old(self):
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
@@ -1427,6 +1478,61 @@ End response with:
         self.tasks = task_plan
         return task_plan
 
+
+
+    def generate_task_plan(self):
+        if not self.focus_goal:
+            raise ValueError(f'No focus goal for {self.name}')
+        """generate task alternatives to achieve a focus goal"""
+        suffix = """
+
+Create about 3-6 specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
+Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
+Where appropriate, drawn from typical life scripts.
+Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
+                              
+A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 3-4 steps at most) in satisfying the focus goal.
+The new tasks should be distinct from one another, and advance the focus goal.
+Where possible, include one or more of your intensions in generating task alternatives.
+
+A task has a name, description, reason, list of actors, start time and duration, and a termination criterion as shown below.
+Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
+Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#task brief (4-6 words) action name
+#description terse (6-8 words) statement of the action to be taken
+#reason (6-7 words) on why this action is important now
+#actors the names of any other actors involved in this task. if no other actors, use None
+#start_time (2-3 words) expected start time of the action
+#duration (2-3 words) expected duration of the action in minutes
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+##
+
+In refering to other actors. always use their name, without other labels like 'Agent', 
+and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
+Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
+Order tasks in the assumed order of execution.
+End response with:
+<end/>
+"""
+
+        response = default_ask(self, 'create a sequence of 3-6 tasks to achieve the focus goal', suffix, {}, 400)
+
+
+        # add each new task, but first check for and delete any existing task with the same name
+        task_plan = []
+        for task_hash in hash_utils.findall_forms(response):
+            print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
+            if not self.focus_goal:
+                print(f'{self.name} generate_plan: no focus goal, skipping task')
+            task = self.validate_and_create_task(task_hash, self.focus_goal)
+
+            if task:
+                task_plan.append(task)
+        print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
+        self.tasks = task_plan
+        return task_plan
 
     def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
@@ -1563,14 +1669,12 @@ End response with:
 
         relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
         response = self.llm.ask({
-            "act_mode": act.mode,
-            "act_name": act.name,
-            "act_arg": act.action,
-        "dialog": dialog,
-            "target": target_name,
-            "relationship": relationship,
-            "character": self.character
-        }, prompt, temp=0.6, stops=['<end/>'])
+                            "act_arg": act.action,
+                            "dialog": dialog,
+                            "target": target_name,
+                            "relationship": relationship,
+                            "character": self.character
+                    }, prompt, temp=0.6, stops=['<end/>'])
 
         return act
 
@@ -1656,9 +1760,9 @@ In choosing each Act (see format below), you can choose from these Modes:
 - Think - mental reasoning about the current situation wrt your state and the task.
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
-Prefer acts that, when performed, will satisfy the task termination directly.
+Prefer Acts and Modes that, when performed, will satisfy the task termination directly.
 Review your character and current emotional stance when choosing Mode and action. 
-Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for a Say, Think, or Do.
+Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for an Act.
 
 An Act is one which:
 - Is a specific thought, spoken text, physical movement or action.
@@ -1701,7 +1805,7 @@ Respond in hash-formatted text:
 #mode Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning
 #action thoughts, words to speak, direction to move, or physical action
 #target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.
-#duration expected duration of the action in minutes
+#duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
 ##
 
 ===Examples===
@@ -1806,10 +1910,10 @@ End your response with:
             "surroundings": self.look_percept,
             "goals": mapped_goals,
             "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
-            "task": task.to_string(),
+            "task": task.to_fullstring(),
             "focus_goal_emotional_stance": self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal and self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
             "reason": task.reason,
-            "lastAct": task.acts[-1].name if task.acts and len(task.acts) > 0 else '',
+            "lastAct": task.acts[-1].mode + ' ' + task.acts[-1].action if task.acts and len(task.acts) > 0 else '',
             "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
             "known_actor_names": ', '.join(actor.name for actor in task.actors)
         }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=280)
@@ -1837,7 +1941,7 @@ End your response with:
                 if act:
                     act_alternatives.append(act)
             except Exception as e:
-                raise Exception(f"Error parsing Hash, Invalid Act: {e}")
+                print(f"Error parsing Hash, Invalid Act. (act_hash: {act_hash}) {e}")
         self.actions = act_alternatives
         return act_alternatives
 
@@ -2238,7 +2342,7 @@ End your response with:
                 content = re.sub(r'\.\.\..*?\.\.\.', '', message)
                 self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, content)
         
-        self.acts(Act(name='tell', mode='Say', target=to_actor, action=message, reason=message, source=source), to_actor, 'tell', message, self.reason, source)
+        self.acts(Act(mode='Say', target=to_actor, action=message, reason=message, duration=1, source=source), to_actor, 'tell', message, self.reason, source)
         
 
     def natural_dialog_end(self, from_actor):
@@ -2305,7 +2409,7 @@ End your response with:
                 return
 
         text, response_source = self.generate_dialog_turn(self, message, self.focus_task.peek()) # Generate response using existing prompt-based method
-        action = Act(name='Internal Dialog', mode='Think', action=text, actors=[self], reason=text, source=response_source, target=self)
+        action = Act(mode='Think', action=text, actors=[self], reason=text, duration=1, source=response_source, target=self)
         await self.act_on_action(action, response_source)
 
 
@@ -2358,7 +2462,7 @@ End your response with:
             return
 
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
-        action = Act(name='Say', mode='Say', action=text, actors=[self, from_actor], reason=text, source=response_source, target=from_actor)
+        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=from_actor)
         await self.act_on_action(action, response_source)
 
     def generate_dialog_turn(self, from_actor, message, source=None):
@@ -2575,7 +2679,13 @@ End your response with:
             if self.focus_goal is None:
                 admissible_goals = self.admissible_goals(goals)
                 if len(admissible_goals) == 0:
-                    return # no admissible goals at this time
+                    if goals[0].preconditions:
+                        subgoal = Goal(name='preconditions', actors=[self], description=goals[0].preconditions, preconditions=None, 
+                                   termination=goals[0].preconditions, signalCluster=goals[0].signalCluster, drives=goals[0].drives)
+                        self.focus_goal = subgoal
+                        return subgoal
+                    else:
+                        return
                 self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.9)
             return self.focus_goal
         else:
@@ -2710,7 +2820,7 @@ End your response with:
                 print(f'{self.name} request_act_choice: not enough acts')
         for act in acts:
             if not act.source or not act.source.goal or not act.source.goal.signalCluster:
-                print(f'{self.name} request_act_choice: act {act.name} has no source or goal or signal cluster')
+                print(f'{self.name} request_act_choice: act {act.mode} {act.action} has no source or goal or signal cluster')
         if len(acts) > 0: # debugging
                 # Send choice request to UI
             choice_request = {
@@ -2718,13 +2828,11 @@ End your response with:
                 'character_name': self.name,
                 'options': [{
                     'id': i,
-                    'name': act.name,
                     'mode': act.mode,
                     'action': act.action,
                     'reason': act.reason,
                     'target': act.target.name if act.target else '',
                     'context': {
-                        'signal_cluster': act.source.goal.signalCluster.to_string() if act.source and act.source.goal and act.source.goal.signalCluster else '',
                         'emotional_stance': {
                             'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
                             'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
@@ -2761,7 +2869,8 @@ End your response with:
 
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
-        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----cognitive cycle----- {self.contex.simulation_time.isoformat()}\n'})
+        print(f'{self.name} cognitive_cycle')
+        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n'})
         await asyncio.sleep(0.1)
         self.thought = ''
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
@@ -2821,10 +2930,12 @@ End your response with:
                 await self.act_on_action(self.focus_action, task)
                 #this will affect selected act and determine consequences
                 act_duration = timedelta(minutes=10)
-                if self.focus_action.mode == 'Think': act_duration = timedelta(seconds=15)
-                if self.focus_action.mode == 'Say': act_duration = timedelta(minutes=2)
-                elif hasattr(self.focus_action, 'duration'):
+                if hasattr(self.focus_action, 'duration'):
                     act_duration = self.focus_action.duration
+                elif self.focus_action.mode == 'Think': 
+                    act_duration = timedelta(seconds=15)
+                elif self.focus_action.mode == 'Say': 
+                    act_duration = timedelta(minutes=2)
                 self.context.simulation_time += act_duration
                 if self.focus_task.peek() is task:
                     self.clear_task_if_satisfied(task)
@@ -2845,7 +2956,7 @@ End your response with:
         if act_mode is not None:
             self.act_mode = act_mode.strip()
         act_arg = action.action
-        print(f'\n{self.name} act_on_action: {act_mode} {action.name} {act_arg}')
+        print(f'\n{self.name} act_on_action: {act_mode} {act_arg}')
         self.reason = action.reason
         source = action.source
         #print(f'{self.name} choose {action}')
@@ -2954,7 +3065,8 @@ end your response with:
             'currentTask': focus_task.to_string() if focus_task else 'idle',
             'actions': [act.to_string() for act in (focus_task.acts if focus_task else [])],  # List[str]
             'lastAction': {
-                'name': last_act.name if last_act else '',
+                'mode': last_act.mode if last_act else '',
+                'action': last_act.action if last_act else '',
                 'result': last_act.result if last_act else '',
                 'reason': last_act.reason if last_act else ''
             },

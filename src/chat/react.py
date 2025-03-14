@@ -214,11 +214,11 @@ End Example
 
 """
 
-class Actor (agh.Agh):
+class Actor (agh.Character):
 
     def __init__(self, name, cot, context, character_description, personality=None, drives=None, always_respond=False):
         # Initialize Agh first
-        super().__init__(name, character_description, server='local', mapAgent=False, always_respond=always_respond)
+        super().__init__(name, character_description, server_name='local', mapAgent=False)
         
         # React-specific initialization
         self.cot = cot
@@ -252,16 +252,12 @@ class Actor (agh.Agh):
     def _generate_current_state(self):
         """Generate Actor's current cognitive state"""
         # Get Agh's drive states
-        self.generate_state()  # Updates self.state
-        
-        # Format drive states into current state description
-        state_desc = []
-        for term, info in self.state.items():
-            state_desc.append(f"{info['drive']}: {term} ({info['state']})")
-            if info['trigger']:
-                state_desc.append(f"  Triggered by: {info['trigger']}")
-                
-        return "\n".join(state_desc)
+        narrative = self.narrative.get_summary('medium')  # Updates self.state
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+
+        return narrative + '\n'+"\n".join([sc.to_string() for sc in focus_signalClusters])
 
     def task(self, sender, act, task_text, deep=False, respond_immediately=False):
         """Main task handling using both Agh's cognitive systems and OTP"""
