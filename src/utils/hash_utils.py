@@ -234,23 +234,27 @@ def findall_forms(text: str) -> List[str]:
         if not in_form and stripped.startswith('#') and not stripped == '##':
             # Start of new form
             in_form = True
-            current_form = [line]  # Keep original line with whitespace
-            formTags = {}
-        if in_form:
-            tag = stripped[1:].split(' ')[0]
-            if stripped == '##' or tag in formTags:
-                # End of current form 
+            current_form = [stripped]  # Keep original line with whitespace
+            formTags = {stripped[1:].split(' ')[0]: True}
+        elif in_form:
+            tag = stripped[1:].split(' ')[0] if stripped.startswith('#') else None
+            if stripped == '##':
+                # End current form
                 current_form.append('##')
                 forms.append('\n'.join(current_form))
-                if tag in formTags:
-                    current_form = [stripped]
-                    formTags = {tag:tag}
-                else:
-                    current_form = []
-                    in_form = False
+                current_form = []
+                in_form = False
+            elif tag and tag in formTags:
+                # End current form and start new one
+                current_form.append('##')
+                forms.append('\n'.join(current_form))
+                # Start new form
+                current_form = [stripped]
+                formTags = {tag: True}
             else:
                 current_form.append(stripped)
-                formTags[tag] = tag
+                if tag:
+                    formTags[tag] = True
     if in_form and current_form:
         current_form.append('##')  # Add terminator if missing
         forms.append('\n'.join(current_form))

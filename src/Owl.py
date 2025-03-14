@@ -389,7 +389,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       print(f'submit {new_text}')
       response = self.owlCoT.doc.tell(self.owlCoT.owl, new_text, source='dialog')
       self.owlCoT.owl.show = ''
-      self.owlCoT.owl.senses()
+      self.owlCoT.owl.cognitive_cycle()
       #response = self.owlCoT.invoke_react_loop(new_text, self) # this last for async display
       print(f'submit response\n{self.owlCoT.owl.show}')
       self.display_response(self.owlCoT.owl.show)
