@@ -92,7 +92,7 @@ emotional stance:
     if not task:
         task = character.focus_task.peek()
     
-    if task:
+    if task and task.acts and len(task.acts) > 0:
         lastAct = task.acts[-1].mode + ' ' + task.acts[-1].action
         lastActResult = task.result
     else:
@@ -112,7 +112,7 @@ emotional stance:
                 "time": character.context.simulation_time.isoformat(),
                 "situation":character.context.current_state if character.context else "",
                 "actors":character.actor_models.format_relationships(include_transcript=False),
-                "goal_history":"", #character.goal_history,
+                "goal_history":'\n'.join([f'{g.name} - {g.description}' for g in character.goal_history]),
                 "memories": memory_text,
                 "history": "", #character.history,
                 "lastAct": lastAct,

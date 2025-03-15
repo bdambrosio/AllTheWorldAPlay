@@ -80,9 +80,9 @@ parser.add_argument("-mol", "--max_output_len", type = int, help = "Set max outp
 
 model_init.add_args(parser)
 model_name = "/home/bruce/Downloads/models/QwQ-32B-8.0bpw-h8-exl2"
-model_name = "/home/bruce/Downloads/models/Qwen2.4-32B-Instruct"
+model_name = "/home/bruce/Downloads/models/Qwen2.5-32B-Instruct"
 model_name = "/home/bruce/Downloads/models/Llama-3.3-70B-Instruct_exl2_8.0bpw"
-#model_name = "/home/bruce/Downloads/models/gemma-3-27b-it"
+#model_name = "/home/bruce/Downloads/models/gemma-3-27b-it-exl2"
 args = parser.parse_args(['-m',model_name, '--gpu_split', "32,44"])
 
 

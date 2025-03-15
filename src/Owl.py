@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from PyQt5 import QtWidgets, QtGui # type: ignore
 from PyQt5.QtGui import QFont, QKeySequence # type: ignore
@@ -24,7 +25,7 @@ from chat.OwlCoT import OwlInnerVoice
 #from Interpreter import Interpreter
 import chat.react as react
 from utils.utilityV2 import get_src_path
-
+import sim.agh as agh
 
 NYT_API_KEY = os.getenv("NYT_API_KEY")
 
@@ -378,7 +379,7 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
          except:
             traceback.print_exc()
       self.msg_area.repaint()
-      
+   
    def submit(self):
       global PREV_LEN
       self.timer.stop()
@@ -387,10 +388,12 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       new_text = self.input_area.toPlainText()[PREV_LEN:].strip()
       response = ''
       print(f'submit {new_text}')
-      response = self.owlCoT.doc.tell(self.owlCoT.owl, new_text, source='dialog')
-      self.owlCoT.owl.show = ''
-      self.owlCoT.owl.cognitive_cycle()
-      #response = self.owlCoT.invoke_react_loop(new_text, self) # this last for async display
+      task = agh.Task(name='idle', description='inject', reason='inject', start_time=self.owlCoT.context.simulation_time, duration=1, termination='', goal=None, actors=[self.owlCoT.doc, self.owlCoT.owl])
+      self.owlCoT.doc.focus_task.push(task)
+      asyncio.run(self.owlCoT.doc.act_on_action(agh.Act(mode='Say', action=new_text, actors=[self.owlCoT.doc, self.owlCoT.owl], reason='inject', duration=1, source=task, target=self.owlCoT.owl), task))
+      self.owlCoT.doc.focus_task.pop()
+      response = self.owlCoT.owl.show
+       #response = self.owlCoT.invoke_react_loop(new_text, self) # this last for async display
       print(f'submit response\n{self.owlCoT.owl.show}')
       self.display_response(self.owlCoT.owl.show)
       return
