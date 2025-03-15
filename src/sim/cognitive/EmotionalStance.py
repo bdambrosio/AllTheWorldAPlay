@@ -237,6 +237,9 @@ End your response with the:
                                       }, prompt, stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
+        arousal = Arousal.Relaxed
+        tone = Tone.Content
+        orientation = Orientation.Connecting
         if hash_utils.find('arousal', response):
             try:
                 arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())

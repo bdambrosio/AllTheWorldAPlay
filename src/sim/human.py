@@ -38,14 +38,6 @@ class Human(Character):
         """Humans don't need autonomous updates"""
         pass
 
-    def acts(self, target, act_name, act_arg='', reason='', source=''):
-        pass                       
-    def senses(self, sense_data = None):
-        pass  
-
-    def cognitive_cycle(self):
-        pass
-
     async def inject(self, input_text):
         """Process user input from UI"""
         # Parse "Character name, message" format

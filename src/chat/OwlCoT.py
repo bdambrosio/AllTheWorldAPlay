@@ -23,7 +23,7 @@ from utils.LLMScript import LLMScript
 import utils.llm_api as llm_api
 import library.rewrite as rw
 import library.semanticScholar3 as s2 # 2 for the 2 's' in se...Sch...
-
+import sim.agh as agh
 today = date.today().strftime("%b-%d-%Y")
 
 NYT_API_KEY = os.getenv("NYT_API_KEY")
@@ -145,12 +145,13 @@ To access full articles, use the action 'article'.
         ]
         self.owl = react.Actor(name='Owl', cot=self, context=self.context, character_description=owl_character, drives=owl_drives, personality=self.personality_owl, always_respond=True)
         self.owl.llm = self.llm
-        self.owl.context = self.context
+        self.owl.set_context(self.context)
   
-        self.doc = human.Human(name='Doc', character_description=self.personality_doc, ui=self.ui)
+        self.doc = agh.Character(name='Doc', character_description=self.personality_doc)
         self.doc.llm = self.llm
-        self.doc.context = self.context
+        self.doc.set_context(self.context)
         self.context.llm = self.llm
+        self.context.actors = [self.doc, self.owl]
         #self.owl.generate_state() # Actors do this in init
         #self.owl.update_priorities()
         #self.worldsim = worldsim.MainWindow(self.context, server='local', world_name=None)

@@ -408,7 +408,15 @@ class SimulationServer:
             if self.sim_context and not self.sim_context.message_queue.empty():
                 message = self.sim_context.message_queue.get_nowait()
                 if message['text'] == 'character_update':
-                    await self.send_character_update(message['name'], new_image=False)
+                    # async character update messages include the actor data in the message
+                    actor_data = message['data']
+                    if self.image_cache[message['name']]:
+                        actor_data['image'] = self.image_cache[message['name']]
+            
+                    await self.send_result({
+                        'type': 'character_update',
+                        'character': actor_data
+                    })
                 elif 'chat_response' in message.keys():
                     await self.send_result({
                         'type': 'chat_response',

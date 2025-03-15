@@ -298,7 +298,7 @@ End your response with:
 </end>""")
                   ]
 
-        response = self.llm.ask({"consequences": consequences, "actor_state": actor.narrative.get_summary('medium')},
+        response = self.llm.ask({"consequences": consequences, "actor_state": actor.narrative.get_summary('medium'), "state": self.current_state},
                                 prompt, temp=0.5, stops=['</end>'], max_tokens=60)
         updates = xml.find('<updates>', response)
         if updates is not None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import os, json, math, time, requests, sys
+
+from sklearn import tree
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -275,8 +277,8 @@ class Character:
         self.drives = [
             Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
             Drive("safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events."),
-            Drive("assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance)."),
-            Drive("love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.")
+            Drive("love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance."),
+            Drive("self-esteem, including recognition, respect, and achievement.")
         ]
             
         self.always_respond = True
@@ -294,6 +296,7 @@ class Character:
         self.last_task = None
         self.focus_action = None
         self.goals = []
+        self.goal_history = []
         self.tasks = [] 
         self.intensions = []
         self.actions = []
@@ -518,7 +521,8 @@ class Character:
         if 'dialog with ' in source.name:
             return source.name.strip().split('dialog with ')[1].strip()
         
-        prompt = [UserMessage(content="""Determine the intended hearer of the following message spoken by you.
+        prompt = [UserMessage(content="""Determine the intended hearer of the message below spoken by you.
+Background:
 {{$character}}
 
 You're recent history has been:
@@ -1089,6 +1093,7 @@ End response with:
         )
 
         if satisfied:
+            self.goal_history.append(goal)
             if goal == self.focus_goal:
                 self.focus_goal = None
                 self.context.update()
@@ -1352,133 +1357,6 @@ End response with:
         return goals
 
 
-    def generate_task_plan_old(self):
-        if not self.focus_goal:
-            raise ValueError(f'No focus goal for {self.name}')
-        """generate task alternatives to achieve a focus goal"""
-        prompt = [UserMessage(content="""Given your character, drives, current goal, intensions, and recent memories, create a sequence of tasks to accomplish the focus goal.
-
-<character>
-{{$character}}
-</character>
-
-<situation>
-{{$situation}}
-</situation>
-
-<surroundings>
-{{$surroundings}}
-</surroundings>
-
-The goal you are focusing on is:
-                              
-<focus_goal>
-{{$focus_goal}}
-</focus_goal>
-
-In thinking about how to act to achieve this, bear in mind any intensions you have expressed in previous thought or conversation:
-                              
-<intensions>
-{{$intensions}}
-</intensions>
-
-Also bear in mind your recent memories:
-                              
-<recent_memories>
-{{$memories}}
-</recent_memories>
-
-The relationships you have with other actors:
-                              
-<relationships>
-{{$relationships}}
-</relationships>
-
-And the recent events in the world:
-                              
-<recent_events>
-{{$recent_events}}
-</recent_events>
-                              
-Crucial to the generation of tasks is the emotional stance wrt the focus goal.
-
-<focus_goal_emotional_stance>
-{{$focus_goal_emotional_stance}}
-</focus_goal_emotional_stance>
-
-And, finally, the current time and date:
-
-<current_time>
-{{$current_time}}
-</current_time>
-
-Create about {{$n_new_tasks}} specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
-Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
-Where appropriate, drawn from typical life scripts.
-Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
-                              
-A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 3-4 steps at most) in satisfying the focus goal.
-The new tasks should be distinct from one another, and advance the focus goal.
-Where possible, include one or more of your intensions in generating task alternatives.
-
-A task has a name, description, reason, list of actors, start time and duration, and a termination criterion as shown below.
-Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
-Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#task brief (4-6 words) action name
-#description terse (6-8 words) statement of the action to be taken
-#reason (6-7 words) on why this action is important now
-#actors the names of any other actors involved in this task. if no other actors, use None
-#start_time (2-3 words) expected start time of the action
-#duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
-##
-
-In refering to other actors. always use their name, without other labels like 'Agent', 
-and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
-Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
-Order tasks in the assumed order of execution.
-End response with:
-<end/>
-""")]
-
-        # Get recent memories
-        recent_memories = self.structured_memory.get_recent(8)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-
-        #print("Update Tasks")
-        response = self.llm.ask({
-            'character': self.character.replace('\n', ' '),
-            'situation': self.context.current_state.replace('\n', ' '),
-            'surroundings': self.look_percept,
-            'goals': '\n'.join([goal.to_string() for goal in self.goals]),
-            'focus_goal': self.focus_goal.to_string(),
-            'focus_goal_emotional_stance': self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
-            'memories': memory_text,    
-            'intensions': '\n'.join([intension.to_string() for intension in self.intensions]),
-            'name': self.name,
-            'recent_events': self.narrative.get_summary('medium'),
-            'relationships': self.actor_models.format_relationships(include_transcript=True),
-            'current_time': self.context.simulation_time.isoformat(),
-            'n_new_tasks': 4
-        }, prompt, temp=0.7, stops=['<end/>'], max_tokens=400)
-
-        # add each new task, but first check for and delete any existing task with the same name
-        task_plan = []
-        for task_hash in hash_utils.findall_forms(response):
-            print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
-            if not self.focus_goal:
-                print(f'{self.name} generate_plan: no focus goal, skipping task')
-            task = self.validate_and_create_task(task_hash, self.focus_goal)
-
-            if task:
-                task_plan.append(task)
-        print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
-        self.tasks = task_plan
-        return task_plan
-
-
 
     def generate_task_plan(self):
         if not self.focus_goal:
@@ -1516,8 +1394,14 @@ Order tasks in the assumed order of execution.
 End response with:
 <end/>
 """
+        mission = """create a sequence of 3-6 tasks to achieve the focus goal: 
+{{$focus_goal}}
 
-        response = default_ask(self, 'create a sequence of 3-6 tasks to achieve the focus goal', suffix, {}, 400)
+"""
+        response = default_ask(self, 
+                               'create a sequence of 3-6 tasks to achieve the focus goal', 
+                               suffix, 
+                               {"focus_goal":self.focus_goal.to_string()}, 400)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -1681,71 +1565,16 @@ End response with:
     def generate_acts(self, task):
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
-        prompt = [UserMessage(content="""You are {{$character}}.
-Your task is to generate a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
+        mission = """generate a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
 
 <task>
-{{$task}}
+{{$task_string}}
 </task>
 
-Your current situation is:
+"""
+        suffix = """
 
-<situation>
-{{$situation}}
-</situation>
-
-<surroundings>
-{{$surroundings}}
-</surroundings>
-
-Your current goals are:
-
-<goals>
-{{$goals}}
-</goals>
-                              
-And in particular, you are focusing on:
-
-<focus_goal>
-{{$focus_goal}}
-</focus_goal>
-
-Your emotional stance wrt the focus goal is:
-
-<focus_goal_emotional_stance>
-{{$focus_goal_emotional_stance}}
-</focus_goal_emotional_stance>
-
-However, this is only a guide. Your current dominant overall emotional state is:
-
-<emotional_state>
-{{$emotionalState}}
-</emotional_state>
-                              
-                              
-Your recent memories include:
-
-<recent_memories>
-{{$memories}}
-</recent_memories>
-
-Recent history includes:
-<history>
-{{$history}}
-</history>
-
-The previous act for this task, if any, was:
-
-<previousAct>
-{{$lastAct}}
-</previousAct>
-
-And the observed result of that was:
-<observed_result>
-{{$lastActResult}}.
-</observed_result>
-
-Respond with three alternative Acts, including their Mode and action. 
+Respond with tree alternative Acts, including their Mode and action. 
 The Acts should vary in mode and action.
 
 In choosing each Act (see format below), you can choose from these Modes:
@@ -1875,7 +1704,6 @@ Your name is {{$name}}, phrase the statement of specific action in your voice.
 If the mode is Say, the action should be the actual words to be spoken.
     e.g. 'Maya, how do you feel about the letter from the city gallery?' rather than a description like 'ask Maya about the letter from the city gallery and how it's making her feel'. 
 Ensure you do not duplicate content of a previous specific act.
-{{$duplicative}}
 
 Again, the task to translate into alternative acts is:
 <task>
@@ -1885,38 +1713,9 @@ Again, the task to translate into alternative acts is:
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
-""")]
-        #print(f'{self.name} act_result: {self.act_result}')
-        act = None
-        tries = 0
-        mapped_goals = self.map_goals()
-        duplicative_insert = ''
-        temp = 0.6
+"""
 
-        # Get recent memories
-        recent_memories = self.structured_memory.get_recent(10)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
-        self.driveSignalManager.get_scored_clusters()   
-        emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)        
-
-        response = self.llm.ask({
-            'character': self.character.replace('\n', ' '),
-            'emotionalState': emotionalState.to_definition(),
-            'memories': memory_text,  # Updated from 'memory'
-            'duplicative': duplicative_insert,
-            'history': self.narrative.get_summary('medium'),
-            'name': self.name,
-            "situation": self.context.current_state.replace('\n', ' ') + '\n\n' + self.look_percept + '\n',
-            "surroundings": self.look_percept,
-            "goals": mapped_goals,
-            "focus_goal": self.focus_goal.to_string() if self.focus_goal else '',
-            "task": task.to_fullstring(),
-            "focus_goal_emotional_stance": self.focus_goal.signalCluster.emotional_stance.to_definition() if self.focus_goal and self.focus_goal.signalCluster and self.focus_goal.signalCluster.emotional_stance else '',
-            "reason": task.reason,
-            "lastAct": task.acts[-1].mode + ' ' + task.acts[-1].action if task.acts and len(task.acts) > 0 else '',
-            "lastActResult": task.acts[-1].result if task.acts and len(task.acts) > 0 else '',
-            "known_actor_names": ', '.join(actor.name for actor in task.actors)
-        }, prompt, temp=temp, top_p=1.0, stops=['</end>'], max_tokens=280)
+        response = default_ask(character=self, mission=mission, suffix=suffix, addl_bindings={"task":task, "task_string":task.to_fullstring()}, max_tokens=280)
         response = response.strip()
         if not response.endswith('</act>'):
             response += '\n</act>'
@@ -1977,6 +1776,8 @@ End your response with:
 <text>
 {{$text}}
 </text>
+
+Given the following background information:
 
 <name>
 {{$name}}
@@ -2104,6 +1905,8 @@ End your response with:
 {{$transcript}}
 </transcript>
 
+Given the following background information:
+
 <all_tasks> 
 {{$all_tasks}}
 </all_tasks>
@@ -2225,6 +2028,12 @@ End your response with:
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}}.
 
+<transcript>
+{{$transcript}}
+</transcript>
+
+Given the following background information:
+
 <all_tasks> 
 {{$all_tasks}}
 </all_tasks>
@@ -2236,10 +2045,6 @@ End your response with:
 <reason>
 {{$reason}}
 </reason>
-
-<transcript>
-{{$transcript}}
-</transcript>
 
 
 Extract from this transcript the single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
@@ -2359,7 +2164,7 @@ For example, if the last entry in the transcript is a question that expects an a
 On the other hand, if the last entry is an agreement to act this may be a natural end.
 Respond only with a rating between 0 and 10, where
  - 0 requires continuation of the dialog (ie termination at this point would be unnatural)
- - 10 indicates continuation is unexpected, unnatural, or repetitious.   
+ - 10 indicates continuation is highly unexpected, unnatural, or repetitious.   
                                                   
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
@@ -2420,18 +2225,11 @@ End your response with:
        
         # Special case for Owl-Doc interactions
         if self.name == 'Owl' and from_actor.name == 'Doc':
-            # doc is asking a question or assigning a task
-            new_task_name = self.random_string()
-            new_task = f"""#task
-#name {new_task_name}
-#description {message}
-#termination_check Responded
-#actors {self.name}
-#committed True
-#reason engaging with Doc: completing his assignments.
-"""
-            self.focus_task.push(new_task_name)
+            text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek())
+            self.show = text
             return
+        
+
 
         # Remove text between ellipses - thoughts don't count as dialog
         message = re.sub(r'\.\.\..*?\.\.\.', '', message)
@@ -2715,6 +2513,7 @@ End your response with:
                 
                 # Send choice request to UI
                 self.context.message_queue.put(choice_request)
+                await asyncio.sleep(0.1)
             
                 # Wait for response with timeout
                 waited = 0
@@ -2886,6 +2685,8 @@ End your response with:
                 self.driveSignalManager.recluster()
                 self.generate_goal_alternatives()
                 await self.request_goal_choice(self.goals)
+                self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+                await asyncio.sleep(0.1)
                 if not self.focus_goal:
                     return # no admissible goal at this time
 
@@ -2900,6 +2701,8 @@ End your response with:
             else: # can't get here without focus goal, right?
                 self.generate_task_plan()
                 await self.request_task_choice(self.tasks)
+                self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+                await asyncio.sleep(0.1)
             
         await self.step_tasks()
 
@@ -2926,6 +2729,9 @@ End your response with:
         while self.focus_task.peek() is task:
             action_alternatives = self.generate_acts(task)
             await self.request_act_choice(action_alternatives)
+            self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+            await asyncio.sleep(0.1)
+
             if self.focus_action:
                 await self.act_on_action(self.focus_action, task)
                 #this will affect selected act and determine consequences
