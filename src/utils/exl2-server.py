@@ -82,8 +82,8 @@ model_init.add_args(parser)
 model_name = "/home/bruce/Downloads/models/QwQ-32B-8.0bpw-h8-exl2"
 model_name = "/home/bruce/Downloads/models/Qwen2.5-32B-Instruct"
 model_name = "/home/bruce/Downloads/models/Llama-3.3-70B-Instruct_exl2_8.0bpw"
-#model_name = "/home/bruce/Downloads/models/gemma-3-27b-it-exl2"
-args = parser.parse_args(['-m',model_name, '--gpu_split', "32,44"])
+#model_name = "/home/bruce/Downloads/models/c4ai-command-a-03-2025-6.0bpw-h8-exl2"
+args = parser.parse_args(['-m',model_name, '--gpu_split', "34,46"])
 
 
 model_init.check_args(args)
@@ -93,6 +93,7 @@ model, tokenizer = model_init.init(
     skip_load = args.stream_layers,
     benchmark = True,
     max_output_len = args.max_output_len,
+
     progress = True
 )
 
@@ -152,7 +153,7 @@ async def template(request: Request):
 async def get_stream(request: Request):
         global generator, settings, hf_tokenizer, exl_tokenizer, cache
         query = await request.json()
-        print(f'request: {query}')
+        print(f'request: {json.dumps(query)}')
         message_j = query
 
         if 'template_query' in message_j.keys():

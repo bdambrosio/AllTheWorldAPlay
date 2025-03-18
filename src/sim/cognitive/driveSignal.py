@@ -236,8 +236,7 @@ class SignalCluster:
             return None
 
     def to_string(self):
-        return f"""{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"}; {len(self.signals)} signals; score: {self.score}
-{'\n    '.join(['Signal: ' + s.to_string() for s in self.signals])}"""
+        return f"""{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"}; {len(self.signals)} signals; score: {self.score}"""
     
     def to_full_string(self):
         return f'{self.id} Name: {self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n'
@@ -247,11 +246,8 @@ class SignalCluster:
         self.signals.append(signal)
         # Update centroid as mean of all embeddings
         for drive in signal.drives:
-            for d2 in self.drives:
-                if d2.text == drive.text:
-                    break
-                else:
-                    self.drives.append(drive)
+            if drive not in self.drives:
+                self.drives.append(drive)
         embeddings = [s.embedding for s in self.signals]
         self.centroid = np.mean(embeddings, axis=0)
 
@@ -523,6 +519,8 @@ End your response with:
                 importance = 100*cluster.get_importance(current_time=current_time, min_age=min_age, age_range=age_range)
                 score = math.pow(urgency * importance * signal_ratio * recency, 0.25)
                 cluster.score = score
+                cluster.signals.sort(key=lambda x: x.timestamp, reverse=True)
+                cluster.signals = cluster.signals[:25]
                 scored_clusters.append((cluster, score))
             except Exception as e:
                 traceback.print_exc()

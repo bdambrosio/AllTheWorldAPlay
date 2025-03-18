@@ -417,6 +417,16 @@ class SimulationServer:
                         'type': 'character_update',
                         'character': actor_data
                     })
+                elif message['text'] == 'world_update':
+                    # async character update messages include the actor data in the message
+                    world_data = message['data']
+                    if self.image_cache[message['world']]:
+                        world_data['image'] = self.image_cache[message['world']]
+            
+                    await self.send_result({
+                        'type': 'world_update',
+                        'world': world_data
+                    })
                 elif 'chat_response' in message.keys():
                     await self.send_result({
                         'type': 'chat_response',

@@ -46,6 +46,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
     # Claude doesn't like two user msgs in a row
     m = 0
     msgs = prompt
+    print(json.dumps(msgs))
     #
     while m <= len(msgs)-2:
         if msgs[m]['role'] == 'user' and msgs[m+1]['role'] =='user':
@@ -56,7 +57,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
             m = m+1
             
     try:
-        print(msgs)
+
         response = client.messages.create(#model = 'grok-beta', 
                                           #model = 'grok-mini-beta', 
                                           model="grok-2-latest",

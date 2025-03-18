@@ -227,7 +227,6 @@ class Actor (agh.Character):
         self.llm = cot.llm
         
         # Task management
-        self.task_stack = ps.PersistentStack(name+'_tasks')
         self.analysis_stack = ps.PersistentStack(name+'_analyses')
         self.library_questions = []
         self.wm = WorkingMemory(name=f"{name}_wm")
@@ -256,7 +255,6 @@ class Actor (agh.Character):
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
-
         return narrative + '\n'+"\n".join([sc.to_string() for sc in focus_signalClusters])
 
     def task(self, sender, act, task_text, deep=False, respond_immediately=False):
@@ -265,10 +263,12 @@ class Actor (agh.Character):
         full_msg = f"{sender.name} {act} {self.name} {task_text}"
         self.add_to_history(full_msg)
         self.current_state = self._generate_current_state()  # Update Actor's state
-        self.update_priorities()
+        self.generate_goal_alternatives()
+        self.focus_goal = self.goals[0]
+        self.generate_task_plan()
         
         # Store task context
-        self.task_stack.push(task_text)
+        self.focus_task.push(self.tasks[0])
         
         # Build context for OTP using cognitive state
         input_text = f"""
@@ -280,9 +280,13 @@ class Actor (agh.Character):
 {self.current_state}
 </cognitiveState>
 
-<priorities>
-{self.priorities}
-</priorities>
+<goals>
+{self.goals}
+</goals>
+
+<tasks>
+{self.tasks}
+</tasks>
 """
         
         # Run OTP with cognitive awareness
@@ -549,7 +553,7 @@ End your response with:
                               ),
                   ]
         
-        response = self.cot.llm.ask({"task": self.task_stack.peek(), "analysis": self.analysis_stack.peek(),
+        response = self.cot.llm.ask({"task": self.focus_task.peek(), "analysis": self.analysis_stack.peek(),
                                      "measurers": '\n\n'.join(measures), "proposal":draft},
                                     prompt,
                                     temp=0.01,
@@ -558,7 +562,7 @@ End your response with:
 ***
 
 Task 
-{self.task_stack.peek()}
+{self.focus_task.peek()}
 
 Analysis 
 {self.analysis_stack.peek()}
@@ -702,7 +706,7 @@ Evaluation
             # Handle article retrieval
             return self._handle_article_action(content, target)
             
-        return self._handle_review_phase(self.task_stack.peek(), target)
+        return self._handle_review_phase(self.focus_task.peek().to_string(), target)
 
 def parse_message(message, actors):
     parse = message.strip().split(' ')

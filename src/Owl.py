@@ -391,9 +391,9 @@ QComboBox QAbstractItemView { background-color: #101820; color: #FAEBD7; }  # Se
       task = agh.Task(name='idle', description='inject', reason='inject', start_time=self.owlCoT.context.simulation_time, duration=1, termination='', goal=None, actors=[self.owlCoT.doc, self.owlCoT.owl])
       self.owlCoT.doc.focus_task.push(task)
       asyncio.run(self.owlCoT.doc.act_on_action(agh.Act(mode='Say', action=new_text, actors=[self.owlCoT.doc, self.owlCoT.owl], reason='inject', duration=1, source=task, target=self.owlCoT.owl), task))
-      self.owlCoT.doc.focus_task.pop()
-      response = self.owlCoT.owl.show
-       #response = self.owlCoT.invoke_react_loop(new_text, self) # this last for async display
+      #self.owlCoT.doc.focus_task.pop()
+      #response = self.owlCoT.owl.show
+      response = self.owlCoT.invoke_react_loop(new_text, self) # this last for async display
       print(f'submit response\n{self.owlCoT.owl.show}')
       self.display_response(self.owlCoT.owl.show)
       return

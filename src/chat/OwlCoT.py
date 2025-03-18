@@ -3,7 +3,7 @@ import chat.nyt as nyt
 #import ipinfo
 import random
 import time
-from datetime import date
+from datetime import date, datetime
 # Add the parent directory to the sys.path
 from PyQt5.QtCore import QThread, pyqtSignal
 import concurrent.futures
@@ -97,7 +97,7 @@ class OwlInnerVoice():
         react.cot = self
         self.update_headlines()
         self.context = context.Context([], f'a starry background, date {today}, time {hour}', step='0', mapContext=False)
-        self.context.simulation_time = time.time()
+        self.context.simulation_time = datetime.now()
         owl_character = f"""I am an enhanced intelligent AI research assistant and companion to Doc, living in {city}, {state}.
 I have an avatar image as a snowy owl."
 I want to have a warm relationship with the humans I interact with.

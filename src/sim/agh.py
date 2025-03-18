@@ -1049,14 +1049,14 @@ End response with:
                                 pass
                             self.drives.append(update)
 
-    def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
+    async def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
         termination_check = task.termination if task != None else None
         if termination_check is None or termination_check == '':
             return True
 
         # Test completion through cognitive processor's state system
-        satisfied, progress = self.test_termination(
+        satisfied, progress = await self.test_termination(
             task,
             termination_check, 
             consequences,
@@ -1075,7 +1075,7 @@ End response with:
 
         return satisfied
 
-    def clear_goal_if_satisfied(self, goal: Goal, consequences='', world_updates=''):
+    async def clear_goal_if_satisfied(self, goal: Goal, consequences='', world_updates=''):
         if not goal:
             return False
         """Check if goal is complete and update state"""
@@ -1084,7 +1084,7 @@ End response with:
             return True
 
         # Test completion through cognitive processor's state system
-        satisfied, progress = self.test_termination(
+        satisfied, progress = await self.test_termination(
             goal,
             termination_check, 
             consequences,
@@ -1418,7 +1418,7 @@ End response with:
         self.tasks = task_plan
         return task_plan
 
-    def test_termination(self, object, termination_check, consequences, updates='', type=''):
+    async def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
         prompt = [UserMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
 Reason step-by-step using the CompletionCriterion as a guide for this assessment.
@@ -1489,12 +1489,16 @@ End your response with:
             progress = 50
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'  **Satisfied!**')
-            self.add_perceptual_input(f" {object.name} is complete: {termination_check}", mode='internal')
+            self.add_perceptual_input(f" I have completed {object.name}: {object.description}. {termination_check}", mode='internal')
+            self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{self.name} has completed {object.name}: {object.description}. {termination_check}"
+            #await self.context.update(local_only=True)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                self.add_perceptual_input(f" {object.name} is pretty much complete: {termination_check}", mode='internal')
+                self.add_perceptual_input(f" I have completed {object.name}: {object.description}. {termination_check}", mode='internal')
+                self.context.current_state += f"{self.name} has completed {object.name}: {object.description}. {termination_check}"
+                #await self.context.update(local_only=True)
                 return True, progress
         #elif satisfied != None and 'insufficient' in satisfied.lower():
         #    if progress/100.0 > random.random() + 0.5:
@@ -2170,7 +2174,7 @@ Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]   
-        transcript = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+        transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
         response = self.llm.ask({"transcript":transcript}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
         if response is None:
             return False
@@ -2379,7 +2383,7 @@ End your response with:
             "memories": memory_text,  # Updated from 'memory'
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
-            'dialog': self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog(),
+            'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
             'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
             'duplicative_insert': duplicative_insert
             }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
@@ -2680,7 +2684,7 @@ End your response with:
                                                   relationsOnly=True )
 
         if not self.focus_task.peek(): # if we're not in the middle of a task plan
-            self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
+            await self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
             if not self.focus_goal: # goal is completed!
                 self.driveSignalManager.recluster()
                 self.generate_goal_alternatives()
@@ -2692,7 +2696,7 @@ End your response with:
 
         # now we have a focus goal
         if self.focus_task.peek():
-            self.clear_task_if_satisfied(self.focus_task.peek())
+            await self.clear_task_if_satisfied(self.focus_task.peek())
             
         if not self.focus_task.peek(): # prev task completed
             if self.tasks and len(self.tasks) > 0:
@@ -2744,7 +2748,7 @@ End your response with:
                     act_duration = timedelta(minutes=2)
                 self.context.simulation_time += act_duration
                 if self.focus_task.peek() is task:
-                    self.clear_task_if_satisfied(task)
+                    await self.clear_task_if_satisfied(task)
             else:
                 print(f'No action for task {task.name}')
                 return

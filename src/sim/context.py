@@ -374,7 +374,7 @@ End your response with:
         return consequences, world_updates, character_updates
 
 
-    async def update(self):
+    async def update(self, local_only=False):
 
         history = self.history()
 
@@ -458,12 +458,15 @@ End your response with:
          
         if new_situation is None:
             return
-        updates = self.world_updates_from_act_consequences(new_situation)
         self.current_state = new_situation
         self.show = new_situation
         self.message_queue.put({'name':self.name, 'text':self.show})
         self.show = '' # has been added to message queue!
         await asyncio.sleep(0.1)
+        if local_only:
+            return
+
+        updates = self.world_updates_from_act_consequences(new_situation)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
         for actor in self.actors:
