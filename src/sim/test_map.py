@@ -12,10 +12,7 @@ def test_rural_terrain_generation():
         width=75,
         height=75,
         scenario_module=rural,
-        terrain_rules=rural.terrain_rules,
-        infrastructure_rules=rural.infrastructure_rules,
-        property_rules=rural.property_rules,
-        resource_rules=rural.resource_rules
+    
     )
 
     # Debug statistics
@@ -57,7 +54,15 @@ def test_rural_terrain_generation():
     a2 = Agent(35, 25, world, "a2")
     world.register_agent(a1)
     world.register_agent(a2)
+    home = world.get_resource_by_id('Marquadt Farmhouse')
     print(a1.look())
+    a2.move_toward(home['name'])
+    a1.move_to_resource(home['name'])
+
+    market = world.get_resource_by_id('MARKET#1')
+    print(a1.look())
+    a1.move_toward(market['name'])
+    a1.move_to_resource(market['name'])
 
 if __name__ == "__main__":
     test_rural_terrain_generation()

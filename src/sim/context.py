@@ -17,17 +17,34 @@ if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
 class Context():
-    def __init__(self, actors, situation, step='0 hours', mapContext=True, terrain_types=None, resources=None, server_name='local'):
-        self.initial_state = situation
-        self.current_state = situation
-        self.actors: List[Character] = actors
+    def __init__(self, characters, description, scenario_module, server_name=None):
+        """Initialize a context with characters and world description
+        
+        Args:
+            characters: List of Character objects
+            description: Text description of the world/setting
+            scenario_module: Module containing scenario types and rules
+            server_name: Optional server name for image generation
+        """
+        self.characters = characters
+        self.description = description
+        self.scenario_module = scenario_module
+        self.server_name = server_name
+        # Initialize characters in world
+        for character in characters:
+            character.context = self
+            # Additional character initialization as needed
+
+        self.initial_state = description
+        self.current_state = description
+        self.actors: List[Character] = characters
         self.npcs = [] # created as needed
-        self.map = map.WorldMap(60, 60, terrain_types, resources)
-        self.step = step  # amount of time to step per scene update
+        self.map = map.WorldMap(60, 60, scenario_module)
+        self.step = '0 hours'  # amount of time to step per scene update
         self.name = 'World'
         self.llm = llm_api.LLM(server_name)
         self.simulation_time = datetime.now()  # Starting time
-        self.time_step = step  # Amount to advance each step
+        self.time_step = '0 hours'  # Amount to advance each step
         # Add new fields for UI independence
         self.state_listeners = []
         self.output_buffer = []
@@ -37,13 +54,12 @@ class Context():
         self.choice_response = asyncio.Queue()  # Queue for receiving choice responses from UI
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
-        self.simulation_time = self.extract_simulation_time(situation)
+        self.simulation_time = self.extract_simulation_time(description)
         
         for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
-            if mapContext:
-                actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
+            actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]

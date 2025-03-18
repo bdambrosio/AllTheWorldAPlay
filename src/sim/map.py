@@ -204,34 +204,36 @@ class Patch:
         self.resources = {}
 
 class WorldMap:
-    def __init__(self, width, height, scenario_module, terrain_rules, infrastructure_rules, property_rules, resource_rules):
+    def __init__(self, width, height, scenario_module):
         self.width = width
         self.height = height
         self.scenario_module = scenario_module
         
-        # Store all types from scenario module
+        # Get types from scenario module
         self.terrain_types = scenario_module.terrain_types
         self.infrastructure_types = scenario_module.infrastructure_types
         self.property_types = scenario_module.property_types
         self.resource_types = scenario_module.resource_types
         
-        # Store deep copies of all rules
-        import copy
-        self._terrain_rules = copy.deepcopy(terrain_rules)
-        self._infrastructure_rules = copy.deepcopy(infrastructure_rules)
-        self._property_rules = copy.deepcopy(property_rules)
-        self._resource_rules = copy.deepcopy(resource_rules)
+        # Get rules from scenario module
+        self._terrain_rules = scenario_module.terrain_rules
+        self._infrastructure_rules = scenario_module.infrastructure_rules
+        self._property_rules = scenario_module.property_rules
+        self._resource_rules = scenario_module.resource_rules
         
+        self.resource_registry = {}
+        self._resource_counters = {}  # Track counters for each resource type
+        self.property_registry = {}  # Store property data
+
         self.patches = [[Patch(x, y) for y in range(height)] for x in range(width)]
         self.road_graph = nx.Graph()
-        
-        # Generate using stored rules
-        self.generate_terrain()
-        self.generate_infrastructure()  # Keep original for now
-        self.generate_properties()  # Keep original for now
-        self.generate_resources()  # Keep original for now
-
         self.agents = []
+        
+        # Generate world using scenario rules
+        self.generate_terrain()
+        self.generate_properties()
+        self.generate_resources()
+        self.generate_infrastructure()
 
     def generate_terrain(self):
         """Generate terrain must ensure all patches get a terrain_type"""
@@ -331,101 +333,11 @@ class WorldMap:
                         print(f"None terrain at ({x}, {y}), elevation: {self.patches[x][y].elevation}")
                         break
 
-    def generate_infrastructure(self):
-        """Generate infrastructure based on scenario-specific types and rules"""
-        if not self._infrastructure_rules:
-            return
-            
-        print("Generating infrastructure...")
-        
-        # Place market
-        market_x = random.randint(self.width // 4, 3 * self.width // 4)
-        market_y = random.randint(3 * self.height // 4, self.height - 1)
-        print(f"DEBUG: Placed market at ({market_x}, {market_y})")
-        
-        # Set market as a proper enum resource using scenario module
-        self.patches[market_x][market_y].resources[self.resource_types.MARKET] = 1
-        
-        # After placing market, create main roads
-        print(f"DEBUG: Attempting to create main roads from ({market_x}, {market_y})")
-        
-        # Create horizontal roads
-        self.add_road((market_x, market_y), (0, market_y))  # Road to west edge
-        self.add_road((market_x, market_y), (self.width-1, market_y))  # Road to east edge
-        
-        # Create vertical road
-        self.add_road((market_x, market_y), (market_x, 0))  # Road to south edge
-        
-        # Add this debug print to verify roads are being added
-        print(f"DEBUG: Road graph now has {len(self.road_graph.edges)} edges")
-        
-        # Then add some connecting roads
-        road_density = self._infrastructure_rules.get('road_density', 0.1)
-        road_attempts = int(min(self.width, self.height) * road_density)
-        
-        print(f"DEBUG: Making {road_attempts} attempts at additional roads")
-        roads_added = 0
-        
-        for _ in range(road_attempts):
-            # Try to connect existing road endpoints
-            road_nodes = list(self.road_graph.nodes())
-            if len(road_nodes) < 2:
-                continue
-            
-            start = random.choice(road_nodes)
-            end = random.choice(road_nodes)
-            if start != end:
-                self.add_road(start, end)
-                roads_added += 1
-
-        print(f"DEBUG: Added {roads_added} additional roads")
-        print(f"DEBUG: Road graph has {len(self.road_graph.edges())} edges")
-        print(f"DEBUG: Road graph has {len(self.road_graph.nodes())} nodes")
-        print("Completed infrastructure generation with {roads_added} roads")
-
-    def add_road(self, start, end):
-        print(f"DEBUG: Adding road from {start} to {end}")
-        if start == end:
-            return
-            
-        # Create direct road if no path exists
-        x1, y1 = start
-        x2, y2 = end
-        
-        # Add nodes to graph if they don't exist
-        if start not in self.road_graph:
-            self.road_graph.add_node(start)
-        if end not in self.road_graph:
-            self.road_graph.add_node(end)
-        
-        # Create path one step at a time
-        current = start
-        while current != end:
-            next_x = current[0]
-            next_y = current[1]
-            
-            # Move one step closer to destination
-            if current[0] < x2:
-                next_x += 1
-            elif current[0] > x2:
-                next_x -= 1
-            
-            if current[1] < y2:
-                next_y += 1
-            elif current[1] > y2:
-                next_y -= 1
-            
-            next_pos = (next_x, next_y)
-            
-            # Add edge and mark as road
-            self.road_graph.add_edge(current, next_pos)
-            self.patches[next_x][next_y].infrastructure_type = self.infrastructure_types.ROAD
-            
-            #print(f"DEBUG: Added road edge from {current} to {next_pos}")
-            current = next_pos
-
     def generate_properties(self):
-        """Generate property boundaries starting from roads"""
+        """Generate property boundaries based on terrain"""
+        if not self._property_rules:
+            return
+            
         print("Starting property generation...")
         
         # Initialize property tracking
@@ -437,22 +349,21 @@ class WorldMap:
         min_size = self._property_rules.get('min_size', 50)
         max_size = self._property_rules.get('max_size', 150)
         
-        # Start from road-adjacent patches
-        road_adjacent = []
+        # Start from suitable terrain patches
+        candidates = []
         for x in range(self.width):
             for y in range(self.height):
-                if self.patches[x][y].infrastructure_type == self.infrastructure_types.ROAD:
-                    for nx, ny in self.get_neighbors(x, y):
-                        if (not self.patches[nx][ny].has_water and 
-                            self.patches[nx][ny].property_id is None and
-                            self.patches[nx][ny].infrastructure_type is None):
-                            road_adjacent.append((nx, ny))
+                if (not self.patches[x][y].has_water and 
+                    self.patches[x][y].property_id is None and
+                    self.patches[x][y].terrain_type in [self.terrain_types.FIELD, 
+                                                      self.terrain_types.GRASSLAND]):
+                    candidates.append((x, y))
         
         # Shuffle to randomize property placement
-        random.shuffle(road_adjacent)
+        random.shuffle(candidates)
         
         # Try to create properties from each potential starting point
-        for start_x, start_y in road_adjacent:
+        for start_x, start_y in candidates:
             if self.patches[start_x][start_y].property_id is not None:
                 continue
             
@@ -460,8 +371,10 @@ class WorldMap:
             target_size = random.randint(min_size, max_size)
             
             # Try to create property of target size
-            size = self.flood_fill_property(start_x, start_y, property_id, target_size)
-            if size >= min_size:  # Still ensure minimum size
+            property_patches = []
+            size = self.flood_fill_property(start_x, start_y, property_id, target_size, property_patches)
+            if size >= min_size:
+                self.register_property(property_id, property_patches)
                 property_id += 1
                 print(f"Created property {property_id} with {size} patches")
 
@@ -474,7 +387,19 @@ class WorldMap:
                     return True
         return False
 
-    def flood_fill_property(self, start_x: int, start_y: int, property_id: int, target_size: int) -> int:
+    def flood_fill_property(self, start_x: int, start_y: int, property_id: int, target_size: int, property_patches: list) -> int:
+        """
+        Flood fill to create a property, collecting patches for registry
+        
+        Args:
+            start_x, start_y: Starting coordinates
+            property_id: ID to assign to property
+            target_size: Target size in patches
+            property_patches: List to collect (x,y) coordinates of property patches
+            
+        Returns:
+            Size of created property
+        """
         if (self.patches[start_x][start_y].property_id is not None or
             self.patches[start_x][start_y].terrain_type == self.terrain_types.WATER):
             return 0
@@ -494,6 +419,7 @@ class WorldMap:
                 self.patches[x][y].terrain_type != self.terrain_types.WATER):
                 
                 self.patches[x][y].property_id = property_id
+                property_patches.append((x, y))  # Collect patch coordinates
                 size += 1
                 
                 # Randomize neighbor order for more natural shapes
@@ -505,20 +431,33 @@ class WorldMap:
                     
         return size
 
+    def _generate_resource_id(self, resource_type):
+        """Generate unique ID for a resource"""
+        # Check for names in rules
+        if (self._resource_rules.get('names') and 
+            resource_type.name in self._resource_rules['names'] and 
+            len(self._resource_rules['names'][resource_type.name]) > 
+            self._resource_counters.get(resource_type, 0)):
+            # Use next name from list
+            name = self._resource_rules['names'][resource_type.name][self._resource_counters.get(resource_type, 0)]
+            self._resource_counters[resource_type] = self._resource_counters.get(resource_type, 0) + 1
+            return name
+        
+        # Default to TYPE#N
+        if resource_type not in self._resource_counters:
+            self._resource_counters[resource_type] = 1
+        resource_id = f"{resource_type.name}#{self._resource_counters[resource_type]}"
+        self._resource_counters[resource_type] += 1
+        return resource_id
+
     def generate_resources(self):
         """Generate resources based on scenario-specific types and rules"""
         if not self._resource_rules or not self._resource_rules.get('allocations'):
             return
             
         print("Generating resources...")
-        
-        valid_resource_types = self.resource_types
-        
         for allocation in self._resource_rules['allocations']:
             resource_type = allocation['resource_type']
-            if not isinstance(resource_type, valid_resource_types):
-                raise ValueError(f"Invalid resource type for this scenario: {resource_type}")
-                
             count = allocation['count']
             requires_property = allocation['requires_property']
             terrain_weights = allocation['terrain_weights']
@@ -528,7 +467,7 @@ class WorldMap:
             for x in range(self.width):
                 for y in range(self.height):
                     patch = self.patches[x][y]
-                    if patch.resource_type:
+                    if patch.resources:  # Skip if patch already has resources
                         continue
                         
                     if requires_property and patch.property_id is None:
@@ -550,11 +489,56 @@ class WorldMap:
                 for i, (x, y, weight) in enumerate(candidates):
                     cumulative += weight
                     if r <= cumulative:
-                        self.patches[x][y].resources[resource_type] = 1
+                        # Generate unique ID and register resource
+                        resource_id = self._generate_resource_id(resource_type)
+                        
+                        # Get property owner if resource is on property
+                        property_id = self.patches[x][y].property_id
+                        owner = None
+                        if property_id is not None:
+                            owner = self.get_property_owner(property_id)
+                        
+                        # Register resource with location, name, and owner
+                        self.resource_registry[resource_id] = {
+                            'type': resource_type,
+                            'name': resource_id,  # Store the ID (which might be a name) with the resource
+                            'location': (x, y),
+                            'properties': {'owner': owner} if owner else {}
+                        }
+                        
+                        # Add to patch
+                        self.patches[x][y].resources[resource_id] = 1
+                        
                         candidates.pop(i)
                         placed += 1
-                        print(f"DEBUG: Placed {resource_type.name} at ({x}, {y})")
+                        print(f"DEBUG: Placed {resource_id} at ({x}, {y})" + 
+                              (f" owned by {owner.name}" if owner else ""))
                         break
+
+    def get_resource_property(self, resource_id, property_name):
+        """Get a property value for a resource"""
+        if resource_id not in self.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return None
+        return self.resource_registry[resource_id]['properties'].get(property_name)
+
+    def set_resource_property(self, resource_id, property_name, value):
+        """Set a property value for a resource"""
+        if resource_id not in self.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return False
+        self.resource_registry[resource_id]['properties'][property_name] = value
+        return True
+
+    def delete_resource_property(self, resource_id, property_name):
+        """Delete a property from a resource"""
+        if resource_id not in self.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return False
+        if property_name in self.resource_registry[resource_id]['properties']:
+            del self.resource_registry[resource_id]['properties'][property_name]
+            return True
+        return False
 
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
         neighbors = []
@@ -731,6 +715,154 @@ class WorldMap:
         if agent in self.agents:
             self.agents.remove(agent)
 
+    def register_property(self, property_id, patches):
+        """Register a property and its patches"""
+        self.property_registry[property_id] = {
+            'patches': patches,  # List of (x,y) tuples
+            'owner': None
+        }
+
+    def set_property_owner(self, property_id, owner):
+        """Set the owner of a property"""
+        if property_id not in self.property_registry:
+            print(f"ERROR: Property {property_id} not found")
+            return False
+        self.property_registry[property_id]['owner'] = owner
+        return True
+
+    def get_property_owner(self, property_id):
+        """Get the owner of a property"""
+        if property_id not in self.property_registry:
+            print(f"ERROR: Property {property_id} not found")
+            return None
+        return self.property_registry[property_id]['owner']
+
+    def get_resource_by_id(self, resource_id):
+        """Get resource data by ID"""
+        if resource_id not in self.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return None
+        return self.resource_registry[resource_id]
+
+    def generate_market_resource(self):
+        """Generate market before other resources and infrastructure"""
+        market_x = random.randint(self.width // 4, 3 * self.width // 4)
+        market_y = random.randint(3 * self.height // 4, self.height - 1)
+        
+        resource_id = self._generate_resource_id(self.resource_types.MARKET)
+        self.resource_registry[resource_id] = {
+            'type': self.resource_types.MARKET,
+            'name': resource_id,
+            'location': (market_x, market_y),
+            'properties': {}
+        }
+        self.patches[market_x][market_y].resources[resource_id] = 1
+        print(f"DEBUG: Placed market resource {resource_id} at ({market_x}, {market_y})")
+
+    def generate_infrastructure(self):
+        """Generate roads connecting market to resources"""
+        if not self._infrastructure_rules:
+            return
+            
+        print("Generating infrastructure...")
+        
+        # Generate market first
+        self.generate_market_resource()
+        
+        # Get market location from registry
+        market_resource = next((res for res in self.resource_registry.values() 
+                              if res['type'] == self.resource_types.MARKET), None)
+        if not market_resource:
+            print("ERROR: No market placed")
+            return
+            
+        market_x, market_y = market_resource['location']
+        print(f"DEBUG: Starting road network from market at ({market_x}, {market_y})")
+        
+        # Define terrain costs
+        self.terrain_costs = {
+            self.terrain_types.WATER: float('inf'),
+            self.terrain_types.MOUNTAIN: float('inf'),
+            self.terrain_types.HILL: 3.0,
+            self.terrain_types.FOREST: 2.0,
+            self.terrain_types.GRASSLAND: 1.0,
+            self.terrain_types.FIELD: 1.0
+        }
+        
+        # Track connected resources
+        connected = {(market_x, market_y)}
+        
+        # Connect each resource to nearest part of existing network
+        while True:
+            best_cost = float('inf')
+            best_path = None
+            best_start = None
+            best_end = None
+            
+            # Find nearest unconnected resource
+            for resource_id, resource in self.resource_registry.items():
+                if resource['type'] == self.resource_types.MARKET:
+                    continue
+                    
+                res_x, res_y = resource['location']
+                if (res_x, res_y) in connected:
+                    continue
+                    
+                # Try connecting to each point in existing network
+                for start_x, start_y in connected:
+                    cost = self.find_path_cost(start_x, start_y, res_x, res_y)
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_start = (start_x, start_y)
+                        best_end = (res_x, res_y)
+            
+            # No more resources to connect
+            if best_start is None:
+                break
+                
+            # Build the road
+            print(f"DEBUG: Adding road from {best_start} to {best_end}")
+            self.build_road(best_start[0], best_start[1], best_end[0], best_end[1])
+            connected.add(best_end)
+
+    def find_path_cost(self, start_x, start_y, end_x, end_y):
+        """Estimate cost of path between points"""
+        if start_x == end_x and start_y == end_y:
+            return 0
+            
+        # Simple manhattan distance weighted by average terrain cost
+        distance = abs(end_x - start_x) + abs(end_y - start_y)
+        
+        # Check if path is blocked by impossible terrain
+        x, y = start_x, start_y
+        while x != end_x or y != end_y:
+            if x < end_x: x += 1
+            elif x > end_x: x -= 1
+            if y < end_y: y += 1
+            elif y > end_y: y -= 1
+            
+            if self.terrain_costs[self.patches[x][y].terrain_type] == float('inf'):
+                return float('inf')
+                
+        return distance
+
+    def build_road(self, start_x, start_y, end_x, end_y):
+        """Build road between points"""
+        current = (start_x, start_y)
+        while current != (end_x, end_y):
+            next_x = current[0]
+            next_y = current[1]
+            
+            if current[0] < end_x: next_x += 1
+            elif current[0] > end_x: next_x -= 1
+            if current[1] < end_y: next_y += 1
+            elif current[1] > end_y: next_y -= 1
+            
+            next_pos = (next_x, next_y)
+            self.road_graph.add_edge(current, next_pos)
+            self.patches[next_x][next_y].infrastructure_type = self.infrastructure_types.ROAD
+            current = next_pos
+
 class Agent:
     def __init__(self, x, y, world, name):
         self.x = x
@@ -829,6 +961,37 @@ class Agent:
     def get_detailed_visibility_description(self, height=5):
         return get_detailed_visibility_description(self.world, self.x, self.y, self, height)
 
+    def move_to_resource(self, resource_id):
+        """Move agent to resource location"""
+        if resource_id not in self.world.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return False
+            
+        x, y = self.world.resource_registry[resource_id]['location']
+        self.x = x
+        self.y = y
+        return True
+
+    def move_toward(self, resource_id):
+        """Move one step toward resource"""
+        if resource_id not in self.world.resource_registry:
+            print(f"ERROR: Resource {resource_id} not found")
+            return False
+            
+        target_x, target_y = self.world.resource_registry[resource_id]['location']
+        
+        # Already there
+        if (self.x, self.y) == (target_x, target_y):
+            return False
+            
+        # Get direction to target
+        dx = target_x - self.x
+        dy = target_y - self.y
+        direction = get_direction_name(dx, dy)
+        
+        # Use existing move method
+        return self.move(direction)
+
 def manhattan_distance(x1, y1, x2, y2):
     return abs(x2 - x1) + abs(y2 - y1)
 
@@ -871,19 +1034,18 @@ def get_detailed_visibility_description(world, x, y, observer, observer_height):
         if direction != Direction.Current:
             ET.SubElement(direction_element, "visibility").text = str(max_distance)
 
-        ET.SubElement(direction_element, "terrain").text = adjacent_patch.terrain_type.name.replace('_', ' ').title()
+        ET.SubElement(direction_element, "terrain").text = adjacent_patch.terrain_type.name
 
         if direction != Direction.Current:
             slope_element = ET.SubElement(direction_element, "slope")
             slope_element.text = get_slope_description(elevation_change)
-            #slope_element.set("elevation_change", f"{elevation_change:.2f}")
 
         resources_element = ET.SubElement(direction_element, "resources")
         for patch in direction_patches:
             distance = manhattan_distance(x, y, patch.x, patch.y)
-            for resource in patch.resources:
+            for resource_id in patch.resources:
                 resource_element = ET.SubElement(resources_element, "resource")
-                resource_element.set("name", resource.name)
+                resource_element.set("id", resource_id)
                 resource_element.set("distance", str(distance))
                 resource_element.text = ""
 
@@ -970,7 +1132,7 @@ def extract_direction_info(xml_string, direction_name):
     resources = direction_elem.find('resources')
     if resources is not None:
         info['resources'] = [
-            {'name': resource.get('name'), 'distance': int(resource.get('distance'))}
+            {'id': resource.get('id'), 'distance': int(resource.get('distance'))}
             for resource in resources.findall('resource')
         ]
 
