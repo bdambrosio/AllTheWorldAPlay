@@ -40,6 +40,7 @@ class MapVisualizer:
 
     def draw_terrain_and_infrastructure(self):
         plt.figure(figsize=(10, 10))
+        plt.gca().set_facecolor('darkgrey')  # Add dark background
         legend_elements = []
 
         # Draw base terrain
@@ -48,6 +49,10 @@ class MapVisualizer:
                 patch = self.world.patches[x][y]
                 color = self.terrain_colors.get(patch.terrain_type, 'white')
                 plt.plot(x, y, 's', color=color, markersize=5)
+                # Add resource indicator if patch has any resources
+                if patch.resources and self.world.resource_types.MARKET not in patch.resources:
+                    plt.plot(x, y, 'o', color='purple', markersize=3)
+                    print(f"DEBUG: Drawing resource indicator at ({x}, {y})")
 
         # Draw property boundaries
         for x in range(self.world.width):
@@ -80,6 +85,11 @@ class MapVisualizer:
             legend_elements.append(plt.Line2D([0], [0], marker='s', color='w',
                                            markerfacecolor=color, markersize=10,
                                            label=terrain_type.name))
+
+        # Add resource indicator to legend
+        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w',
+                                        markerfacecolor='purple', markersize=10,
+                                        label='Resources Present'))
 
         plt.legend(handles=legend_elements, loc='center left', bbox_to_anchor=(1, 0.5))
         plt.grid(False)

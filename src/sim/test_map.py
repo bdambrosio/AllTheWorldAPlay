@@ -2,37 +2,20 @@ import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import time
-from sim.map import WorldMap
+from sim.map import WorldMap, Agent 
 from sim.mapview import MapVisualizer
 from sim.scenarios import rural
 import matplotlib.pyplot as plt
 
 def test_rural_terrain_generation():
-    terrain_rules = {
-        'elevation_noise_scale': 50.0,
-        'water_level': 0.2,
-        'mountain_level': 0.8
-    }
-    
-    infrastructure_rules = {
-        'road_attempts': 7
-    }
-    
-    property_rules = {
-        'min_size': 50,
-        'max_size': 150
-    }
-
-    resource_rules = {}  # Add empty resource rules
-    
     world = WorldMap(
         width=75,
         height=75,
         scenario_module=rural,
-        terrain_rules=terrain_rules,
-        infrastructure_rules=infrastructure_rules,
-        property_rules=property_rules,
-        resource_rules=resource_rules  # Make sure this line is added
+        terrain_rules=rural.terrain_rules,
+        infrastructure_rules=rural.infrastructure_rules,
+        property_rules=rural.property_rules,
+        resource_rules=rural.resource_rules
     )
 
     # Debug statistics
@@ -41,7 +24,7 @@ def test_rural_terrain_generation():
     for x in range(world.width):
         for y in range(world.height):
             terrain_type = world.patches[x][y].terrain_type
-            if terrain_type is not None:  # Add check for None
+            if terrain_type is not None:
                 terrain_counts[terrain_type] = terrain_counts.get(terrain_type, 0) + 1
     
     for terrain_type, count in terrain_counts.items():
@@ -63,10 +46,18 @@ def test_rural_terrain_generation():
     # Create visualizer with scenario module
     viz = MapVisualizer(world)
     viz.draw_elevation()
-    plt.show()  # Show the elevation map
+    plt.show()
     
     viz.draw_terrain_and_infrastructure()
-    plt.show()  # Show the terrain and infrastructure map
+    plt.show()
+
+    a1 = Agent(35, 25, world, "a1")
+    a1.move('Northwest')
+
+    a2 = Agent(35, 25, world, "a2")
+    world.register_agent(a1)
+    world.register_agent(a2)
+    print(a1.look())
 
 if __name__ == "__main__":
     test_rural_terrain_generation()

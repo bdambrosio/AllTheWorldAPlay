@@ -187,7 +187,9 @@ class ResourceAllocation:
 
 
 class Patch:
-    def __init__(self):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
         self.elevation = 0.0
         self.has_water = False
         self.has_path = False
@@ -220,7 +222,7 @@ class WorldMap:
         self._property_rules = copy.deepcopy(property_rules)
         self._resource_rules = copy.deepcopy(resource_rules)
         
-        self.patches = [[Patch() for y in range(height)] for x in range(width)]
+        self.patches = [[Patch(x, y) for y in range(height)] for x in range(width)]
         self.road_graph = nx.Graph()
         
         # Generate using stored rules
@@ -228,6 +230,8 @@ class WorldMap:
         self.generate_infrastructure()  # Keep original for now
         self.generate_properties()  # Keep original for now
         self.generate_resources()  # Keep original for now
+
+        self.agents = []
 
     def generate_terrain(self):
         """Generate terrain must ensure all patches get a terrain_type"""
@@ -546,9 +550,10 @@ class WorldMap:
                 for i, (x, y, weight) in enumerate(candidates):
                     cumulative += weight
                     if r <= cumulative:
-                        self.patches[x][y].resource_type = resource_type
+                        self.patches[x][y].resources[resource_type] = 1
                         candidates.pop(i)
                         placed += 1
+                        print(f"DEBUG: Placed {resource_type.name} at ({x}, {y})")
                         break
 
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
@@ -718,6 +723,13 @@ class WorldMap:
             except nx.NetworkXNoPath:
                 print(f"Could not connect market to edge point {edge_point}")
                 continue
+
+    def register_agent(self, agent):
+        self.agents.append(agent)
+
+    def unregister_agent(self, agent):
+        if agent in self.agents:
+            self.agents.remove(agent)
 
 class Agent:
     def __init__(self, x, y, world, name):
