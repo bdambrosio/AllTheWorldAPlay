@@ -17,6 +17,7 @@ class SuburbanTerrain(Enum):
     Street = 3
     Sidewalk = 4
     Park = 5
+    OfficeBuilding = 6
 
 # Resources that might be found in this environment
 class SuburbanResource(Enum):

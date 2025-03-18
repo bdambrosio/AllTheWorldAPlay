@@ -16,6 +16,7 @@ import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
 import utils.DeepSeekLocalClient as DeepSeekLocalClient
+import utils.CohereClient as cohere_client
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
@@ -142,6 +143,9 @@ class LLM():
             return response
         if 'Claude' in self.server_name:
             response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
+            return response
+        if 'Cohere' in self.server_name:
+            response= cohere_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
         if 'Grok' in self.server_name:
             response= GrokClient.executeRequest(prompt=substituted_prompt, options=options)

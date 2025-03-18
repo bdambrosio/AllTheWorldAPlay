@@ -8,10 +8,20 @@ import noise
 import math
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
+import networkx as nx
+from dataclasses import dataclass
+from typing import Dict, Any, Type, List, Tuple
+import numpy as np
+from scipy.ndimage import gaussian_filter
 
 # Initialize colorama
 init()
 
+
+
+class RuralInfrastructure(Enum):
+    Road = 1         # All roads/paths combined
+    MarketSquare = 2 # Central gathering point
 
 class Direction(Enum):
     Current = auto()
@@ -147,282 +157,414 @@ def get_direction_name(dx, dy):
     if dx < 0 and dy < 0: return Direction.Northwest
     return Direction.Current
 
-class TerrainType(Enum):
-    DenseForest = 1
-    LightForest = 2
-    Clearing = 3
-
 class Resource(Enum):
     Berries = 1
     Mushrooms = 2
     FallenLog = 3
 
+class OwnershipType(Enum):
+    Unallocated = 0
+    Infrastructure = 1
+    Allocated = 2
+
+class ResourceAllocation:
+    def __init__(self, resource_type, count, requires_property=True, terrain_weights=None):
+        self.resource_type = resource_type
+        self.count = count
+        self.requires_property = requires_property
+        self.terrain_weights = terrain_weights or {}
+        self.placed = 0
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            resource_type=data['resource_type'],
+            count=data['count'],
+            requires_property=data['requires_property'],
+            terrain_weights=data['terrain_weights']
+        )
+
+
+
 class Patch:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.terrain = None  # We'll set this in WorldMap.__init__
-        self.elevation = 0
-        self.resources = []
+    def __init__(self):
+        self.elevation = 0.0
         self.has_water = False
         self.has_path = False
         self.height = 0
-
-    def __lt__(self, other):
-        return self.elevation < other.elevation
+        self.ownership_type = OwnershipType.Unallocated
+        self.road_type = None  # Future: different road types
+        self.property_id = None
+        self.resource_type = None
+        self.terrain_type = None
+        self.infrastructure_type = None  # Added this
+        self.property_type = None  # Might as well add this for future use
+        self.resources = {}
 
 class WorldMap:
-    def __init__(self, width, height, terrain_types=None, resources=None, iterations=5):
-        """Initialize world map with optional terrain types and resources"""
+    def __init__(self, width, height, scenario_module, terrain_rules, infrastructure_rules, property_rules, resource_rules):
         self.width = width
         self.height = height
+        self.scenario_module = scenario_module
         
-        # Use provided enums or defaults
-        self.TerrainType = terrain_types or TerrainType
-        self.Resource = resources or Resource
+        # Store all types from scenario module
+        self.terrain_types = scenario_module.terrain_types
+        self.infrastructure_types = scenario_module.infrastructure_types
+        self.property_types = scenario_module.property_types
+        self.resource_types = scenario_module.resource_types
         
-        self.patches = [[Patch(x, y) for y in range(height)] for x in range(width)]
-        self.generate_elevation()
-        self.generate_terrain(iterations)
-        self.generate_resources()
-        self.set_terrain_heights()
-        self.agents = []
-        self.generate_water_features(num_sources=10, min_length=20)
-        self.agents = []  # List exists but isn't fully utilized
+        # Store deep copies of all rules
+        import copy
+        self._terrain_rules = copy.deepcopy(terrain_rules)
+        self._infrastructure_rules = copy.deepcopy(infrastructure_rules)
+        self._property_rules = copy.deepcopy(property_rules)
+        self._resource_rules = copy.deepcopy(resource_rules)
+        
+        self.patches = [[Patch() for y in range(height)] for x in range(width)]
+        self.road_graph = nx.Graph()
+        
+        # Generate using stored rules
+        self.generate_terrain()
+        self.generate_infrastructure()  # Keep original for now
+        self.generate_properties()  # Keep original for now
+        self.generate_resources()  # Keep original for now
 
-
-    def register_agent(self, agent):
-        self.agents.append(agent)
-
-    def unregister_agent(self, agent):
-        if agent in self.agents:
-            self.agents.remove(agent)
-
-
-    def generate_terrain(self, iterations):
-        # Initialize with random terrain
-        for row in self.patches:
-            for patch in row:
-                patch.terrain = random.choice(list(self.TerrainType))
-
-        # Apply cellular automaton rules
-        for _ in range(iterations):
-            new_terrain = [[patch.terrain for patch in row] for row in self.patches]
-
-            for x in range(self.width):
-                for y in range(self.height):
-                    neighbors = self.get_neighbors(x, y)
-                    terrain_counts = {t: 0 for t in self.TerrainType}
-
-                    for nx, ny in neighbors:
-                        terrain_counts[self.patches[nx][ny].terrain] += 1
-
-                    # Set terrain to the most common neighbor terrain
-                    new_terrain[x][y] = max(terrain_counts, key=terrain_counts.get)
-
-            # Update patches with new terrain
-            for x in range(self.width):
-                for y in range(self.height):
-                    self.patches[x][y].terrain = new_terrain[x][y]
-
-
-    def generate_elevation(self):
-        scale = 50.0
-        octaves = 6
-        persistence = 0.5
-        lacunarity = 2.0
-        seed = random.randint(0, 1000)
-
-        def generate_noise_layer():
-            return [[noise.pnoise2((x+random.uniform(-1,1))/scale,
-                                   (y+random.uniform(-1,1))/scale,
-                                   octaves=octaves,
-                                   persistence=persistence,
-                                   lacunarity=lacunarity,
-                                   repeatx=self.width,
-                                   repeaty=self.height,
-                                   base=seed+random.randint(0,1000))
-                     for y in range(self.height)]
-                    for x in range(self.width)]
-
-        # Generate multiple noise layers
-        layers = [generate_noise_layer() for _ in range(3)]
-
-        # Combine layers
-        combined = [[sum(layer[x][y] for layer in layers) / len(layers)
-                     for y in range(self.height)]
-                    for x in range(self.width)]
-
-        # Normalize elevation values
-        min_elevation = min(min(row) for row in combined)
-        max_elevation = max(max(row) for row in combined)
-
+    def generate_terrain(self):
+        """Generate terrain must ensure all patches get a terrain_type"""
+        if not self._terrain_rules:
+            print("WARNING: No terrain rules provided!")
+            return
+            
+        print("Generating terrain...")
+        
+        # Generate elevation noise
+        scale = self._terrain_rules.get('elevation_noise_scale', 50.0)
+        elevation = np.zeros((self.width, self.height))
         for x in range(self.width):
             for y in range(self.height):
-                normalized = (combined[x][y] - min_elevation) / (max_elevation - min_elevation)
-                # Add some random variation
-                self.patches[x][y].elevation = normalized + random.uniform(-0.1, 0.1)
-                # Ensure elevation stays within [0, 1]
-                self.patches[x][y].elevation = max(0, min(1, self.patches[x][y].elevation))
+                elevation[x][y] = np.random.normal(0, 1)
+        
+        # Smooth elevation
+        elevation = gaussian_filter(elevation, sigma=scale/10)
+        
+        # Normalize elevation to 0-1
+        elevation = (elevation - elevation.min()) / (elevation.max() - elevation.min())
+        
+        # Assign elevation and terrain types
+        water_level = self._terrain_rules.get('water_level', 0.2)
+        mountain_level = self._terrain_rules.get('mountain_level', 0.8)
+        
+        print(f"DEBUG: Starting terrain assignment...")
+        none_count_before = sum(1 for x in range(self.width) 
+                              for y in range(self.height) 
+                              if self.patches[x][y].terrain_type is None)
+        print(f"DEBUG: Patches with None terrain before assignment: {none_count_before}")
+        
+        for x in range(self.width):
+            for y in range(self.height):
+                self.patches[x][y].elevation = elevation[x][y]
+                if elevation[x][y] < water_level:
+                    self.patches[x][y].terrain_type = self.terrain_types.WATER
+                elif elevation[x][y] > mountain_level:
+                    self.patches[x][y].terrain_type = self.terrain_types.MOUNTAIN
+                elif elevation[x][y] > (mountain_level + water_level+.3) / 2:
+                    self.patches[x][y].terrain_type = self.terrain_types.HILL
+                else:
+                    r = random.random()
+                    if r < 0.4:
+                        self.patches[x][y].terrain_type = self.terrain_types.FOREST
+                    elif r < 0.7:  # 0.4 to 0.7
+                        self.patches[x][y].terrain_type = self.terrain_types.GRASSLAND
+                    else:  # 0.7 to 1.0
+                        self.patches[x][y].terrain_type = self.terrain_types.FIELD
 
-    def generate_water_features(self, num_sources=5, min_length=8):
-        all_patches = [(patch.elevation, random.random(), patch) for row in self.patches for patch in row]
-        water_sources = heapq.nlargest(num_sources, all_patches)
-
-        for _, _, source in water_sources:
-            self._generate_river(source, min_length)
-
-    def _generate_river(self, source, min_length):
-        current = source
-        path = [current]
-
-        while len(path) < min_length or (current.elevation > -0.3 and len(path) < self.width):
-            current.has_water = True
-            neighbors = self.get_neighbors(current.x, current.y)
-            valid_neighbors = [
-                self.patches[nx][ny] for nx, ny in neighbors
-                if not self.patches[nx][ny].has_water and self.patches[nx][ny].elevation <= current.elevation
-            ]
-
-            if not valid_neighbors:
-                # If stuck, try to continue in the same direction
-                last_direction = (current.x - path[-2].x, current.y - path[-2].y) if len(path) > 1 else (0, 1)
-                next_x, next_y = current.x + last_direction[0], current.y + last_direction[1]
-                if 0 <= next_x < self.width and 0 <= next_y < self.height:
-                    next_patch = self.patches[next_x][next_y]
-                    if not next_patch.has_water:
-                        path.append(next_patch)
-                        current = next_patch
+        # After the initial assignment loop and before none_count_after check
+        # Add smoothing for non-elevation-determined terrains
+        for _ in range(3):  # 3 smoothing passes
+            changes = []
+            for x in range(self.width):
+                for y in range(self.height):
+                    patch = self.patches[x][y]
+                    # Skip elevation-determined terrains
+                    if (patch.elevation < water_level or 
+                        patch.elevation > mountain_level or 
+                        patch.terrain_type == self.terrain_types.HILL):
                         continue
-                break
+                    
+                    # Count neighbor terrains
+                    neighbor_counts = {}
+                    for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), 
+                                 (0,1), (1,-1), (1,0), (1,1)]:
+                        nx, ny = x + dx, y + dy
+                        if (0 <= nx < self.width and 
+                            0 <= ny < self.height):
+                            ntype = self.patches[nx][ny].terrain_type
+                            if ntype not in [self.terrain_types.WATER, 
+                                           self.terrain_types.MOUNTAIN,
+                                           self.terrain_types.HILL]:
+                                neighbor_counts[ntype] = neighbor_counts.get(ntype, 0) + 1
+                    
+                    # Change to most common neighbor type if significantly more common
+                    if neighbor_counts:
+                        most_common = max(neighbor_counts.items(), key=lambda x: x[1])
+                        if most_common[1] >= 5 and most_common[0] != patch.terrain_type:
+                            changes.append((x, y, most_common[0]))
+            
+            # Apply all changes at once
+            for x, y, new_type in changes:
+                self.patches[x][y].terrain_type = new_type
 
-            next_patch = min(valid_neighbors, key=lambda p: p.elevation)
-            path.append(next_patch)
-            current = next_patch
+        none_count_after = sum(1 for x in range(self.width) 
+                             for y in range(self.height) 
+                             if self.patches[x][y].terrain_type is None)
+        print(f"DEBUG: Patches with None terrain after assignment: {none_count_after}")
+        if none_count_after > 0:
+            print("WARNING: Some patches still have None terrain!")
+            # Print first few None locations for debugging
+            for x in range(self.width):
+                for y in range(self.height):
+                    if self.patches[x][y].terrain_type is None:
+                        print(f"None terrain at ({x}, {y}), elevation: {self.patches[x][y].elevation}")
+                        break
 
-        # Ensure minimum length
-        while len(path) < min_length:
-            neighbors = self.get_neighbors(current.x, current.y)
-            valid_neighbors = [self.patches[nx][ny] for nx, ny in neighbors if not self.patches[nx][ny].has_water]
-            if not valid_neighbors:
-                break
-            next_patch = random.choice(valid_neighbors)
-            path.append(next_patch)
-            current = next_patch
+    def generate_infrastructure(self):
+        """Generate infrastructure based on scenario-specific types and rules"""
+        if not self._infrastructure_rules:
+            return
+            
+        print("Generating infrastructure...")
+        
+        # Place market
+        market_x = random.randint(self.width // 4, 3 * self.width // 4)
+        market_y = random.randint(3 * self.height // 4, self.height - 1)
+        print(f"DEBUG: Placed market at ({market_x}, {market_y})")
+        
+        # Set market as a proper enum resource using scenario module
+        self.patches[market_x][market_y].resources[self.resource_types.MARKET] = 1
+        
+        # After placing market, create main roads
+        print(f"DEBUG: Attempting to create main roads from ({market_x}, {market_y})")
+        
+        # Create horizontal roads
+        self.add_road((market_x, market_y), (0, market_y))  # Road to west edge
+        self.add_road((market_x, market_y), (self.width-1, market_y))  # Road to east edge
+        
+        # Create vertical road
+        self.add_road((market_x, market_y), (market_x, 0))  # Road to south edge
+        
+        # Add this debug print to verify roads are being added
+        print(f"DEBUG: Road graph now has {len(self.road_graph.edges)} edges")
+        
+        # Then add some connecting roads
+        road_density = self._infrastructure_rules.get('road_density', 0.1)
+        road_attempts = int(min(self.width, self.height) * road_density)
+        
+        print(f"DEBUG: Making {road_attempts} attempts at additional roads")
+        roads_added = 0
+        
+        for _ in range(road_attempts):
+            # Try to connect existing road endpoints
+            road_nodes = list(self.road_graph.nodes())
+            if len(road_nodes) < 2:
+                continue
+            
+            start = random.choice(road_nodes)
+            end = random.choice(road_nodes)
+            if start != end:
+                self.add_road(start, end)
+                roads_added += 1
 
-        for patch in path:
-            patch.has_water = True
+        print(f"DEBUG: Added {roads_added} additional roads")
+        print(f"DEBUG: Road graph has {len(self.road_graph.edges())} edges")
+        print(f"DEBUG: Road graph has {len(self.road_graph.nodes())} nodes")
+        print("Completed infrastructure generation with {roads_added} roads")
 
-    def _smooth_river(self, path):
-        for i in range(1, len(path) - 1):
-            prev, current, next = path[i - 1], path[i], path[i + 1]
-            dx = (prev.x + next.x) // 2 - current.x
-            dy = (prev.y + next.y) // 2 - current.y
+    def add_road(self, start, end):
+        print(f"DEBUG: Adding road from {start} to {end}")
+        if start == end:
+            return
+            
+        # Create direct road if no path exists
+        x1, y1 = start
+        x2, y2 = end
+        
+        # Add nodes to graph if they don't exist
+        if start not in self.road_graph:
+            self.road_graph.add_node(start)
+        if end not in self.road_graph:
+            self.road_graph.add_node(end)
+        
+        # Create path one step at a time
+        current = start
+        while current != end:
+            next_x = current[0]
+            next_y = current[1]
+            
+            # Move one step closer to destination
+            if current[0] < x2:
+                next_x += 1
+            elif current[0] > x2:
+                next_x -= 1
+            
+            if current[1] < y2:
+                next_y += 1
+            elif current[1] > y2:
+                next_y -= 1
+            
+            next_pos = (next_x, next_y)
+            
+            # Add edge and mark as road
+            self.road_graph.add_edge(current, next_pos)
+            self.patches[next_x][next_y].infrastructure_type = self.infrastructure_types.ROAD
+            
+            #print(f"DEBUG: Added road edge from {current} to {next_pos}")
+            current = next_pos
 
-            if abs(dx) <= 1 and abs(dy) <= 1:
-                smoothed = self.patches[current.x + dx][current.y + dy]
-                smoothed.has_water = True
-                path[i] = smoothed
+    def generate_properties(self):
+        """Generate property boundaries starting from roads"""
+        print("Starting property generation...")
+        
+        # Initialize property tracking
+        for x in range(self.width):
+            for y in range(self.height):
+                self.patches[x][y].property_id = None
+        
+        property_id = 0
+        min_size = self._property_rules.get('min_size', 50)
+        max_size = self._property_rules.get('max_size', 150)
+        
+        # Start from road-adjacent patches
+        road_adjacent = []
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.patches[x][y].infrastructure_type == self.infrastructure_types.ROAD:
+                    for nx, ny in self.get_neighbors(x, y):
+                        if (not self.patches[nx][ny].has_water and 
+                            self.patches[nx][ny].property_id is None and
+                            self.patches[nx][ny].infrastructure_type is None):
+                            road_adjacent.append((nx, ny))
+        
+        # Shuffle to randomize property placement
+        random.shuffle(road_adjacent)
+        
+        # Try to create properties from each potential starting point
+        for start_x, start_y in road_adjacent:
+            if self.patches[start_x][start_y].property_id is not None:
+                continue
+            
+            # Generate random target size for this property
+            target_size = random.randint(min_size, max_size)
+            
+            # Try to create property of target size
+            size = self.flood_fill_property(start_x, start_y, property_id, target_size)
+            if size >= min_size:  # Still ensure minimum size
+                property_id += 1
+                print(f"Created property {property_id} with {size} patches")
 
-    def get_neighbors(self, x, y):
-        neighbors = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue
+    def is_near_road(self, x: int, y: int, max_distance: int) -> bool:
+        for dx in range(-max_distance, max_distance + 1):
+            for dy in range(-max_distance, max_distance + 1):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < self.width and 0 <= ny < self.height:
-                    neighbors.append((nx, ny))
-        return neighbors
+                if (0 <= nx < self.width and 0 <= ny < self.height and
+                    self.patches[nx][ny].infrastructure_type == self.infrastructure_types.ROAD):
+                    return True
+        return False
+
+    def flood_fill_property(self, start_x: int, start_y: int, property_id: int, target_size: int) -> int:
+        if (self.patches[start_x][start_y].property_id is not None or
+            self.patches[start_x][start_y].terrain_type == self.terrain_types.WATER):
+            return 0
+            
+        size = 0
+        stack = [(start_x, start_y)]
+        visited = set()
+        
+        while stack and size < target_size:  # Stop at target size
+            x, y = stack.pop()
+            if (x, y) in visited:
+                continue
+            
+            visited.add((x, y))
+            if (0 <= x < self.width and 0 <= y < self.height and
+                self.patches[x][y].property_id is None and
+                self.patches[x][y].terrain_type != self.terrain_types.WATER):
+                
+                self.patches[x][y].property_id = property_id
+                size += 1
+                
+                # Randomize neighbor order for more natural shapes
+                neighbors = self.get_neighbors(x, y)
+                random.shuffle(neighbors)
+                for nx, ny in neighbors:
+                    if (nx, ny) not in visited:
+                        stack.append((nx, ny))
+                    
+        return size
 
     def generate_resources(self):
-        """Generate resources based on terrain type"""
-        terrain_types = list(self.TerrainType)  # Get ordered list of terrain types
-        for row in self.patches:
-            for patch in row:
-                if patch.has_water:
-                    continue
-
-                # Try spawning each resource type
-                for resource in self.Resource:
-                    spawn_chance = 0.1  # Base spawn chance
+        """Generate resources based on scenario-specific types and rules"""
+        if not self._resource_rules or not self._resource_rules.get('allocations'):
+            return
+            
+        print("Generating resources...")
+        
+        valid_resource_types = self.resource_types
+        
+        for allocation in self._resource_rules['allocations']:
+            resource_type = allocation['resource_type']
+            if not isinstance(resource_type, valid_resource_types):
+                raise ValueError(f"Invalid resource type for this scenario: {resource_type}")
+                
+            count = allocation['count']
+            requires_property = allocation['requires_property']
+            terrain_weights = allocation['terrain_weights']
+            
+            # Find valid locations
+            candidates = []
+            for x in range(self.width):
+                for y in range(self.height):
+                    patch = self.patches[x][y]
+                    if patch.resource_type:
+                        continue
+                        
+                    if requires_property and patch.property_id is None:
+                        continue
+                        
+                    weight = terrain_weights.get(patch.terrain_type, 0)
+                    if weight > 0:
+                        candidates.append((x, y, weight))
+            
+            # Place resources
+            placed = 0
+            while placed < count and candidates:
+                total_weight = sum(w for _, _, w in candidates)
+                if total_weight <= 0:
+                    break
                     
-                    # Adjust chance based on terrain order (more resources in open areas)
-                    terrain_index = terrain_types.index(patch.terrain)
-                    spawn_chance *= 1.0 - (terrain_index * 0.2)  # Decreases with denser terrain
-                        
-                    # Adjust for elevation
-                    if patch.elevation > 0.7:
-                        spawn_chance *= 0.5  # Reduced at high elevations
-                        
-                    if random.random() < spawn_chance:
-                        patch.resources.append(resource)
-
-    def print_map(self):
-        """Print map with terrain and resource symbols"""
-        # Available colors in order
-        colors = [Fore.GREEN, Fore.YELLOW, Fore.RED, Fore.MAGENTA, Fore.CYAN, Fore.BLUE]
-        symbols = ['█', '▓', '░', '■', '◆', '●']  # Different symbols for variety
-        
-        # Map terrain types to colors and symbols by index
-        terrain_types = list(self.TerrainType)
-        terrain_chars = {
-            terrain: colors[i % len(colors)] + symbols[i % len(symbols)] + Style.RESET_ALL
-            for i, terrain in enumerate(terrain_types)
-        }
-        
-        # Map resources to remaining colors
-        resource_types = list(self.Resource)
-        resource_chars = {
-            resource: colors[(i + len(terrain_types)) % len(colors)] + '•' + Style.RESET_ALL
-            for i, resource in enumerate(resource_types)
-        }
-
-        for y in range(self.height):
-            for x in range(self.width):
-                patch = self.patches[x][y]
-                if patch.has_water:
-                    print(Fore.BLUE + '~' + Style.RESET_ALL, end='')
-                elif patch.resources:
-                    print(resource_chars[patch.resources[0]], end='')
-                else:
-                    print(terrain_chars[patch.terrain], end='')
-            print()  # New line after each row
-
-    def print_color_elevation_map(self):
-        # Define elevation ranges and corresponding colors
-        elevation_colors = [
-            (0.0, Fore.BLUE), (0.2, Fore.CYAN), (0.4, Fore.GREEN),
-            (0.6, Fore.YELLOW), (0.8, Fore.RED)
-        ]
-
-        for y in range(self.height):
-            for x in range(self.width):
-                elevation = self.patches[x][y].elevation
-                for threshold, color in elevation_colors:
-                    if elevation <= threshold:
-                        print(color + '█' + Style.RESET_ALL, end='')
+                r = random.uniform(0, total_weight)
+                cumulative = 0
+                for i, (x, y, weight) in enumerate(candidates):
+                    cumulative += weight
+                    if r <= cumulative:
+                        self.patches[x][y].resource_type = resource_type
+                        candidates.pop(i)
+                        placed += 1
                         break
-                else:
-                    print(Fore.WHITE + '█' + Style.RESET_ALL, end='')
-            print()  # New line after each row
+
+    def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
+        neighbors = []
+        for dx, dy in [(0,1), (1,0), (0,-1), (-1,0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.width and 0 <= ny < self.height:
+                neighbors.append((nx, ny))
+        return neighbors
 
     def generate_paths(self):
         # Create paths connecting points of interest
         pass
 
-    def set_terrain_heights(self):
-        for row in self.patches:
-            for patch in row:
-                if patch.terrain == TerrainType.DenseForest:
-                    patch.height = 20  # 20 feet
-                elif patch.terrain == TerrainType.LightForest:
-                    patch.height = 15  # 15 feet
-                elif patch.terrain == TerrainType.Clearing:
-                    patch.height = 1  # 1 foot (grass)
-                if patch.has_water:
-                    patch.height = 0  # Water level
 
+            
     def get_visibility_cached(self, x, y, observer_height):
         """Optimized visibility calculation with caching"""
         cache_key = (x, y, observer_height)
@@ -541,27 +683,41 @@ class WorldMap:
                 if self.patches[px][py] in visible_patches:
                     if px == x and py == y:
                         print(Fore.RED + 'O' + Style.RESET_ALL, end='')  # Observer position
-                    elif self.patches[px][py].has_water:
+                    elif self.patches[px][py].terrain_type == self.terrain_types.WATER:
                         print(Fore.BLUE + '~' + Style.RESET_ALL, end='')
-                    elif self.patches[px][py].resources:
-                        resource_chars = {
-                            Resource.Berries: Fore.RED + '•' + Style.RESET_ALL,
-                            Resource.Mushrooms: Fore.MAGENTA + '∩' + Style.RESET_ALL,
-                            Resource.FallenLog: Fore.WHITE + '=' + Style.RESET_ALL
-                        }
-                        print(resource_chars[self.patches[px][py].resources[0]], end='')
+                    elif self.patches[px][py].resource_type:
+                        print(Fore.GREEN + '*' + Style.RESET_ALL, end='')
                     else:
-                        terrain_chars = {
-                            TerrainType.DenseForest: Fore.GREEN + '█' + Style.RESET_ALL,
-                            TerrainType.LightForest: Fore.LIGHTGREEN_EX + '▓' + Style.RESET_ALL,
-                            TerrainType.Clearing: Fore.YELLOW + '░' + Style.RESET_ALL
-                        }
-                        print(terrain_chars[self.patches[px][py].terrain], end='')
+                        print('·', end='')
                 else:
                     print(Fore.BLACK + '█' + Style.RESET_ALL, end='')  # Non-visible areas
             print()
 
-
+    def generate_initial_roads(self):
+        """Generate initial road network from market to map edges"""
+        if not hasattr(self, 'market_location'):
+            return
+        
+        # Define edge points to connect to
+        edges = []
+        
+        # North and South edges
+        for x in range(0, self.width, self.width // 4):
+            edges.append((x, 0))  # North edge
+            edges.append((x, self.height-1))  # South edge
+        
+        # East and West edges
+        for y in range(0, self.height, self.height // 4):
+            edges.append((0, y))  # West edge
+            edges.append((self.width-1, y))  # East edge
+        
+        # Try to connect market to each edge point
+        for edge_point in edges:
+            try:
+                self.add_road(self.market_location, edge_point)
+            except nx.NetworkXNoPath:
+                print(f"Could not connect market to edge point {edge_point}")
+                continue
 
 class Agent:
     def __init__(self, x, y, world, name):
@@ -703,7 +859,7 @@ def get_detailed_visibility_description(world, x, y, observer, observer_height):
         if direction != Direction.Current:
             ET.SubElement(direction_element, "visibility").text = str(max_distance)
 
-        ET.SubElement(direction_element, "terrain").text = adjacent_patch.terrain.name.replace('_', ' ').title()
+        ET.SubElement(direction_element, "terrain").text = adjacent_patch.terrain_type.name.replace('_', ' ').title()
 
         if direction != Direction.Current:
             slope_element = ET.SubElement(direction_element, "slope")
@@ -835,26 +991,4 @@ def extract_direction_info(xml_string, direction_name):
 
 
 
-if __name__ == '__main__':
-    # Example usage
-    world = WorldMap(80, 40)
-    world.generate_water_features(num_sources=5, min_length=10)
-
-    me = Agent(40, 20, world, "Player")
-    agent1 = Agent(40, 19, world, "Agent 1")
-    agent2 = Agent(38, 18, world, "Agent 2")
-
-    print(me.look())
-    detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
-    print_formatted_xml(detailed_visibility_description)
-
-    me.move(Direction.Northeast)
-    detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
-    print_formatted_xml(detailed_visibility_description)
-
-    me.move(Direction.Northeast)
-    detailed_visibility_description = get_detailed_visibility_description(world, me.x, me.y, 5)
-    print_formatted_xml(detailed_visibility_description)
-    print()
-    print(extract_direction_info(detailed_visibility_description, 'Northeast'))
 

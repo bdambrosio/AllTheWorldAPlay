@@ -8,7 +8,11 @@
             "request": "launch",
             "program": "${file}",
             "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "env": {
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+            }
         },
         {
             "name": "webworld",
