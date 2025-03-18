@@ -4,24 +4,9 @@ import sim.worldsim as worldsim
 import sim.agh as agh
 from sim.context import Context
 import plays.config as configuration
+from sim.scenarios import rural  # Import the entire scenario module
 
 server_name = configuration.server_name
-class RuralTerrain(Enum):
-    Field = 1    # Farmland (flat, open)
-    Woods = 2    # Forest/trees
-    Meadow = 3   # Natural grassland
-
-class RuralInfrastructure(Enum):
-    Road = 1         # All roads/paths combined
-    MarketSquare = 2 # Central gathering point
-
-class RuralBuilding(Enum):
-    Farmhouse = 1    # Living/working buildings
-    Barn = 2         # Storage/work buildings
-
-class RuralResource(Enum):
-    Produce = 1      # Farm goods
-    Wood = 2         # Forest materials
 
 
 J = agh.Character("Jean", """You are Jean Macquart, a hardworking young unmarried peasant farmer working his father's farm. 
@@ -54,52 +39,9 @@ Drive("brief moments of rest and simple joys amid the hardships")
 F.add_perceptual_input("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.", 'internal')
 
 
-W =Context([J, F],
-"""A small 19th century French farming village surrounded by fields ripe with wheat and other crops. 
-It is late afternoon on a hot summer day.""", terrain_types=RuralTerrain, resources=RuralResource, server_name=server_name)
-#worldsim.IMAGEGENERATOR = 'tti_serve'
-#worldsim.main(W)
+W = Context([J, F],
+    """A small 19th century French farming village surrounded by fields ripe with wheat and other crops. 
+    It is late afternoon on a hot summer day.""",
+    scenario_module=rural,  # Pass the entire module
+    server_name=server_name)
 
-# Simple rules based on elevation
-terrain_rules = {
-    'Field': {'elevation_range': (0.2, 0.6)},  # Mid elevations
-    'Woods': {'elevation_range': (0.6, 1.0)},   # Higher ground
-    'Meadow': {'elevation_range': (0.0, 0.3)}   # Near water/low ground
-}
-
-# Place market in center-ish of map
-# Connect with simple A* pathfinding for roads
-infrastructure_rules = {
-    'MarketSquare': {
-        'prefer_terrain': 'Field',
-        'min_distance_water': 3
-    },
-    'Road': {
-        'max_slope': 0.2,
-        'avoid_terrain': 'Woods'
-    }
-}
-
-property_rules = {
-    'min_size': 50,
-    'require_road_access': True,
-    'max_distance_road': 5
-}
-
-placement_rules = {
-    'Farmhouse': {
-        'require_terrain': 'Field',
-        'max_distance_road': 3
-    },
-    'Barn': {
-        'near_farmhouse': True,
-        'max_distance': 2
-    },
-    'Produce': {
-        'require_terrain': 'Field',
-        'near_building': True
-    },
-    'Wood': {
-        'require_terrain': 'Woods'
-    }
-}

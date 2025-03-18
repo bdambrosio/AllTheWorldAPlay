@@ -21,11 +21,10 @@ class RuralResources(Enum):
     BLACKSMITH = auto()
     MILL = auto()
     FARM = auto()
-    QUARRY = auto()
-
-class RuralBuilding(Enum):
     FARMHOUSE = auto()
     BARN = auto()
+    QUARRY = auto()
+
 
 class RuralProperty(Enum):
     RESIDENTIAL = auto()
@@ -56,6 +55,9 @@ property_types = RuralProperty
 resource_types = RuralResources 
 
 resource_rules = {
+    'names': {
+        'FARMHOUSE': ['Marquadt Farmhouse']
+    },
     'allocations': [
         {
             'resource_type': resource_types.WELL,
@@ -68,7 +70,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.BLACKSMITH,
-            'count': 2,
+            'count': 6,
             'requires_property': True,
             'terrain_weights': {
                 terrain_types.GRASSLAND: 1.0,
@@ -86,6 +88,24 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.FARM,
+            'count': 9,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.FIELD: 2.0,
+                terrain_types.GRASSLAND: 1.0
+            }
+        },
+         {
+            'resource_type': resource_types.FARMHOUSE,
+            'count': 7,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.FIELD: 2.0,
+                terrain_types.GRASSLAND: 1.0
+            }
+        },
+         {
+            'resource_type': resource_types.BARN,
             'count': 8,
             'requires_property': True,
             'terrain_weights': {
