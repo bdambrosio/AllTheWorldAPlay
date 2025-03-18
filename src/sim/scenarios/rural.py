@@ -49,13 +49,59 @@ property_rules = {
     'max_size': 150
 }
 
-resource_rules = {
-    'allocations': []  # Fill in from RuralScenario
-}
-
-
 # Add standard interface names
 terrain_types = RuralTerrain
 infrastructure_types = RuralInfrastructure
 property_types = RuralProperty
 resource_types = RuralResources 
+
+resource_rules = {
+    'allocations': [
+        {
+            'resource_type': resource_types.WELL,
+            'count': 5,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.GRASSLAND: 1.0,
+                terrain_types.FIELD: 1.0
+            }
+        },
+        {
+            'resource_type': resource_types.BLACKSMITH,
+            'count': 2,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.GRASSLAND: 1.0,
+                terrain_types.FIELD: 1.0
+            }
+        },
+        {
+            'resource_type': resource_types.MILL,
+            'count': 3,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.FIELD: 1.0,
+                terrain_types.GRASSLAND: 0.5
+            }
+        },
+        {
+            'resource_type': resource_types.FARM,
+            'count': 8,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.FIELD: 2.0,
+                terrain_types.GRASSLAND: 1.0
+            }
+        },
+        {
+            'resource_type': resource_types.QUARRY,
+            'count': 2,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.HILL: 2.0,
+                terrain_types.MOUNTAIN: 1.0
+            }
+        }
+    ]
+}
+
