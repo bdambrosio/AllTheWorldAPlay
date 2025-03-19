@@ -72,6 +72,7 @@ resource_rules = {
             'resource_type': resource_types.BLACKSMITH,
             'count': 6,
             'requires_property': True,
+            'has_npc': True,
             'terrain_weights': {
                 terrain_types.GRASSLAND: 1.0,
                 terrain_types.FIELD: 1.0
@@ -80,6 +81,7 @@ resource_rules = {
         {
             'resource_type': resource_types.MILL,
             'count': 3,
+            'has_npc': True,
             'requires_property': True,
             'terrain_weights': {
                 terrain_types.FIELD: 1.0,
@@ -99,6 +101,7 @@ resource_rules = {
             'resource_type': resource_types.FARMHOUSE,
             'count': 7,
             'requires_property': True,
+            'has_npc': True,
             'terrain_weights': {
                 terrain_types.FIELD: 2.0,
                 terrain_types.GRASSLAND: 1.0
