@@ -235,6 +235,11 @@ class WorldMap:
         self.generate_resources()
         self.generate_infrastructure()
 
+    def get_owned_resources(self):
+        """Get all resources that are NPC-owned"""
+        return [res for res in self.resource_registry.values() 
+                if res['properties'].get('owner')]
+
     def generate_terrain(self):
         """Generate terrain must ensure all patches get a terrain_type"""
         if not self._terrain_rules:

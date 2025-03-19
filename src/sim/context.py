@@ -55,6 +55,12 @@ class Context():
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
         self.simulation_time = self.extract_simulation_time(description)
+        for resource_id, resource in self.map.resource_registry.items():
+            has_owner = self.check_resource_has_npc(resource)
+            if has_owner:
+                owner:Character = self.get_npc_by_name(resource['name']+'_owner', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
+                resource['properties']['owner'] = owner.mapAgent
+
         
         for actor in self.actors:
             #place all actors in the world
@@ -215,7 +221,7 @@ If absolutely no information is available for either field, use "unknown" for th
         """Check if a name is plausible for an NPC"""
         return name.lower() in ['viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']
 
-    def get_npc_by_name(self, name, create_if_missing=False):
+    def get_npc_by_name(self, name, x=20, y=20, create_if_missing=False):
         """Helper to find NPC by name"""
         for actor in self.npcs:
             if actor.name == name or actor.name in name:
@@ -237,7 +243,7 @@ If absolutely no information is available for either field, use "unknown" for th
             return None
         referenced_actor = self.get_actor_by_name(reference)
         if referenced_actor is None:
-            referenced_actor = self.get_npc_by_name(reference, create_if_missing=create_if_missing)
+            referenced_actor = self.get_npc_by_name(reference, x=actor.mapAgent.x, y=actor.mapAgent.y, create_if_missing=create_if_missing)
         return referenced_actor
 
     
@@ -700,3 +706,10 @@ End your response with:
         
         actor.next_task=None
         return None, [actor]
+
+    def check_resource_has_npc(self, resource):
+        """Check if a resource type should have an NPC"""
+        for allocation in self.map._resource_rules['allocations']:
+            if allocation['resource_type'] == resource['type']:
+                return allocation.get('has_npc', False)
+        return False
