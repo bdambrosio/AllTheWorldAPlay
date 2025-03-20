@@ -62,10 +62,10 @@ class Context():
                 resource['properties']['owner'] = owner.mapAgent
 
         
-        for actor in self.actors:
+        for actor in self.actors + self.npcs:
             #place all actors in the world
             actor.set_context(self)
-            actor.mapAgent = map.Agent(30, 30, self.map, actor.name)
+            actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
@@ -230,6 +230,8 @@ If absolutely no information is available for either field, use "unknown" for th
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
             npc = Character(name, character_description=f'{name} is a non-player character', server_name=self.llm.server_name)
+            npc.x = x
+            npc.y = y
             npc.set_context(self)
             npc.llm = self.llm
             self.npcs.append(npc)

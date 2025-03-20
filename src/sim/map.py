@@ -203,6 +203,8 @@ class Patch:
         self.property_type = None  # Might as well add this for future use
         self.resources = {}
 
+
+
 class WorldMap:
     def __init__(self, width, height, scenario_module):
         self.width = width
@@ -507,6 +509,7 @@ class WorldMap:
                         self.resource_registry[resource_id] = {
                             'type': resource_type,
                             'name': resource_id,  # Store the ID (which might be a name) with the resource
+                            'description': allocation['description'],
                             'location': (x, y),
                             'properties': {'owner': owner} if owner else {}
                         }
@@ -977,17 +980,33 @@ class Agent:
         self.y = y
         return True
 
-    def move_toward(self, resource_id):
+    def direction_toward(self, resource_id):
         """Move one step toward resource"""
-        if resource_id not in self.world.resource_registry:
+        if resource_id in self.world.resource_registry:
+            target_x, target_y = self.world.resource_registry[resource_id]['location']
+        else:
             print(f"ERROR: Resource {resource_id} not found")
             return False
-            
         target_x, target_y = self.world.resource_registry[resource_id]['location']
-        
+        dx = target_x - self.x
+        dy = target_y - self.y
+        direction = get_direction_name(dx, dy)
+        return direction
+
+    def move_toward(self, resource_id):
+        """Move one step toward resource"""
+        if resource_id in self.world.resource_registry:
+            target_x, target_y = self.world.resource_registry[resource_id]['location']
+        else:
+            print(f"ERROR: Resource {resource_id} not found")
+            return False
+        target_x, target_y = self.world.resource_registry[resource_id]['location']
+        return self.move_toward_location(target_x, target_y)
+                    
+    def move_toward_location(self, target_x, target_y):
         # Already there
         if (self.x, self.y) == (target_x, target_y):
-            return False
+            return True
             
         # Get direction to target
         dx = target_x - self.x

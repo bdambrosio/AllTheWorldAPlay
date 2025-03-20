@@ -44,7 +44,7 @@ class StructuredMemory:
     """Manages organized storage and retrieval of agent memories"""
     
     def __init__(self, owner=None):
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embedding_model = _embedding_model
         self.concrete_memories: List[MemoryEntry] = []
         self.abstract_memories: List[AbstractMemory] = []
         self.current_abstract: Optional[AbstractMemory] = None
