@@ -20,10 +20,11 @@ import utils.hash_utils as hash_utils
 import utils.choice as choice   
 from sim.cognitive.DialogManager import Dialog
 from sim.cognitive import knownActor
+from sim.cognitive import knownResources
 from sim.cognitive import perceptualState
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
-
+from sim.cognitive.knownResources import KnownResource, KnownResourceManager
 
 def ask (character:Character, mission:str, suffix:str, addl_bindings:dict, max_tokens:int=100):
 
@@ -51,6 +52,10 @@ Character Narrative
 
 known other actors 
 {{$actors}}
+##
+
+known resources
+{{$resources}}
 ##
 
 recently achieved goals are:
@@ -112,6 +117,7 @@ emotional stance:
                 "time": character.context.simulation_time.isoformat(),
                 "situation":character.context.current_state if character.context else "",
                 "actors":character.actor_models.format_relationships(include_transcript=False),
+                "resources":character.resource_models.to_string(),
                 "goal_history":'\n'.join([f'{g.name} - {g.description}' for g in character.goal_history]),
                 "memories": memory_text,
                 "history": "", #character.history,
@@ -126,16 +132,3 @@ emotional stance:
     response = character.llm.ask(bindings, prompt, max_tokens=max_tokens, stops=['<end/>'])
     return response
 
-if __name__ == "__main__":
-    from sim.context import Context
-    from sim.agh import Character
-    from sim.memory.core import NarrativeSummary
-    from sim.memory.core import MemoryEntry
-    from sim.memory.core import MemoryRetrieval
-    from sim.memory.core import StructuredMemory
-    from sim.cognitive.DialogManager import Dialog
-    from sim.cognitive import knownActor
-    from sim.cognitive import perceptualState
-    from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
-    from sim.cognitive.knownActor import KnownActor, KnownActorManager
-    

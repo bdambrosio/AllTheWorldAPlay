@@ -2,6 +2,7 @@ from __future__ import annotations
 import os, json, math, time, requests, sys
 
 from sklearn import tree
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 import numpy as np # type: ignore
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
+from sim.cognitive.knownResources import KnownResource, KnownResourceManager
 import re
 import asyncio
 from weakref import WeakValueDictionary
@@ -232,7 +234,7 @@ class Autonomy:
 
 # Character base class
 class Character:
-    def __init__(self, name, character_description, server_name='local', mapAgent=True):
+    def __init__(self, name, character_description, init_x=50, init_y=50, server_name='local', mapAgent=True):
         print(f"Initializing Character {name}")  # Debug print
         self.name = name
         self.character = character_description
@@ -260,12 +262,12 @@ class Character:
         )
 
         # World integration attributes
+        self.init_x = init_x # save these for later mapAgent initialization
+        self.init_y = init_y
         if mapAgent:
             self.mapAgent = None  # Will be set later
             self.world = None
             self.my_map = [[{} for i in range(100)] for i in range(100)]
-            self.x = 50
-            self.y = 50
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
         self.sense_threshold = timedelta(hours=4)
@@ -302,9 +304,16 @@ class Character:
         self.actions = []
         self.autonomy = Autonomy()
 
+    def x(self):
+        return self.mapAgent.x
+    
+    def y(self):
+        return self.mapAgent.y
+
     def set_context(self, context: Context):
         self.context = context
         self.actor_models = KnownActorManager(self, context)
+        self.resource_models = KnownResourceManager(self, context)
         if self.driveSignalManager:
             self.driveSignalManager.context = context
         if self.memory_consolidator:
@@ -579,7 +588,7 @@ End your response with:
                    'South', 'Southwest', 'West', 'Northwest']:
             dir_obs = map.extract_direction_info(obs, dir)
             view[dir] = dir_obs
-        self.my_map[self.x][self.y] = view
+        self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
         text_view = ""
         visible_actors = []
@@ -594,6 +603,7 @@ End your response with:
                     text_view += f"slope {view[dir]['slope']}, "
                 if 'resources' in view[dir]:
                     text_view += f"resources {view[dir]['resources']}, "
+                    self.resource_models.add_seen_resources(view[dir]['resources'])
                 if 'agents' in view[dir]:
                     text_view += f"others {view[dir]['agents']}, "
                     visible_actors.extend(view[dir]['agents'])
@@ -657,7 +667,7 @@ End your response with:
 
     def format_look(self):
         """Format the agent's current map view"""
-        obs = self.my_map[self.x][self.y]
+        obs = self.my_map[(self.mapAgent.x, self.mapAgent.y)]
         # Fix empty map check
         if obs is None or not obs or all(not v for v in obs.values()):
             return "You see nothing special."
@@ -1104,6 +1114,20 @@ End response with:
         return satisfied
 
 
+    def move_toward(self, target_string):
+        """Move toward the target string"""
+        resource = self.context.map.get_resource_by_id(target_string.strip())
+        if resource:
+            self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
+            return True
+        else:
+            actor = self.context.resolve_reference(self, target_string, create_if_missing=False)
+            if actor:
+                self.mapAgent.move_toward_location(actor.x, actor.y)
+                return True
+            else:
+                return self.mapAgent.move(target_string)
+
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
         # Create action record with state before action
@@ -1125,19 +1149,22 @@ End response with:
 
             
         if act_mode == 'Move':
-            moved = self.mapAgent.move(act_arg)
-            if moved:
-                dx, dy = self.mapAgent.get_direction_offset(act_arg)
-                self.x = self.x + dx
-                self.y = self.y + dy
-                percept = self.look(interest=act_arg)
-                self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
-                self.context.message_queue.put({'name':self.name, 'text':self.show})
-                self.show = '' # has been added to message queue!
-                await asyncio.sleep(0.1)
-                self.show = '' # has been added to message queue!
-            if len(act_arg) > 10: # more than just a direction
-                act_mode = 'Do' # some moves are text, not map directions
+            act_arg = act_arg.strip()
+            if act_arg.startswith('toward'):
+                act_arg = act_arg[len('toward'):]
+                location = None
+                if act_arg.startswith('s '): # just in case towards instead of toward
+                    act_arg = act_arg[len('s '):]
+            moved = self.move_toward(act_arg)
+            #if moved:
+            percept = self.look(interest=act_arg)
+            self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
+            self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.show = '' # has been added to message queue!
+            await asyncio.sleep(0.1)
+            self.show = '' # has been added to message queue!
+            #if len(act_arg) > 10: # more than just a direction
+            #    act_mode = 'Do' # some moves are text, not map directions or locations
 
         # Handle world interaction
         if act_mode == 'Do':
@@ -1587,6 +1614,7 @@ In choosing each Act (see format below), you can choose from these Modes:
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
+    Alternately, move towards a known resource or actor.
     Useful when you need to move towards a resource or actor.
 - Do - perform an act (other than move) to achieve physical consequences in the world. 
     This is often appropriate when the task involves interacting physically with a resource or actor.
@@ -1635,8 +1663,8 @@ Consider the previous act. E.G.:
                               
 Respond in hash-formatted text:
 
-#mode Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning
-#action thoughts, words to speak, direction to move, or physical action
+#mode Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
+#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name.
 #target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
 ##
@@ -1685,7 +1713,7 @@ Find food.
 
 Response:
 #mode Move
-#action SouthWest
+#action berries#2
 #duration 15 minute
 #target Samantha
 ##

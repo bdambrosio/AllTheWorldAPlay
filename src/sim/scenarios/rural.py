@@ -56,11 +56,12 @@ resource_types = RuralResources
 
 resource_rules = {
     'names': {
-        'FARMHOUSE': ['Marquadt Farmhouse']
+        'FARMHOUSE': ['Marquadt Farmhouse', 'Fouan Farmhouse']
     },
     'allocations': [
         {
             'resource_type': resource_types.WELL,
+            'description': 'A well for water',
             'count': 5,
             'requires_property': True,
             'terrain_weights': {
@@ -70,6 +71,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.BLACKSMITH,
+            'description': 'A blacksmith shop',
             'count': 6,
             'requires_property': True,
             'has_npc': True,
@@ -80,6 +82,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.MILL,
+            'description': 'A mill for grinding grain',
             'count': 3,
             'has_npc': True,
             'requires_property': True,
@@ -90,6 +93,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.FARM,
+            'description': 'A farm for growing crops',
             'count': 9,
             'requires_property': True,
             'terrain_weights': {
@@ -99,6 +103,7 @@ resource_rules = {
         },
          {
             'resource_type': resource_types.FARMHOUSE,
+            'description': 'A farmhouse for living in',
             'count': 7,
             'requires_property': True,
             'has_npc': True,
@@ -109,6 +114,7 @@ resource_rules = {
         },
          {
             'resource_type': resource_types.BARN,
+            'description': 'A barn for storing hay and housing livestock',
             'count': 8,
             'requires_property': True,
             'terrain_weights': {
@@ -118,6 +124,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.QUARRY,
+            'description': 'A quarry for stone',
             'count': 2,
             'requires_property': True,
             'terrain_weights': {
