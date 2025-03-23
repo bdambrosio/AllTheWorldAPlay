@@ -14,7 +14,7 @@ to run this version,
 - run npm start in src/sim/webworld/src/
 - run main in src/sim (or better, use the 'webworld' launch config if you use vscode -I'm developing in cursor now.
 
-It needs an llm backend, specify that in the new config file in src/plays, and launch the appropriate server from src/utils if you specify 'local' - for local I don't recommend less than Llama-3.3-70B
+It needs an llm backend, specify that in the new config file in src/plays, and launch the appropriate server from src/utils if you specify 'local' - for local I don't recommend less than Llama-3.3-70B. Also simple one line config to use Claude, Grok, DeepSeek, Cohere, ... (provide your own API key).
 
 It also needs an image server. again in utils I have sd3 (local) and hive (cloud, you will need an account).
 
