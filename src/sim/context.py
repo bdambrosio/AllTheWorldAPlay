@@ -236,12 +236,16 @@ If absolutely no information is available for either field, use "unknown" for th
         # create a new NPC
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
-            npc = Character(name, character_description=description if description else f'{name} is a non-player character', server_name=self.llm.server_name)
+            npc = Character(name, character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
             npc.x = x
             npc.y = y
             npc.set_context(self)
             npc.llm = self.llm
-            npc.mapAgent = map.Agent(x, y, self.map, npc.name)
+            map_agent = self.map.get_agent(name)
+            if map_agent is not None:
+                npc.mapAgent = map_agent
+            else:
+                npc.mapAgent = map.Agent(x, y, self.map, npc.name)
             self.npcs.append(npc)
             return npc
         return None

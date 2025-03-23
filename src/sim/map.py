@@ -766,6 +766,12 @@ class WorldMap:
         if agent in self.agents:
             self.agents.remove(agent)
 
+    def get_agent(self, name):
+        for agent in self.agents:
+            if agent.name == name:
+                return agent
+        return None
+
     def register_property(self, property_id, patches):
         """Register a property and its patches"""
         self.property_registry[property_id] = {
@@ -1105,31 +1111,31 @@ def get_slope_description(elevation_change):
         return "Downhill"
 
 
-def get_detailed_visibility_description(world, x, y, observer, observer_height):
-    visible_patches = world.get_visibility(x, y, observer_height)
-    visible_patches.append(world.patches[x][y])  # Add current patch
+def get_detailed_visibility_description(world, camera_x, camera_y, observer, observer_height):
+    visible_patches = world.get_visibility(camera_x, camera_y, observer_height)
+    visible_patches.append(world.patches[camera_x][camera_y])  # Add current patch
 
     root = ET.Element("visibility_report")
     pos = ET.SubElement(root, "position")
-    pos.set("x", str(x))
-    pos.set("y", str(y))
+    pos.set("x", str(camera_x))
+    pos.set("y", str(camera_y))
     pos.text = ""
 
     for direction in Direction:
         direction_element = ET.SubElement(root, direction.name)
 
         if direction == Direction.Current:
-            direction_patches = [world.patches[x][y]]
+            direction_patches = [world.patches[camera_x][camera_y]]
         else:
-            direction_patches = [p for p in visible_patches if get_direction_name(p.x - x, p.y - y) == direction]
+            direction_patches = [p for p in visible_patches if get_direction_name(p.x - camera_x, p.y - camera_y) == direction]
 
         if not direction_patches:
             ET.SubElement(direction_element, "visibility").text = "No clear visibility"
             continue
 
-        max_distance = max(manhattan_distance(x, y, p.x, p.y) for p in direction_patches)
-        adjacent_patch = min(direction_patches, key=lambda p: manhattan_distance(x, y, p.x, p.y))
-        elevation_change = adjacent_patch.elevation - world.patches[x][y].elevation
+        max_distance = max(manhattan_distance(camera_x, camera_y, p.x, p.y) for p in direction_patches)
+        adjacent_patch = min(direction_patches, key=lambda p: manhattan_distance(camera_x, camera_y, p.x, p.y))
+        elevation_change = adjacent_patch.elevation - world.patches[camera_x][camera_y].elevation
 
         if direction != Direction.Current:
             ET.SubElement(direction_element, "visibility").text = str(max_distance)
@@ -1142,7 +1148,7 @@ def get_detailed_visibility_description(world, x, y, observer, observer_height):
 
         resources_element = ET.SubElement(direction_element, "resources")
         for patch in direction_patches:
-            distance = manhattan_distance(x, y, patch.x, patch.y)
+            distance = manhattan_distance(camera_x, camera_y, patch.x, patch.y)
             for resource_id in patch.resources:
                 resource_element = ET.SubElement(resources_element, "resource")
                 resource_element.set("id", resource_id)
@@ -1153,20 +1159,20 @@ def get_detailed_visibility_description(world, x, y, observer, observer_height):
         if water_patches:
             water_element = ET.SubElement(direction_element, "water")
             if direction == Direction.Current:
-                flow_direction = get_water_flow_direction(world, x, y)
+                flow_direction = get_water_flow_direction(world, camera_x, camera_y)
                 water_element.set("flow", flow_direction)
             else:
-                water_distances = [manhattan_distance(x, y, p.x, p.y) for p in water_patches]
+                water_distances = [manhattan_distance(camera_x, camera_y, p.x, p.y) for p in water_patches]
                 water_element.set("distances", ",".join(map(str, sorted(water_distances))))
 
         visible_agents = [agent for agent in world.agents if
-                          world.patches[agent.x][agent.y] in direction_patches and agent != observer]
+                            world.patches[agent.x][agent.y] in direction_patches and agent != observer]
         if visible_agents:
-            agents_element = ET.SubElement(direction_element, "agents")
+            agents_element = ET.SubElement(direction_element, "characters")
             for agent in visible_agents:
-                agent_element = ET.SubElement(agents_element, "agent")
+                agent_element = ET.SubElement(agents_element, "character")
                 agent_element.set("name", agent.name)
-                agent_element.set("distance", str(manhattan_distance(x, y, agent.x, agent.y)))
+                agent_element.set("distance", str(manhattan_distance(camera_x, camera_y, agent.x, agent.y)))
                 agent_element.text = ""
 
     return ET.tostring(root, encoding="unicode")
@@ -1248,17 +1254,17 @@ def extract_direction_info(xml_string, direction_name):
             pass
 
     # Extract agent information if available
-    agents_elem = direction_elem.find('agents')
+    agents_elem = direction_elem.find('characters')
     if agents_elem is not None:
         try:
-            info['agents'] = [
+            info['characters'] = [
                 {'name': agent.get('name'), 'distance': int(agent.get('distance')  )}
-                for agent in agents_elem.findall('agent')
+                for agent in agents_elem.findall('character')
             ]
         except:
-            info['agents'] = [
+            info['characters'] = [
                 {'name': agent.get('name'), 'distance': agent.get('distance') }
-                for agent in agents_elem.findall('agent')
+                for agent in agents_elem.findall('character')
             ]
 
     return info
