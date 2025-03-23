@@ -133,7 +133,7 @@ async def generate_response(prompt: str, settings: ExLlamaV2Sampler.Settings, nu
 
 GENERATION_PROMPT=None
 while GENERATION_PROMPT == None:
-    prime = 't'#input("Does model need add_generation_prompt=True? {t/f}:")
+    prime = input("Does model need add_generation_prompt=True? {t/f}:")
     if prime.lower().startswith('t'):
         GENERATION_PROMPT=True
     elif prime.lower().startswith('f'):

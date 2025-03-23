@@ -9,6 +9,7 @@ import sim.context as context
 import sim.agh as agh
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
+from sim.scenarios import suburban
 
 server_name = configuration.server_name
 class SuburbanTerrain(Enum):
@@ -50,8 +51,14 @@ Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell co
 
 # Setting up the world context
 W = context.Context([Alex],
-"""A suburban house interior, early morning with soft light coming through blinds. A bedroom with rumpled sheets, an alarm clock showing 7:15 AM. A closet contains professional clothing. A bathroom with shower is adjacent. The kitchen has a coffee maker that has just finished brewing. Outside is a driveway with a car, and beyond that a quiet suburban street. A calendar on the wall has today's date circled with "INTERVIEW - 9:00 AM" written on it.
-Alex is in bed, having just woken up to the alarm. The automatic coffee maker has finished brewing in the kitchen.""", 
-terrain_types=SuburbanTerrain, 
-resources=SuburbanResource, 
-server_name=server_name)
+    description="""A suburban house interior, early morning with soft light coming through blinds. 
+A bedroom with rumpled sheets, an alarm clock showing 7:15 AM. A closet contains professional clothing. 
+A bathroom with shower is adjacent. The kitchen has a coffee maker that has just finished brewing. 
+Outside is a driveway with a car, and beyond that a quiet suburban street. 
+A calendar on the wall has today's date circled with "INTERVIEW - 9:00 AM" written on it.
+Alex is in bed, having just woken up to the alarm. The automatic coffee maker has finished brewing in the kitchen.""",
+    scenario_module=suburban,
+    server_name=server_name
+)
+
+Alex.actor_models.resolve_character('Alex')

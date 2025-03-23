@@ -4,7 +4,7 @@ import llm_api
 from Messages import UserMessage, SystemMessage, AssistantMessage
 
 llm = llm_api.LLM('deepseeklocal')
-llm = llm_api.LLM('local')
+#llm = llm_api.LLM('local')
 content="""Determine its sensory mode of the following message,
 a terse description of the perceptual content,
 and the emotionalintensity of the perceptual content.
