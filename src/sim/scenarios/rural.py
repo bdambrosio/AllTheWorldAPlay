@@ -66,11 +66,17 @@ property_types = RuralProperty
 resource_types = RuralResources
 
 resource_rules = {
+
+    'names': {
+        'Farm': ['Marquart Farm', 'Fouan Farm'],
+
+    },
     'allocations': [
         {
             'resource_type': resource_types.Well,
             'description': 'A deep well for water',
             'count': 5,
+            'has_npc': True,
             'requires_property': True,
             'terrain_weights': {
                 terrain_types.Grassland: 1.0,

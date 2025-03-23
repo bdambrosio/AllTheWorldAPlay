@@ -613,7 +613,7 @@ End your response with:
         visible_actors = []
         for dir in view.keys():
             try:
-                text_view += f"{dir}:"
+                text_view += f"\n{dir}:"
                 if 'visibility' in view[dir]:
                     text_view += f" visibility {view[dir]['visibility']}, "
                 if 'terrain' in view[dir]:
@@ -621,13 +621,13 @@ End your response with:
                 if'slope' in view[dir]:
                     text_view += f"slope {view[dir]['slope']}, "
                 if 'resources' in view[dir]:
-                    text_view += f"resources {view[dir]['resources']}, "
+                    text_view += f"\n   resources {view[dir]['resources']}, "
                     self.resource_models.add_seen_resources(view[dir]['resources'])
-                if 'agents' in view[dir]:
-                    text_view += f"others {view[dir]['agents']}, "
-                    visible_actors.extend(view[dir]['agents'])
+                if 'characters' in view[dir]:
+                    text_view += f"\n   characters {view[dir]['characters']}, "
+                    visible_actors.extend(view[dir]['characters'])
                 if 'water' in view[dir]:
-                    text_view += f"water {view[dir]['water']}"
+                    text_view += f"\n  water {view[dir]['water']}"
             except Exception as e:
                 pass
             text_view += "\n"
@@ -660,6 +660,7 @@ You see the following:
 </view>
 
 Provide a concise description of what you notice, highlighting the most important features given your current interests, state and tasks. 
+This should include the names of all nearby (distance 10 or less) characters or resources you see.
 Respond using the following XML format:
 
 <perception>a concise (30 words or less) description of perceptual content</perception>
