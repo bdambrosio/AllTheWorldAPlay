@@ -46,7 +46,7 @@ W = Context([J, F],
     server_name=server_name)
 
 J.mapAgent.move_to_resource('Marquadt Farmhouse')
-J.look()
+print(J.look())
 F.mapAgent.move_to_resource('Fouan Farmhouse')
-F.look()
+print(F.look())
 

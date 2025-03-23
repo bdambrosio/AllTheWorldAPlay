@@ -85,7 +85,7 @@ class Direction(Enum):
             
         # Try matching parts of input against direction names
         for name, direction in direction_map.items():
-            if name in text:
+            if name == text:
                 return direction
                 
         return None
@@ -203,7 +203,18 @@ class Patch:
         self.property_type = None  # Might as well add this for future use
         self.resources = {}
 
-
+    def get_slope(self):
+        """Calculate the average slope (elevation difference) from this patch to its neighbors."""
+        if not hasattr(self, '_slope'): # Cache the slope value
+            total_diff = 0.0
+            count = 0
+            for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+                nx, ny = self.x + dx, self.y + dy
+                if (0 <= nx < self.map.width and 0 <= ny < self.map.height):
+                    total_diff += abs(self.elevation - self.map.patches[nx][ny].elevation)
+                    count += 1
+            self._slope = total_diff / count if count > 0 else 0
+        return self._slope
 
 class WorldMap:
     def __init__(self, width, height, scenario_module):
@@ -236,6 +247,9 @@ class WorldMap:
         self.generate_properties()
         self.generate_resources()
         self.generate_infrastructure()
+
+        if 'Water' not in [t.name for t in self.terrain_types]:
+            raise ValueError("Scenario must define a Water terrain type")
 
     def get_owned_resources(self):
         """Get all resources that are NPC-owned"""
@@ -273,35 +287,53 @@ class WorldMap:
                               if self.patches[x][y].terrain_type is None)
         print(f"DEBUG: Patches with None terrain before assignment: {none_count_before}")
         
+        terrain_by_elevation = self._terrain_rules.get('terrain_by_elevation', {
+            'water': {'max': 0.2, 'type': 'Water'},
+            'mountain': {'min': 0.8, 'type': 'Mountain'}
+        })
+        
+        lowland_distribution = self._terrain_rules.get('lowland_distribution', {
+            'Forest': 0.4,
+            'Grassland': 0.3,
+            'Field': 0.3
+        })
+
         for x in range(self.width):
             for y in range(self.height):
                 self.patches[x][y].elevation = elevation[x][y]
-                if elevation[x][y] < water_level:
-                    self.patches[x][y].terrain_type = self.terrain_types.WATER
-                elif elevation[x][y] > mountain_level:
-                    self.patches[x][y].terrain_type = self.terrain_types.MOUNTAIN
-                elif elevation[x][y] > (mountain_level + water_level+.3) / 2:
-                    self.patches[x][y].terrain_type = self.terrain_types.HILL
-                else:
+                elev = elevation[x][y]
+                
+                # Check elevation-based terrains first
+                terrain_set = False
+                for terrain_def in terrain_by_elevation.values():
+                    min_elev = terrain_def.get('min', -float('inf'))
+                    max_elev = terrain_def.get('max', float('inf'))
+                    if min_elev <= elev <= max_elev:
+                        terrain_name = terrain_def['type'].strip().capitalize()
+                        self.patches[x][y].terrain_type = getattr(self.terrain_types, terrain_name)
+                        terrain_set = True
+                        break
+                
+                # If no elevation-based terrain set, use distribution
+                if not terrain_set:
                     r = random.random()
-                    if r < 0.4:
-                        self.patches[x][y].terrain_type = self.terrain_types.FOREST
-                    elif r < 0.7:  # 0.4 to 0.7
-                        self.patches[x][y].terrain_type = self.terrain_types.GRASSLAND
-                    else:  # 0.7 to 1.0
-                        self.patches[x][y].terrain_type = self.terrain_types.FIELD
+                    cumulative = 0
+                    for terrain_name, chance in lowland_distribution.items():
+                        cumulative += chance
+                        if r < cumulative:
+                            terrain_name = terrain_name.strip().capitalize()
+                            self.patches[x][y].terrain_type = getattr(self.terrain_types, terrain_name)
+                            break
 
-        # After the initial assignment loop and before none_count_after check
-        # Add smoothing for non-elevation-determined terrains
+        # Modify the smoothing code to remove HILL references
         for _ in range(3):  # 3 smoothing passes
             changes = []
             for x in range(self.width):
                 for y in range(self.height):
                     patch = self.patches[x][y]
-                    # Skip elevation-determined terrains
+                    # Skip only elevation-determined terrains (WATER, MOUNTAIN)
                     if (patch.elevation < water_level or 
-                        patch.elevation > mountain_level or 
-                        patch.terrain_type == self.terrain_types.HILL):
+                        patch.elevation > mountain_level):
                         continue
                     
                     # Count neighbor terrains
@@ -312,9 +344,13 @@ class WorldMap:
                         if (0 <= nx < self.width and 
                             0 <= ny < self.height):
                             ntype = self.patches[nx][ny].terrain_type
-                            if ntype not in [self.terrain_types.WATER, 
-                                           self.terrain_types.MOUNTAIN,
-                                           self.terrain_types.HILL]:
+                            # Skip elevation-determined neighbors (WATER, MOUNTAIN)
+                            elevation_terrain = False
+                            for terrain_def in terrain_by_elevation.values():
+                                if ntype == getattr(self.terrain_types, terrain_def['type']):
+                                    elevation_terrain = True
+                                    break
+                            if not elevation_terrain:
                                 neighbor_counts[ntype] = neighbor_counts.get(ntype, 0) + 1
                     
                     # Change to most common neighbor type if significantly more common
@@ -341,16 +377,15 @@ class WorldMap:
                         break
 
     def generate_properties(self):
-        """Generate property boundaries based on terrain"""
-        if not self._property_rules:
-            return
-            
-        print("Starting property generation...")
+        valid_terrain = [getattr(self.terrain_types, t.strip().capitalize()) 
+                        for t in self._property_rules['valid_terrain']]
         
-        # Initialize property tracking
         for x in range(self.width):
             for y in range(self.height):
-                self.patches[x][y].property_id = None
+                if (not self.patches[x][y].has_water and 
+                    self.patches[x][y].property_id is None and
+                    self.patches[x][y].terrain_type in valid_terrain):
+                    self.patches[x][y].property_id = None
         
         property_id = 0
         min_size = self._property_rules.get('min_size', 50)
@@ -362,8 +397,7 @@ class WorldMap:
             for y in range(self.height):
                 if (not self.patches[x][y].has_water and 
                     self.patches[x][y].property_id is None and
-                    self.patches[x][y].terrain_type in [self.terrain_types.FIELD, 
-                                                      self.terrain_types.GRASSLAND]):
+                    self.patches[x][y].terrain_type in valid_terrain):
                     candidates.append((x, y))
         
         # Shuffle to randomize property placement
@@ -385,12 +419,16 @@ class WorldMap:
                 property_id += 1
                 print(f"Created property {property_id} with {size} patches")
 
-    def is_near_road(self, x: int, y: int, max_distance: int) -> bool:
+    def is_near_path(self, x: int, y: int, max_distance: int) -> bool:
+        # Get path type from infrastructure rules
+        path_type_name = self._infrastructure_rules.get('path_type', next(iter(self.infrastructure_types.__members__)))
+        path_type = getattr(self.infrastructure_types, path_type_name)
+        
         for dx in range(-max_distance, max_distance + 1):
             for dy in range(-max_distance, max_distance + 1):
                 nx, ny = x + dx, y + dy
                 if (0 <= nx < self.width and 0 <= ny < self.height and
-                    self.patches[nx][ny].infrastructure_type == self.infrastructure_types.ROAD):
+                    self.patches[nx][ny].infrastructure_type == path_type):
                     return True
         return False
 
@@ -408,7 +446,7 @@ class WorldMap:
             Size of created property
         """
         if (self.patches[start_x][start_y].property_id is not None or
-            self.patches[start_x][start_y].terrain_type == self.terrain_types.WATER):
+            self.patches[start_x][start_y].terrain_type == self.terrain_types.Water):
             return 0
             
         size = 0
@@ -423,7 +461,7 @@ class WorldMap:
             visited.add((x, y))
             if (0 <= x < self.width and 0 <= y < self.height and
                 self.patches[x][y].property_id is None and
-                self.patches[x][y].terrain_type != self.terrain_types.WATER):
+                self.patches[x][y].terrain_type != self.terrain_types.Water):
                 
                 self.patches[x][y].property_id = property_id
                 property_patches.append((x, y))  # Collect patch coordinates
@@ -467,7 +505,12 @@ class WorldMap:
             resource_type = allocation['resource_type']
             count = allocation['count']
             requires_property = allocation['requires_property']
-            terrain_weights = allocation['terrain_weights']
+            terrain_weights = {}
+            for terrain_type, weight in allocation['terrain_weights'].items():
+                if isinstance(terrain_type, str):
+                    terrain_name = terrain_type.strip().capitalize()
+                    terrain_type = getattr(self.terrain_types, terrain_name)
+                terrain_weights[terrain_type] = weight
             
             # Find valid locations
             candidates = []
@@ -680,7 +723,7 @@ class WorldMap:
                 if self.patches[px][py] in visible_patches:
                     if px == x and py == y:
                         print(Fore.RED + 'O' + Style.RESET_ALL, end='')  # Observer position
-                    elif self.patches[px][py].terrain_type == self.terrain_types.WATER:
+                    elif self.patches[px][py].terrain_type == self.terrain_types.Water:
                         print(Fore.BLUE + '~' + Style.RESET_ALL, end='')
                     elif self.patches[px][py].resource_type:
                         print(Fore.GREEN + '*' + Style.RESET_ALL, end='')
@@ -757,9 +800,9 @@ class WorldMap:
         market_x = random.randint(self.width // 4, 3 * self.width // 4)
         market_y = random.randint(3 * self.height // 4, self.height - 1)
         
-        resource_id = self._generate_resource_id(self.resource_types.MARKET)
+        resource_id = self._generate_resource_id(self.resource_types.Market)
         self.resource_registry[resource_id] = {
-            'type': self.resource_types.MARKET,
+            'type': self.resource_types.Market,
             'name': resource_id,
             'location': (market_x, market_y),
             'properties': {}
@@ -779,7 +822,7 @@ class WorldMap:
         
         # Get market location from registry
         market_resource = next((res for res in self.resource_registry.values() 
-                              if res['type'] == self.resource_types.MARKET), None)
+                              if res['type'] == self.resource_types.Market), None)
         if not market_resource:
             print("ERROR: No market placed")
             return
@@ -787,15 +830,24 @@ class WorldMap:
         market_x, market_y = market_resource['location']
         print(f"DEBUG: Starting road network from market at ({market_x}, {market_y})")
         
-        # Define terrain costs
-        self.terrain_costs = {
-            self.terrain_types.WATER: float('inf'),
-            self.terrain_types.MOUNTAIN: float('inf'),
-            self.terrain_types.HILL: 3.0,
-            self.terrain_types.FOREST: 2.0,
-            self.terrain_types.GRASSLAND: 1.0,
-            self.terrain_types.FIELD: 1.0
-        }
+        # Convert terrain cost rules to enum values
+        self.terrain_costs = {}
+        for terrain_name, cost in self._infrastructure_rules['terrain_costs'].items():
+            terrain_name = terrain_name.strip().capitalize()
+            terrain_type = getattr(self.terrain_types, terrain_name)
+            self.terrain_costs[terrain_type] = cost
+        
+        # Get the path type from scenario (default to the first infrastructure type if not specified)
+        path_type_name = self._infrastructure_rules.get('path_type', 
+            next(iter(self.infrastructure_types.__members__))).strip().capitalize()
+        path_type = getattr(self.infrastructure_types, path_type_name)
+        
+        # Initialize road graph
+        self.road_graph = nx.Graph()
+        
+        # Generate number of paths based on density
+        paths_to_generate = int(self.width * self.height * self._infrastructure_rules['road_density'])
+        print(f"Generating {paths_to_generate} {path_type_name.lower()}s...")
         
         # Track connected resources
         connected = {(market_x, market_y)}
@@ -809,7 +861,7 @@ class WorldMap:
             
             # Find nearest unconnected resource
             for resource_id, resource in self.resource_registry.items():
-                if resource['type'] == self.resource_types.MARKET:
+                if resource['type'] == self.resource_types.Market:
                     continue
                     
                 res_x, res_y = resource['location']
@@ -832,6 +884,11 @@ class WorldMap:
             print(f"DEBUG: Adding road from {best_start} to {best_end}")
             self.build_road(best_start[0], best_start[1], best_end[0], best_end[1])
             connected.add(best_end)
+
+        # When adding paths to the map, store the path type
+        for (x1, y1), (x2, y2) in self.road_graph.edges():
+            # Add path type to the edge data
+            self.road_graph[(x1, y1)][(x2, y2)]['type'] = path_type
 
     def find_path_cost(self, start_x, start_y, end_x, end_y):
         """Estimate cost of path between points"""
@@ -856,6 +913,10 @@ class WorldMap:
 
     def build_road(self, start_x, start_y, end_x, end_y):
         """Build road between points"""
+        # Get path type from infrastructure rules
+        path_type_name = self._infrastructure_rules.get('path_type', next(iter(self.infrastructure_types.__members__)))
+        path_type = getattr(self.infrastructure_types, path_type_name)
+        
         current = (start_x, start_y)
         while current != (end_x, end_y):
             next_x = current[0]
@@ -868,8 +929,21 @@ class WorldMap:
             
             next_pos = (next_x, next_y)
             self.road_graph.add_edge(current, next_pos)
-            self.patches[next_x][next_y].infrastructure_type = self.infrastructure_types.ROAD
+            self.patches[next_x][next_y].infrastructure_type = path_type
             current = next_pos
+
+    def get_movement_cost(self, x, y):
+        """Calculate movement cost incorporating terrain type and slope."""
+        terrain_type = self.patches[x][y].terrain_type
+        base_cost = self.terrain_costs.get(terrain_type, 1.0)
+        if base_cost == float('inf'):
+            return float('inf')
+        
+        # Add slope factor - steeper slopes are harder to traverse
+        slope_factor = self._infrastructure_rules.get('slope_factor', 2.0)
+        slope_cost = self.patches[x][y].get_slope() * slope_factor
+        
+        return base_cost + slope_cost
 
 class Agent:
     def __init__(self, x, y, world, name):
@@ -890,6 +964,8 @@ class Agent:
 
     def move(self, direction):
         direction = Direction.from_string(direction)
+        if not direction:
+            return False
         dx, dy = self.get_direction_offset(direction)
         new_x, new_y = self.x + dx, self.y + dy
 

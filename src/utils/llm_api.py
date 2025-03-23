@@ -1,4 +1,4 @@
-from matplotlib.hatch import Stars
+#from matplotlib.hatch import Stars
 import os, sys, re, traceback, requests, json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
@@ -41,6 +41,7 @@ IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 vllm_model = 'deepseek-r1-distill-llama-70b-awq'
 vllm_model = '/home/bruce/Downloads/models/Qwen2.5-32B-Instruct'
+vllm_model = '/home/bruce/Downloads/models/gemma-3-27b-it'
 
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 

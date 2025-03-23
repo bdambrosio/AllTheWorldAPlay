@@ -9,17 +9,22 @@ class MapVisualizer:
         self.world = world
         # Should get colors from world's scenario data, not hardcoded
         self.terrain_colors = {
-            self.world.terrain_types.WATER: 'blue',
-            self.world.terrain_types.MOUNTAIN: 'gray',
-            self.world.terrain_types.HILL: 'brown',
-            self.world.terrain_types.FOREST: 'darkgreen',
-            self.world.terrain_types.GRASSLAND: 'lightgreen',
-            self.world.terrain_types.FIELD: 'yellow'
+            self.world.terrain_types.Water: 'blue',
+            self.world.terrain_types.Mountain: 'gray',
+            self.world.terrain_types.Forest: 'darkgreen',
+            self.world.terrain_types.Grassland: 'lightgreen',
+            self.world.terrain_types.Field: 'yellow'
         }
         
         # Create colormap for terrain
-        terrain_colors = ['blue', 'green', 'darkgreen', 'yellow', 'gray', 'brown']
+        terrain_colors = ['blue', 'green', 'darkgreen', 'yellow', 'gray']
         self.terrain_cmap = ListedColormap(terrain_colors)
+
+        # Add missing terrain types dynamically (for different scenarios)
+        for terrain_type in [t for t in self.world.terrain_types]:
+            if terrain_type not in self.terrain_colors:
+                # Use a default color for any terrain types not explicitly defined
+                self.terrain_colors[terrain_type] = 'white'
 
     def draw_elevation(self, ax=None):
         """Draw elevation map using a continuous colormap"""
@@ -50,7 +55,7 @@ class MapVisualizer:
                 color = self.terrain_colors.get(patch.terrain_type, 'white')
                 plt.plot(x, y, 's', color=color, markersize=5)
                 # Add resource indicator if patch has any resources
-                if patch.resources and self.world.resource_types.MARKET not in patch.resources:
+                if patch.resources and self.world.resource_types.Market not in patch.resources:
                     plt.plot(x, y, 'o', color='purple', markersize=3)
                     print(f"DEBUG: Drawing resource indicator at ({x}, {y})")
 
@@ -68,15 +73,30 @@ class MapVisualizer:
         # Draw roads
         road_edges = list(self.world.road_graph.edges())
         if road_edges:
-            print(f"DEBUG: Drawing {len(road_edges)} road edges")
-            for (x1, y1), (x2, y2) in road_edges:
-                plt.plot([x1, x2], [y1, y2], color='yellow', linewidth=2)
+            # Create a color map for different path types
+            path_colors = {
+                self.world.infrastructure_types.Road: 'yellow',
+                self.world.infrastructure_types.Trail: 'brown',
+                # Default for any other type
+                None: 'gray'
+            }
+            
+            print(f"DEBUG: Drawing {len(road_edges)} path edges")
+            for (x1, y1), (x2, y2), data in road_edges:
+                path_type = data.get('type', None)
+                color = path_colors.get(path_type, 'gray')  # Default to gray if type unknown
+                plt.plot([x1, x2], [y1, y2], color=color, linewidth=2)
+                
+                # Add to legend if not already there
+                if path_type and path_type not in [e.get_label() for e in legend_elements]:
+                    legend_elements.append(plt.Line2D([0], [0], color=color, linewidth=2,
+                                                  label=path_type.name))
 
         # Draw markets
         for x in range(self.world.width):
             for y in range(self.world.height):
                 patch = self.world.patches[x][y]
-                if self.world.resource_types.MARKET in patch.resources:
+                if self.world.resource_types.Market in patch.resources:
                     plt.plot(x, y, 'r*', markersize=15)
                     print(f"DEBUG: Drawing market at {x}, {y}")
 

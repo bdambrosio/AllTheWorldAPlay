@@ -234,11 +234,17 @@ class Autonomy:
 
 # Character base class
 class Character:
-    def __init__(self, name, character_description, init_x=50, init_y=50, server_name='local', mapAgent=True):
+    def __init__(self, name, character_description, reference_description='', init_x=50, init_y=50, server_name='local', mapAgent=True):
         print(f"Initializing Character {name}")  # Debug print
-        self.name = name
+        self.name = name.strip().capitalize()
         self.character = character_description
         self.llm = llm_api.LLM(server_name)
+        if len(reference_description) > 0:
+            self.reference_dscp = reference_description
+        else:
+            self.reference_dscp = self.llm.ask({}, [SystemMessage(content='generate a concise single sentence description for this character useful for reference resolution. Respond only with the description. End your response with: </end>'), 
+                                                    UserMessage(content=f"""character name {self.name}\ncharacter description:\n{character_description}\n\nEnd your response with: </end>""")
+        ], max_tokens=24, stops=["</end>"]).strip()
         self.context: Context = None
 
         self.show = ''  # to be displayed by main thread in UI public text widget
@@ -349,8 +355,8 @@ class Character:
         if signalCluster_id:
             signalCluster = SignalCluster.get_by_id(signalCluster_id.strip())
         other_actor = None
-        if other_actor_name and other_actor_name.strip().lower() != None:
-            other_actor = self.context.resolve_reference(self, other_actor_name, create_if_missing=True)
+        if other_actor_name and other_actor_name.strip().lower() != 'none':
+            other_actor,_ = self.actor_models.resolve_or_create_character(other_actor_name)
 
         if name and description and termination:
             goal = Goal(name=name, 
@@ -382,13 +388,26 @@ class Character:
         try:
             actor_names = hash_utils.find('actors', task_hash)
             if actor_names:
-                actor_names = actor_names.strip().split()
+                actor_names = [name.strip().capitalize() for name in actor_names.split(',') if name.strip()]
             else:
                 actor_names = []
         except Exception as e:
             print(f"Warning: invalid actors field in {task_hash}") 
             actor_names = []
-        actors = [self.context.resolve_reference(self, actor_name, create_if_missing=True) for actor_name in actor_names if actor_name]
+        if self.mapAgent:
+            default_x = self.mapAgent.x
+            default_y = self.mapAgent.y
+        else:
+            default_x = 30
+            default_y = 30
+        for actor_name in actor_names:
+            a,_ = self.actor_models.resolve_character(actor_name)
+            if a and hasattr(a, 'mapAgent'):
+                default_x = a.mapAgent.x
+                default_y = a.mapAgent.y
+            elif a:
+                print(f"Warning: {a} is not a character")
+        actors = [self.actor_models.resolve_or_create_character(actor_name)[0] for actor_name in actor_names if actor_name]
         actors = [actor for actor in actors if actor is not None]
         if not self in actors:
             actors =  [self] + actors
@@ -413,7 +432,7 @@ class Character:
         try:
             target_name = hash_utils.find('target', hash_string)
             if target_name:
-                target = self.context.resolve_reference(self, target_name, create_if_missing=True)
+                target,_ = self.actor_models.resolve_or_create_character(target_name)
             else:
                 target = None
         except Exception as e:
@@ -1116,12 +1135,15 @@ End response with:
 
     def move_toward(self, target_string):
         """Move toward the target string"""
+        if map.Direction.from_string(target_string.strip()):
+            self.mapAgent.move(target_string.strip())
+            return True
         resource = self.context.map.get_resource_by_id(target_string.strip())
         if resource:
             self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
             return True
         else:
-            actor = self.context.resolve_reference(self, target_string, create_if_missing=False)
+            actor, _ = self.actor_models.resolve_character(target_string)
             if actor:
                 self.mapAgent.move_toward_location(actor.x, actor.y)
                 return True
@@ -1156,15 +1178,16 @@ End response with:
                 if act_arg.startswith('s '): # just in case towards instead of toward
                     act_arg = act_arg[len('s '):]
             moved = self.move_toward(act_arg)
-            #if moved:
-            percept = self.look(interest=act_arg)
-            self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
-            self.context.message_queue.put({'name':self.name, 'text':self.show})
-            self.show = '' # has been added to message queue!
-            await asyncio.sleep(0.1)
-            self.show = '' # has been added to message queue!
-            #if len(act_arg) > 10: # more than just a direction
-            #    act_mode = 'Do' # some moves are text, not map directions or locations
+            if moved:
+                percept = self.look(interest=act_arg)
+                self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
+                self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.show = '' # has been added to message queue!
+                await asyncio.sleep(0.1)
+                self.show = '' # has been added to message queue!
+            else: 
+                act_mode = 'Do' 
+                act_arg = 'move to ' + act_arg.strip() # some moves are text, not map directions or locations
 
         # Handle world interaction
         if act_mode == 'Do':
@@ -1445,16 +1468,64 @@ End response with:
         self.tasks = task_plan
         return task_plan
 
+    def generate_completion_statement(self, object, termination_check, satisfied, progress, consequences='', updates=''):
+        """Generate a statement about the completion of an goal or task"""
+        prompt = [SystemMessage(content="""Generate a concise statement that accurately states the actual achievements with respect to the following goal or task."""),
+                  UserMessage(content="""
+Goal or task to complete:
+{{$objective}}
+
+Completion criterion:
+{{$termination_check}}
+
+Result of completion criterion assessment:
+{{$satisfied}}
+{{$progress}}
+
+overall current personal situation:
+{{$situation}}
+
+overall current world state:
+{{$world}}
+
+
+world consequences of most recent recent act:
+{{$consequences}}
+</consequences>
+
+observable world updates from most recent act
+{{$updates}}
+</updates>
+
+Respond ONLY with the concise (10-20 words) statement about the actual achievements with respect to the goal or task.
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+<end/>
+""")]
+
+        response = self.llm.ask({"objective": object.to_string(),
+                                "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
+                                 "satisfied": satisfied,
+                                 "progress": progress,
+                                 "situation": self.context.current_state,
+                                 "world": self.context.current_state,
+                                 "consequences": consequences,
+                                 "updates": updates}, prompt, temp=0.5, stops=['<end/>'], max_tokens=30)
+        return response
+
     async def test_termination(self, object, termination_check, consequences, updates='', type=''):
         """Test if recent acts, events, or world update have satisfied termination"""
-        prompt = [UserMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
+        prompt = [SystemMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
 Reason step-by-step using the CompletionCriterion as a guide for this assessment.
 Consider these factors in determining task completion:
 - Sufficient progress towards goal for intended purpose
 - Diminishing returns on continued effort
 - Environmental or time constraints
 - "Good enough" vs perfect completion
-                    
+
+For concrete termination checks (e.g., 'sufficient food gathered'), the full completion criterion is the actual achievement of the termination check, not merely thought, conversation, or movement towards it."""),
+                  UserMessage(content="""
+                              
 <situation>
 {{$situation}}
 </situation>
@@ -1496,6 +1567,10 @@ End your response with:
         recent_memories = self.structured_memory.get_recent(5)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
+        if consequences == '':
+            consequences = self.context.last_consequences
+        if updates == '':
+            updates = self.context.last_updates
 
         response = self.llm.ask({
             "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
@@ -1516,15 +1591,17 @@ End your response with:
             progress = 50
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'  **Satisfied!**')
-            self.add_perceptual_input(f" I have completed {object.name}: {object.description}. {termination_check}", mode='internal')
-            self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{self.name} has completed {object.name}: {object.description}. {termination_check}"
+            statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
+            self.add_perceptual_input(statement, mode='internal')
+            self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             #await self.context.update(local_only=True)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > random.random():
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                self.add_perceptual_input(f" I have completed {object.name}: {object.description}. {termination_check}", mode='internal')
-                self.context.current_state += f"{self.name} has completed {object.name}: {object.description}. {termination_check}"
+                statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
+                self.add_perceptual_input(statement, mode='internal')
+                self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
                 #await self.context.update(local_only=True)
                 return True, progress
         #elif satisfied != None and 'insufficient' in satisfied.lower():
@@ -1648,6 +1725,7 @@ Dialog guidance:
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
+- Avoid repeating stereotypical past dialog.
 
 When describing an action:
 - Reference previous action if this is a continuation
@@ -1927,7 +2005,7 @@ End your response with:
                 print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
     
-    def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=None):
+    def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=[]):
         """Update individual commitments after closing a dialog"""
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog.
@@ -2154,15 +2232,16 @@ End your response with:
                       goal=None,
                       actors=[self, target])    
         intension_hashes = hash_utils.findall('task', response)
+        intensions = []
         if len(intension_hashes) == 0:
             print(f'no new joint intensions in turn')
-            return
+            return []
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
-        return intension_hashes
+        return intensions
 
     def random_string(self, length=8):
         """Generate a random string of fixed length"""
@@ -2193,7 +2272,8 @@ End your response with:
 </transcript>
                               
 For example, if the last entry in the transcript is a question that expects an answer (as opposed to merely musing), ending at this point is likely not natural.
-On the other hand, if the last entry is an agreement to act this may be a natural end.
+On the other hand, if the last entry is an agreement to an earlier suggestion, this is a natural end.
+Dialogs are short, and should be resolved quickly.
 Respond only with a rating between 0 and 10, where
  - 0 requires continuation of the dialog (ie termination at this point would be unnatural)
  - 10 indicates continuation is highly unexpected, unnatural, or repetitious.   

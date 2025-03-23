@@ -60,6 +60,7 @@ class KnownResourceManager:
         return self.known_resources.get(resource_id)
 
     def get_resource_model(self, resource_name: str, create_if_missing: bool=False) -> Optional[KnownResource]:
+        resource_name = resource_name.strip().capitalize()
         if resource_name not in self.known_resources:
             if create_if_missing:
                 print(f"{self.owner.name} creating model for {resource_name}")

@@ -5,6 +5,7 @@ import random
 from queue import Queue
 from typing import TYPE_CHECKING
 from sim import map
+from src.sim.referenceManager import ReferenceManager
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
@@ -55,11 +56,16 @@ class Context():
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
         self.simulation_time = self.extract_simulation_time(description)
+        self.reference_manager = ReferenceManager(self, self.llm)
         for resource_id, resource in self.map.resource_registry.items():
             has_owner = self.check_resource_has_npc(resource)
             if has_owner:
-                owner:Character = self.get_npc_by_name(resource['name']+'_owner', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
+                owner:Character = self.get_npc_by_name(resource['name']+'_owner', description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
                 resource['properties']['owner'] = owner.mapAgent
+                self.reference_manager.declare_relationship(resource['name'], 'owned by', owner.name, 'owner of')
+
+        self.last_consequences = '' # for world updates from recent acts
+        self.last_updates = '' # for world updates from recent acts
 
         
         for actor in self.actors + self.npcs:
@@ -125,7 +131,7 @@ If absolutely no information is available for either field, use "unknown" for th
             return dt
         except ValueError as e:
             print(f"Error parsing datetime: {e}")
-            return None
+            return datetime.now()
 
 
     def to_json(self):
@@ -213,7 +219,7 @@ If absolutely no information is available for either field, use "unknown" for th
     def get_actor_by_name(self, name):
         """Helper to find actor by name"""
         for actor in self.actors:
-            if actor.name == name or actor.name in name:
+            if actor.name == name:
                 return actor
         return None
 
@@ -221,32 +227,64 @@ If absolutely no information is available for either field, use "unknown" for th
         """Check if a name is plausible for an NPC"""
         return name.lower() in ['viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']
 
-    def get_npc_by_name(self, name, x=20, y=20, create_if_missing=False):
+    def get_npc_by_name(self, name, description=None, x=20, y=20, create_if_missing=False):
         """Helper to find NPC by name"""
+        name = name.strip().capitalize()
         for actor in self.npcs:
-            if actor.name == name or actor.name in name:
+            if actor.name == name:
                 return actor
         # create a new NPC
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
-            npc = Character(name, character_description=f'{name} is a non-player character', server_name=self.llm.server_name)
+            npc = Character(name, character_description=description if description else f'{name} is a non-player character', server_name=self.llm.server_name)
             npc.x = x
             npc.y = y
             npc.set_context(self)
             npc.llm = self.llm
+            npc.mapAgent = map.Agent(x, y, self.map, npc.name)
             self.npcs.append(npc)
             return npc
         return None
 
-    def resolve_reference(self, actor: Character, reference, create_if_missing=False):
-        """Resolve a reference to an actor. This is assumed to be a simple reference, not a complete phrase. e.g. John, Father, old man Henry, etc."""
-        "If you have a complete sentence, use Character.say_target to indentify the target reference."
-        if reference is None or reference == '' or reference.lower() == 'none':
-            return None
-        referenced_actor = self.get_actor_by_name(reference)
-        if referenced_actor is None:
-            referenced_actor = self.get_npc_by_name(reference, x=actor.mapAgent.x, y=actor.mapAgent.y, create_if_missing=create_if_missing)
-        return referenced_actor
+    def get_actor_or_npc_by_name(self, name):
+        """Helper to find actor or NPC by name"""
+        for actor in self.actors:
+            if actor.name == name:
+                return actor
+        for npc in self.npcs:
+            if npc.name == name:
+                return npc
+        return None # not found
+
+    def resolve_character(self, reference_text):
+        """
+        Resolve a reference to a character from either actors or NPCs
+        
+        Args:
+            speaker: Character making the reference
+            reference_text: Text to resolve into a character reference
+            
+        Returns:
+            tuple: (character, canonical_name) or (None, None) if unresolved
+        """
+        # Normalize reference text
+        reference_text = reference_text.strip().capitalize()
+        
+        # Check active actors first
+        for actor in self.actors:
+            if actor.name == reference_text:
+                return (actor, reference_text)
+            
+        # Then check NPCs
+        for npc in self.npcs:
+            if npc.name == reference_text:
+                return (npc, reference_text)
+        
+        canonical_name = self.reference_manager.resolve_reference_with_llm(reference_text)
+        if canonical_name:
+            return (self.get_actor_or_npc_by_name(canonical_name), reference_text)
+        
+        return (None, None)
 
     
     def world_updates_from_act_consequences(self, consequences):
@@ -392,7 +430,9 @@ End your response with:
         if consequences.endswith('<'):
             consequences = consequences[:-1]
         world_updates = self.world_updates_from_act_consequences(consequences)
+        self.last_consequences = consequences
         character_updates = self.character_updates_from_act_consequences(consequences, actor)   
+        self.last_updates = character_updates
         print(f'\nContext Do consequences:\n {consequences}')
         print(f' Context Do world_update:\n {world_updates}\n')
         return consequences, world_updates, character_updates
