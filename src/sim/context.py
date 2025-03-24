@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from sim import map
 from src.sim.referenceManager import ReferenceManager
 from utils import hash_utils, llm_api
-from utils.Messages import UserMessage
+from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
 from datetime import datetime, timedelta
 import utils.choice as choice
 from typing import List
 import asyncio
-
+from sim.prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
@@ -52,6 +52,7 @@ class Context():
         self.widget_refs = {}  # Keep track of widget references for PyQt UI
         self.force_sense = False # force full sense for all actors
         self.message_queue = Queue()  # Queue for messages to be sent to the UI
+        self.transcript = [] #message queue history
         self.choice_response = asyncio.Queue()  # Queue for receiving choice responses from UI
         self.current_actor_index = 0  # Add this line to track position in actors list
         self.show = ''
@@ -522,6 +523,7 @@ End your response with:
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
+        self.transcript.append(f'\n\n-----scene----- {self.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
          
         if new_situation is None:
@@ -529,6 +531,7 @@ End your response with:
         self.current_state = new_situation
         self.show = new_situation
         self.message_queue.put({'name':self.name, 'text':self.show})
+        self.transcript.append(f'{self.show}')
         self.show = '' # has been added to message queue!
         await asyncio.sleep(0.1)
         if local_only:
@@ -759,3 +762,52 @@ End your response with:
             if allocation['resource_type'] == resource['type']:
                 return allocation.get('has_npc', False)
         return False
+
+
+    def map_actors(self):
+        mapped_actors = []
+        for actor in self.actors:
+            mapped_actors.append(f'{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}')
+        return '\n'.join(mapped_actors)
+
+    def choose_delay(self):
+        """Choose a delay for the next cognitive cycle"""
+        prompt = [SystemMessage(content="""You are a delay chooser.
+Your task is to choose a delay for the next cognitive cycle.
+The delay should be a number of hours from now  .
+The delay should be between 0 and 12 hours.
+The delay should be a multiple of 0.5 hours.
+
+Following is a record of the current situation and recent events, followed by a transcript of the recent scene.
+Use these to choose a delay that is appropriate for the next cognitive cycle. 
+For example, if it is currently evening and the characters are awaiting an event the next day, a delay of 12 hours or until morning would be appropriate
+If one or more characters are engaged in an urgent activity, a delay of 0.1 hours to 0.5 hours, or even 0.0 hours, might be appropriate.
+Characters engaging in repetitive Thinking or planning might be a strong indicator they are passing time waiting for something to happen, and so a longer delay might be appropriate.
+In all cases, the delay should be chosen to move the timeline to the next significant event or activity.
+"""),
+UserMessage(content="""
+
+Situation
+{{$situation}}
+            
+Actors
+{{$actors}}
+            
+
+Transcript of recent activity, observations, and events
+{{$transcript}}
+
+Respond only with the delay in hours, to the nearest 0.1 hours.
+Do not include any introductory, explanatory, or discursive text, 
+End your response with:
+</end>
+"""
+)]
+        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript)}, prompt, temp=0.4, stops=['</end>'], max_tokens=10)
+
+        try:
+            delay_f = float(delay.strip())
+            return delay_f
+        except Exception as e:
+            print(f'Error choosing delay: {e}')
+            return 0.0

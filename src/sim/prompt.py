@@ -7,24 +7,13 @@ if TYPE_CHECKING:
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.Messages import UserMessage, SystemMessage
-from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
-from sim.memory.consolidation import MemoryConsolidator
-from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
-from sim.memory.core import MemoryRetrieval
 from src.sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
-from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
 import sim.map as map
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
 from sim.cognitive.DialogManager import Dialog
-from sim.cognitive import knownActor
-from sim.cognitive import knownResources
-from sim.cognitive import perceptualState
-from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
-from sim.cognitive.knownActor import KnownActor, KnownActorManager
-from sim.cognitive.knownResources import KnownResource, KnownResourceManager
 
 def ask (character:Character, mission:str, suffix:str, addl_bindings:dict, max_tokens:int=100):
 
