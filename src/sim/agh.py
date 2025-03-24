@@ -2298,7 +2298,7 @@ End your response with:
             print(f'{self.name} natural_dialog_end: invalid rating: {response}')
             rating = 7
         # force end to run_on conversations
-        end_point = rating > 8 or random.randint(4, 11) < rating or rating + len(transcript.split('\n')) > random.randint(10,14)
+        end_point = rating > 7 or random.randint(4, 10) < rating or rating + len(transcript.split('\n')) > random.randint(8,10)
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
             
@@ -2455,13 +2455,13 @@ Use the following XML template in your response:
 
 {{$duplicative_insert}}
 
-Reminders: 
-- The response can include body language or facial expressions as well as speech
+Guidance: 
+- The response can include occasional body language or facial expressions as well as speech
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step.
 - If the intent is to agree, state agreement without repeating the statement.
 - Speak in your own voice. Do not echo the speech style of the Input. 
 - Character emotional state should have maximum impact on the tone, phrasing, and content of the response.
-- Respond in the style of natural spoken dialog. Use short sentences and casual language.
+- Respond in the style of natural spoken dialog. Use short sentences and casual language, but avoid repeating stereotypical phrases in the dialog to this point.
  
 Respond only with the above XML
 Do not include any additional text. 
@@ -2723,7 +2723,7 @@ End your response with:
         base = 0.67  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
-            return raw * 0.5
+            return raw * 0.3
         return raw
 
 
@@ -2787,7 +2787,7 @@ End your response with:
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
-        self.context.message_queue.put({'name':self.name, 'text':f'\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n'})    
+        self.context.message_queue.put({'name':self.name, 'text':f'\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
         self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
         self.thought = ''
@@ -2824,7 +2824,7 @@ End your response with:
                 await asyncio.sleep(0.1)
             
         await self.step_tasks()
-        delay = self.context.choose_delay()
+        delay = await self.context.choose_delay()
         try:
             old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
@@ -2833,6 +2833,7 @@ End your response with:
             if delay > 4.0:
                 self.context.update()
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
+                await asyncio.sleep(0.1)
         except Exception as e:
             print(f'{self.name} cognitive_cycle error: {e}')
 
