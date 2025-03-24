@@ -2826,9 +2826,13 @@ End your response with:
         await self.step_tasks()
         delay = self.context.choose_delay()
         try:
+            old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
+            if old_time.day!= self.context.simulation_time.day:
+                pass # need to figure out out to force UI to no show old image
             if delay > 4.0:
                 self.context.update()
+                self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
         except Exception as e:
             print(f'{self.name} cognitive_cycle error: {e}')
 

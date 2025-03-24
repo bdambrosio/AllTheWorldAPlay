@@ -45,6 +45,8 @@ class SimulationServer:
         self.run_task = None  # Add field for run task
         self.step_task = None  # Add field for current step task
         self.image_cache = {}
+        self.next_actor_index = 0
+
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
         self.result_socket.connect("tcp://127.0.0.1:5556")
@@ -179,14 +181,14 @@ class SimulationServer:
             # Process any queued injects before the step
 
             if self.initialized:
-                task, chars = self.sim_context.next_act()
+                char = self.sim_context.actors[self.next_actor_index]
                 # Process character step
-                for char in chars:
-                    if char:
-                        print(f'{char.name} cognitive cycle')   
-                        await char.cognitive_cycle()
-                        await self.send_character_update(char)
-                        break # only execute for first available actor
+                print(f'{char.name} cognitive cycle')   
+                await char.cognitive_cycle()
+                await self.send_character_update(char)
+                self.next_actor_index += 1
+                if self.next_actor_index >= len(self.sim_context.actors):
+                    self.next_actor_index = 0
             
                 #await self.update_character_states()
                 #now handle context
@@ -420,8 +422,8 @@ class SimulationServer:
                 elif message['text'] == 'world_update':
                     # async character update messages include the actor data in the message
                     world_data = message['data']
-                    if self.image_cache[message['world']]:
-                        world_data['image'] = self.image_cache[message['world']]
+                    if world_data['image'] is None and self.image_cache[message['world']]:
+                        world_data['image'] = self.image_cache['world']
             
                     await self.send_result({
                         'type': 'world_update',
