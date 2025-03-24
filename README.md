@@ -1,25 +1,7 @@
 # AllTheWorldAPlay[^1] (ATWAP)
 
-## A simple toy to test the Humanity of your LLM
+## A playground for cognitive software. 
 
-Alpha candidate for next version. Major changes 
-- the UI is now a separate js (React) job, so you can view in a browser.
-- sketch of expanded exploration of character innards - try explore button in character panel!
-     (but don't click anything when a step is in progress! fix tbd)
-- scenarios can now define terrain types and resource.
-- refined cognitive cycle
-- 'conversations' - much more useful conversations between agents (but warning, this can really slow down a step, each character takes a turn till the conversation is over, all within a single step, no output in UI till its done.
-to run this version, 
-
-- run npm start in src/sim/webworld/src/
-- run main in src/sim (or better, use the 'webworld' launch config if you use vscode -I'm developing in cursor now.
-
-It needs an llm backend, specify that in the new config file in src/plays, and launch the appropriate server from src/utils if you specify 'local' - for local I don't recommend less than Llama-3.3-70B. Also simple one line config to use Claude, Grok, DeepSeek, Cohere, ... (provide your own API key).
-
-It also needs an image server. again in utils I have sd3 (local) and hive (cloud, you will need an account).
-
-load / save aren't working yet, or at least I haven't tried them, but I doubt it very very much.
-Also, might be bugs in some pre-loaded plays, but lost, bellona, laTerre, kittens, work. Others pbly need minor updating.
 
 
 
@@ -29,7 +11,7 @@ Sorry, its *really*, *really* slow. I'm working on that. However, it's also much
 To use one of the other built-in scenarios, move it to the main src dir before you try to execute it.
 
 ### 
-![Play screenshot](images/lost.jpg)
+![Play screenshot](images/WebworldMain.png)
 
 - 1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
 major overhaul of the cognitive architecture of characters.
