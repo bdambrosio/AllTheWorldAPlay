@@ -294,19 +294,20 @@ class SimulationServer:
         """Route inject command using watcher pattern from worldsim"""
         try:
             target_name = command.get('target')
-            target = self.sim_context.resolve_reference(None, target_name.strip())
+            target,_ = self.sim_context.resolve_character(target_name.strip())
             if target is None:
                 raise ValueError(f"Target {target_name} not found")
             text = command.get('text')
-            viewer = self.sim_context.resolve_reference(target, 'viewer', create_if_missing=True)
+            Viewer = self.sim_context.get_npc_by_name('Viewer', create_if_missing=True)
+
             # does an npc have a task or goal? - acts say will handle this automagically
-            task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination='', goal=None, actors=[viewer, target])
-            viewer.focus_task.push(task)
-            await viewer.act_on_action(Act(mode='Say', action=text, actors=[viewer, target], reason='inject', duration=1, source=None, target=target), task)
+            task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination='', goal=None, actors=[Viewer, target])
+            Viewer.focus_task.push(task)
+            await Viewer.act_on_action(Act(mode='Say', action=text, actors=[Viewer, target], reason='inject', duration=1, source=None, target=target), task)
             await asyncio.sleep(0.1)
             await self.send_result({
                 'type': 'inject',
-                'message': f'{viewer.name} injects {target.name}: {text}'
+                'message': f'{Viewer.name} injects {target.name}: {text}'
             })
 
         except Exception as e:
