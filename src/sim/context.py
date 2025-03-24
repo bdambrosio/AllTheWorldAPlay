@@ -226,7 +226,7 @@ If absolutely no information is available for either field, use "unknown" for th
 
     def plausible_npc(self, name):
         """Check if a name is plausible for an NPC"""
-        return name.lower() in ['viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']
+        return name.lower() in ['Viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']
 
     def get_npc_by_name(self, name, description=None, x=20, y=20, create_if_missing=False):
         """Helper to find NPC by name"""

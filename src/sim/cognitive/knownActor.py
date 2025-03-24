@@ -12,6 +12,7 @@ class KnownActor:
         self.owner = owner
         self.actor_agh = other_agh
         self.canonical_name = other_agh.name
+        self.name = other_agh.name
         self.visible = False
         self.goal = ''
         self.model = ''

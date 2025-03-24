@@ -1260,6 +1260,7 @@ End response with:
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target:
                 target=act.target
+            # open dialog
             if target:
                 if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
                     # start new dialog
@@ -1883,8 +1884,8 @@ End your response with:
         # Rest of the existing function remains unchanged
         print(f'\n{self.name} Update actions from say or think\n {act_mode}, {act_arg};  reason: {reason}')
         
-        if 'viewer' in source.name:  # Still skip viewer
-            print(f' source is viewer, no action updates')
+        if 'Viewer' in source.name:  # Still skip viewer
+            print(f' source is Viewer, no action updates')
             return
         
         prompt=[UserMessage(content="""Your task is to analyze the following text.
@@ -2324,7 +2325,7 @@ End your response with:
                 dialog_model.deactivate_dialog()
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
-                if self.name != 'viewer':
+                if self.name != 'Viewer':
                     self.update_individual_commitments_following_conversation(self, 
                                                                         dialog,
                                                                         [])
@@ -2348,11 +2349,10 @@ End your response with:
             return
         
 
-
         # Remove text between ellipses - thoughts don't count as dialog
         message = re.sub(r'\.\.\..*?\.\.\.', '', message)
 
-        if self.natural_dialog_end(from_actor) or (self.name == 'viewer'): # test if the dialog has reached a natural end, or hearer is viewer.
+        if (self.name == 'Viewer') or self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end, or hearer is viewer.
             # close the dialog
             dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
             self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
@@ -2360,7 +2360,7 @@ End your response with:
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
             self.last_task = self.focus_task.peek()
             self.focus_task.pop()
-            if self.name != 'viewer' and from_actor.name != 'viewer':
+            if self.name != 'Viewer' and from_actor.name != 'Viewer':
                 joint_tasks = self.update_joint_commitments_following_conversation(from_actor, dialog)
                 self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
             # it would probably be better to have the other actor deactivate the dialog itself
@@ -2370,7 +2370,7 @@ End your response with:
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor.focus_task.pop()
-            if from_actor.name != 'viewer' and self.name != 'viewer':
+            if from_actor.name != 'Viewer' and self.name != 'Viewer':
                 joint_tasks = from_actor.update_joint_commitments_following_conversation(self, dialog)
                 from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
             self.driveSignalManager.recluster()
@@ -2518,7 +2518,7 @@ End your response with:
         else:
             response_source = source
             # self.show = response
-            if from_actor.name == 'viewer':
+            if from_actor.name == 'Viewer':
                 self.context.message_queue.put({'name':self.name, 'text':f"'{response}'", 'chat_response': True})
                 return response, response_source
 
