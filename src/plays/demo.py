@@ -8,7 +8,7 @@ import sim.context as context
 import sim.agh as agh
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
-
+import sim.scenarios.coastal as coastal
 server_name = configuration.server_name
 
 # Custom terrain types for a small-town setting
@@ -89,7 +89,6 @@ W = None
 W = context.Context([Maya, Elijah, Chrys],
 """A small coastal town at sunset, where the river meets the sea. Colorful buildings line the waterfront, with artists' workshops and fishing boats creating a scene of rustic charm. The evening light casts long shadows as townspeople finish their day's work.
 Maya and Elijah are sitting on a bench overlooking the harbor, where Elijah's newly completed wooden boat is moored. A letter from the city gallery is in Maya's pocket. The air is filled with the scent of salt water and wood. Birds call as they return to roost for the evening.""", 
-terrain_types=TownTerrain, 
-resources=TownResource, 
+scenario_module=coastal,
 server_name=server_name)
 
