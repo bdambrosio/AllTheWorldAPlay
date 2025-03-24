@@ -1183,6 +1183,7 @@ End response with:
                 percept = self.look(interest=act_arg)
                 self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.context.transcript.append(f'{self.name}: {self.show}')
                 self.show = '' # has been added to message queue!
                 await asyncio.sleep(0.1)
                 self.show = '' # has been added to message queue!
@@ -1205,6 +1206,7 @@ End response with:
 
             self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.context.transcript.append(f'{self.name}: {self.show}')
             self.show = ''
             await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
@@ -1220,6 +1222,7 @@ End response with:
             percept = self.look(interest=act_arg)
             self.show += act_arg + '.\n  sees ' + percept + '. '
             self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.context.transcript.append(f'{self.name}: {self.show}')
             self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
             await asyncio.sleep(0.1)
@@ -1229,6 +1232,7 @@ End response with:
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
             self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}..."})
+            self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0.1)
 
             if self.focus_task.peek() and not self.focus_task.peek().name.startswith('internal dialog with '+self.name): # no nested inner dialogs for now
@@ -1251,6 +1255,7 @@ End response with:
             self.show += f"{act_arg}'"
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
+            self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target:
@@ -2782,7 +2787,8 @@ End your response with:
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
-        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n'})
+        self.context.message_queue.put({'name':self.name, 'text':f'\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n'})    
+        self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
         self.thought = ''
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
@@ -2818,6 +2824,13 @@ End your response with:
                 await asyncio.sleep(0.1)
             
         await self.step_tasks()
+        delay = self.context.choose_delay()
+        try:
+            self.context.simulation_time += timedelta(hours=delay)
+            if delay > 4.0:
+                self.context.update()
+        except Exception as e:
+            print(f'{self.name} cognitive_cycle error: {e}')
 
        
     async def step_tasks(self):
