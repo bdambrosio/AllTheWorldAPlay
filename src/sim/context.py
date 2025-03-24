@@ -135,7 +135,7 @@ If absolutely no information is available for either field, use "unknown" for th
             return datetime.now()
 
 
-    def to_json(self):
+    def to_save_json(self):
         return {
             'name': self.name,
             'initial_state': self.initial_state,
@@ -642,119 +642,6 @@ End your response with:
         mapped_actors = '\n'.join([self.map_actor(actor) for actor in self.actors])
         return mapped_actors
 
-    def choose(self, task_choices):
-        if len(task_choices) == 1:
-            return task_choices[0]
-        prompt = [UserMessage(content="""The task is to order the execution of a set of task options, listed under <tasks> below.
-Your current situation is:
-
-<situation>
-{{$situation}}
-</situation>
-
-the actors you are managing include:
-                              
-<actors>
-{{$actors}}
-</actors>
-
-
-Your task options are provided in the labelled list below.
-Labels are Greek letters chosen from {Alpha, Beta, Gamma, Delta, Epsilon, etc}. Not all letters are used.
-
-<tasks>
-{{$tasks}}
-</tasks>
-
-Please:
-1. Reason through the importance, urgency, dependencies, and strengths and weaknesses of the task options
-2. Order committed tasks early, especially if they are important and urgent or needed by other committed tasks.
-3. Reason carefully about dependencies among task options, timing of task options, and the order of execution.
-4. Compare them against your current goals and drives with respect to your memory and perception of your current situation
-5. Reason in keeping with your character. 
-6. Assign an execution order to each task option, ranging from 1 (execute as soon as possible) to {{$num_options}} (execute last), 
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#task\n#label label of chosen task\n#order execution order (an int, 1-{{$num_options}})\n##
-#task\n#label ...\n#order ...\n##
-...
-##
-
-Review to ensure the assigned execution order is consistent with the task option dependencies, urgency, and importance.
-Respond only with the above hash-formatted information, 
-    instantiated with the selected task label from the Task list and execution order determined by your reasoning.
-Do not include any introductory, explanatory, or discursive text, 
-End your response with:
-</end>
-"""
-                              )]
-
-        labels = ['Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega']
-        random.shuffle(labels)
-        # Change from dict to set for collecting memory texts
-                
-        print(f'\nWorld Choose: {'\n - '+'\n - '.join([hash_utils.find('name', task) for task in task_choices])}')
-        response = self.llm.ask({
-            "situation": self.current_state,
-            "actors": self.map_actors(), 
-            "tasks": self.format_tasks(task_choices, labels[:len(task_choices)]),
-            "num_options": len(task_choices)
-        }, prompt, temp=0.0, stops=['</end>'], max_tokens=150)
-        # print(f'sense\n{response}\n')
-        index = -1
-        ordering = hash_utils.findall('task', response)
-        min_order = 1000
-        task_to_execute = None
-        best_label = None
-        ordering = hash_utils.findall('task', response)
-        pairs = [(hash_utils.find('label', item).strip(), hash_utils.find('order', item).strip()) for item in ordering]
-        sorted_pairs = sorted(pairs, key=lambda x: x[1])
-        label_choice = choice.exp_weighted_choice(sorted_pairs, 0.75)
-        task_to_execute = task_choices[labels.index(label_choice[0])]
-        print(f'  Chosen label: {label_choice} task: {task_to_execute.replace('\n', '; ')}')
-        return task_to_execute
-        
-    def next_act(self):
-        """Pick next actor in round-robin fashion and return it"""
-        if not self.actors:
-            return None
-        
-        # first see if any committed goals without needs
-        committed_tasks = []
-        for actor in self.actors:
-            for task in actor.tasks:
-                # if task has a need, and the need is in the actor's tasks(ie, not yet complete), skip
-                if hash_utils.find('committed', task)=='True':
-                    #do we have to check for a needs task across all actors? O rmaybe joint tasks sb on all participants tasks list?
-                    if hash_utils.find('needs', task)=="" or not actor.get_task(hash_utils.find('needs', task)):
-                        committed_tasks.append(task)
-        if len(committed_tasks) == 0:
-            # oh oh, something went wrong, see if any committed tasks without needs
-            for actor in self.actors:
-                for task in actor.tasks:
-                    if hash_utils.find('committed', task)=='True':
-                        committed_tasks.append(task)
-        if committed_tasks:
-            next_task = self.choose(committed_tasks)
-            print(f'\nWorld Next Act: {next_task.replace('\n', '; ')}')
-            actor_names = hash_utils.find('actors', next_task)
-            if actor_names:
-                actor_names = actor_names.strip().split(', ')
-                actors = [self.get_actor_by_name(actor_name.strip()) for actor_name in actor_names]
-                if actors:
-                    for actor in actors:
-                        actor.next_task = next_task
-                    return next_task, actors #agh.acts will need to handle multiple actors
-                
-        # else Get next actor
-        actor = self.actors[self.current_actor_index]
-        # Update index for next time
-        self.current_actor_index = (self.current_actor_index + 1) % len(self.actors)
-        
-        actor.next_task=None
-        return None, [actor]
 
     def check_resource_has_npc(self, resource):
         """Check if a resource type should have an NPC"""
@@ -803,7 +690,7 @@ End your response with:
 </end>
 """
 )]
-        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript)}, prompt, temp=0.4, stops=['</end>'], max_tokens=10)
+        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, prompt, temp=0.4, stops=['</end>'], max_tokens=10)
 
         try:
             delay_f = float(delay.strip())
