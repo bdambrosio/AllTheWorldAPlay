@@ -67,7 +67,7 @@ class Context():
 
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
-
+        self.last_update_time = self.simulation_time
         
         for actor in self.actors + self.npcs:
             #place all actors in the world
@@ -448,7 +448,7 @@ End your response with:
         history = self.history()
 
         event = ""
-        if random.randint(1, 7) == 1:
+        if not local_only and random.randint(1, 7) == 1:
             event = """
 Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
 natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
@@ -506,20 +506,20 @@ Respond using the following XML format:
 
 <situation>
 Sentence describing physical space, suitable for image generator.
-Updated State description of about 300 words
+Updated State description of about 200 words
 </situation>
 
-Respond with an updated world state description reflecting a time passage of {{$step}} and the environmental changes that have occurred.
-Include ONLY the concise updated situation description in your response. 
+Respond with an updated world state description of about 200 words reflecting the current time and the environmental changes that have occurred.
+Include ONLY the updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
-Limit your total response to about 270 words
+Limit your total response to about 200 words
 Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
 <end/>""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
-                                temp=0.6, stops=['<end/>'], max_tokens=450)
+                                temp=0.6, stops=['<end/>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
@@ -650,18 +650,21 @@ End your response with:
                 return allocation.get('has_npc', False)
         return False
 
+    def map_actor(self, actor):
+        mapped_actor = f"""{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}"""
+        return mapped_actor+'\n  Remaining tasks:\n    '+'\n    '.join([task.to_string() for task in actor.tasks])
 
     def map_actors(self):
         mapped_actors = []
         for actor in self.actors:
-            mapped_actors.append(f'{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}')
+            mapped_actors.append(self.map_actor(actor))
         return '\n'.join(mapped_actors)
 
-    def choose_delay(self):
+    async def choose_delay(self):
         """Choose a delay for the next cognitive cycle"""
         prompt = [SystemMessage(content="""You are a delay chooser.
 Your task is to choose a delay for the next cognitive cycle.
-The delay should be a number of hours from now  .
+The delay asyncio.shield be a number of hours from now  .
 The delay should be between 0 and 12 hours.
 The delay should be a multiple of 0.5 hours.
 
@@ -671,6 +674,19 @@ For example, if it is currently evening and the characters are awaiting an event
 If one or more characters are engaged in an urgent activity, a delay of 0.1 hours to 0.5 hours, or even 0.0 hours, might be appropriate.
 Characters engaging in repetitive Thinking or planning might be a strong indicator they are passing time waiting for something to happen, and so a longer delay might be appropriate.
 In all cases, the delay should be chosen to move the timeline to the next significant event or activity.
+
+Use the following method to choose the delay:
+
+1. Determine the current time of day
+2. Identify the nearest deadline for significant events or activities that are currently occurring or expected to occur soon
+3. Base delay is the elapsed time between now and the nearest deadline
+4. Review the tasks in actor task lists to identify any tasks that need to be completed by the above nearest deadline
+5. Include implicit tasks such as sleeping, eating, etc.
+6. Final delay is Base delay minus remaining-task elapsed time.
+                                
+Do NOT report any of the above steps in your response.
+Respond only with the nearest deadline, the elapsed time needed for remaining tasks, and the delay in hours, to the nearest 0.1 hours.
+
 """),
 UserMessage(content="""
 
@@ -684,16 +700,29 @@ Actors
 Transcript of recent activity, observations, and events
 {{$transcript}}
 
-Respond only with the delay in hours, to the nearest 0.1 hours.
-Do not include any introductory, explanatory, or discursive text, 
+Respond only with the nearest deadline, the elapsed time needed for remaining tasks, and the delay in hours, to the nearest 0.1 hours. Do not include units (e.g. 'hours')
+use the following hash-format for your response:
+
+#delay delay to nearest 0.1 hours
+#deadline time of nearest deadline to the nearest 0.1 hours
+#tasks elapsed time needed for remaining tasks to the nearest 0.1 hours
+##
+
+            
+Do not include any introductory, explanatory, or discursive text, just the delay in the above format.
 End your response with:
 </end>
 """
 )]
-        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, prompt, temp=0.4, stops=['</end>'], max_tokens=10)
+        if  self.last_update_time < self.simulation_time - timedelta(hours=1):
+            await self.update(local_only=True) 
+            self.last_update_time = self.simulation_time# update the world to get the latest situation
+        
+        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, prompt, temp=0.4, stops=['</end>'], max_tokens=20)
 
         try:
-            delay_f = float(delay.strip())
+            delay_str = hash_utils.find('delay', delay)
+            delay_f = float(delay_str.strip())
             return delay_f
         except Exception as e:
             print(f'Error choosing delay: {e}')
