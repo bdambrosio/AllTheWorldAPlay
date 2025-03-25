@@ -15,9 +15,9 @@ Why?
 - It's just plain fun
 
 Limitations:
-This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete).
+This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete). Also, this is not clone and run. There are probably hardcoded paths you will need to edit for things like LLM model files, for example. It doesn't (yet) know about your GPU config, or, if you are using cloud services, has most of the major direct providers, but not Huggingface or OpenRouterAI or ... Finally, it is slow. Faster than real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. 
 
-##Installation:
+## Installation:
 
 ```code
 git clone https://github.com/bdambrosio/AllTheWorldAPlay
@@ -27,123 +27,34 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-##Use
+## Use
+
+```code
+cd AllTheWorldAPlay
+source venv/bin/activate
+cd src/utils
+# start model server, see following
+# start image server, see following
+cd ../sim/webworld/src
+npm start #did I say you need all that npm / React stuff installed? No? Oh - sorry, ask Claude or cursor or ...
+cd ../../
+python3 main.py
+# wait till you see "main__ - INFO - SimulationServer: ZMQ connections established and ready for commands"
+#     (don't believe 'Application startup complete', that's just the python UI handler
+# now go to localhost:3000 in your browser, click Initialize (or screen refresh first if nothing happens)
+# if all is well that will display a combo box of available plays. Pick one and click the load button. Wait.
+# Note: at the moment the Alex, Demo, laTerre, and lost plays should work, I'm still porting the others.
+```
 
 - ATWAP uses several ports, including 3000, 5000, 5008, 5555, 5556, and 8000. That's probably horrible. I apologize. I am a jack of all trades, master of none.
 - It needs two external services - a model (LLM) server, and a tti (text-to-image) server.
   - model server: in plays/config.py you can uncomment the appropriate line to use a variety of sources. Put your api-key in your env.
       - 'deepseeklocal' is in fact vllm, I'll explain that in a future update, post an issue if you need to know more.
-      - 'local' is for running locally using an instance of exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```
+      - 'local' is for running locally using an instance of exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```. I run Llama3.3-70B-Instruct locally in 8 bit exl2 on a pair of RTX6000Ada. At the time I write this Grok will give you $150/mo credits if you allow them to capture your traffic for training. Grok2 is fast and quite nice.
   - image server: I use src/utils/lcmlora-serve.py. It's fast, only uses ~ 4GB of vram. Images are mostly just eye candy, don't expect much from them. to run it cd to utils and run ```code fastapi run lcmLora-serve.py --port 5008 &```. Alternately, you can run (or adapt) ```code fastapi run hive_serve.py --port 5008 &``` or adapt the code to use your favorite image server. 
 
-## Example script (simple Lost in the wild scenario):
+- So you now have your model-server and image server running. next## Example script (simple Lost in the wild scenario):
 
-Not as bad as it looks, lots of comments. :)
-```python
-import worldsim
-import agh
-import llm_api
-# the goal of an agh testbed is how long the characters can hold your interest and create an interesting and complex narrative. This is a classic 'survivors' sci-fi scenario. 
-
-# Create characters
-# I like looking at pretty women. pbly because I'm male hetero oriented.
-# If that offends, please change to suit your fancy.
-# I find it disorienting for characters to change enthicity every time they are rendered, so I nail that down here.
-# I'm of Sicilian descent on my mother's side (no, not Italian - family joke).
-
-S = agh.Agh("Samantha", """You are a pretty young woman of Sicilian descent. 
-You love the outdoors and hiking.
-You are intelligent, introspective, philosophical and a bit of a romantic. 
-You are very informal, chatty, think and speak in teen slang, and are a playful and flirty when relaxed. 
-You are comfortable on long treks, and are unafraid of hard work. 
-You are suspicious by nature, and wary of strangers. 
-Your name is Samanatha""")
-
-# Drives are what cause a character to create tasks.
-# Below is the default an agh inherits if you don't override, as we do below.
-# basic Maslow (more or less).
-# As usual, caveat, check agh.py for latest default!
-# - immediate physiological needs: survival, water, food, clothing, shelter, rest.  
-# - safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events. 
-# - assurance of short-term future physiological needs (e.g. adequate water and food supplies, shelter maintenance). 
-# - love and belonging, including mutual physical contact, comfort with knowing one's place in the world, friendship, intimacy, trust, acceptance.
-
-# Overriding for this scenario, otherwise all they do is hunt for water, berries, and grubs
-# Rows are in priority order, most important first. Have fun.
-# note this is NOT NECESSARY to specify if you don't want to change anything.
-
-S.drives = [
-    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.", 
-    "finding a way out of the forest.",
-    "solving the mystery of how she ended up in the forest with no memory.",
-    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
-    "immediate physiological needs: survival, shelter, water, food, rest."
-]
-
-# Don't need this in general, but you can use it to set character's initial tone.
-# Be careful untill you get a sense of how characters use thoughts.
-# I recommend you don't try anything that doesn't start with 'You think ' unless you want to dig into code.
-
-S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
-
-#
-## Now Joe, the other character in this 'survivor' scenario
-#
-
-J = agh.Agh("Joe", """You are a young male of Sicilian descent, intelligent and self-sufficient. 
-You are informal and somewhat impulsive. 
-You are strong, and think you love the outdoors, but are basically a nerd.
-You are socially awkward, especially around strangers. Your name is Joe.""")
-
-J.drives = S.drives
-
-J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
-# add a romantic thread. Doesn't accomplish much. One of my test drivers of agh, actually.
-J.add_to_history("You think Whoever she is, she is pretty!")
-
-
-# Now world initialization
-# first sentence of context is part of character description for image generation.
-# It should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
-
-W = agh.Context([S, J],
-                """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humananity. It is a early morning on what seems like it will be a warm, sunny day.
-""")
-
-# Image server defaults to local homebrew. dall-e-2 has long lag, so it only regens an image 1 out of 7 calls (random).
-# Of course, you need an openai account for dall-e-2. PRs for better options encouraged.
-#  set OS.env OPENAI_API_KEY 
-#  worldsim.IMAGEGENERATOR = 'dall-e-2'
-worldsim.IMAGEGENERATOR = 'tti_serve'
-
-worldsim.main(W)
-
-#worldsim.main(W, server='Claude') # yup, Claude is supported. But RUN LOCAL OSS if you can!
-# alternatives include utils/exl_server (exllamav2), hf_server (HF transformers wrapper), llama.cpp (almost working)
-#worldsim.main(W, server='llama.cpp')
-```
-
-## Installation
-This will get better, but for now:
-- clone repo
-- pbly venv/conda is a good idea.
-- you will need lots of stuff. pyqt5, Transformers, pytorch, exllamav2 (to use the exllamav2 server), stabilityai/sdxl-turbo, etc etc etc.
-    but you probably know the drill
-    unless you've never run an OSS llm locally outside wrappers like ollama or gui's like tabby or ...,
-    in which case you pbly shouldn't try this till I package it.
-- in utils, run exl_server.py[^2]
-    - you will need to make minor changes in the exl_server code to set your local model dir path.
-    - it will ask which model to load.
-    - you will need exllamav2 and transformers installed (code uses transformers tokenizer to run chat templates)
-- in utils, run tti_serve.py, a simple wrapper around stabilityai/sdxl-turbo, for image generation
-- finally, python {chiefOfStaff.py, lost.py, myscenario.py, ...} from <localrepo>/src directory[^3]. 
-
-## Coming Soon
-I'm less than 2 weeks into this project. Immeadiate projects:
-- better management of task 'stickiness'
-- better awareness of / adaptation to other characters words and acts
-- longer term awareness of important environment events
-- character development?
 - ...? I realize gamers got here long before me. Skill acquisition, inventory, better location modeling, ... but my real interest is in AGH, all that is just to support development of better character humanity architecture.
 - config file.
 Ideas / contributions (via PRs?) most welcome.
