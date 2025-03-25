@@ -21,6 +21,8 @@ Why?
 Limitations:
 This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete). Also, this is not clone and run. There are probably hardcoded paths you will need to edit for things like LLM model files, for example. It doesn't (yet) know about your GPU config, or, if you are using cloud services, has most of the major direct providers, but not Huggingface or OpenRouterAI or ... Finally, it is slow. Faster than real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor. So, for example, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. 
 
+So this is NOT at this time for those unprepared to dig into the software at all the levels required to make llm-based raw python work. However, I can promise to work hard to support anyone willing to give it a try. E.G. find a hardcoded path I need to fix, post an issue!. Having said that, I'm a lone developer, and load/save, porting the remaining plays from older format, and more documentation (e.g. how to write plays, and the scenarios underneath them) are high priority.
+
 ## Installation:
 
 ```code
