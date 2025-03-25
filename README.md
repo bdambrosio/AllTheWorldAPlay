@@ -1,8 +1,12 @@
 # AllTheWorldAPlay[^1] (ATWAP)
 
+## Call for *alpha* testers, explorers, collaborators, ...
+
 ## A playground for cognitive software. 
 
 ![Play screenshot](docs/images/WebworldMain.png)
+
+more at [Slide Show](http://www.tuuyi.com)
 
 ## A stage on which plays are presented, with AI cognitive agents as actors.
 
@@ -15,7 +19,7 @@ Why?
 - It's just plain fun
 
 Limitations:
-This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete). Also, this is not clone and run. There are probably hardcoded paths you will need to edit for things like LLM model files, for example. It doesn't (yet) know about your GPU config, or, if you are using cloud services, has most of the major direct providers, but not Huggingface or OpenRouterAI or ... Finally, it is slow. Faster than real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. 
+This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete). Also, this is not clone and run. There are probably hardcoded paths you will need to edit for things like LLM model files, for example. It doesn't (yet) know about your GPU config, or, if you are using cloud services, has most of the major direct providers, but not Huggingface or OpenRouterAI or ... Finally, it is slow. Faster than real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor. So, for example, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. 
 
 ## Installation:
 
@@ -53,14 +57,8 @@ python3 main.py
       - 'local' is for running locally using an instance of exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```. I run Llama3.3-70B-Instruct locally in 8 bit exl2 on a pair of RTX6000Ada. At the time I write this Grok will give you $150/mo credits if you allow them to capture your traffic for training. Grok2 is fast and quite nice.
   - image server: I use src/utils/lcmlora-serve.py. It's fast, only uses ~ 4GB of vram. Images are mostly just eye candy, don't expect much from them. to run it cd to utils and run ```code fastapi run lcmLora-serve.py --port 5008 &```. Alternately, you can run (or adapt) ```code fastapi run hive_serve.py --port 5008 &``` or adapt the code to use your favorite image server. 
 
-- So you now have your model-server and image server running. next## Example script (simple Lost in the wild scenario):
 
-- ...? I realize gamers got here long before me. Skill acquisition, inventory, better location modeling, ... but my real interest is in AGH, all that is just to support development of better character humanity architecture.
-- config file.
 Ideas / contributions (via PRs?) most welcome.
 
 [^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
 [^2]: with a simple world sim underneath they can interact with.
-[^3]: Yeah, I know, no requirements.txt or other installer? Hey, this is <really> early, sorry. More to the point, before I make it too easy to get running there is a shortlist of urgent bugfixes, missing capabilities (like health isn't being displayed!) and improvements (esp. in planning, action determination, ....) I need to make.
-[^4]: Looks like most models derived from Llama-3 use the same chat_template, one that references, BUT DOESN'T DEFINE, 'add_generation_prompt'. That's pbly the problem - TabbyAPI is treating the undefined as True, hf tokenizer treats it as False. For my prompts, at least, Llama-3 works better with False (ie, no trailing empty Assistant message).
-[^5]: I'd LOVE to have more imagegen options. Not my area. Suggestions / contributions most welcom.
