@@ -44,7 +44,32 @@ cd src/utils
 cd ../sim/webworld/src
 npm start #did I say you need all that npm / React stuff installed? No? Oh - sorry, ask Claude or cursor or ...
 cd ../../
-python3 main.py
+```
+I use this launch.json in Cursor to launch the main simulation engine:
+
+```code
+        {
+            "name": "webworld",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "main:app",
+                "--reload",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}/src/sim/",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
+                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
+                "CUDA_VISIBLE_DEVICES": "0"
+            }
+  
 # wait till you see "main__ - INFO - SimulationServer: ZMQ connections established and ready for commands"
 #     (don't believe 'Application startup complete', that's just the python UI handler
 # now go to localhost:3000 in your browser, click Initialize (or screen refresh first if nothing happens)
