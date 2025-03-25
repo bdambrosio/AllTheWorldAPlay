@@ -1,24 +1,16 @@
+import importlib
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
 import plays.config as configuration
+from sim.scenarios import apocalypse
 from enum import Enum
 from sim.map import WorldMap
 
-class UrbanTerrain(Enum):
-    Street = 1      # Roads and walkways
-    Building = 2    # Commercial/residential buildings
-    Plaza = 3       # Open spaces, squares
-    Park = 4        # Green spaces
-    Construction = 5 # Building sites
-
-class UrbanResource(Enum):
-    BusStop = 1     # Public transport
-    Shop = 2        # Retail locations
-    Cafe = 3        # Food/drink venues
-    Bench = 4       # Rest spots
-    TrashBin = 5    # Waste disposal
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(apocalypse)
 
 
 server_name = configuration.server_name
@@ -54,4 +46,4 @@ L.add_to_history("You think: A newcomer in Bellona? How intriguing. He seems los
 W = context.Context([K, L],
 """A post-apocalyptic urban landscape, the city of Bellona is isolated, lawless, and filled with strange phenomena. 
 The sun hangs low in the hazy sky, casting an eerie light over the buildings and deserted streets.
-""", terrain_types=UrbanTerrain, resources=UrbanResource, server_name=server_name)
+""", scenario_module=apocalypse, server_name=server_name)

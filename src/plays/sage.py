@@ -1,12 +1,17 @@
+import importlib
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
+import sim.scenarios.suburban as suburban
 import plays.config as configuration
 
-server_name = configuration.server_name
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(suburban)
+
 # Create the human player character
-Sage = agh.Character("Sage", """You are a 20-year-old college student who has become a mentor figure.
+Sage = agh.Character("Sage", """You are a 60-year-old student who has become a mentor figure.
 You combine philosophical insights with practical wisdom, but always stay relatable.
 You've worked through many of the challenges of being a monk and share your experiences thoughtfully.
 You believe in questioning assumptions while maintaining optimism.
@@ -18,7 +23,6 @@ Sage.set_drives([
     "helping others find their own wisdom",
     "sharing experiences without preaching",
     "encouraging critical thinking",
-    "maintaining a balanced perspective",
     "creating a safe space for honest discussion"
 ])
 

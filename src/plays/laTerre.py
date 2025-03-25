@@ -5,8 +5,10 @@ import sim.agh as agh
 from sim.context import Context
 import plays.config as configuration
 from sim.scenarios import rural  # Import the entire scenario module
-
-server_name = configuration.server_name
+import importlib
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(rural)
 
 
 J = agh.Character("Jean", """You are Jean Macquart, a hardworking young unmarried peasant farmer working his father's farm. 

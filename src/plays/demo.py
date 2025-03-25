@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+import importlib
 import sys, os
 import wave
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -9,24 +10,10 @@ import sim.agh as agh
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 import sim.scenarios.coastal as coastal
-server_name = configuration.server_name
 
-# Custom terrain types for a small-town setting
-class TownTerrain(Enum):
-    Road = 1
-    Workshop = 2
-    Downtown = 3
-    Garden = 4
-    River = 5
-
-# Resources that might be found in this environment
-class TownResource(Enum):
-    Bench = 1
-    Market = 2
-    Workshop = 3
-    Bridge = 4
-    Boat = 5
-    CityGallery = 6
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(coastal)
 
 # Main character - a person facing a difficult decision with competing drives
 Maya = agh.Character("Maya", """You are Maya, a talented 32-year-old female artist,

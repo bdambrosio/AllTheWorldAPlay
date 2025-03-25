@@ -1,12 +1,15 @@
 #import sys, os
 #sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import importlib
 from sim.context import Context
 from sim.agh import Character
 from sim.scenarios import forest  # Import the forest scenario
 import plays.config as configuration
 
-server_name = configuration.server_name
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(forest)    
 
 
 # Character definitions
