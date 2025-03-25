@@ -1,30 +1,43 @@
-# Basic packages
-PyQt5>=5.15.10
-Pillow>=9.0.1
-fastapi>=0.111.0
-uvicorn>=0.29.0
-transformers>=4.41.1
-exllamav2>=0.0.21
-diffusers>=0.27.2
+# Python >= 3.8 required
 
-requests~=2.31.0
-scipy~=1.10.1
-wordfreq~=3.1.1
-spacy~=3.7.5
-PyPDF2~=3.0.1
-bs4~=0.0.1
-beautifulsoup4~=4.12.3
-numpy~=1.26.4
-matplotlib~=3.9.0
-umap~=0.1.1
-torch~=2.3.0
-anthropic~=0.28.0
-openai~=1.30.5
-noise~=1.2.2
-colorama~=0.4.6
-lxml~=4.9.4
-pandas~=2.2.2
-starlette~=0.37.2
-arxiv~=2.1.0
-bibtexparser~=1.4.1
-scikit-learn~=1.5.0
+# Core dependencies
+PyQt5==5.15.10
+fastapi==0.111.0
+uvicorn==0.29.0
+starlette==0.37.2
+
+# AI/ML dependencies
+transformers==4.41.1
+torch==2.3.0
+anthropic==0.28.0
+openai==1.30.5
+exllamav2==0.0.21
+diffusers==0.27.2
+scikit-learn==1.5.0
+
+# Data processing
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.10.1
+wordfreq==3.1.1
+spacy==3.7.5
+umap==0.1.1
+
+# Image processing
+Pillow==9.0.1
+matplotlib==3.9.0
+
+# Text processing
+lxml==4.9.4
+beautifulsoup4==4.12.3
+bs4==0.0.1
+PyPDF2==3.0.1
+
+# Utilities
+requests==2.31.0
+noise==1.2.2
+colorama==0.4.6
+
+# Academic
+arxiv==2.1.0
+bibtexparser==1.4.1
