@@ -1,6 +1,7 @@
 # Custom terrain types for suburban environment
 import asyncio
 from enum import Enum
+import importlib
 import sys, os
 import wave
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -11,7 +12,10 @@ import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 from sim.scenarios import suburban
 
-server_name = configuration.server_name
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+importlib.reload(suburban)
+
 class SuburbanTerrain(Enum):
     House = 1
     Yard = 2

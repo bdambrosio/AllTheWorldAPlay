@@ -82,9 +82,10 @@ model_init.add_args(parser)
 model_name = "/home/bruce/Downloads/models/QwQ-32B-8.0bpw-h8-exl2"
 model_name = "/home/bruce/Downloads/models/Qwen2.5-32B-Instruct"
 model_name = "/home/bruce/Downloads/models/Llama-3.3-70B-Instruct_exl2_8.0bpw"
-#model_name = "/home/bruce/Downloads/models/c4ai-command-a-03-2025-6.0bpw-h8-exl2"
+model_name = "/home/bruce/Downloads/models/LatitudeGames_Wayfarer-Large-70B-Llama-3.3-4.25bpw-h6-exl2"
+model_name = "/home/bruce/Downloads/models/Qwen2.5-VL-32B-Instruct"
 args = parser.parse_args(['-m',model_name, '--gpu_split', "34,46"])
-
+#args = parser.parse_args(['-m',model_name, '--gpu_split', "0,46"])
 
 model_init.check_args(args)
 model_init.print_options(args)

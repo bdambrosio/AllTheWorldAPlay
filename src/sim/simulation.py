@@ -143,8 +143,7 @@ class SimulationServer:
                 del sys.modules['webworld_play']
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
+            spec.loader.exec_module(module)            
             if not hasattr(module, 'W'):
                 raise ValueError("Play file must define a 'W' variable holding context")
             if hasattr(module, 'server_name'):
