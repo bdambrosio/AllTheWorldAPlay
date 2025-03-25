@@ -59,7 +59,15 @@ python3 main.py
       - 'local' is for running locally using an instance of exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```. I run Llama3.3-70B-Instruct locally in 8 bit exl2 on a pair of RTX6000Ada. At the time I write this Grok will give you $150/mo credits if you allow them to capture your traffic for training. Grok2 is fast and quite nice.
   - image server: I use src/utils/lcmlora-serve.py. It's fast, only uses ~ 4GB of vram. Images are mostly just eye candy, don't expect much from them. to run it cd to utils and run ```code fastapi run lcmLora-serve.py --port 5008 &```. Alternately, you can run (or adapt) ```code fastapi run hive_serve.py --port 5008 &``` or adapt the code to use your favorite image server. 
 
-
+## Now what?
+- as above, use Initialize to load a play
+- Step allows one actor to act
+- Run starts free-running round robin of actors
+- Pause will stop 'Run' at the end on the current actor actions
+- tabs in upper left - one for each actor
+- 'Explore' button on bottom of an actor tab will open a modal for deeper exploration, including a chat tab. Be patient.
+- 'Director's chair in bottom right of main screen allows you to choose actions for actors. Only Acts works at the moment, I think.
+- Overall, be very patient. Sorry, they have a lot to do, it takes time.
 Ideas / contributions (via PRs?) most welcome.
 
 [^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
