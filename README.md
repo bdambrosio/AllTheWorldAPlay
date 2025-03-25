@@ -11,7 +11,7 @@ Sorry, its *really*, *really* slow. I'm working on that. However, it's also much
 To use one of the other built-in scenarios, move it to the main src dir before you try to execute it.
 
 ### 
-![Play screenshot](images/WebworldMain.png)
+![Play screenshot](docs/images/WebworldMain.png)
 
 - 1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
 major overhaul of the cognitive architecture of characters.
