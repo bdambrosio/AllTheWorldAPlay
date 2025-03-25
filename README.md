@@ -17,15 +17,24 @@ Why?
 Limitations:
 This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete).
 
-Installation:
+##Installation:
 
 ```code
-git clone <repository-url>
-cd <repository-name>
+git clone https://github.com/bdambrosio/AllTheWorldAPlay
+cd AllTheWorldAPlay
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
+
+##Use
+
+- ATWAP uses several ports, including 3000, 5000, 5008, 5555, 5556, and 8000. That's probably horrible. I apologize. I am a jack of all trades, master of none.
+- It needs two external services - a model (LLM) server, and a tti (text-to-image) server.
+  - model server: in plays/config.py you can uncomment the appropriate line to use a variety of sources. Put your api-key in your env.
+      - 'deepseeklocal' is in fact vllm, I'll explain that in a future update, post an issue if you need to know more.
+      - 'local' is for running locally using an instance of exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```
+  - image server: I use src/utils/lcmlora-serve.py. It's fast, only uses ~ 4GB of vram. Images are mostly just eye candy, don't expect much from them. to run it cd to utils and run ```code fastapi run lcmLora-serve.py --port 5008 &```. Alternately, you can run (or adapt) ```code fastapi run hive_serve.py --port 5008 &``` or adapt the code to use your favorite image server. 
 
 ## Example script (simple Lost in the wild scenario):
 
