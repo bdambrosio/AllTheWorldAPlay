@@ -68,6 +68,8 @@ python3 main.py
 - 'Explore' button on bottom of an actor tab will open a modal for deeper exploration, including a chat tab. Be patient.
 - 'Director's chair in bottom right of main screen allows you to choose actions for actors. Only Acts works at the moment, I think.
 - Overall, be very patient. Sorry, they have a lot to do, it takes time.
+- See [Slides](https://tuuyi.com) for more on what you should see / can do.
+
 Ideas / contributions (via PRs?) most welcome.
 
 [^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
