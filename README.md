@@ -2,49 +2,15 @@
 
 ## A playground for cognitive software. 
 
-
-
-
-
-Sorry, its *really*, *really* slow. I'm working on that. However, it's also much better, cognitively. 
-
-To use one of the other built-in scenarios, move it to the main src dir before you try to execute it.
-
-### 
 ![Play screenshot](docs/images/WebworldMain.png)
 
-- 1/19/2025 - Release 1.0 - Not because I think this version is wonderful, but because it runs, and I'm about to start a 
-major overhaul of the cognitive architecture of characters.
-- 12/30/2024 - 'Lost' basic scenario now runs, and by default uses DeepSeek. Haven't run it long enough to see where it breaks down.
-Recap: there is now a simple initialized grid-world map of the terrain, modelling hills, streams, and simple food resources. Not sure where this will go, but I was running into too many boundaries without it. Maybe it should just be a 'my dinner with Andre' like locationless discussion-12/14/2024 - Work in progress - restoring the original Owl functionality (smart reasoning personal chatbot with internet and library access).
-- 6/29/2004 - Work in progress - integrating a procedurally generated initial worldmap. Many other changes in agent architecture also in progress. 
-I recommend you stick with a release for now, untill this stabilizes.
-- 6/4/2024 - Added load/save. Really crude - to load, pick a saved world from list on cli. To save, give world a name in popup. Note: No overwrite check, so be careful! Not well tested. And, you still need to init from basic scenario dscp.
-- Status: I *think* scene level basic dialog and action coordination is no longer biggest pblm, moving to act-level plot/narrative arc. ie, ok ppl, you've spent enough time looking for water, let's get on with it.
-- release 0.1.4 (let's get real here, renumbered releases). Hugely improved dialog, consistency. Base version for next level of agh models.)
-- 5/28/2024 - release 1.3 - improved  dialog naturalness, better formatting in main activity window.
-- 5/27/2024 World updates now show in main dialog so they aren't such a surprise.
-    **Talk to the characters!** When in step mode click 'Inject' and enter 'Character-name, question',
-    e.g. Samantha, do you think it is a coincidence that you and Joe are here together? For now, other character hears the response, but they know the character isn't talking to them.
-- 5/27/2024 - BTW, if a character is suddenly interacting with an unexpected person or object, check 'World' in the upper right - the world evolves too, and unexpected things can happen!
-- 5/27/2024 - Release 1.2. And miles to go before I sleep. Nonetheless, a good checkpoint.
-- 5/27/2024 - Hopefully end of this round. ATWAP is slower, my apologies, but reworked drives/tasks/intentions structure to better integrate with tell/dialog structure. I *think* flow is better now. Note drives are super important now, you pbly need to customize them for any scenario. Also note change in format from string to array of strings. Be patient on startup, lots of character initialization to do. Oh, should work with more models where ninha used to complain about user/assistant alternation (e.g., Mixtral)
-- 5/26/2004 - dialog / action synchrony much improved. Definitely worth a pull! Also, hf_server and Anthropic client available if you don't like exl_server.
-- 5/21/2024 - overhaul of priorities/intentions/actions. Not all there yet.
-- 5/20/2024 - Well, sorry. One last. Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
-- 5/20/2024 - Improved robustness for smaller LLMs. Works great w 8B models now.
-- 5/20/2024 - Finally fixed character synchronization I broke when I freed up UI. Dialog should make more sense.
-- 5/20/2024 - More updates to action selection. Ok, I'm going to try to freeze for a bit except for important bugfixes.
-- 5/20/2024 - Minor overhaul of action selection. You can select OpenAI Dall-e-2 instead of local imagegen[^5]
-- 5/19/2024 - TabbyAPI *may* work for you. Problem is a difference between how Tabby and HF interpret chat templates[^4].
-- 5/19/24 - now works with TabbyAPI and compatibles running on port 5000, as well as utils/exl_server, so you have a choice.
-- 5/19/24: try rollover of character image. Will now display character memory. takes a few (4-5?) steps before memory forms, so be patient.
-- 5/19/24: Async UI - Now you can scroll, pause, etc at any time. Hopefully nothing broke. Pause in mid-step will still run step to end.
-- 5/19/24: minor UI bug fixes. Fully async UI coming soon.
-- 5/19/2024: lightly tested fix for 'Do' bug. Characters can act in the world again!
-- 5/18/2024:Major bug preventing any 'Do' actions, only dialog for now!
-- 5/18/2024: Beta 1.0 - Actually got this to run on a clean install on a different machine. Enjoy!
+## A stage on which plays are presented, with AI cognitive agents as actors.
 
+What's a cognitive agent? Well^1, *agents* are entities that can do things. *cognition* is using explicit representation and reasoning. So AI cognitive agents are hardware/software-based entities that build and reason over explicit representations to think and act. These do so on a stage.
+
+Why? 
+- My AGB (artificial general Being) test - In order for these plays to be interesting, the actors must be *interesting* for a sufficiently long period of time (longer than the typical chatbot is the first threshold).
+- 
 script a simple scenario, and watch it play out. 
 I've only put two days into this so far.
 - simple reactive characters can Think / Say / Do
