@@ -6,21 +6,26 @@
 
 ## A stage on which plays are presented, with AI cognitive agents as actors.
 
-What's a cognitive agent? Well^1, *agents* are entities that can do things. *cognition* is using explicit representation and reasoning. So AI cognitive agents are hardware/software-based entities that build and reason over explicit representations to think and act. These do so on a stage.
+What's a cognitive agent? Well (my defs): *agents* are entities that can do things. *cognition* is using explicit representation and reasoning. So AI cognitive agents are hardware/software-based entities that build and reason over explicit representations to think and act. These do so on stage[^2].
 
 Why? 
-- My AGB (artificial general Being) test - In order for these plays to be interesting, the actors must be *interesting* for a sufficiently long period of time (longer than the typical chatbot is the first threshold).
-- 
-script a simple scenario, and watch it play out. 
-I've only put two days into this so far.
-- simple reactive characters can Think / Say / Do
-    - Characters display internal 'reason' for acts, as well as thoughts, in private windows on left
-    - Characters display current priorites in private windows on left
-- Characters (and you) see/hear other actors Say/Do, but not their thoughts- in primary text window 
-- every few cycles:
-    - update character physical state and global context 
-    - update character internal priorites (instantiated from initial character priorities)
-    - update images
+- My AGB (artificial general Being) test - In order for these plays to be interesting, the actors must be *interesting* for a sufficiently long period of time (longer than the typical chatbot is the first threshold). So, motivation 1 - a testbed for my ideas.
+- Pychology/Voyeurism - Why do interesting cognitive simulacra do what they do? The UI allows inspection into most of the cognitive state of any actor at any time - drives, *signals* (perceptually salient indicators from sensors), emotions, tasks and plans, acts, thoughts about other actors, etc. If that isn't enough, you can chat with any actor and simply ask them.
+- Design your own plays and see how the actors handle various situations.
+- It's just plain fun
+
+Limitations:
+This is very much *Alpha* software. In particular, load/save doesn't work yet (high priority, design complete).
+
+Installation:
+
+```code
+git clone <repository-url>
+cd <repository-name>
+python -m venv venv
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+pip install -r requirements.txt
+```
 
 ## Example script (simple Lost in the wild scenario):
 
@@ -135,7 +140,7 @@ I'm less than 2 weeks into this project. Immeadiate projects:
 Ideas / contributions (via PRs?) most welcome.
 
 [^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
-[^2]: a simple wrapper around exllamav2. Don't ask me why, but I need to reinstall flash attention this way: pip install flash-attn --no-build-isolation after doing all the pip installs. I hate python packaging. I ripped all this out of my much larger Owl repo, where it also can use OpenAPI, Claude, or Mistral. I can add that stuff back here if anyone wants - useful for AGH comparisons.
+[^2]: with a simple world sim underneath they can interact with.
 [^3]: Yeah, I know, no requirements.txt or other installer? Hey, this is <really> early, sorry. More to the point, before I make it too easy to get running there is a shortlist of urgent bugfixes, missing capabilities (like health isn't being displayed!) and improvements (esp. in planning, action determination, ....) I need to make.
 [^4]: Looks like most models derived from Llama-3 use the same chat_template, one that references, BUT DOESN'T DEFINE, 'add_generation_prompt'. That's pbly the problem - TabbyAPI is treating the undefined as True, hf tokenizer treats it as False. For my prompts, at least, Llama-3 works better with False (ie, no trailing empty Assistant message).
 [^5]: I'd LOVE to have more imagegen options. Not my area. Suggestions / contributions most welcom.
