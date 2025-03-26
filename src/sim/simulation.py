@@ -185,6 +185,7 @@ class SimulationServer:
                 print(f'{char.name} cognitive cycle')   
                 await char.cognitive_cycle()
                 await self.send_character_update(char)
+                await asyncio.sleep(0.1)
                 self.next_actor_index += 1
                 if self.next_actor_index >= len(self.sim_context.actors):
                     self.next_actor_index = 0

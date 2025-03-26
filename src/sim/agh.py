@@ -1313,7 +1313,7 @@ End response with:
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         for sc in focus_signalClusters:
             sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
-        prompt = [UserMessage(content="""Identify the highest priority goal the actor should focus on given the following information.
+        prompt = [UserMessage(content="""Identify the highest priority goal alternatives the actor should focus on given the following information.
 A goal in this context is an overarching objective that captures the central topic of the entire situation and character described below.
                               
 <situation>
@@ -1362,7 +1362,7 @@ Consider:
 4. Try to identify a goal that might be the center of an overall story arc of a play or movie.
 
 
-Respond with the highest priority, most encompassing goal, in the following parts: 
+Respond with the two highest priority, most encompassing goal alternatives, in the following parts: 
     goal - a terse (5-8 words) name for the goal, 
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
@@ -1407,7 +1407,7 @@ End response with:
                 goals.append(goal)
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
-        if len(goals) < 3:
+        if len(goals) < 2:
             print(f'Warning: Only {len(goals)} goals generated for {self.name}')
         self.goals = goals
         self.driveSignalManager.clear_clusters()
@@ -2727,20 +2727,23 @@ End your response with:
 
     def ActWeight(self, count, n, act):
         """Weight for act choice using exponential decay"""
-        base = 0.67  # Controls how quickly weights decay
+        base = 0.5  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
-            return raw * 0.3
+            return raw * 0.2
         return raw
 
 
     async def request_act_choice(self, acts):
         """Request an act choice from the UI"""
         if self.autonomy.action:
+            #if len(acts) > 0 and acts[0].mode != 'Think':
+            #    self.focus_action = acts[0]
+            #    return self.focus_action
             self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
             return self.focus_action
         
-        if len(acts) < 3:
+        if len(acts) < 2:
                 print(f'{self.name} request_act_choice: not enough acts')
         for act in acts:
             if not act.source or not act.source.goal or not act.source.goal.signalCluster:
@@ -2805,30 +2808,35 @@ End your response with:
                                                   self.character.strip(),
                                                   relationsOnly=True )
 
-        if not self.focus_task.peek(): # if we're not in the middle of a task plan
-            await self.clear_goal_if_satisfied(self.focus_goal)  # this should extend a satsified goal if possible
-            if not self.focus_goal: # goal is completed!
+        if self.focus_task.peek():
+            await self.clear_task_if_satisfied(self.focus_task.peek())
+        if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
+            if self.tasks and len(self.tasks) > 0:
+                self.focus_task.push(self.tasks[0])
+                self.tasks.pop(0)
+
+        if not self.focus_task.peek(): # we're not in the middle of a task plan
+            await self.clear_goal_if_satisfied(self.focus_goal)  # did we complete goal?
+            if not self.focus_goal: # goal is completed or abandoned
                 self.driveSignalManager.recluster()
                 self.generate_goal_alternatives()
                 await self.request_goal_choice(self.goals)
+                await asyncio.sleep(0.1)
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 await asyncio.sleep(0.1)
                 if not self.focus_goal:
                     return # no admissible goal at this time
 
-        # now we have a focus goal
-        if self.focus_task.peek():
-            await self.clear_task_if_satisfied(self.focus_task.peek())
-            
-        if not self.focus_task.peek(): # prev task completed
-            if self.tasks and len(self.tasks) > 0:
-                self.focus_task.push(self.tasks[0])
-                self.tasks.pop(0)
-            else: # can't get here without focus goal, right?
-                self.generate_task_plan()
-                await self.request_task_choice(self.tasks)
-                self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-                await asyncio.sleep(0.1)
+        # now we have a focus goal, and maybe a focus task if we're in the middle of a task plan
+           
+        if not self.focus_task.peek(): # if no focus task, focus goal is new!
+            self.tasks = self.generate_task_plan()
+            await self.request_task_choice(self.tasks)
+            await asyncio.sleep(0.1)
+            self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+            await asyncio.sleep(0.1)
+            if not self.focus_task.peek():
+                return # no admissible task at this time
             
         await self.step_tasks()
         delay = await self.context.choose_delay()
@@ -2846,16 +2854,26 @@ End your response with:
 
        
     async def step_tasks(self):
-        while self.focus_task.peek():
-            await self.step_task()
-            if not self.focus_task.peek() and self.tasks and len(self.tasks) > 0:
+        task_count = 0
+        while task_count < 2 and self.focus_task.peek():
+            outcome = await self.step_task()
+            # outcome is False if task is not completed
+            if outcome and self.tasks and len(self.tasks) > 0:
                 self.focus_task.push(self.tasks[0])
                 self.tasks.pop(0)
                 # return allows yield to other coroutines / actors
-                return
+                return True
+            elif outcome: # task entire task plan is doneis completed
+                return True
+            elif self.tasks and len(self.tasks) > 0: # failed at task, but continue with next task - tbd - replan?
+                self.focus_task.push(self.tasks[0])
+                self.tasks.pop(0)
+                return True
+        return True
+            
         
     async def step_task(self, sense_data='', ui_queue=None):
-  
+        """Perform an act on the current task. Returns False if task is not completed."""
         # if I have an active task, keep on with it.
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
@@ -2865,8 +2883,8 @@ End your response with:
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
-        while act_count < 4 and self.focus_task.peek() is task:
-            action_alternatives = self.generate_acts(task)
+        action_alternatives = self.generate_acts(task)
+        while act_count < 2 and self.focus_task.peek() is task:
             await self.request_act_choice(action_alternatives)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             await asyncio.sleep(0.1)
@@ -2886,9 +2904,11 @@ End your response with:
                 if self.focus_task.peek() is task:
                     await self.clear_task_if_satisfied(task)
                     await asyncio.sleep(0.1)
+                    return self.focus_task.peek() != task
             else:
                 print(f'No action for task {task.name}')
-                return
+                return False
+        return self.focus_task.peek() != task
 
 
     async def act_on_action(self, action: Act, task: Task):
