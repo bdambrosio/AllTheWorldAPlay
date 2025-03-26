@@ -1098,6 +1098,7 @@ End response with:
         if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
             if task == self.focus_task.peek():
                 self.focus_task.pop()
+                self.focus_action = None
             if task in self.tasks:
                 self.tasks.remove(task)
             if self.focus_goal:
@@ -2335,6 +2336,9 @@ End your response with:
         text, response_source = self.generate_dialog_turn(self, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         action = Act(mode='Think', action=text, actors=[self], reason=text, duration=1, source=response_source, target=self)
         await self.act_on_action(action, response_source)
+        await asyncio.sleep(0.1)
+        if self.focus_action == action:
+            self.focus_action = None
 
 
     async def hear(self, from_actor: Character, message: str, source: Task=None, respond: bool=True):
@@ -2380,6 +2384,9 @@ End your response with:
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=from_actor)
         await self.act_on_action(action, response_source)
+        if self.focus_action == action:
+            self.focus_action = None
+        await asyncio.sleep(0.1)
 
     def generate_dialog_turn(self, from_actor, message, source=None):
         #self.memory_consolidator.update_cognitive_model(
@@ -2857,7 +2864,8 @@ End your response with:
         task = self.focus_task.peek()
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
-        while self.focus_task.peek() is task:
+        act_count=0
+        while act_count < 4 and self.focus_task.peek() is task:
             action_alternatives = self.generate_acts(task)
             await self.request_act_choice(action_alternatives)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
@@ -2865,6 +2873,7 @@ End your response with:
 
             if self.focus_action:
                 await self.act_on_action(self.focus_action, task)
+                act_count += 1
                 #this will affect selected act and determine consequences
                 act_duration = timedelta(minutes=10)
                 if hasattr(self.focus_action, 'duration'):
@@ -2876,6 +2885,7 @@ End your response with:
                 self.context.simulation_time += act_duration
                 if self.focus_task.peek() is task:
                     await self.clear_task_if_satisfied(task)
+                    await asyncio.sleep(0.1)
             else:
                 print(f'No action for task {task.name}')
                 return
