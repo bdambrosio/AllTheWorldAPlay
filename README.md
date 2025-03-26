@@ -1,5 +1,6 @@
 # AllTheWorldAPlay[^1] (ATWAP)
 
+## quick patch for looping bug now live. 
 ## Call for *alpha* testers, explorers, collaborators, ...
 
 ## A playground for cognitive software. 
@@ -94,6 +95,10 @@ I use this launch.json in Cursor to launch the main simulation engine:
 - 'Director's chair in bottom right of main screen allows you to choose actions for actors. Only Acts works at the moment, I think.
 - Overall, be very patient. Sorry, they have a lot to do, it takes time.
 - See [Slides](https://tuuyi.com) for more on what you should see / can do.
+
+## Random notes
+- if you don't like how a play is going, reload it! Every run is different.
+- If you don't like something about a character, tweak the play (they are all in src/plays). Plays are python, best to just edit the text strings unless you've looked at the engine code.
 
 Ideas / contributions (via PRs?) most welcome.
 
