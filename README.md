@@ -1,9 +1,13 @@
-# AllTheWorldAPlay[^1] (ATWAP)
+## AllTheWorldAPlay[^1] (ATWAP)
+### A playground for cognitive software and other beings.
 
-## quick patch for looping bug now live. 
-## Call for *alpha* testers, explorers, collaborators, ...
+### Call for *alpha* testers, explorers, collaborators, ...
+### Map! very crude placeholder, but maybe fun. As with most other stuff, only try while paused. If it hangs, close the window. It takes up to a minute or so to generate the map, be patient
 
-## A playground for cognitive software. 
+### quick patch for looping bug now live. 
+
+
+
 
 ![Play screenshot](docs/images/WebworldMain.png)
 
