@@ -20,6 +20,7 @@ import zmq
 import zmq.asyncio
 import subprocess
 import websockets
+import matplotlib.pyplot as plt
 
 app = FastAPI()
 

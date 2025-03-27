@@ -4,6 +4,8 @@ import random
 from typing import Optional
 
 import os, json, math, time, requests, sys
+
+from src.sim.mapview import MapVisualizer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +22,7 @@ import traceback  # Add at top if not already imported
 from datetime import datetime, timedelta
 import zmq
 import zmq.asyncio
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(
@@ -53,7 +56,11 @@ class SimulationServer:
         logger.info("SimulationServer: ZMQ connections established and ready for commands")
                 
     async def send_result(self, result):
-        await self.result_socket.send_json(result)
+        try:
+            await self.result_socket.send_json(result)
+        except Exception as e:
+            logger.error(f"Error sending result: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
         
     async def send_command_ack(self, command):
         await self.result_socket.send_json({'type': 'command_ack', 'command': command})
@@ -164,6 +171,9 @@ class SimulationServer:
                 await self.send_character_update(char)
             await asyncio.sleep(0.1)
             
+            self.next_actor_index = 0
+            self.image_cache = {}
+            self.steps_since_last_update = 0
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
 
         except Exception as e:
@@ -393,6 +403,28 @@ class SimulationServer:
             elif cmd_name == 'set_autonomy':
                 await self.set_autonomy_cmd(command)
                 await asyncio.sleep(0.1)
+            elif cmd_name == 'showMap':
+                try:
+                    viz = MapVisualizer(self.sim_context.map)
+                    viz.draw_terrain_and_infrastructure()
+                    
+                    # Use non-blocking mode and handle window closing
+                    plt.ion()  # Turn on interactive mode
+                    plt.show(block=False)  # Show without blocking
+                    
+                    # Wait for window to be closed
+                    while plt.get_fignums():
+                        plt.pause(0.1)  # Small pause to prevent CPU spinning
+                    
+                    plt.close('all')  # Clean up all figures
+                    plt.ioff()  # Turn off interactive mode
+                    
+                except Exception as e:
+                    logger.error(f"Error showing map: {e}")
+                    logger.error(f"Traceback:\n{traceback.format_exc()}")
+                    plt.close('all')  # Ensure cleanup even on error
+                    plt.ioff()
+                await asyncio.sleep(0.1)
             else:
                 await self.send_result({
                     'type': 'error',
@@ -408,41 +440,46 @@ class SimulationServer:
     async def check_message_queue(self):
         """Monitor the context message queue and forward messages via ZMQ"""
         while True:
-            if self.sim_context and not self.sim_context.message_queue.empty():
-                message = self.sim_context.message_queue.get_nowait()
-                if message['text'] == 'character_update':
-                    # async character update messages include the actor data in the message
-                    actor_data = message['data']
-                    if self.image_cache[message['name']]:
-                        actor_data['image'] = self.image_cache[message['name']]
-            
-                    await self.send_result({
-                        'type': 'character_update',
-                        'character': actor_data
-                    })
-                elif message['text'] == 'world_update':
-                    # async character update messages include the actor data in the message
-                    world_data = message['data']
-                    if world_data['image'] is None and self.image_cache[message['world']]:
-                        world_data['image'] = self.image_cache['world']
-            
-                    await self.send_result({
-                        'type': 'world_update',
-                        'world': world_data
-                    })
-                elif 'chat_response' in message.keys():
-                    await self.send_result({
-                        'type': 'chat_response',
-                        'char_name': message['name'],
-                        'text': message['text']
-                    })
-                elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice']:
-                    await self.send_result(message)
-                else:
-                    await self.send_result({
-                        'type': 'show_update',
-                        'message': message
-                    })
+            try:
+                if self.sim_context and not self.sim_context.message_queue.empty():
+                    message = self.sim_context.message_queue.get_nowait()
+                    if message['text'] == 'character_update':
+                        # async character update messages include the actor data in the message
+                        actor_data = message['data']
+                        if message['name'] in self.image_cache: 
+                            if self.image_cache[message['name']]:
+                                actor_data['image'] = self.image_cache[message['name']]
+                
+                        await self.send_result({
+                            'type': 'character_update',
+                            'character': actor_data
+                        })
+                    elif message['text'] == 'world_update':
+                        # async character update messages include the actor data in the message
+                        world_data = message['data']
+                        if world_data['image'] is None and self.image_cache[message['world']]:
+                            world_data['image'] = self.image_cache['world']
+                
+                        await self.send_result({
+                            'type': 'world_update',
+                            'world': world_data
+                        })
+                    elif 'chat_response' in message.keys():
+                        await self.send_result({
+                            'type': 'chat_response',
+                            'char_name': message['name'],
+                            'text': message['text']
+                        })
+                    elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice']:
+                        await self.send_result(message)
+                    else:
+                        await self.send_result({
+                            'type': 'show_update',
+                            'message': {'name': message['name'], 'text': message['text']}  # Send the text directly instead of wrapping in message
+                        })
+            except Exception as e:
+                logger.error(f"Error in message queue: {e}")
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
             await asyncio.sleep(0.1)
         
     async def run(self):

@@ -1,4 +1,6 @@
 from enum import Enum
+
+from matplotlib import pyplot as plt
 from sim.cognitive.driveSignal import Drive
 import sim.worldsim as worldsim
 import sim.agh as agh
@@ -6,6 +8,8 @@ from sim.context import Context
 import plays.config as configuration
 from sim.scenarios import rural  # Import the entire scenario module
 import importlib
+
+from src.sim.mapview import MapVisualizer
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 importlib.reload(rural)
@@ -49,7 +53,6 @@ W = Context([J, F],
 
 J.mapAgent.move_to_resource('Marquart Farm')
 W.reference_manager.declare_relationship('Marquart Farmhouse_owner', 'father of', 'Jean Macquart', 'child_of')
-print(J.look())
 F.mapAgent.move_to_resource('Fouan Farm')
+W.reference_manager.declare_relationship('Fouan Farmhouse_owner', 'father of', 'Francoise', 'child_of')
 print(F.look())
-

@@ -21,7 +21,7 @@ class ApocalypseResources(Enum):
     Cafe = auto()        # Food/drink venues
     Bench = auto()       # Rest spots
     TrashBin = auto()    # Waste disposal
-    Market = auto()      # Required by map.py
+    Park = auto()      # Required by map.py
 
 class ApocalypseProperty(Enum):
     Building = auto()    # Commercial/residential
@@ -72,6 +72,10 @@ infrastructure_types = ApocalypseInfrastructure
 property_types = ApocalypseProperty
 resource_types = ApocalypseResources
 
+# Add at top with other interface names
+required_resource = resource_types.Park  # or Market, etc.
+required_resource_name = "Park"  # or "Market", etc.
+
 resource_rules = {
     'allocations': [
         {
@@ -121,8 +125,8 @@ resource_rules = {
             }
         },
         {
-            'resource_type': resource_types.Market,  # Required by map.py
-            'description': 'A bustling marketplace',
+            'resource_type': resource_types.Park,  # Required by map.py
+            'description': 'A park',
             'count': 1,
             'requires_property': True,
             'terrain_weights': {

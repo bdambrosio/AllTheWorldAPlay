@@ -7,24 +7,47 @@ import numpy as np
 class MapVisualizer:
     def __init__(self, world):
         self.world = world
-        # Should get colors from world's scenario data, not hardcoded
-        self.terrain_colors = {
-            self.world.terrain_types.Water: 'blue',
-            self.world.terrain_types.Mountain: 'gray',
-            self.world.terrain_types.Forest: 'darkgreen',
-            self.world.terrain_types.Grassland: 'lightgreen',
-            self.world.terrain_types.Field: 'yellow'
+        
+        # Get terrain types from world's scenario
+        terrain_types = self.world.terrain_types
+        
+        # Define base colors for common terrain types
+        base_colors = {
+            'Water': 'blue',
+            'Mountain': 'gray',
+            'Forest': 'darkgreen',
+            'Grassland': 'lightgreen',
+            'Field': 'yellow',
+            'Clearing': 'lightgreen',
+            'Meadow': 'yellow'
         }
         
-        # Create colormap for terrain
-        terrain_colors = ['blue', 'green', 'darkgreen', 'yellow', 'gray']
-        self.terrain_cmap = ListedColormap(terrain_colors)
-
-        # Add missing terrain types dynamically (for different scenarios)
-        for terrain_type in [t for t in self.world.terrain_types]:
+        # Create terrain colors mapping using world's terrain types
+        self.terrain_colors = {}
+        
+        # Keep track of used colors
+        used_colors = set()
+        
+        # First pass: assign base colors to matching terrain types
+        for terrain_type in terrain_types:
+            if terrain_type.name in base_colors:
+                self.terrain_colors[terrain_type] = base_colors[terrain_type.name]
+                used_colors.add(base_colors[terrain_type.name])
+        
+        # Second pass: assign unused base colors to remaining terrain types
+        unused_colors = [color for color in base_colors.values() if color not in used_colors]
+        color_index = 0
+        
+        for terrain_type in terrain_types:
             if terrain_type not in self.terrain_colors:
-                # Use a default color for any terrain types not explicitly defined
-                self.terrain_colors[terrain_type] = 'white'
+                if color_index < len(unused_colors):
+                    self.terrain_colors[terrain_type] = unused_colors[color_index]
+                    color_index += 1
+                else:
+                    # If we run out of unused colors, generate a new distinct color
+                    hue = color_index / len(terrain_types)
+                    self.terrain_colors[terrain_type] = plt.cm.hsv(hue)
+        
 
     def draw_elevation(self, ax=None):
         """Draw elevation map using a continuous colormap"""
@@ -55,7 +78,7 @@ class MapVisualizer:
                 color = self.terrain_colors.get(patch.terrain_type, 'white')
                 plt.plot(x, y, 's', color=color, markersize=5)
                 # Add resource indicator if patch has any resources
-                if patch.resources and self.world.resource_types.Market not in patch.resources:
+                if patch.resources and self.world.scenario_module.required_resource not in patch.resources:
                     plt.plot(x, y, 'o', color='purple', markersize=3)
                     print(f"DEBUG: Drawing resource indicator at ({x}, {y})")
 
@@ -71,34 +94,41 @@ class MapVisualizer:
                             plt.plot([x, nx], [y, ny], 'k-', linewidth=0.5)
 
         # Draw roads
-        road_edges = list(self.world.road_graph.edges())
+        road_edges = list(self.world.road_graph.edges(data=True))
         if road_edges:
             # Create a color map for different path types
-            path_colors = {
-                self.world.infrastructure_types.Road: 'yellow',
-                self.world.infrastructure_types.Trail: 'brown',
-                # Default for any other type
-                None: 'gray'
+            path_colors = {}
+            
+            # Define base colors for common infrastructure types
+            base_path_colors = {
+                'Road': 'yellow',
+                'Trail': 'brown'
             }
             
-            print(f"DEBUG: Drawing {len(road_edges)} path edges")
+            # Assign colors to infrastructure types that exist in the scenario
+            for infra_type in self.world.infrastructure_types:
+                if infra_type.name in base_path_colors:
+                    path_colors[infra_type] = base_path_colors[infra_type.name]
+                    # Add legend entry once per type
+                    legend_elements.append(plt.Line2D([0], [0], color=base_path_colors[infra_type.name], 
+                                                   linewidth=2, label=infra_type.name))
+            
+            # Default color for unknown types
+            path_colors[None] = 'gray'
+            
+            # Draw the paths (without legend entries)
             for (x1, y1), (x2, y2), data in road_edges:
                 path_type = data.get('type', None)
-                color = path_colors.get(path_type, 'gray')  # Default to gray if type unknown
+                color = path_colors.get(path_type, 'gray')
                 plt.plot([x1, x2], [y1, y2], color=color, linewidth=2)
-                
-                # Add to legend if not already there
-                if path_type and path_type not in [e.get_label() for e in legend_elements]:
-                    legend_elements.append(plt.Line2D([0], [0], color=color, linewidth=2,
-                                                  label=path_type.name))
 
         # Draw markets
         for x in range(self.world.width):
             for y in range(self.world.height):
                 patch = self.world.patches[x][y]
-                if self.world.resource_types.Market in patch.resources:
+                if self.world.scenario_module.required_resource in patch.resources:
                     plt.plot(x, y, 'r*', markersize=15)
-                    print(f"DEBUG: Drawing market at {x}, {y}")
+                    print(f"DEBUG: Drawing {self.world.scenario_module.required_resource_name} at {x}, {y}")
 
         # Add legend elements for terrain types
         for terrain_type, color in self.terrain_colors.items():

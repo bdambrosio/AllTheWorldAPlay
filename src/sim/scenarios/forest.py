@@ -14,7 +14,6 @@ class ForestInfrastructure(Enum):
     Trail = auto()    
 
 class ForestResources(Enum):
-    Market = auto()
     Berries = auto()
     Mushrooms = auto()
     Apple_Tree = auto()
@@ -22,6 +21,7 @@ class ForestResources(Enum):
     Spring = auto()     # Water source
     Cave = auto()       # Potential shelter
     Thicket = auto()    # Dense vegetation, potential shelter
+    Hut = auto()         # Added for the new required_resource
 
 class ForestProperty(Enum):
     pass  # Keeping property system but wilderness has no ownership
@@ -66,6 +66,10 @@ terrain_types = ForestTerrain
 infrastructure_types = ForestInfrastructure
 property_types = ForestProperty
 resource_types = ForestResources
+
+# Add at top with other interface names
+required_resource = resource_types.Hut  # or Market, etc.
+required_resource_name = "Hut"  # or "Market", etc.
 
 resource_rules = {
     'allocations': [
