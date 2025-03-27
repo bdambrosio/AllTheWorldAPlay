@@ -1382,7 +1382,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
 
-Reason step-by-step to ensure your response comprehensively captures the highest-level goal of the character in the situation.
+
 Respond ONLY with the above hash-formatted text.
 End response with:
 <end/>
