@@ -25,12 +25,15 @@ class OpenAIClient():
             stops=[]
         if options.stop_on_json:
             stops.append('}')
-
+        if options.model is not None:
+            model = options.model
+        else:
+            model = 'gpt-4o-mini'
         try:
             response = client.chat.completions.create(
-                model=options.model, messages=prompt,
+                model=model, messages=prompt,
                 max_tokens=options.max_tokens, temperature=options.temperature, top_p=options.top_p,
-                stop=options.stops, stream=False, response_format = { "type": "json_object" })
+                stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
             item = response.choices[0].message
             return item.content
             #return {"status":'success', "message":{"role":'assistant', "content":item.content}}

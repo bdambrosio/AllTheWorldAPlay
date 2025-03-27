@@ -151,7 +151,7 @@ class LLM():
         if 'Grok' in self.server_name:
             response= GrokClient.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if options.model is not None and 'gpt' in options.model:
+        if 'openai' in self.server_name or (options.model is not None and 'gpt' in options.model):
             response= openai_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         else:

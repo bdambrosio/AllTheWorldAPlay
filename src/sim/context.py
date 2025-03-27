@@ -522,27 +522,29 @@ End your response with:
                                 temp=0.6, stops=['<end/>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
-        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
-        self.transcript.append(f'\n\n-----scene----- {self.simulation_time.isoformat()}\n')
-        await asyncio.sleep(0.1)
+        if not local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
+            self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
+            self.transcript.append(f'\n\n-----scene----- {self.simulation_time.isoformat()}\n')
+            await asyncio.sleep(0.1)
          
         if new_situation is None:
             return
         self.current_state = new_situation
+        if local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
+            self.last_update_time = self.simulation_time
+            return
         self.show = new_situation
         self.message_queue.put({'name':self.name, 'text':self.show})
         self.transcript.append(f'{self.show}')
         self.show = '' # has been added to message queue!
         await asyncio.sleep(0.1)
-        if local_only:
-            return
 
         updates = self.world_updates_from_act_consequences(new_situation)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            actor.forward(self.step)  # forward three hours and update history, etc
+            #actor.forward(self.step)  # forward three hours and update history, etc
         return response
 
 
