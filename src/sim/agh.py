@@ -2869,7 +2869,7 @@ End your response with:
                 self.focus_task.push(self.tasks[0])
                 self.tasks.pop(0)
                 return True
-        return True
+        return self.focus_task.peek() is None
             
         
     async def step_task(self, sense_data='', ui_queue=None):

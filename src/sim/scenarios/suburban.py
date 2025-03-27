@@ -76,6 +76,10 @@ infrastructure_types = SuburbanInfrastructure
 property_types = SuburbanProperty
 resource_types = SuburbanResources
 
+# Add at top with other interface names
+required_resource = resource_types.Office  # or Market, etc.
+required_resource_name = "Office"  # or "Market", etc.
+
 resource_rules = {
     'allocations': [
         {

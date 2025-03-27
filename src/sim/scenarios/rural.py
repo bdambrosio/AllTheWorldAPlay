@@ -65,6 +65,10 @@ infrastructure_types = RuralInfrastructure
 property_types = RuralProperty
 resource_types = RuralResources
 
+# Add at top with other interface names
+required_resource = resource_types.Mill  # or Market, etc.
+required_resource_name = "Mill"  # or "Market", etc.
+
 resource_rules = {
 
     'names': {
@@ -87,7 +91,7 @@ resource_rules = {
             'resource_type': resource_types.Mill,
             'has_npc': True,
             'description': 'A grain mill',
-            'count': 2,
+            'count': 1,
             'requires_property': True,
             'terrain_weights': {
                 terrain_types.Field: 2.0,

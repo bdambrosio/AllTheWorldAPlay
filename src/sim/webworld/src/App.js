@@ -81,22 +81,26 @@ function App() {
                 }));
                 break;
               case 'show_update':
+                console.log('show_update:', data.text);
                 setLogText(prev => {
                   const newEntry = data.text;
                   return prev ? `${prev} \n${newEntry}` : newEntry;
                 });
                 break;
               case 'context_update':
+                console.log('context_update:', data.text);
                 setLogText(prev => {
                   const newEntry = data.text; 
                   return prev ? `${prev} \n\n ${newEntry} \n\n` : newEntry;
                 });
                 break;
               case 'status_update':
+                console.log('status_update:', data.status);
                 setSimState(data.status);
                 setIsProcessing(data.status.running && !data.status.paused);
                 break;
               case 'output':
+                console.log('output:', data.text);
                 setMessages(prev => [...prev, data.text]);
                 break;
               case 'play_list':
@@ -113,9 +117,11 @@ function App() {
                 setCurrentPlay(data.name);
                 break;
               case 'state_update':
+                console.log('state_update:', data);
                 setSimState(data);
                 break;
               case 'world_update':
+                console.log('world_update:', data.data);
                 setWorldState(data.data);
                 break;
               case 'command_complete':
@@ -132,6 +138,7 @@ function App() {
                 }));
                 break;
               case 'chat_response':
+                console.log('chat_response:', data.text);
                 setCharacters(prev => ({
                   ...prev,
                   [data.char_name]: {
@@ -284,6 +291,7 @@ function App() {
             onClick={handleStep} 
             disabled={isProcessing || simState.running}>Step</button>
           <button className="control-button" onClick={handlePause}>Pause</button>
+          <button className="control-button" onClick={() => sendCommand('showMap')}>Show Map</button>
           <button onClick={handleRefresh} className="control-button">
             Refresh
           </button>

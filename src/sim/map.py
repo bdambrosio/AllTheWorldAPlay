@@ -802,39 +802,39 @@ class WorldMap:
         return self.resource_registry[resource_id]
 
     def generate_market_resource(self):
-        """Generate market before other resources and infrastructure"""
+        """Generate central resource (market/hut/etc) before other resources and infrastructure"""
         market_x = random.randint(self.width // 4, 3 * self.width // 4)
         market_y = random.randint(3 * self.height // 4, self.height - 1)
         
-        resource_id = self._generate_resource_id(self.resource_types.Market)
+        resource_id = self._generate_resource_id(self.scenario_module.required_resource)
         self.resource_registry[resource_id] = {
-            'type': self.resource_types.Market,
+            'type': self.scenario_module.required_resource,
             'name': resource_id,
             'location': (market_x, market_y),
             'properties': {}
         }
         self.patches[market_x][market_y].resources[resource_id] = 1
-        print(f"DEBUG: Placed market resource {resource_id} at ({market_x}, {market_y})")
+        print(f"DEBUG: Placed {self.scenario_module.required_resource_name} resource {resource_id} at ({market_x}, {market_y})")
 
     def generate_infrastructure(self):
-        """Generate roads connecting market to resources"""
+        """Generate roads connecting central resource to other resources"""
         if not self._infrastructure_rules:
             return
             
         print("Generating infrastructure...")
         
-        # Generate market first
+        # Generate central resource first
         self.generate_market_resource()
         
-        # Get market location from registry
+        # Get central resource location from registry
         market_resource = next((res for res in self.resource_registry.values() 
-                              if res['type'] == self.resource_types.Market), None)
+                              if res['type'] == self.scenario_module.required_resource), None)
         if not market_resource:
-            print("ERROR: No market placed")
+            print(f"ERROR: No {self.scenario_module.required_resource_name} placed")
             return
             
         market_x, market_y = market_resource['location']
-        print(f"DEBUG: Starting road network from market at ({market_x}, {market_y})")
+        print(f"DEBUG: Starting road network from {self.scenario_module.required_resource_name} at ({market_x}, {market_y})")
         
         # Convert terrain cost rules to enum values
         self.terrain_costs = {}
@@ -867,7 +867,7 @@ class WorldMap:
             
             # Find nearest unconnected resource
             for resource_id, resource in self.resource_registry.items():
-                if resource['type'] == self.resource_types.Market:
+                if resource['type'] == self.scenario_module.required_resource:
                     continue
                     
                 res_x, res_y = resource['location']

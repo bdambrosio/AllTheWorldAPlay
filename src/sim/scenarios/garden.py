@@ -16,7 +16,7 @@ class GardenInfrastructure(Enum):
     Trail = auto()    
 
 class GardenResources(Enum):
-    Market = auto()
+    Tree = auto()
     Bug = auto()
     Butterfly = auto()
     Leaf = auto()
@@ -69,6 +69,10 @@ terrain_types = GardenTerrain
 infrastructure_types = GardenInfrastructure
 property_types = GardenProperty
 resource_types = GardenResources
+
+# Add at top with other interface names
+required_resource = resource_types.Tree  # or Market, etc.
+required_resource_name = "Tree"  # or "Market", etc.
 
 resource_rules = {
     'allocations': [

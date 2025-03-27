@@ -18,7 +18,6 @@ class CoastalInfrastructure(Enum):
     Dock = auto()     # Water access
 
 class CoastalResources(Enum):
-    Market = auto()
     Bench = auto()
     Boat = auto()
     Tools = auto()
@@ -76,6 +75,10 @@ terrain_types = CoastalTerrain
 infrastructure_types = CoastalInfrastructure
 property_types = CoastalProperty
 resource_types = CoastalResources
+
+# Add at top with other interface names
+required_resource = resource_types.Workshop  # or Market, etc.
+required_resource_name = "Workshop"  # or "Market", etc.
 
 resource_rules = {
     'allocations': [
