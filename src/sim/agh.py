@@ -195,7 +195,7 @@ class Task:
         return f'Task {self.name}: {self.description}; actors: {[actor.name for actor in self.actors]}; reason: {self.reason}; termination: {self.termination}'
     
     def to_fullstring(self):
-        return f'Task {self.name}: {self.description}. Reason: {self.reason}.   Actors: {[actor.name for actor in self.actors]}\n    Start time: {self.start_time};  Duration: {self.duration}\n    Termination: {self.termination}'
+        return f'Task {self.name}: {self.description}\n   Reason: {self.reason}\n   Actors: {[actor.name for actor in self.actors]}\n    Start time: {self.start_time};  Duration: {self.duration}\n    Termination Criterion: {self.termination}'
  
     def test_termination(self, events=''):
         """Test if recent acts, events, or world update have satisfied termination"""
@@ -1170,7 +1170,7 @@ End response with:
 
         # Update thought display
         self.thought +=  self.reason
-
+        self.lastActResult = ''
             
         if act_mode == 'Move':
             act_arg = act_arg.strip()
@@ -1198,7 +1198,7 @@ End response with:
             consequences, world_updates, character_updates = self.context.do(self, act_arg)
             if len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
-        
+            self.lastActResult = character_updates
             if source == None:
                 source = self.focus_task.peek()
             task = source
@@ -1708,7 +1708,7 @@ End response with:
     def generate_acts(self, task):
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
-        mission = """generate a set of three alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task.
+        mission = """generate a set of two alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task:
 
 <task>
 {{$task_string}}
@@ -1895,7 +1895,7 @@ End your response with:
             if not self.focus_goal:
                 print(f'{self.name} generate_act_alternatives: no focus goal either!')
             task.goal = self.focus_goal
-        if len(act_hashes) < 3:
+        if len(act_hashes) < 2:
             print(f'{self.name} generate_act_alternatives: only {len(act_hashes)} acts found')
         for act_hash in act_hashes:
             try:
@@ -2842,7 +2842,7 @@ End your response with:
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
-        self.context.message_queue.put({'name':self.name, 'text':f'\n-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
+        self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
         self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
         self.thought = ''
@@ -2900,15 +2900,15 @@ End your response with:
        
     async def step_tasks(self):
         task_count = 0
-        while task_count < 2 and self.focus_task.peek():
+        while task_count < 3 and self.focus_task.peek():
             outcome = await self.step_task()
             # outcome is False if task is not completed
             if outcome and self.tasks and len(self.tasks) > 0:
                 self.focus_task.push(self.tasks[0])
                 self.tasks.pop(0)
                 # return allows yield to other coroutines / actors
-                return True
-            elif outcome: # task entire task plan is doneis completed
+                #return True
+            elif outcome: # task entire task plan is done
                 return True
             elif self.tasks and len(self.tasks) > 0: # failed at task, but continue with next task - tbd - replan?
                 self.focus_task.push(self.tasks[0])
@@ -2928,8 +2928,8 @@ End your response with:
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
-        action_alternatives = self.generate_acts(task)
         while act_count < 2 and self.focus_task.peek() is task:
+            action_alternatives = self.generate_acts(task)
             await self.request_act_choice(action_alternatives)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             await asyncio.sleep(0.1)
@@ -2949,7 +2949,10 @@ End your response with:
                 if self.focus_task.peek() is task:
                     await self.clear_task_if_satisfied(task)
                     await asyncio.sleep(0.1)
-                    return self.focus_task.peek() != task
+                    if self.focus_task.peek() != task: # task completed
+                        return True
+                else:
+                    return True
             else:
                 print(f'No action for task {task.name}')
                 return False
@@ -2962,6 +2965,7 @@ End your response with:
                 if task.goal not in drive.attempted_goals:
                     drive.attempted_goals.append(task.goal)
         self.act = action
+        self.last_act = action
         if task:
             task.acts.append(action)
         act_mode = action.mode

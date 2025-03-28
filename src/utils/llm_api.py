@@ -133,6 +133,7 @@ class LLM():
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
+        print(f'\n{substituted_prompt}\n')
         if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
