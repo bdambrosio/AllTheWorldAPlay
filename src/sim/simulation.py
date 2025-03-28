@@ -311,9 +311,10 @@ class SimulationServer:
             Viewer = self.sim_context.get_npc_by_name('Viewer', create_if_missing=True)
 
             # does an npc have a task or goal? - acts say will handle this automagically
-            task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination='', goal=None, actors=[Viewer, target])
+            task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination=f'talked to {target_name}', goal=None, actors=[Viewer, target])
             Viewer.focus_task.push(task)
             await Viewer.act_on_action(Act(mode='Say', action=text, actors=[Viewer, target], reason='inject', duration=1, source=None, target=target), task)
+            Viewer.focus_task.pop()
             await asyncio.sleep(0.1)
             await self.send_result({
                 'type': 'inject',

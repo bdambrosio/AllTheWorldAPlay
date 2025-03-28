@@ -2345,7 +2345,7 @@ End your response with:
             print(f'{self.name} natural_dialog_end: invalid rating: {response}')
             rating = 7
         # force end to run_on conversations
-        end_point = rating > 7 or random.randint(4, 10) < rating or rating + len(transcript.split('\n')) > random.randint(8,10)
+        end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10))
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
             
