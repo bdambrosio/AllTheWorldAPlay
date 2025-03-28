@@ -927,7 +927,7 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         perceptual_input = PerceptualInput(
             mode=mode,
             content=perceived_content if percept else message,
-            timestamp=datetime.now(),
+            timestamp=self.context.simulation_time,
             intensity=intensity
         )
         self.perceptual_state.add_input(perceptual_input)
@@ -1311,8 +1311,12 @@ End response with:
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        signal_memories = []
         for sc in focus_signalClusters:
             sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
+            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
+            signal_memories.extend(perceptual_memories)
+
         prompt = [UserMessage(content="""Identify the highest priority goal alternatives the actor should focus on given the following information.
 A goal in this context is an overarching objective that captures the central topic of the entire situation and character described below.
                               
@@ -1355,6 +1359,12 @@ These clusters may overlap.
 {{$signalClusters}}
 </signalClusters>
 
+Following are memories relevant to the signalClusters above. Consider them in your goal generation:
+
+<signal_memories>
+{{$signal_memories}}
+</signal_memories>
+
 Consider:
 1. What is the central issue / opportunity / obligation demanding the character's attention?
 2. Any patterns or trends in the past goals, tasks, or actions that might affect the choice of goal?
@@ -1396,6 +1406,7 @@ End response with:
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, temp=0.3, stops=['<end/>'], max_tokens=240)
         goals = []
@@ -1456,10 +1467,26 @@ End response with:
 {{$focus_goal}}
 
 """
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        goal_memories = []
+        for sc in focus_signalClusters:
+            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
+            for pm in perceptual_memories:
+                if pm not in goal_memories:
+                    goal_memories.append(pm)
+        for goal in self.goals:
+            memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.01, max_results=3)
+            for gm in memories:
+                if gm not in goal_memories:
+                    goal_memories.append(gm)
+
         response = default_ask(self, 
                                'create a sequence of 3-6 tasks to achieve the focus goal', 
                                suffix, 
-                               {"focus_goal":self.focus_goal.to_string()}, 400)
+                               {"focus_goal":self.focus_goal.to_string(),
+                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 400)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -1690,6 +1717,10 @@ End response with:
 """
         suffix = """
 
+recent percepts related to the current goals and tasks include:
+
+{{$goal_memories}}
+
 Respond with tree alternative Acts, including their Mode and action. 
 The Acts should vary in mode and action.
 
@@ -1833,7 +1864,21 @@ End your response with:
 </end>
 """
 
-        response = default_ask(character=self, mission=mission, suffix=suffix, addl_bindings={"task":task, "task_string":task.to_fullstring()}, max_tokens=280)
+        goal_memories = []
+        for goal in self.goals:
+            memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.01, max_results=3)
+            for gm in memories:
+                if gm not in goal_memories:
+                    goal_memories.append(gm)
+        for task in self.tasks:
+            memories = self.perceptual_state.get_information_items(task.short_string(), threshold=0.01, max_results=3)
+            for tm in memories:
+                if tm not in goal_memories:
+                    goal_memories.append(tm)
+
+        response = default_ask(character=self, mission=mission, suffix=suffix, 
+                               addl_bindings={"task":task, "task_string":task.to_fullstring(),
+                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=280)
         response = response.strip()
         if not response.endswith('</act>'):
             response += '\n</act>'

@@ -17,8 +17,7 @@ from sim.cognitive.DialogManager import Dialog
 
 def ask (character:Character, mission:str, suffix:str, addl_bindings:dict, max_tokens:int=100):
 
-    prompt = [UserMessage(content="""You are {{$name}}.
-Please {{$mission}}
+    prompt = [UserMessage(content=mission+"""\nYou are {{$name}}.
 
 Your current situation is:
 
