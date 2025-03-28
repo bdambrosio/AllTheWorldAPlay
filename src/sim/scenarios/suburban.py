@@ -10,7 +10,7 @@ class SuburbanTerrain(Enum):
     Street = 4        # Vehicle paths
     Sidewalk = 5      # Pedestrian paths
     Park = 6          # Public outdoor space
-    Office = 7        # Indoor work space
+    City = 7        # Indoor work space
 
 class SuburbanInfrastructure(Enum):
     Sidewalk = auto()  # Pedestrian infrastructure
@@ -24,7 +24,7 @@ class SuburbanResources(Enum):
     Mailbox = auto()
     Coffee_Maker = auto()
     Bed = auto()
-    Market = auto()     # Required by map.py
+    Office = auto()     # Required by map.py
 
 class SuburbanProperty(Enum):
     House = auto()     # Private residential

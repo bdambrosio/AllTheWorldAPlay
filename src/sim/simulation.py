@@ -458,8 +458,17 @@ class SimulationServer:
                     elif message['text'] == 'world_update':
                         # async character update messages include the actor data in the message
                         world_data = message['data']
-                        if world_data['image'] is None and self.image_cache[message['world']]:
-                            world_data['image'] = self.image_cache['world']
+                        image_path = world_data['image']
+                        try:
+                            with open(image_path, 'rb') as f:
+                                image_data = base64.b64encode(f.read()).decode()
+                                world_data['image'] = image_data
+                                self.image_cache['world'] = image_data
+                        except Exception as e:
+                            logger.error(f"Error in world update: {e}")
+                            logger.error(f"Traceback:\n{traceback.format_exc()}")
+                            if self.image_cache['world']:
+                                world_data['image'] = self.image_cache['world']
                 
                         await self.send_result({
                             'type': 'world_update',

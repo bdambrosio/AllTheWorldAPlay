@@ -72,7 +72,7 @@ required_resource_name = "Mill"  # or "Market", etc.
 resource_rules = {
 
     'names': {
-        'Farm': ['Marquart Farm', 'Fouan Farm'],
+        'Farm': ['Marquart farm', 'Fouan farm'],
 
     },
     'allocations': [

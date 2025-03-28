@@ -927,14 +927,14 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         perceptual_input = PerceptualInput(
             mode=mode,
             content=perceived_content if percept else message,
-            timestamp=self.context.simulation_time,
+            timestamp=self.context.simulation_time if self.context else datetime.now()+timedelta(seconds=10),
             intensity=intensity
         )
         self.perceptual_state.add_input(perceptual_input)
         if self.context:
             input_time = self.context.simulation_time
         else:
-            input_time = datetime.now()
+            input_time = datetime.now()+timedelta(seconds=10)
         self.driveSignalManager.analyze_text(message, self.drives, input_time)
         return perceptual_input
 
@@ -945,7 +945,7 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         entry = MemoryEntry(
             text=message,
             importance=0.5,  # Default importance
-            timestamp=datetime.now(),
+            timestamp=self.context.simulation_time if self.context else datetime.now()+timedelta(seconds=10),
             confidence=1.0
         )
         self.structured_memory.add_entry(entry)
@@ -1760,7 +1760,7 @@ Prioritize actions that lead to meaningful progress in the narrative.
 Dialog guidance:
 - If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
-- Respond in the style of natural spoken dialog, not written text. Use short sentences, contractions, and casual language appropriate to the character's emotional tone and orientation. Speak in the first person.
+- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. Use contractions and casual language appropriate to the character's personality,emotion emotional tone and orientation. Speak in the first person.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
@@ -1856,7 +1856,7 @@ Ensure you do not duplicate content of a previous specific act.
 
 Again, the task to translate into alternative acts is:
 <task>
-{{$task}} 
+{{$task_string}} 
 </task>
 
 Do not include any introductory, explanatory, or discursive text.
@@ -2928,7 +2928,7 @@ End your response with:
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
-        while act_count < 2 and self.focus_task.peek() is task:
+        while act_count < 1 and self.focus_task.peek() is task:
             action_alternatives = self.generate_acts(task)
             await self.request_act_choice(action_alternatives)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
@@ -2938,6 +2938,7 @@ End your response with:
                 await self.act_on_action(self.focus_action, task)
                 act_count += 1
                 #this will affect selected act and determine consequences
+                
                 act_duration = timedelta(minutes=10)
                 if hasattr(self.focus_action, 'duration'):
                     act_duration = self.focus_action.duration
@@ -2946,11 +2947,15 @@ End your response with:
                 elif self.focus_action.mode == 'Say': 
                     act_duration = timedelta(minutes=2)
                 self.context.simulation_time += act_duration
+               
                 if self.focus_task.peek() is task:
                     await self.clear_task_if_satisfied(task)
                     await asyncio.sleep(0.1)
                     if self.focus_task.peek() != task: # task completed
                         return True
+                    else:
+                        self.focus_task.pop() # pretend task is done
+                        return True # probably need to replan around step failure, but we're not going to do that here
                 else:
                     return True
             else:
