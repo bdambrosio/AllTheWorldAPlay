@@ -51,8 +51,9 @@ W = Context([J, F],
     scenario_module=rural,  # Pass the entire module
     server_name=server_name)
 
-J.mapAgent.move_to_resource('Marquart Farm')
-W.reference_manager.declare_relationship('Marquart Farmhouse_owner', 'father of', 'Jean Macquart', 'child_of')
-F.mapAgent.move_to_resource('Fouan Farm')
-W.reference_manager.declare_relationship('Fouan Farmhouse_owner', 'father of', 'Francoise', 'child_of')
+J.mapAgent.move_to_resource('Marquart farm')
+W.reference_manager.declare_relationship('Marquart farm_owner', 'father of', 'Jean', 'child_of')
+J.look()
+F.mapAgent.move_to_resource('Fouan farm')
+W.reference_manager.declare_relationship('Fouan farm_owner', 'father of', 'Francoise', 'child_of')
 print(F.look())
