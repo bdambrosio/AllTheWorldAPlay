@@ -19,54 +19,57 @@ def ask (character:Character, mission:str, suffix:str, addl_bindings:dict, max_t
 
     prompt = [UserMessage(content=mission+"""\nYou are {{$name}}.
 
-Your current situation is:
-
-Character
+#Character
 {{$character}}
 ##
                      
-Drives
+#Drives
 {{$drives}}
 ##
 
-Character Narrative
+#Character Narrative
 {{$narrative}}
 ##
 
-#Surroundings {{$surroundings}}
+Your current situation is:
+
+#Situation 
+{{$situation}}
+##
+
+#Surroundings 
+{{$surroundings}}
 ##
                       
-#Situation {{$situation}}
-
-known other actors 
+#Known other actors 
 {{$actors}}
 ##
 
-known resources
+#Known resources
 {{$resources}}
 ##
 
-recently achieved goals are:
+#Recently achieved goals
 {{$goal_history}}
 ##
 
-recent memories:
+#Recent memories
 {{$memories}}
 ##
 
-Recent history:
+#Recent history
 {{$history}}
 ##
 
-previous act if any:
+#Previous act if any
 {{$lastAct}}
 ##
 
-observed result of that was:
+#Observed result of that act
 {{$lastActResult}}
 ##
 
-emotional stance:
+#Emotional stance
 {{$emotional_stance}}
 ##
 
