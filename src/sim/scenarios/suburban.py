@@ -28,7 +28,7 @@ class SuburbanResources(Enum):
 
 class SuburbanProperty(Enum):
     House = auto()     # Private residential
-    Office = auto()    # Commercial
+    City = auto()    # Commercial
     Park = auto()    # Parks, streets, etc.
 
 # Rules for terrain generation
@@ -45,7 +45,7 @@ terrain_rules = {
         'Street': 0.2,    # Roads
         'Sidewalk': 0.1,  # Pedestrian paths
         'Park': 0.1,      # Public spaces
-        'Office': 0.1     # Commercial buildings
+        'City': 0.1     # Commercial buildings
     }
 }
 
@@ -56,7 +56,7 @@ infrastructure_rules = {
     'terrain_costs': {
         'Water': float('inf'),
         'House': float('inf'),  # Can't walk through houses
-        'Office': float('inf'), # Can't walk through offices
+        'City': float('inf'), # Can't walk through offices
         'Yard': 2.0,           # Crossing yards is possible but discouraged
         'Street': 1.5,         # Streets are crossable but not preferred
         'Sidewalk': 1.0,       # Preferred walking path
@@ -67,7 +67,7 @@ infrastructure_rules = {
 property_rules = {
     'min_size': 10,    # Smaller property sizes for suburban lots
     'max_size': 30,
-    'valid_terrain': ['House', 'Yard', 'Office']  # What can be owned
+    'valid_terrain': ['House', 'Yard', 'City']  # What can be owned
 }
 
 # Standard interface names
@@ -146,12 +146,12 @@ resource_rules = {
             }
         },
         {
-            'resource_type': resource_types.Market,  # This will be our office building
+            'resource_type': resource_types.Office,  # This will be our office building
             'description': 'A downtown office building',
             'count': 1,
             'requires_property': True,
             'terrain_weights': {
-                terrain_types.Office: 2.0  # Higher weight to ensure placement
+                terrain_types.City: 2.0  # Higher weight to ensure placement
             }
         }
     ]
