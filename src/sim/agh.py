@@ -2910,7 +2910,7 @@ End your response with:
                 #return True
             elif outcome: # task entire task plan is done
                 return True
-            elif self.tasks and len(self.tasks) > 0: # failed at task, but continue with next task - tbd - replan?
+            elif self.tasks and len(self.tasks) > 0: # failed at task, but continue with next task - but let other actors run first
                 self.focus_task.push(self.tasks[0])
                 self.tasks.pop(0)
                 return True
@@ -2949,7 +2949,7 @@ End your response with:
                 self.context.simulation_time += act_duration
                
                 if self.focus_task.peek() is task:
-                    await self.clear_task_if_satisfied(task)
+                    await self.clear_task_if_satisfied(task) # will pop focus_task if task is done
                     await asyncio.sleep(0.1)
                     if self.focus_task.peek() != task: # task completed
                         return True
@@ -2961,7 +2961,11 @@ End your response with:
             else:
                 print(f'No action for task {task.name}')
                 return False
-        return self.focus_task.peek() != task
+        if self.focus_task.peek() is task:
+            self.focus_task.pop() # pretend task is done
+            return True # probably need to replan around step failure, but we're not going to do that here
+        else:
+            return True # probably need to replan around step failure, but we're not going to do that here
 
 
     async def act_on_action(self, action: Act, task: Task):
