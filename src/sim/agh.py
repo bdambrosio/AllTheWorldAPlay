@@ -1152,7 +1152,7 @@ End response with:
             if actor:
                 if type(actor.x) == int:
                     raise Exception(f'{self.name} move_toward: actor {actor.name} x is int, not method')
-                self.mapAgent.move_toward_location(actor.x, actor.y)
+                self.mapAgent.move_toward_location(actor.x(), actor.y())
                 return True
             else:
                 return self.mapAgent.move(target_string)
@@ -1178,25 +1178,28 @@ End response with:
         self.lastActResult = ''
             
         if act_mode == 'Move':
-            act_arg = act_arg.strip()
-            if act_arg.startswith('toward'):
-                act_arg = act_arg[len('toward'):]
-                location = None
-                if act_arg.startswith('s '): # just in case towards instead of toward
-                    act_arg = act_arg[len('s '):]
-            moved = self.move_toward(act_arg)
-            percept = self.look(interest=act_arg)
-            if moved:
-                self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
-                self.context.message_queue.put({'name':self.name, 'text':self.show})
-                self.context.transcript.append(f'{self.name}: {self.show}')
-                self.show = '' # has been added to message queue!
-                await asyncio.sleep(0.1)
-                self.show = '' # has been added to message queue!
-            else: 
-                act_mode = 'Do' 
-                act_arg = 'move to ' + act_arg.strip() # some moves are text, not map directions or locations
-
+            try:
+                act_arg = act_arg.strip()
+                if act_arg.startswith('toward'):
+                    act_arg = act_arg[len('toward'):]
+                    location = None
+                    if act_arg.startswith('s '): # just in case towards instead of toward
+                        act_arg = act_arg[len('s '):]
+                moved = self.move_toward(act_arg)
+                percept = self.look(interest=act_arg)
+                if moved:
+                    self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
+                    self.context.message_queue.put({'name':self.name, 'text':self.show})
+                    self.context.transcript.append(f'{self.name}: {self.show}')
+                    self.show = '' # has been added to message queue!
+                    await asyncio.sleep(0.1)
+                    self.show = '' # has been added to message queue!
+                else: 
+                    act_mode = 'Do' 
+                    act_arg = 'move to ' + act_arg.strip() # some moves are text, not map directions or locations
+            except Exception as e:
+                print(f'{self.name} move_toward failure: {e}')
+ 
         # Handle world interaction
         if act_mode == 'Do':
             # Get action consequences from world
