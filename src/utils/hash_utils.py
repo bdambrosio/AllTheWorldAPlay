@@ -184,6 +184,7 @@ def clean(text: str) -> str:
     """Clean up common formatting issues in hash-formatted LLM responses.
     Handles cases like missing newlines before ##, multiple ##, or missing ##.
     Standardizes form separation using ## markers.
+    Also handles cases where tag values are on separate lines.
     
     Args:
         text: String containing hash-formatted text with potential formatting issues
@@ -196,15 +197,28 @@ def clean(text: str) -> str:
     # Split into lines but preserve empty lines initially
     lines = [line.strip() for line in text.split('\n')]
     
-    # Handle ## attached to any line
+    # Handle ## attached to any line and combine tag-value pairs
     cleaned_lines = []
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         if line.endswith('##'):
             # Split at ## and add parts
             cleaned_lines.append(line[:-2].strip())
             cleaned_lines.append('##')
+            i += 1
+        elif line.startswith('#'):
+            # Check if next line is a value (not a tag or ##)
+            if i + 1 < len(lines) and not lines[i + 1].startswith('#') and not lines[i + 1] == '##':
+                # Combine tag and value
+                cleaned_lines.append(f"{line} {lines[i + 1]}")
+                i += 2
+            else:
+                cleaned_lines.append(line)
+                i += 1
         else:
             cleaned_lines.append(line)
+            i += 1
     
     return '\n'.join(cleaned_lines)
 
