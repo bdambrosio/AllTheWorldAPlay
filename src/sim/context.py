@@ -292,6 +292,31 @@ If absolutely no information is available for either field, use "unknown" for th
         return (None, None)
 
     
+    def resolve_resource(self, reference_text):
+        """
+        Resolve a reference to a resource from the map
+        
+        Args:
+            speaker: Character making the reference
+            reference_text: Text to resolve into a resource reference
+            
+        Returns:
+            tuple: (resource, canonical_name) or (None, None) if unresolved
+        """
+        # Normalize reference text
+        reference_text = reference_text.strip().capitalize()
+        
+        # Check active resources first
+        for resource in self.map.resource_registry:
+            if resource.name == reference_text:
+                return (resource, reference_text)
+                    
+        canonical_name = self.reference_manager.resolve_reference_with_llm(reference_text)
+        if canonical_name:
+            return (self.get_actor_or_npc_by_name(canonical_name), reference_text)
+        
+        return (None, None)
+
     def world_updates_from_act_consequences(self, consequences):
         """ This needs overhaul to integrate and maintain consistency with world map."""
         prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
@@ -632,7 +657,7 @@ End your response with:
     {'\n'+'\n        '.join([actor.goals[goal]['name'] for goal in actor.goals])}
     </goals>
     <tasks>
-        {'\n        '.join([hash_utils.find('name', task) for task in actor.tasks])}   
+        {'\n        '.join([hash_utils.find('name', task) for task in actor.focus_goal.task_plan]) if actor.focus_goal else ''}   
     </tasks>
     <memories>
         {'\n        '.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
@@ -654,7 +679,7 @@ End your response with:
 
     def map_actor(self, actor):
         mapped_actor = f"""{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}"""
-        return mapped_actor+'\n  Remaining tasks:\n    '+'\n    '.join([task.to_string() for task in actor.tasks])
+        return mapped_actor+'\n  Remaining tasks:\n    '+'\n    '.join([task.to_string() for task in actor.focus_goal.task_plan]) if actor.focus_goal else ''
 
     def map_actors(self):
         mapped_actors = []

@@ -31,7 +31,6 @@ S.set_drives([
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
 
-S.add_to_history("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?")
 
 J = Character("Joe", """You are Joe, a healthy, nerdy young man, intelligent and self-sufficient. 
 You are informal and somewhat impulsive. 
@@ -49,8 +48,6 @@ J.set_drives([
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
 
-J.add_to_history("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?")
-J.add_to_history("You think Whoever she is, she is pretty!")
 
 # Create context with forest scenario
 W = Context([S, J],
@@ -60,3 +57,6 @@ W = Context([S, J],
     scenario_module=forest,  # Pass the forest scenario module
     server_name=server_name)
 
+S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", 'internal')
+J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", 'internal')
+J.add_perceptual_input("You think Whoever she is, she is pretty!", 'internal')

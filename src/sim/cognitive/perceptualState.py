@@ -101,11 +101,20 @@ A specific information item can be (following are examples, not exhaustive):
     9 a change in another actor's inventory (e.g. 'Mary now has a map')
     10 a change in another actor's actions (e.g. 'Mary is looking at the map')
     11 a change in another actor's thoughts or feelings (e.g. 'Mary is hungry')
+    12 a change in the environment (e.g. 'the door is now open'), especially a change in proximity of other characters.
 
 For each information item, provide the following information:
-- item: the type of information item (e.g. 'fact', 'belief', 'goal', 'action', 'inventory', 'thought', 'feeling')
-- content: the content of the information item
-- permanence: how long the information item remains valid ('transient' or 'permanent'). Any information about direction or distance is transient, since the actor can move.
+- item: the type of information item:
+  - location: {{$name}} is at a location
+  - goal: {{$name}} wants to do something
+  - action: {{$name}} is doing something
+  - inventory: {{$name}} has something or {{$name} no longer has something
+  - knowledge: {{$name}} knows something
+  - thought: {{$name}} is thinking about something
+  - feeling: {{$name}} is feeling something
+  - proximity: {{$name}} is near another actor or resource or is no longer near another actor or resource
+- content: the content of the information item - the location, goal, action, inventory item, thought, feeling, or other actor or resource.
+- permanence: how long the information item remains valid ('transient' or 'permanent'). Any information about direction, distance, or objects at current location is transient, since the actor can move. Similarly, time, temperature, and other changing conditions are transient.
 
 Use the following hash-format for each information item.
 Each item should begin with a #type tag, and should end with ## on a separate line as shown below:
@@ -125,7 +134,7 @@ End you response with
         ranked_signalClusters = self.owner.driveSignalManager.get_scored_clusters()
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
 
-        response = self.owner.llm.ask({"input": sensory_input.content, "signals": focus_signalClusters}, prompt, stops=["<end/>"], max_tokens=80)
+        response = self.owner.llm.ask({"input": sensory_input.content, "name": self.owner.name, "signals": focus_signalClusters}, prompt, stops=["<end/>"], max_tokens=80)
         items = []
         hash_items = hash_utils.findall_forms(response)
         for hash_item in hash_items:
@@ -134,6 +143,9 @@ End you response with
                 # Add embedding to the item
                 item.embedding = self.embedding_model.encode(item.content)
                 self.information_items.append(item)
+                if item.item == 'location':
+                    pass
+                    #self.owner.update_location(self.owner, item.content) #check for location change
         return items
 
     def get_information_items(self, search_text: str, threshold: float = 0.6, max_results: int = 5) -> List[InformationItem]:
