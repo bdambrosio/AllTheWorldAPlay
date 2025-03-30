@@ -1150,7 +1150,7 @@ End response with:
         else:
             actor, _ = self.actor_models.resolve_character(target_string)
             if actor:
-                self.mapAgent.move_toward_location(actor.x, actor.y)
+                self.mapAgent.move_toward_location(actor.x(), actor.y())
                 return True
             else:
                 return self.mapAgent.move(target_string)
