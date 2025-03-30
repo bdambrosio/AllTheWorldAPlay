@@ -8,7 +8,7 @@ from utils.LLMRequestOptions import LLMRequestOptions
 import anthropic
 
 api_key = os.environ["CLAUDE_API_KEY"]
-template = "claude-sonnet"
+template = "haiku"
 client = anthropic.Client(api_key=api_key)
 # quick test of Claude API
 """
@@ -82,8 +82,8 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
                 return {"status":'error', "message":{"content": str(e)}}
             
         elif 'haiku' in template:
-            print('using sonnet')
-            response = client.messages.create(model="claude-3-haiku-20240307",
+            print('using haiku')
+            response = client.messages.create(model="claude-3-5-haiku-20241022",
                                                    messages = msgs,
                                                    system = system_msg,
                                                    temperature=temp,

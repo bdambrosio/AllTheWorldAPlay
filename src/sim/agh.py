@@ -104,6 +104,7 @@ class Goal:
         self.drives = drives
         self.signalCluster = signalCluster
         self.progress = 0
+        self.task_plan = []
         self.tasks = []
 
     def __eq__(self, other):
@@ -305,7 +306,7 @@ class Character:
         self.focus_action = None
         self.goals = []
         self.goal_history = []
-        self.tasks = [] 
+        #self.tasks = [] 
         self.intensions = []
         self.actions = []
         self.autonomy = Autonomy()
@@ -379,7 +380,9 @@ class Character:
             task_hash: Hash-formatted task definition
             goal: Goal this task is for
         """
-        name = hash_utils.find('task', task_hash)
+        name = hash_utils.find('name', task_hash)
+        if not name:
+            name = hash_utils.find('task', task_hash)
         description = hash_utils.find('description', task_hash)
         reason = hash_utils.find('reason', task_hash)
         termination = hash_utils.find('termination', task_hash)
@@ -1099,8 +1102,8 @@ End response with:
             if task == self.focus_task.peek():
                 self.focus_task.pop()
                 self.focus_action = None
-            if task in self.tasks:
-                self.tasks.remove(task)
+            if self.focus_goal and task in self.focus_goal.task_plan:
+                self.focus_goal.task_plan.remove(task)
             if self.focus_goal:
                 pass #self.focus_goal.tasks_completed.append(task)
 
@@ -1180,8 +1183,8 @@ End response with:
                 if act_arg.startswith('s '): # just in case towards instead of toward
                     act_arg = act_arg[len('s '):]
             moved = self.move_toward(act_arg)
+            percept = self.look(interest=act_arg)
             if moved:
-                percept = self.look(interest=act_arg)
                 self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
                 self.context.transcript.append(f'{self.name}: {self.show}')
@@ -1427,7 +1430,7 @@ End response with:
 
 
 
-    def generate_task_plan(self):
+    def generate_task_plan(self, goal=None):
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
@@ -1447,7 +1450,7 @@ Respond using the following hash-formatted text, where each task tag (field-name
 Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#task brief (4-6 words) action name
+#name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
 #actors the names of any other actors involved in this task. if no other actors, use None
@@ -1482,10 +1485,14 @@ End response with:
                 if gm not in goal_memories:
                     goal_memories.append(gm)
 
+        if not goal:
+            goal = self.focus_goal
+        if not goal:
+            raise ValueError(f'No focus goal for {self.name}')
         response = default_ask(self, 
                                'create a sequence of 3-6 tasks to achieve the focus goal', 
                                suffix, 
-                               {"focus_goal":self.focus_goal.to_string(),
+                               {"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories])}, 400)
 
 
@@ -1495,12 +1502,12 @@ End response with:
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
             if not self.focus_goal:
                 print(f'{self.name} generate_plan: no focus goal, skipping task')
-            task = self.validate_and_create_task(task_hash, self.focus_goal)
+            task = self.validate_and_create_task(task_hash, goal)
 
             if task:
                 task_plan.append(task)
         print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
-        self.tasks = task_plan
+        goal.task_plan = task_plan
         return task_plan
 
     def generate_completion_statement(self, object, termination_check, satisfied, progress, consequences='', updates=''):
@@ -1705,7 +1712,7 @@ End response with:
 
         return act
 
-    def generate_acts(self, task):
+    def generate_acts(self, task: Task, goal: Goal=None):
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
         mission = """generate a set of two alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task:
@@ -1713,6 +1720,12 @@ End response with:
 <task>
 {{$task_string}}
 </task>
+
+this is derived from your goal:
+
+<goal>
+{{$goal_string}}
+</goal>
 
 """
         suffix = """
@@ -1737,7 +1750,6 @@ In choosing each Act (see format below), you can choose from these Modes:
 - Think - mental reasoning about the current situation wrt your state and the task.
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
-Prefer Acts and Modes that, when performed, will satisfy the task termination directly.
 Review your character and current emotional stance when choosing Mode and action. 
 Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for an Act.
 
@@ -1756,6 +1768,7 @@ An Act is one which:
         If an act in the world (mode is 'Do'), is stated in the third person.
  
 Prioritize actions that lead to meaningful progress in the narrative.
+IMPORTANT: When evaluating a potential Act, the primary consideration is whether it can directly result in achievment of the task goal. 
 
 Dialog guidance:
 - If speaking (mode is Say), then:
@@ -1864,20 +1877,20 @@ End your response with:
 </end>
 """
 
+        if not goal:
+            goal = self.focus_goal
+        if not goal:
+            raise ValueError(f'No goal for {self.name}')
         goal_memories = []
-        for goal in self.goals:
-            memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.01, max_results=3)
-            for gm in memories:
-                if gm not in goal_memories:
-                    goal_memories.append(gm)
-        for task in self.tasks:
-            memories = self.perceptual_state.get_information_items(task.short_string(), threshold=0.01, max_results=3)
+        memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.1, max_results=3)
+        for task in goal.task_plan:
+            memories = self.perceptual_state.get_information_items(task.short_string(), threshold=0.1, max_results=3)
             for tm in memories:
                 if tm not in goal_memories:
                     goal_memories.append(tm)
 
         response = default_ask(character=self, mission=mission, suffix=suffix, 
-                               addl_bindings={"task":task, "task_string":task.to_fullstring(),
+                               addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=280)
         response = response.strip()
         if not response.endswith('</act>'):
@@ -1976,7 +1989,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #description terse (6-8 words) statement of the action to be taken
 #reason (6-7 words) on why this action is important now
 #duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#termination (5-7 words) easily satisfied termination test to quickly end this task
 #actors {{$name}}
 ##
 
@@ -2041,7 +2054,7 @@ Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>""")]
 
-
+        goal = self.focus_goal
         response = self.llm.ask({"text":f'{act_mode} {act_arg}',
                                  "focus_task":self.focus_task.peek(),
                                  "reason":reason,
@@ -2053,7 +2066,7 @@ End your response with:
             print(f'no new tasks in say or think')
             return
         for intension_hash in intension_hashes:
-            intension = self.validate_and_create_task(intension_hash)
+            intension = self.validate_and_create_task(intension_hash, goal)
             if intension:
                 print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
@@ -2109,13 +2122,13 @@ Respond using the following hash-formatted text, where each tag is preceded by a
 Each intension should be closed by a ## tag on a separate line.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#name brief (4-6 words) action name
+#name brief (4-6 words) task name
 #description terse (6-8 words) statement of the action to be taken
 #actors {{$name}}
 #start_time (2-3 words) expected start time of the action, typically elapsed time from now
 #duration (2-3 words) expected duration of the action in minutes
 #reason (6-7 words) on why this action is important now
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#termination (5-7 words) easily satisfied termination test to quickly end this task
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
@@ -2227,7 +2240,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #actors {{$name}}, {{$target_name}}
 #reason (6-7 words) on why this action is important now
 #duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#termination (5-7 words) easily satisfied termination test to quickly end this task
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
@@ -2254,7 +2267,7 @@ Jean
 
 Response:
 
-#name Meet by the well
+#name task name
 #description Meet by the well  
 #duration 10 minutes
 #actors Jean, Francoise
@@ -2270,7 +2283,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.tasks),
+                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.focus_goal.task_plan) if self.focus_goal else '',
                                  "focus_task":self.focus_task.peek(),
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
@@ -2294,6 +2307,7 @@ End your response with:
             if intension:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
+                self.focus_task.push(intension)
         return intensions
 
     def random_string(self, length=8):
@@ -2420,7 +2434,6 @@ End your response with:
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor.focus_task.pop()
             if from_actor.name != 'Viewer' and self.name != 'Viewer':
-                joint_tasks = from_actor.update_joint_commitments_following_conversation(self, dialog)
                 from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
             self.driveSignalManager.recluster()
             from_actor.driveSignalManager.recluster()
@@ -2710,10 +2723,10 @@ End your response with:
     async def request_task_choice(self, tasks):
         """Request an act choice from the UI"""
         if self.autonomy.task:
-            if self.tasks and len(self.tasks) > 0:
-                self.focus_task.push(self.tasks[0])
-                self.tasks.pop(0)
-                return self.focus_task
+            if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                self.focus_task.push(self.focus_goal.task_plan[0])
+                self.focus_goal.task_plan.pop(0)
+                return self.focus_task.peek()
             else:
                 self.focus_task = None
                 return None
@@ -2786,6 +2799,9 @@ End your response with:
             #    self.focus_action = acts[0]
             #    return self.focus_action
             self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
+            if not self.focus_action:
+                print(f'{self.name} request_act_choice: no act selected')
+                return
             return self.focus_action
         
         if len(acts) < 2:
@@ -2853,12 +2869,21 @@ End your response with:
                                                   self.character.strip(),
                                                   relationsOnly=True )
 
+        if not self.focus_goal:
+            self.generate_goal_alternatives()
+            await self.request_goal_choice(self.goals)
+            await asyncio.sleep(0.1)
+            self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+            await asyncio.sleep(0.1)
+            if not self.focus_goal:
+                raise Exception(f'{self.name} cognitive_cycle: no focus goal')
+            
         if self.focus_task.peek():
             await self.clear_task_if_satisfied(self.focus_task.peek())
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
-            if self.tasks and len(self.tasks) > 0:
-                self.focus_task.push(self.tasks[0])
-                self.tasks.pop(0)
+            if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                self.focus_task.push(self.focus_goal.task_plan[0])
+                self.focus_goal.task_plan.pop(0)
 
         if not self.focus_task.peek(): # we're not in the middle of a task plan
             await self.clear_goal_if_satisfied(self.focus_goal)  # did we complete goal?
@@ -2875,8 +2900,8 @@ End your response with:
         # now we have a focus goal, and maybe a focus task if we're in the middle of a task plan
            
         if not self.focus_task.peek(): # if no focus task, focus goal is new!
-            self.tasks = self.generate_task_plan()
-            await self.request_task_choice(self.tasks)
+            self.focus_goal.task_plan = self.generate_task_plan()
+            await self.request_task_choice(self.focus_goal.task_plan)
             await asyncio.sleep(0.1)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             await asyncio.sleep(0.1)
@@ -2890,7 +2915,7 @@ End your response with:
             self.context.simulation_time += timedelta(hours=delay)
             if old_time.day!= self.context.simulation_time.day:
                 pass # need to figure out out to force UI to no show old image
-            if delay > 4.0:
+            if delay > 1.0:
                 self.context.update()
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
                 await asyncio.sleep(0.1)
@@ -2901,71 +2926,84 @@ End your response with:
     async def step_tasks(self):
         task_count = 0
         while task_count < 3 and self.focus_task.peek():
-            outcome = await self.step_task()
+            step_count = 0
+            while step_count < 3 and self.focus_task.peek(): # run task and any intensions created by it
+                outcome = await self.step_task()
+                step_count += 1
             # outcome is False if task is not completed
-            if outcome and self.tasks and len(self.tasks) > 0:
-                self.focus_task.push(self.tasks[0])
-                self.tasks.pop(0)
+            if outcome and self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                self.focus_task.push(self.focus_goal.task_plan[0])
+                self.focus_goal.task_plan.pop(0)
                 # return allows yield to other coroutines / actors
                 #return True
             elif outcome: # task entire task plan is done
                 return True
-            elif self.tasks and len(self.tasks) > 0: # failed at task, but continue with next task - but let other actors run first
-                self.focus_task.push(self.tasks[0])
-                self.tasks.pop(0)
+            elif self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0: # failed at task, but continue with next task - but let other actors run first
+                self.focus_task.push(self.focus_goal.task_plan[0])
+                self.focus_goal.task_plan.pop(0)
                 return True
         return self.focus_task.peek() is None
             
         
     async def step_task(self, sense_data='', ui_queue=None):
-        """Perform an act on the current task. Returns False if task is not completed."""
+        """Perform a single task from the current goal task_plan. Returns False if task is not completed."""
         # if I have an active task, keep on with it.
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
 
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
-        task = self.focus_task.peek()
+        task: Task = self.focus_task.peek()
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
-        while act_count < 1 and self.focus_task.peek() is task:
-            action_alternatives = self.generate_acts(task)
-            await self.request_act_choice(action_alternatives)
+        subtask_count = 0
+        while act_count < 2 and self.focus_task.peek():
+            self.look(task.name+': '+task.description)
+            action_alternatives: List[Act] = self.generate_acts(task)
+            await self.request_act_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+            print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
             await asyncio.sleep(0.1)
 
-            if self.focus_action:
-                await self.act_on_action(self.focus_action, task)
-                act_count += 1
-                #this will affect selected act and determine consequences
-                
-                act_duration = timedelta(minutes=10)
-                if hasattr(self.focus_action, 'duration'):
-                    act_duration = self.focus_action.duration
-                elif self.focus_action.mode == 'Think': 
-                    act_duration = timedelta(seconds=15)
-                elif self.focus_action.mode == 'Say': 
-                    act_duration = timedelta(minutes=2)
-                self.context.simulation_time += act_duration
+            await self.act_on_action(self.focus_action, self.focus_task.peek())
+            act_count += 1
                
-                if self.focus_task.peek() is task:
-                    await self.clear_task_if_satisfied(task) # will pop focus_task if task is done
-                    await asyncio.sleep(0.1)
-                    if self.focus_task.peek() != task: # task completed
-                        return True
-                    else:
-                        self.focus_task.pop() # pretend task is done
-                        return True # probably need to replan around step failure, but we're not going to do that here
-                else:
+            # Did we push opportunistic subtasks?
+            while task in self.focus_task.stack and self.focus_task.peek() != task and subtask_count < 2: # only allow 2 subtasks
+                # just recursively call step_task here?
+                subtask = self.focus_task.peek()
+                self.look(task.name+': '+task.description)
+                action_alternatives: List[Act] = self.generate_acts(task)
+                await self.request_act_choice(action_alternatives) # sets self.focus_action
+                self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+                print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
+                await asyncio.sleep(0.1)
+                await self.act_on_action(self.focus_action, task)
+                subtask_count += 1
+                while task in self.focus_task.stack and subtask in self.focus_task.stack: 
+                    # safeguard against popping the wrong task, but subtasks aren't allowed to spawn further subtasks
+                    self.focus_task.pop()
+            
+            while task in self.focus_task.stack and self.focus_task.peek() != task: 
+                # clear any remaining subtasks
+                self.focus_task.pop()
+
+            if self.focus_task.peek() is task: #are we on main task?
+                await self.clear_task_if_satisfied(task) # will pop focus_task if task is done
+                await asyncio.sleep(0.1)
+                if self.focus_task.peek() != task: # task completed
                     return True
             else:
-                print(f'No action for task {task.name}')
-                return False
+                raise Exception(f'{self.name} step_task: task {task.name} not found in focus_task.stack')
+            
+
         if self.focus_task.peek() is task:
-            self.focus_task.pop() # pretend task is done
+            self.focus_task.pop() # didn't get done by turn limitpretend task is done
             return True # probably need to replan around step failure, but we're not going to do that here
-        else:
-            return True # probably need to replan around step failure, but we're not going to do that here
+        else: # clear assigned task and all intensions created by it, out of turns for this task
+            while task in self.focus_task.stack:
+                self.focus_task.pop()
+            return True # probably need to replan around step failure, maybe we pushed an intension and exhausted our turns, who knows?
 
 
     async def act_on_action(self, action: Act, task: Task):
@@ -2987,7 +3025,7 @@ End your response with:
         #print(f'{self.name} choose {action}')
         target = None
         target_name = None
-            #responses, at least, explicitly name target of speech.
+        #responses, at least, explicitly name target of speech.
         if action.target and (action.target != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
             target_name = action.target.name
             target = action.target
@@ -2995,12 +3033,23 @@ End your response with:
             target_name = self.name
             target = self
         elif act_mode == 'Say':
-#            target_name = self.say_target(act_mode, act_arg, source)
             if target_name != None and target is None:
                 target = self.context.get_actor_by_name(target_name)
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
+           
+        if hasattr(action, 'duration'):
+            act_duration = action.duration
+        elif action.mode == 'Think': 
+            act_duration = timedelta(seconds=15)
+        elif action.mode == 'Say': 
+            act_duration = timedelta(minutes=2)
+        else:
+            act_duration = timedelta(minutes=10)
+        self.context.simulation_time += act_duration
+
+        return
 
     def format_thought_for_UI (self):
         #<action> <mode>{mode}</mode> <act>{action}</act> <reason>{reason}</reason> <source>{source}</source></action>'

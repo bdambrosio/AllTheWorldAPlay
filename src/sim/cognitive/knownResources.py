@@ -69,7 +69,7 @@ class KnownResourceManager:
                     return None
         return self.known_resources[resource_name] if resource_name in self.known_resources else None
 
-    def set_all_resouucerces_visible(self):
+    def set_all_resources_visible(self):
         for resource in self.known_resources:
             self.known_resources[resource.name].visible = True
 
@@ -80,3 +80,19 @@ class KnownResourceManager:
     def add_seen_resources(self, resources):
         for resource in resources:
             self.add_resource_model(resource['id'])
+
+    def resolve_resource(self, reference_text):
+        """
+        Resolve a reference to a resource
+        Args:
+            reference_text: Text reference to resolve
+        Returns:
+            tuple: (resource, canonical_name) or (None, None) if unresolved
+        """
+        # Try to resolve first
+        if not reference_text or reference_text == '' or reference_text.lower() == 'none':
+            return None, None
+        resource = self.context.map.resource_registry.get(reference_text)
+        if resource:
+            return resource, reference_text
+        return None, None

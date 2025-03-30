@@ -36,22 +36,20 @@ class SuburbanResource(Enum):
     Breakfast = 8
 
 # Main character - person with morning routine and job
-Alex = agh.Character("Alex", """You are Alex, a 34-year-old software developer.
-You live alone in a suburban house with a small yard.
+Alex = agh.Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
+You live in a suburban house with your significant other Susan.
 You're organized but often running late in the mornings.
-You have a job interview today at 9:00 AM at a company downtown.
 You speak in a pragmatic, straightforward manner.
-Your name is Alex.""", server_name=server_name)
+""", server_name=server_name)
 
 Alex.drives = [
-    Drive("getting to the job interview on time and making a good impression"),
+    Drive("Be financially secure."),
+    Drive("get to the job interview on time and making a good impression, and get the job"),
     Drive("maintaining basic needs: hygiene, food, and appropriate appearance"),
-    Drive("managing anxiety about the interview"),
+    #Drive("managing anxiety about the interview"),
     Drive("keeping your home in reasonable order")
 ]
 
-Alex.add_perceptual_input("Your alarm just went off. It's 7:15 AM. Your interview is at 9:00 AM downtown, about 30 minutes away by car.", 'internal')
-Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", 'internal')
 
 # Setting up the world context
 W = context.Context([Alex],
@@ -66,3 +64,14 @@ Alex is in bed, having just woken up to the alarm. The automatic coffee maker ha
 )
 
 Alex.actor_models.resolve_character('Alex')
+Alex.add_perceptual_input("Your alarm just went off. It's 7:15 AM.",'internal')
+Alex.add_perceptual_input("You have a job interview is at 9:00 AM downtown, at the Office. It's about 30 minutes away by car.", 'internal')
+Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", 'internal')
+receptionist =W.get_npc_by_name('Receptionist', description="A young man with a kind face", x=20, y=20, create_if_missing=True)
+receptionist.mapAgent.move_to_resource('Office#1')
+W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office#1', 'works_at')
+
+interviewer = W.get_npc_by_name('Interviewer', description="A middle-aged man with an alert, questioning face", x=20, y=20, create_if_missing=True)
+interviewer.mapAgent.move_to_resource('Office#1')
+W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office#1', 'works_at')
+

@@ -27,8 +27,6 @@ Drive("gaining your rightful inheritance - justice and fairness in how the land 
 Drive("finding love and a wife to build a family with"),
 Drive("immediate needs of survival - food, shelter, health, rest from backbreaking labor")
 ]
-J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", 'internal')
-J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", 'internal')
 
 F = agh.Character("Francoise", """You are Francoise Fouan, an attractive unmarried young woman from a neighboring peasant family in the same village as Jean.
 You are hardworking and stoic, accustomed to the unending labor required on a farm.
@@ -42,7 +40,6 @@ Drive("avoiding scandal and protecting your reputation"),
 Drive("helping your family with the endless chores"),
 Drive("brief moments of rest and simple joys amid the hardships")
 ]
-F.add_perceptual_input("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.", 'internal')
 
 
 W = Context([J, F],
@@ -56,4 +53,6 @@ W.reference_manager.declare_relationship('Marquart farm_owner', 'father of', 'Je
 J.look()
 F.mapAgent.move_to_resource('Fouan farm')
 W.reference_manager.declare_relationship('Fouan farm_owner', 'father of', 'Francoise', 'child_of')
-print(F.look())
+J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", 'internal')
+J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", 'internal')
+F.add_perceptual_input("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.", 'internal')
