@@ -1,7 +1,7 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
-### Call for *alpha* testers, explorers, collaborators, ...
+### Reference resolution! - both characters (e.g., Jean's father) and resources (e.g. move to the thicket) now go through reference resolution. A bit crude, but significantly reduces frequency of missed references.
 ### Map! very crude placeholder, but maybe fun. As with most other stuff, only try while paused. If it hangs, close the window. It takes up to a minute or so to generate the map, be patient
 
 ### quick patch for looping bug now live. 
