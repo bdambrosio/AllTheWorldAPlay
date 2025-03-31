@@ -105,7 +105,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.Apple_Tree,
-            'description': 'A large fallen tree',
+            'description': 'A large apple tree with apples',
             'count': 16,
             'requires_property': False,
             'terrain_weights': {

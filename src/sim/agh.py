@@ -37,6 +37,7 @@ import numpy as np # type: ignore
 from sim.cognitive.perceptualState import PerceptualInput, PerceptualState, SensoryMode
 from sim.cognitive.knownActor import KnownActor, KnownActorManager
 from sim.cognitive.knownResources import KnownResource, KnownResourceManager
+from sim.ResourceReferenceManager import ResourceReferenceManager
 import re
 import asyncio
 from weakref import WeakValueDictionary
@@ -321,6 +322,7 @@ class Character:
         self.context = context
         self.actor_models = KnownActorManager(self, context)
         self.resource_models = KnownResourceManager(self, context)
+        self.resourceRefManager = ResourceReferenceManager(self, context, self.llm)
         if self.driveSignalManager:
             self.driveSignalManager.context = context
         if self.memory_consolidator:
@@ -1195,8 +1197,18 @@ End response with:
                     await asyncio.sleep(0.1)
                     self.show = '' # has been added to message queue!
                 else: 
-                    act_mode = 'Do' 
-                    act_arg = 'move to ' + act_arg.strip() # some moves are text, not map directions or locations
+                    resource, canonical_name = self.resourceRefManager.resolve_reference_with_llm(act_arg)
+                    if resource:
+                        new_x = resource['location'][0]
+                        new_y = resource['location'][1]
+                        self.mapAgent.x = new_x
+                        self.mapAgent.y = new_y
+                        percept = self.look()
+                        self.show += f' moves to {resource["name"]}.\n  and notices ' + percept
+                        self.context.message_queue.put({'name':self.name, 'text':self.show})
+                        self.context.transcript.append(f'{self.name}: {self.show}')
+                        self.show = '' # has been added to message queue!
+                        await asyncio.sleep(0.1)
             except Exception as e:
                 print(f'{self.name} move_toward failure: {e}')
  
@@ -2239,7 +2251,6 @@ Consider the all_tasks and current task and action reason in determining if ther
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#task
 #name brief (4-6 words) action name
 #description terse (6-8 words) statement of the action to be taken
 #actors {{$name}}, {{$target_name}}
@@ -2272,7 +2283,7 @@ Jean
 
 Response:
 
-#name task name
+#name farm chores
 #description Meet by the well  
 #duration 10 minutes
 #actors Jean, Francoise
