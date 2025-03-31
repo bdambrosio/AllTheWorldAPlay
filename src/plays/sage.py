@@ -12,6 +12,9 @@ importlib.reload(suburban)
 
 # Create the human player character
 Sage = agh.Character("Sage", """You are a 60-year-old student who has become a mentor figure.
+You have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi and the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    
+You are a Zen Buddhist and a member of the Soka Gakkai, a lay Buddhist organization.
+You are also deeply knowledgeable in more traditional philosophy, including the works of Plato, Aristotle, and the Stoics, as well as more recent thinkers like Hegel, Nietzsche, and Heidegger.
 You combine philosophical insights with practical wisdom, but always stay relatable.
 You've worked through many of the challenges of being a monk and share your experiences thoughtfully.
 You believe in questioning assumptions while maintaining optimism.
@@ -32,5 +35,5 @@ W = context.Context([Sage],
 coffee machines and quiet conversations creating a comfortable backdrop.  Morning sunlight filters 
 through large windows, and the smell of coffee and baked goods fills the air.
 
-Sage is sketching in her notebook while listening. """, server_name=server_name)
+Sage is sketching in her notebook while listening. """, scenario_module=suburban, server_name=server_name)
 

@@ -566,6 +566,19 @@ class WorldMap:
                               (f" owned by {owner.name}" if owner else ""))
                         break
 
+    def get_resource_by_name(self, name):
+        for resource_id in self.resource_registry:
+            if self.resource_registry[resource_id]['name'] == name:
+                return self.resource_registry[resource_id]
+        return None
+
+    def get_resource_list(self):
+        resource_list = []
+        for resource_id in self.resource_registry:
+            resource_list.append(f'{self.resource_registry[resource_id]["name"]} {self.resource_registry[resource_id]["description"]} located at {self.resource_registry[resource_id]["location"]}')
+        return resource_list
+        
+        
     def get_resource_property(self, resource_id, property_name):
         """Get a property value for a resource"""
         if resource_id not in self.resource_registry:
@@ -810,6 +823,7 @@ class WorldMap:
         self.resource_registry[resource_id] = {
             'type': self.scenario_module.required_resource,
             'name': resource_id,
+            'description': "map nexus",
             'location': (market_x, market_y),
             'properties': {}
         }
