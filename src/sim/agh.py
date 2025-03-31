@@ -1905,7 +1905,7 @@ End your response with:
             for tm in memories:
                 if tm not in goal_memories:
                     goal_memories.append(tm)
-
+        task = self.focus_task.peek()
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=280)
@@ -2673,18 +2673,19 @@ End your response with:
     async def request_goal_choice(self, goals):
         """Request a goal choice from the UI"""
         if self.autonomy.goal:
-            if self.focus_goal is None:
-                admissible_goals = self.admissible_goals(goals)
-                if len(admissible_goals) == 0:
-                    if goals[0].preconditions:
-                        subgoal = Goal(name='preconditions', actors=[self], description=goals[0].preconditions, preconditions=None, 
-                                   termination=goals[0].preconditions, signalCluster=goals[0].signalCluster, drives=goals[0].drives)
-                        self.focus_goal = subgoal
-                        return subgoal
-                    else:
-                        return
+            admissible_goals = self.admissible_goals(goals)
+            if len(admissible_goals) == 0:
+                if goals[0].preconditions:
+                    subgoal = Goal(name='preconditions', actors=[self], description=goals[0].preconditions, preconditions=None, 
+                                termination=goals[0].preconditions, signalCluster=goals[0].signalCluster, drives=goals[0].drives)
+                    self.focus_goal = subgoal
+                    return subgoal
+                else:
+                    return None
+            else:
                 self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.9)
-            return self.focus_goal
+                return self.focus_goal
+
         else:
             if len(self.goals) > 0: # debugging
                 # Send choice request to UI
@@ -2744,8 +2745,8 @@ End your response with:
                 self.focus_goal.task_plan.pop(0)
                 return self.focus_task.peek()
             else:
-                self.focus_task = None
-                return None
+                self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
+                return self.focus_task.peek()
         else:
             if len(tasks) < 3:
                 print(f'{self.name} request_task_choice: not enough tasks')
@@ -2871,6 +2872,24 @@ End your response with:
             self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
             return self.focus_action
 
+    async def regenerate_goal_hierarchy(self):
+        self.generate_goal_alternatives()
+        await self.request_goal_choice(self.goals)
+        await asyncio.sleep(0.1)
+        self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        await asyncio.sleep(0.1)
+        if not self.focus_goal:
+            raise Exception(f'{self.name} cognitive_cycle: no focus goal')
+        self.generate_task_plan()
+        await self.request_task_choice(self.focus_goal.task_plan)
+        await asyncio.sleep(0.1)
+        self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        await asyncio.sleep(0.1)
+        if not self.focus_task.peek():
+            return # no admissible task at this time
+
+
+
     async def cognitive_cycle(self, sense_data='', ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
@@ -2886,13 +2905,7 @@ End your response with:
                                                   relationsOnly=True )
 
         if not self.focus_goal:
-            self.generate_goal_alternatives()
-            await self.request_goal_choice(self.goals)
-            await asyncio.sleep(0.1)
-            self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-            await asyncio.sleep(0.1)
-            if not self.focus_goal:
-                raise Exception(f'{self.name} cognitive_cycle: no focus goal')
+            await self.regenerate_goal_hierarchy()
             
         if self.focus_task.peek():
             await self.clear_task_if_satisfied(self.focus_task.peek())
@@ -2900,29 +2913,11 @@ End your response with:
             if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
                 self.focus_task.push(self.focus_goal.task_plan[0])
                 self.focus_goal.task_plan.pop(0)
+            else:
+                await self.regenerate_goal_hierarchy()
 
-        if not self.focus_task.peek(): # we're not in the middle of a task plan
-            await self.clear_goal_if_satisfied(self.focus_goal)  # did we complete goal?
-            if not self.focus_goal: # goal is completed or abandoned
-                self.driveSignalManager.recluster()
-                self.generate_goal_alternatives()
-                await self.request_goal_choice(self.goals)
-                await asyncio.sleep(0.1)
-                self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-                await asyncio.sleep(0.1)
-                if not self.focus_goal:
-                    return # no admissible goal at this time
-
-        # now we have a focus goal, and maybe a focus task if we're in the middle of a task plan
-           
-        if not self.focus_task.peek(): # if no focus task, focus goal is new!
-            self.focus_goal.task_plan = self.generate_task_plan()
-            await self.request_task_choice(self.focus_goal.task_plan)
-            await asyncio.sleep(0.1)
-            self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-            await asyncio.sleep(0.1)
-            if not self.focus_task.peek():
-                return # no admissible task at this time
+        if not self.focus_task.peek():
+            raise Exception(f'{self.name} cognitive_cycle: no focus task')
             
         await self.step_tasks()
         delay = await self.context.choose_delay()

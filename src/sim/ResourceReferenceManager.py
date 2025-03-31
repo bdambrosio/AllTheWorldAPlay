@@ -28,6 +28,7 @@ the character's current location, and the character's stated intention to move t
 Return the name of the resource that the character is referencing. Return None if you cannot determine the resource. Do not include any introductory, explanatory, or formatting text in your response.
 """
         suffix = f"""
+
 The reference text for the move destination :
 {reference_text}
 
@@ -37,7 +38,12 @@ List of all map resources:
 
 {'\n'.join(self.character.context.map.get_resource_list())}
 
-Return the name of the resource that the character is referencing. Return None if you cannot determine the resource. Do not include any introductory, explanatory, or formatting text in your response.
+Return the name of the resource that the character is referencing. 
+- If the reference text is a resource name, return that resource name.
+- If the reference text is a direction, return the nearest resource in the direction the character is moving.
+- If the reference text is an action and includes a reference to a resource, return the resource name. For example, "go to the tree" should return the tree resource name.
+
+Return None if you cannot determine the resource. Do not include any introductory, explanatory, or formatting text in your response.
 
 End your response with:
 <end/>
