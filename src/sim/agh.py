@@ -1451,6 +1451,8 @@ End response with:
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
+        if not goal:
+            goal = self.focus_goal
         suffix = """
 
 Create about 3-6 specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
@@ -1496,8 +1498,8 @@ End response with:
             for pm in perceptual_memories:
                 if pm not in goal_memories:
                     goal_memories.append(pm)
-        for goal in self.goals:
-            memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.01, max_results=3)
+        for g in self.goals:
+            memories = self.perceptual_state.get_information_items(g.short_string(), threshold=0.01, max_results=3)
             for gm in memories:
                 if gm not in goal_memories:
                     goal_memories.append(gm)
@@ -1653,7 +1655,8 @@ End your response with:
             statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
             self.add_perceptual_input(statement, mode='internal')
             self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
-            #await self.context.update(local_only=True)
+            if self.context.current_state.count('Following update may invalidate') > 3:
+                await self.context.update(local_only=True)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > random.random():
@@ -1900,8 +1903,8 @@ End your response with:
             raise ValueError(f'No goal for {self.name}')
         goal_memories = []
         memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.1, max_results=3)
-        for task in goal.task_plan:
-            memories = self.perceptual_state.get_information_items(task.short_string(), threshold=0.1, max_results=3)
+        for t in goal.task_plan:
+            memories = self.perceptual_state.get_information_items(t.short_string(), threshold=0.1, max_results=3)
             for tm in memories:
                 if tm not in goal_memories:
                     goal_memories.append(tm)
@@ -2397,7 +2400,8 @@ End your response with:
 
                 dialog = dialog_model.get_current_dialog()
                 self.add_perceptual_input(f'Internal monologue:\n {dialog}', percept=False, mode='internal')
-                self.actor_models.get_actor_model(self.name).update_relationship(dialog)
+                dialog_as_list = dialog.split('\n') 
+                self.actor_models.get_actor_model(self.name).update_relationship(dialog_as_list, use_all_texts=True)
                 dialog_model.deactivate_dialog()
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
@@ -2435,8 +2439,10 @@ End your response with:
             # close the dialog
             dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
             self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
-            self.actor_models.get_actor_model(from_actor.name).update_relationship(dialog)
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+            dialog_as_list = dialog.split('\n') 
+            self.actor_models.get_actor_model(from_actor.name).update_relationship(dialog_as_list, use_all_texts=True)
+    
             self.last_task = self.focus_task.peek()
             self.focus_task.pop()
             if self.name != 'Viewer' and from_actor.name != 'Viewer':
@@ -2445,7 +2451,8 @@ End your response with:
             # it would probably be better to have the other actor deactivate the dialog itself
             dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
             from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
-            from_actor.actor_models.get_actor_model(self.name).update_relationship(dialog)
+            dialog_as_list = dialog.split('\n') 
+            from_actor.actor_models.get_actor_model(self.name).update_relationship(dialog_as_list, use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor.focus_task.pop()
