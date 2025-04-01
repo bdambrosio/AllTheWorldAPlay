@@ -43,10 +43,13 @@ End with:
     def format_transcript(self, include_transcript=False):
         return self.dialog.get_transcript(8) if include_transcript else ''
     
-    def update_relationship(self, all_texts):
+    def update_relationship(self, all_texts, use_all_texts=False):      
         """self is An instance of a model of another actor 
           updating beliefs about owner relationship to this actor"""
-        char_memories = [text for text in all_texts if self.canonical_name.lower() in text.lower()]
+        if use_all_texts:
+            char_memories = all_texts
+        else:
+            char_memories = [text for text in all_texts if self.canonical_name.lower() in text.lower()]
         if char_memories is None or len(char_memories) == 0:
             return
 
@@ -69,7 +72,7 @@ Describe their current relationship in a brief statement that captures:
 3. Any recent changes in their relationship
 4. Ongoing dynamics
 
-Respond with a concise updated relationship description of up to 100 tokens, no additional text.
+Respond with a concise updated relationship description of up to 120 tokens, no additional text.
 End with:
 </end>
 """)]
@@ -90,7 +93,7 @@ Describe their current self-model in a brief statement that captures:
 3. Any recent changes in their self-model
 4. Ongoing dynamics
 
-Respond with a concise updated self-model description of up to 100 tokens, no additional text.
+Respond with a concise updated self-model description of up to 120 tokens, no additional text.
 End with:
 </end>
 """)]
