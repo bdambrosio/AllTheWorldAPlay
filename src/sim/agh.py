@@ -1210,6 +1210,7 @@ End response with:
                         self.show = '' # has been added to message queue!
                         await asyncio.sleep(0.1)
             except Exception as e:
+                traceback.print_exc()
                 print(f'{self.name} move_toward failure: {e}')
  
         # Handle world interaction
@@ -1310,8 +1311,9 @@ End response with:
                     target.focus_task.push(dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
 
+                # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
-                target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(target, content)
+                target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
                 await target.hear(self, act_arg, source)
 
          # After action completes, update record with results

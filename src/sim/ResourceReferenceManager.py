@@ -53,4 +53,4 @@ End your response with:
         if resource:
             return resource, response.strip()
         else:
-            return None, resource.strip()
+            return None, reference_text.strip()
