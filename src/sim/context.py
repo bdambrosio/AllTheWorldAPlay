@@ -77,7 +77,7 @@ class Context():
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
         for actor in self.actors:
-            actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
+            #actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
             actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
