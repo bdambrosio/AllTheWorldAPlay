@@ -13,9 +13,9 @@ import utils.xml_utils as xml
 import sim.map as map
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
-from sim.cognitive.DialogManager import Dialog
+#from sim.cognitive.DialogManager import Dialog
 
-def ask (character:Character, mission:str, suffix:str, addl_bindings:dict, max_tokens:int=100):
+def ask (character:Character, mission:str, suffix:str='', addl_bindings:dict={}, max_tokens:int=100):
 
     prompt = [UserMessage(content=mission+"""\nYou are {{$name}}.
 
@@ -74,7 +74,7 @@ Your current situation is:
 ##
 
 """)]
-    full_prompt = prompt.append(UserMessage(content=suffix+'\n\nend your response with <end/>'))
+    full_prompt = prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     
     ranked_signalClusters = character.driveSignalManager.get_scored_clusters()
     focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
@@ -120,6 +120,6 @@ Your current situation is:
     for key, value in addl_bindings.items():
         bindings[key]=value
     
-    response = character.llm.ask(bindings, prompt, max_tokens=max_tokens, stops=['<end/>'])
+    response = character.llm.ask(bindings, prompt, max_tokens=max_tokens, stops=['</end>'])
     return response
 

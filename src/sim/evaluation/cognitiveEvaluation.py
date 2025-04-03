@@ -61,7 +61,26 @@ def evaluate_transcript(agents: List[str], transcript: str, window_size: int = 3
     results = [[] for _ in dimensions]
     scores = [0 for _ in dimensions]
     lines = transcript.strip().split("\n")
-    for i in range(0, len(lines), window_size):
+    cleaned_lines = []
+    line_index = 0
+    for line in lines:
+        line = line.strip()
+        if line == '' or "cognitive cycle" in line:
+            continue
+        # clean up transcript so it only has lines from the agents
+        newline = False
+        for agent in agents:
+            if line.startswith(agent):
+                newline = True
+                break
+        if newline:
+            cleaned_lines.append(line)
+            line_index += 1
+        elif line_index > 0:
+            cleaned_lines[-1] += " " + line
+    lines = cleaned_lines
+
+    for i in range(0, len(lines), int(window_size/2)):
         segment = "\n".join(lines[i:i+window_size])
         if len(segment) < window_size:
             continue
@@ -89,130 +108,120 @@ def evaluate_transcript(agents: List[str], transcript: str, window_size: int = 3
 if __name__ == "__main__":
     agents = ["Samantha", "Joe"]
     transcript = """
-Samantha: 'Hey, do you see anything useful around here?' 
-Joe: 'Uh, no... just trees and stuff. And, um, mushrooms over there, I think. (looks around nervously) ' 
-Samantha: 'Yeah, I see the mushrooms, let's check them out, maybe they're edible or something. (takes a step towards the mushrooms, eyeing them curiously) You think they're safe to eat?' 
-Joe: 'I don't know, maybe we should be careful, I've heard some mushrooms can be poisonous, (takes a step back, eyes widening slightly) let's not rush into eating anything we're not sure about.' 
-Samantha: 'Hey, Joe, what's going on? You seem really nervous, what's wrong?' 
-Joe: 'I don't know, everything just feels really off, I guess. I mean, I don't even know how we got here or what's going on. (looks around nervously) And I'm getting a little worried, to be honest.' 
-Samantha: 'Yeah, me too, let's keep looking around, see if we can find any clues or something, (bites lip, looks around nervously) maybe there's a stream or a path or something that can help us figure out where we are.' 
-Joe: 'Yeah, okay, let's move cautiously, I don't want to get lost even more, (looks around nervously) and maybe we should check that apple tree over there too, see if there's anything useful.' 
-Samantha: 'Okay, let's check the tree, but then we need to keep moving, I don't like just standing here, (starts walking towards the apple tree, looking around nervously) and maybe we can find a hill or something to get a better view.' 
-Joe: 'Yeah, okay, but let's be careful, I don't want to get too far from... from wherever we are, (looks around nervously) and what if we get lost even more?' 
-Samantha: 'Come on, we can't just stand here, let's at least try to find a high point to get a view, (starts walking slowly, looking around nervously) I don't like this either, but we gotta do something.' 
-Joe: 'Okay, fine, but let's stick together and watch our step, I don't want to trip or something, (looks around nervously and starts walking slowly beside Samantha) and maybe we should keep an eye out for any other landmarks or features that could help us get our bearings.' 
-Samantha: 'Yeah, okay, let's keep moving, I see a slight rise up ahead, maybe we can get a better view from there, (bites lip and looks around nervously) and I'm getting a little thirsty, hope we find water soon.' 
-Samantha: 'Hey Joe, what do you think happened to us? How did we end up here?' 
-Joe: 'I have no idea, it's freaky. I don't remember anything, just waking up here. (looks around nervously) Do you think someone, like, dropped us off or something?' 
-Samantha: 'I don't know, but we need to keep moving, find a way out of here, I'm getting really thirsty and I don't like just standing around, it's making me nervous, let's check that apple tree and see if there's any water nearby, or maybe a stream or something.' 
-Joe: 'Yeah, okay, but let's be careful, I don't want to get too far from... from wherever we are, and what if we don't find any water? (looks around nervously) Maybe we should check those mushrooms again too, see if they're safe to eat or not.' 
-Samantha: 'Let's check the apple tree first, see if there's any water or clues, and then we can go back to the mushrooms, I don't want to stand around here all day, it's freaking me out, (bites lip and looks around nervously)' 
-Joe: 'Okay, but let's not expect to find much, and we should keep an eye out for anything else around us, (looks around nervously) I don't like this one bit.' 
-Samantha: 'Yeah, me neither, let's just keep moving, I see that rise up ahead, maybe we can get a view from there, (bites lip and looks around nervously)' 
-Samantha: 'Hey Joe, let's check the apple tree and see if there's any water or food nearby' 
-Joe: 'Yeah, okay, but let's be careful, I don't want to get our hopes up, (looks at Samantha with a mix of anxiety and caution) what if it's just an ordinary tree?' 
-Samantha: 'Let's just check, okay? I'm getting really thirsty, (bites lip and looks at the apple tree with a mix of hope and anxiety)' 
-Joe: 'Okay, but let's check for water first, I don't want you to faint or something, (looks at Samantha with concern) and maybe we can find some shade too, it's getting pretty hot, (glances up at the sun)' 
-Samantha: 'Yeah, water sounds good, let's check near the tree, (looks at Joe with a hint of anxiety and glances at the apple tree) maybe there's a stream or something, (bites lip and starts walking towards the tree)' 
-Joe: 'Let's check, but stay close, okay? (looks around nervously) I don't like this, it's too quiet.' 
-Samantha: 'Yeah, okay, stay close, let's hurry, (glances around nervously) this is freaking me out too.' 
-Samantha:  moves Apple_Tree#11. and notices Apple_Tree#11 nearby, Joe 2 units away, other resources and characters in view 
-Samantha: 'Hey Joe, let's follow the stream, it might lead us to a safer place or some shelter' 
-Joe: 'Yeah, okay, but let's be careful, I don't want to slip or something, and what if it leads us deeper into the woods?' 
-Samantha: 'I know, me too, let's just take it slow and see where it goes, maybe we'll get lucky' 
-Joe: 'Yeah, okay, let's keep moving, but stay close to the stream, I don't want to get lost again, and maybe we can find some shade or a clearing soon, this sun is killing me.' 
-Samantha: 'Hey Joe, I'm really scared and I don't know what's going on, can we talk about what's happening to us?' 
-Joe: 'I'm scared too, let's figure it out together, maybe we can find some clues or something, I don't know, but just standing here is freaking me out, (looks around nervously) and I'm getting really thirsty, we need to find water soon.' 
-Samantha: 'Yeah, me too, let's follow that stream we saw earlier, maybe it leads to a river or something, and we can find some shade, I'm getting really parched too, (bites lip, looks around nervously)' 
-Joe: 'Yeah, let's go, I'm really thirsty too, and maybe we can find some food or something, (looks around nervously) stay close, okay?' 
-Samantha: 'Hey Joe, I'm really freaking out, can you tell me something about yourself, like, what's the last thing you remember?' 
-Joe: 'Uh, honestly, I don't remember much, just waking up here, it's all kinda fuzzy, (looks around nervously) but I'm trying to piece things together, I guess.' 
-Samantha: 'Yeah, me too, it's super weird, let's keep looking around, see if we can find any clues or something, (bites lip, looks around nervously)' 
-Joe: 'Yeah, let's check that ridge up ahead, might be able to see something from there, (glances around nervously) stay close, okay?' 
-Samantha: 'Okay, but let's be quiet, I don't know what's out there, (looks around nervously) and I'm getting a little spooked, (bites lip)' 
-Joe: 'Yeah, me too, let's just move slowly and keep an eye out, (glances around nervously) I don't like this either, (lowers voice) what if we're not alone?' 
-Samantha: 'Oh my god, don't even say that, it's freaking me out, let's just focus on finding a way out, okay?' 
-Joe: 'Yeah, okay, let's keep moving, I see a clearing up ahead, maybe we can find something there, (glances around nervously) stay close, okay?' 
-Samantha: 'Okay, but let's be quiet and stay alert, I don't like this one bit, (bites lip and looks around nervously)' 
-Samantha: 'Okay, so we need to figure out how to survive here, what do you think our top priorities should be, like food, water, shelter?' 
-Joe: 'Yeah, water first, I'm parched, and we should find some shade too, it's getting hot, let's check that stream we saw earlier.' 
-Samantha: 'Yeah, let's go, I'm dying of thirst, and maybe we can find some food too, like berries or something, stay close, okay?' 
-Joe:  moves Apple_Tree#11. and notices Apple_Tree#11 and Samantha nearby 
-Joe: 'Hey, Samantha, let's pick some apples from this tree, I'm starving' 
-Samantha: 'Yeah, okay, but let's be quick, I'm getting a little spooked just standing here, and we still need to find water, right?' 
-Joe: 'Yeah, let's grab a few and keep moving, I see a stream bed over there, might be our best bet for water' 
-Samantha: 'Okay, but let's hurry, I'm getting really thirsty and this place is giving me the creeps, stay close to me, okay?' 
-Joe: 'Yeah, I'm freaking out too, let's go, I'll stay right behind you' 
-Joe: look around for branches and leaves to use for shelter. sees Apple_Tree#11 nearby, Samantha present.  
-Joe: look around for long branches that can be used as support beams for the shelter. sees Apple_Tree#11 nearby, Samantha present, no visible branches.  
-Joe: 'Hey, Samantha, let's check out that slope to the north, see if we can find any signs of civilization' 
-Samantha: 'Okay, but let's be careful, I don't like this one bit, stay close to me, (bites lip and looks around nervously)' 
-Joe: 'Yeah, don't worry, I'm right here, let's move quiet and keep our eyes open, (glances around nervously and takes a step closer to Samantha)' 
-Samantha: 'Okay, let's keep moving, but slowly, (looks around nervously and takes a deep breath) I don't like this feeling, like we're being watched or something.' 
-Joe: 'Yeah, me too, let's find some water first, I'm getting thirsty, (looks around nervously and scratches the back of his head)' 
-Samantha: 'Yeah, water's crucial, let's follow that stream bed we saw earlier, maybe it'll lead us to a source, (bites lip and looks around nervously)' 
-Joe: 'Alright, let's move out, stay sharp, (glances around nervously and starts walking along the stream bed)' 
-Samantha: 'Okay, but stay close, I'm getting really scared, (bites lip and looks around nervously)' 
-Joe: 'Hey, Samantha, let's follow the stream bed and see if it leads us to a larger body of water, maybe we can find a way out' 
-Samantha: 'Okay, that sounds like a plan, but let's be quiet and stay close, I'm still getting the creeps here, (bites lip and looks around nervously)' 
-Joe: 'Yeah, me too, let's keep moving, I'll take the lead and scan ahead, (glances around nervously and takes a step forward)' 
-Samantha: 'Okay, but don't go too far ahead, I'm still really nervous, (looks around nervously and takes a deep breath)' 
-Joe: 'Don't worry, I'll stay close, let's keep moving and see if we can find some water, (glances around and takes a slow step forward)' 
-Samantha: 'Okay, but let's move quietly, I think I saw something up ahead, (leans in closer to Joe and lowers voice)' 
-Joe: 'What is it, stay close, (looks ahead nervously and slows down)' 
-Samantha: 'I think I saw a shadow, let's wait and watch, (grabs Joe's arm and pulls him closer)' 
-Joe: 'Yeah, let's freeze, I'll take a look, (scans ahead slowly and carefully)' 
-Samantha: 'What do you see, is it moving?, (leans in closer to Joe, eyes fixed on the distance, voice barely above a whisper)' 
-Joe: look around for dry leaves, twigs, and other flammable materials. sees See Samantha, Apple_Tree#11, and nearby Mushrooms#5 and Apple_Tree#2.  
-Joe: 'Hey, Samantha, let's gather some dry leaves and twigs to start a fire' 
-Samantha: 'Yeah, that's a great idea, but first, let's make sure we're in a safe spot, I'm still getting the creeps here, (looks around nervously) and do you think we can find some food too, I'm starving, (bites lip).' 
-Joe: 'Yeah, let's check our surroundings, I see some hills to the north, we could get a better view from up there, and I spotted some mushrooms earlier, might be edible, (looks at Samantha with a concerned expression) you okay, you're really pale, (takes a step closer to her)' 
-Samantha: 'I'm just really thirsty and scared, let's find water first, (bites lip and looks around nervously)' 
-Joe: 'Yeah, water's crucial, let's follow that stream bed like we discussed, might lead us to a larger source, (glances around cautiously and takes a step forward)' 
-Samantha: 'Okay, but stay close, I'm getting really nervous, (bites lip and looks around nervously)' 
-Joe: 'Don't worry, I've got your back, let's move slowly and keep scanning, (glances around cautiously and takes a slow step forward)' World: 
-Samantha: 'Hey Joe, let's keep following the stream bed, I think I see something up ahead that might be a pond or a lake' 
-Joe: 'Yeah, let's check it out, stay close, (glances around cautiously and takes a slow step forward)' 
-Samantha: 'Okay, I'll stay right behind you, what if it's not a pond though?' 
-Joe: 'Don't worry, we'll figure it out, stay close and keep quiet, I'll take a look, (glances around cautiously and takes a slow step forward)' 
-Samantha: 'Okay, but be careful, I've got a bad feeling, (bites lip and looks around nervously)' 
-Joe: 'Yeah, I've got a bad feeling too, let's keep moving but stay sharp, (looks around cautiously and slows down)' 
-Samantha: 'Okay, let's move quietly then, I'll stay right behind you, (bites lip and looks around nervously)' 
-Joe: 'Yeah, stay close, I'll scan ahead, (glances around cautiously and takes a slow step forward)' 
-Samantha: 'Okay, I'll watch our backs, (glances around nervously) you see anything yet?' 
-Joe: 'Not yet, but I think I see some movement up ahead, let's freeze for a sec, (squints eyes and takes a cautious step back)' 
-Samantha:  moves Mushrooms#3. and notices Mushrooms and Apple Trees nearby, Joe 2 units away 
-Samantha: pick some apples from Apple_Tree#11 Resulting in Samantha picks some apples from Apple_Tree#11, gaining 2-3 apples. She sees Joe 2 meters away, and hears the sound of apples falling into her hands. The forest floor now has a few fallen apples near Apple_Tree#11. Samantha becomes slightly pleased. 
-Samantha: start collecting dry leaves and twigs from the forest floor Resulting in Samantha gains a handful of dry leaves and twigs.  The forest floor near her now has a small disturbed area where she collected the leaves and twigs.  She sees the forest floor and the surrounding trees, and hears the occasional birdcall and the soft rustle of leaves in the gentle breeze. 
-Samantha becomes slightly more intent on her task. 
-Samantha: look around for potential dangers, like steep slopes or wild animals. sees Joe nearby, downhill slope, and Apple_Tree#11 within 2 units.  
-Samantha: 'Hey, Joe, I'm gonna take a closer look up ahead, wanna come with me?' 
-Joe: 'Yeah, I'll come with you, stay close though' 
-Joe: scan the surrounding area for any signs of a stream or pond. sees Nearby: Samantha, Apple_Tree#11, Mushrooms#3, and Apple_Tree#10.  
-Joe: pick some apples from Apple_Tree#11 Resulting in Joe picks some apples from Apple_Tree#11 and gains 2-3 apples. He sees the apples in his hands and hears the sound of leaves and branches rustling as he picks them. The forest floor near Apple_Tree#11 now has fewer fallen apples. Joe becomes slightly satisfied. 
-Joe: 'Hey, we should check out that bush with berries I saw earlier, wanna go take a look?' 
-Samantha: 'Yeah, but shouldn't we find water first? I'm getting pretty thirsty, and I don't wanna get stuck out here without any.' 
-Joe: 'Yeah, water's a good idea, let's check that stream bed over there, might find some' 
-Samantha: 'Okay, lead the way, I'll follow, and hopefully we'll find some water soon, I'm really parched' 
-Joe: 'Alright, stay close, I'll check it out, hopefully it's not totally dry' 
-Samantha: 'I'll keep an eye out around us, just in case, and stay right behind you, okay?' 
-Joe: 'Hey, Samantha, let's gather some leaves and start building that shelter, we don't have much time' 
-Samantha: 'Yeah, that's a great idea, but shouldn't we find water first? I'm really thirsty and I don't want to start building without knowing we have a way to stay hydrated. Plus, I saw that stream bed over there, let's check it out real quick.' 
-Joe: 'Yeah, water's a priority, let's check that stream bed, I'll lead the way and see if it's dry or not.' 
-Samantha: 'Okay, I'll follow close behind, keep an eye out for anything weird, and see if we can find any water, maybe there's a spot where it collects or something.' 
-Joe: 'Alright, stay sharp, I'll check the stream bed, see if there's any water collected in a low spot or something, maybe we can find a spot to settle for the night too.' 
-Samantha: 'Yeah, be careful, I'll keep watch, and see if I can find any other useful stuff around here, like more food or shelter materials.' 
-Joe: 'Hey, Samantha, let's start gathering those leaves for the shelter, we can use them to make a roof and some walls' 
-Samantha: 'But shouldn't we find water first, I'm really thirsty and don't want to start building without it' 
-Joe: 'Yeah, you're right, water's a priority, let's check that stream bed like we talked about, see if we can find some, I'll lead the way' 
-Samantha: 'Okay, I'll follow close behind, keep an eye out for anything weird, and see if we can find any water, maybe there's a spot where it collects or something.' 
-Joe: 'Alright, stay sharp, I'll check the stream bed, see if there's any water collected in a low spot or something, maybe we can find a spot to settle for the night too.' 
-Joe: look up at the hills to see if I can spot any paths or openings. sees Samantha nearby, Apple_Tree#11 and Mushrooms#3 in view.  
-Joe: look up at the hills to see if I can spot any paths or openings that might lead to an escape route. sees Samantha nearby, uphill slopes and Apple_Tree#11 in sight.  
-Joe: sit down next to Samantha and take a few deep breaths Resulting in Joe sits down next to Samantha, still holding 2-3 apples, and takes a few deep breaths, feeling slightly more relaxed. He sees the forest floor and the surrounding hills, and hears the gentle breeze stirring the trees. Samantha is now within arm's length of Joe. Joe's breathing slows down, and he becomes slightly calmer. 
-Joe:  moves to Mushrooms#3. and notices Samantha 4 units west, Mushrooms nearby 
-Joe: ...Okay, so we've got some apples, but we still need to find a reliable source of water and a safe place to spend the night, how can we prioritize those tasks?... 
-Joe: scan the stream bed for any signs of water or moisture. sees Samantha nearby, mushrooms and apple trees visible.  
-Joe: scan the stream bed more closely for any signs of moisture or water collection. sees Mushrooms nearby, Samantha 4 units west. 
+amantha: -----cognitive cycle----- 2025-01-01T06:00:00 
+Samantha: Pick apples from Apple_Tree#10
+ Resulting in Samantha gains apples from Apple_Tree#10.
+Samantha sees the apples on the tree and feels the texture of the apples as she picks them. 
+Samantha: scan the area for any signs of danger or unusual activity, keeping an eye on Joe.
+  sees Joe is right next to me. Mushrooms and a thicket are nearby to the northwest..  
+Samantha: scan the area for any signs of food or water sources, keeping an eye on Joe.
+  sees Joe nearby, no immediate food or water. Northwest: mushrooms, thicket, spring at 7-14 distance..  
+Samantha: use a stick to gently probe the soil and leaf litter, searching for hidden objects or disturbed areas
+ Resulting in Samantha feels the soil and leaf litter with the stick, detecting no hidden objects or disturbed areas.
+Samantha sees and hears nothing unusual in the immediate surroundings.
+Samantha's possessions and physical state remain unchanged. 
+Samantha: scan the ground and nearby trees for any unusual marks or objects that might indicate how I arrived here.
+  sees Joe is nearby. Mushrooms#10, Thicket#3 at 7 units northwest. Apple_Tree#10 at 11 units northeast..  
+Samantha: 'Hey Joe, let's figure out our next move. What do you think we should do?' 
+Joe: 'Yeah, let's find more food and water. We should check out that thicket and see if there are any streams nearby. What do you think?' 
+Samantha: 'Sounds good, let's head to the thicket. Maybe we'll find a stream there. I'm also curious if there are any clues around that might jog our memories about how we got here.' 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T06:30:00 
+Joe:  moves Spring#2.
+  and notices Spring#2 visible 12 units north. Samantha 2 units southeast. 
+Joe:  moves Berries#6.
+  and notices Berries#6 and Berries#7 spotted northwest. Samantha is southeast, 4 units away. 
+Joe: 'Hey, let's head over to Hut#1 and see if we can find that map. It might show us the way out of here!' 
+Samantha: 'Yeah, finding that map sounds like a plan. But we still need to grab those berries and water from the spring, right? Let's do that first, then hit up Hut#1. What do you think?' 
+Joe: 'Yeah, sounds good. Let's grab the berries and water first, then check out Hut#1. I'm curious to see what we find there. (nods in agreement)' 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T06:54:00 
+Samantha:  moves Berries#6.
+  and notices Joe nearby, Berries#6 and Berries#7 in northwest for gathering, anxious about food security. 
+Samantha: Fill </act>
+ Resulting in Samantha fills her water container at Spring#2.
+Samantha gains water from Spring#2.
+Samantha's thirst is quenched. 
+Samantha: 'Hey Joe, let's split up to cover more ground in Hut#1. I'll take the left side, you take the right. Keep an eye out for anything that looks like a map, okay?' 
+Joe: 'Sure, sounds like a plan. I'll keep my eyes peeled for that map on the right side. Let's meet back here after we've checked our areas, yeah?' 
+Samantha:  moves to Thicket#3.
+  and notices Thicket#3 is right here. Joe is 3 units south. Thicket#4 is 11 units southwest. 
+Samantha: 'Hey Joe, I'm gonna check out Thicket#3 for clues. You keep an eye out for anything </act>' 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T07:10:00 
+Joe: Joe starts collecting berries from Berries#6, carefully picking the ripe ones and placing them in his bag.
+ Resulting in Joe gains ripe berries from Berries#6 in his bag.
+Joe sees the berries in Berries#6 diminish as he picks them. 
+Joe:  moves Spring#2.
+  and notices Spring#2 is 10 units north. Samantha is 3 units northwest. Mushrooms#3 and Thicket#3 are nearby. 
+Joe: Joe meticulously searches through the debris and corners on the right side of Hut#1, feeling increasingly agitated as he tries to find the map.
+ Resulting in Joe does not find the map after searching the debris and corners on the right side of Hut#1.
+Joe becomes more agitated. 
+Joe: ...Man, I'm really uneasy about this thicket. What if we find something that makes things worse? But we gotta do this to figure out what's going on with our memories. Let's be thorough but stay sharp.... 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T07:53:00 
+Samantha: 'Hey Joe, I'm gonna head over to Berries#7 to grab some more food. Keep an eye out, okay?' 
+Joe </act>: 'Sure, I'll keep watch. Be careful out there, and let me know if you find anything unusual at Berries#7.' 
+Samantha:  moves Berries#7.
+  and notices Berries#7 visible northwest at 18 units. Joe southeast at 5 units. Thicket#3 southeast at 2 units. Mushrooms#10 southwest at 4 units. 
+Samantha: ...Man, this thicket might hold some answers about how we ended up here. I gotta stay sharp and look for anything unusual. Maybe there's something hidden that'll jog my memory.... 
+Samantha: Samantha carefully searches through </act>
+ Resulting in Samantha searches Thicket#3 more thoroughly but finds no new resources or clues.
+Samantha remains healthy and unafraid. 
+Samantha: Samantha continues searching the left side of Hut#1, carefully checking every nook and cranny for the map.
+ Resulting in Samantha continues searching the left side of Hut#1 but does not find the map.
+Samantha remains focused and determined. 
+Samantha: Samantha continues searching the left side of Hut#1, carefully checking under the floorboards and behind any loose panels for the map.
+ Resulting in Samantha continues searching the left side of Hut#1 but does not find the map.
+Samantha remains focused and determined. 
+Samantha: 'Hey Joe, after we </act>' 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T08:30:00 
+Joe: 'Hey, let's hurry up and grab those berries from Berries#7 before moving on to the next spot.' 
+Samantha: 'Yeah, sounds good! Let's hit Berries#7 quick, then I wanna swing by Hut#1 again. Gotta find that map, you know? *bites lip, eyes scanning the area*' 
+Joe: 'Yeah, let's do that. But, uh, I'm kinda feeling on edge, you know? Let's grab the berries and check Hut#1 quick. *shifts weight from foot to foot*' 
+Samantha: 'Yeah, I feel you. Let's grab those berries fast and then hit Hut#1. We need that map, pronto. *nods, eyes darting around*' 
+Joe: 'Hey, let's head to Spring#2 and refill our water. We gotta stay hydrated, right?' 
+Samantha: 'Yeah, let's do that. But after, we gotta hit Hut#1 again, right? That map's gotta be there somewhere. *nods, eyes scanning the surroundings*' 
+Joe: 'Yeah, definitely. Let's hit Spring#2 first, then straight to Hut#1 for that map. *glances around nervously*' 
+Joe: Joe searches the right side of Hut#1, carefully checking under debris and inside any containers for the map.
+ Resulting in Joe searches the right side of Hut#1 but does not find the map. The right side of Hut#1 is now partially searched. Joe sees no new resources or clues on the right side of Hut#1. Joe's possessions remain unchanged. Joe becomes slightly tired from the search. 
+Joe: 'Hey, I'm still looking over here. Any luck on your end? </act>' 
+Joe: ...Man, this thicket is dense. I need to stay focused and check every nook and cranny. What if there's something hidden under the leaves or behind a bush? Gotta be thorough but also quick, time's ticking.... 
+Joe: Joe </act>
+ Resulting in Joe's action is incomplete and cannot be processed as given. No changes occur in the environment, Joe's possessions, or state. Joe sees nothing new, hears nothing new, and acquires no new information. 
+World: 
+
+-----scene----- 2025-01-01T09:02:00
+ 
+World: 
+A temperate, mixed forest-open landscape at 9:02 AM on January 1, 2025, with the sun continuing to rise, casting shorter shadows. The air remains chilly, and the sky is still clear, indicating a sunny day. No buildings, roads, or other signs of humanity are visible. Samantha is positioned 4 units southeast of Joe, who is 2 units northwest of her previous position. Spring#2, located 9 units northeast of Samantha, has been fully utilized for water collection. Hut#1, visible 12 units southwest of Joe, has been partially searched on both sides, with the map still unfound. Joe has partially harvested Berries#7, completing 50% of the task, and his bag now contains berries from Berries#6. Berries#7 remains half uncollected. Thicket#3 has been thoroughly searched by Samantha with no new resources or clues found, while Thicket#4 has been partially explored by Joe with no memory-related clues found yet. Joe is slightly tired from searching the right side of Hut#1. No immediate threats or other characters are nearby. 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T09:02:00 
+Samantha:  moves Berries#7.
+  and notices Berries#7 spotted northwest at 16, Joe southeast at 7, Mushrooms#10 south at 4, Thicket#3 southeast at 4. 
+Samantha: 'Hey Joe, let's split up and cover more ground. I'll take the left side </act>' 
+Samantha: Samantha searches the left side of Hut#1, carefully examining every corner and under any debris for the map.
+ Resulting in Samantha searches the left side of Hut#1 thoroughly but does not find the map. The left side of Hut#1 is now fully searched. Samantha sees no new items or clues in the area. Samantha remains healthy and unafraid of the task, but becomes slightly tired from the effort. She gains no new possessions or specific information from this search. 
+Samantha: Samantha carefully searches through the undergrowth of Thicket#4, looking for any hidden items or signs that might trigger her memory.
+ Resulting in Samantha finds no hidden items or memory-related signs in Thicket#4.
+Samantha becomes more tired from searching Thicket#4. 
+Samantha: Samantha carefully examines the ground and underbrush of Thicket#4, searching for any unusual objects or signs that might trigger her memory.
+ Resulting in Samantha finds no unusual objects or signs in Thicket#4 that trigger her memory.
+Samantha becomes more tired from searching Thicket#4. 
+Samantha: Samantha carefully lifts and moves sections of Fallen_Log#9, inspecting underneath for any hidden items or clues.
+ Resulting in Samantha lifts and moves sections of Fallen_Log#9, finding no hidden items or clues underneath.
+Samantha sees the ground beneath Fallen_Log#9, which is clear of any objects or signs.
+Samantha becomes more tired from the effort of moving the log.
     """
-    results = evaluate_transcript(agents, transcript)
+    evaluate_transcript(agents, transcript)
+    sys.exit()
+    with open('/home/bruce/Downloads/AllTheWorldAPlay/src/sim/evaluation/baseline_script.txt', 'r') as f:
+        transcript = f.readlines()
+        results = evaluate_transcript('Samantha, Joe', '\n'.join(transcript))

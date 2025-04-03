@@ -449,13 +449,13 @@ Be extremely terse when reporting character emotional state, only report the mos
 Be concise!
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
-<end/>
+</end>
 """)]
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, prompt, temp=0.7, stops=['<end/>'], max_tokens=300)
+                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, prompt, temp=0.7, stops=['</end>'], max_tokens=300)
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -541,10 +541,10 @@ Do not include any introductory, explanatory, or discursive text, or any markdow
 Limit your total response to about 200 words
 Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
-<end/>""")]
+</end>""")]
 
         response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
-                                temp=0.6, stops=['<end/>'], max_tokens=270)
+                                temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         if not local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
