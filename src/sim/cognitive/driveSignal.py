@@ -497,8 +497,8 @@ End your response with:
         for signal_hash in hash_utils.findall_forms(response):
             signal = self.construct_signal(signal_hash, [drive], self.owner.context.simulation_time)
 
-            signal.importance = importance*signal.importance
             if signal:
+                signal.importance = importance*signal.importance
                 print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
                 signals.append(signal)
                    
