@@ -26,7 +26,7 @@ You are wary of strangers.""",
 server_name=server_name)
 
 S.set_drives([
-    "solve the mystery of how they ended up in the forest with no memory.",
+    "solve the mystery of how they ended up in the forest with no memory. Find a way back home.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
@@ -41,10 +41,9 @@ You speak in informally.""",
 server_name=server_name)
 
 J.set_drives([
+    "solve the mystery of how they ended up in the forest with no memory. Find a way out of the forest.",
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     "companionship, community, family, acceptance, trust, intimacy.",
-    "finding a way out of the forest.",
-    "solve the mystery of how they ended up in the forest with no memory.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
 

@@ -1,4 +1,9 @@
 from __future__ import annotations
+from itertools import tee
+from reprlib import Repr
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from datetime import datetime
 import math
 import numpy as np
@@ -16,7 +21,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from weakref import WeakValueDictionary
-
+#from sim.prompt import ask
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -302,7 +307,7 @@ End your response with:
         return max(s.timestamp for s in self.signals)
 
 class DriveSignalManager:
-    def __init__(self, owner: Character, llm: LLM, context=None, embedding_dim=384):
+    def __init__(self, owner: Character, llm: LLM, context=None, ask=None, embedding_dim=384):
         """Initialize detector with given embedding dimension"""
         self.clusters: List[SignalCluster] = []
         self.embedding_dim = embedding_dim
@@ -312,6 +317,7 @@ class DriveSignalManager:
         self.current_time = None
         self.owner = owner
         self.clustering_eps = 0.40
+        self.ask = ask
 
     def set_llm(self, llm: LLM):
         self.llm = llm
@@ -409,12 +415,15 @@ class DriveSignalManager:
 {{$surroundings}}
 </Surroundings>
 
+Consider <Surroundings> carefully for additional context. 
+Signals can originate from elements explicitly mentioned there, especially those related to safety, survival, or immediate opportunities.
+
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#signal 3-4 words naming the issue or opportunity detected
-#type opportunity / issue
-#description 6-8 words further detailing the opportunity or issue
+#signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
+#type issue or opportunity
+#description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
 #importance 0-1
 #urgency 0-1
@@ -444,6 +453,67 @@ End your response with:
             print(f"Error analyzing text: {e}")
             return []
  
+    def check_drive_signal(self, drive: Drive, importance: float = 1.0) -> List[DriveSignal]:
+        """Analyze drive for self-awareness signals"""
+
+        mission = f"""Given the information following, evaluate the awareness of the owner at the current time with respect to the following need: 
+        
+{drive.text}
+
+"""
+
+        suffix = f"""
+        
+Report any issues or opportunities you expect the owner is aware of with respect to this need and only this need:
+
+{drive.text}
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#signal 3-4 words naming the issue or opportunity detected
+#type issue or opportunity
+#description 4-7 words further detailing the opportunity or issue
+#drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
+#importance 0-1
+#urgency 0-1
+##
+
+Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</end>
+"""
+            
+        try:
+            response = self.ask(self.owner, mission, suffix=suffix, addl_bindings= {}, max_tokens=80)
+        except Exception as e:
+            traceback.print_exc()
+            print(f"Error checking drive signal: {e}")
+            return []
+        if not response:
+            return []
+        signals = []
+        for signal_hash in hash_utils.findall_forms(response):
+            signal = self.construct_signal(signal_hash, [drive], self.owner.context.simulation_time)
+
+            signal.importance = importance*signal.importance
+            if signal:
+                print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
+                signals.append(signal)
+                   
+        self.process_signals(signals)
+        # print(f"Found {len(signals)} signals")
+        return signals
+            
+            
+    def check_drive_signals(self):
+        """Check all drives for signals"""
+        importance = 1.0 # importance scales down as we progress down the list of drives
+        for drive in self.owner.drives:
+            self.check_drive_signal(drive, importance)
+            importance *= 0.9
+            
     def process_signals(self, signals: List[DriveSignal]):
         """Process new signals and update clusters"""
         updated_clusters = []

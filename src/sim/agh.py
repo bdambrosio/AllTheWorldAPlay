@@ -299,7 +299,7 @@ class Character:
         self.memory_retrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
         self.next_task = None  # Add this line
-        self.driveSignalManager = DriveSignalManager(self, self.llm)
+        self.driveSignalManager = DriveSignalManager(self, self.llm, ask=default_ask)
         self.driveSignalManager.set_context(self.context)
         self.focus_goal = None
         self.focus_task = Stack()
@@ -671,14 +671,14 @@ Respond using the following XML format:
 <perception>a concise (30 words or less) description of perceptual content</perception>
 
 End your response with:
-<end/>
+</end>
 """)]
         #print("Look",end=' ')
         response = self.llm.ask({"view": text_view, 
                                  "interests": interest,
                                  "state": self.narrative.get_summary(),
                                  "focus_task": self.focus_task.peek().to_string() if self.focus_task.peek() else ''}, 
-                                prompt, temp=0.2, stops=['<end/>'], max_tokens=100)
+                                prompt, temp=0.2, stops=['</end>'], max_tokens=100)
         percept = xml.find('<perception>', response)
         perceptual_input = PerceptualInput(
             mode=SensoryMode.VISUAL,
@@ -857,7 +857,7 @@ The words should each describe a different aspect of the character's emotional s
 Respond using this format, without any additional text:
 
 adjective, adjective, adjective
-<end/>
+</end>
 """)]
 
             concerns = self.focus_task.peek().to_string() if self.focus_task.peek() else ''
@@ -865,7 +865,7 @@ adjective, adjective, adjective
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.text for memory in recent_memories)
             #print("Char generate image description", end=' ')
-            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['<end/>'], max_tokens=10)
+            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['</end>'], max_tokens=10)
             if response:
                 description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. Background: '+context
             else:
@@ -911,12 +911,12 @@ unclassified
 Respond using this format:
 
 mode
-<end/>
+</end>
 
 Respond only with a single choice of mode. Do not include any introductory, discursive, or explanatory text.
 """)]
             #print("Perceptual input",end=' ')
-            response = self.llm.ask({"message": message}, prompt, temp=0, stops=['<end/>'], max_tokens=150)
+            response = self.llm.ask({"message": message}, prompt, temp=0, stops=['</end>'], max_tokens=150)
             if response:
                 mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
             else:
@@ -1013,9 +1013,9 @@ Respond only with your task-name using the above XML
 Do not include your reasoning in your response.
 Do not include any introductory, discursive, or explanatory text.
 End your response with:
-<end/>
+</end>
 """)]
-        response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['<end/>'], max_tokens=12)
+        response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</end>'], max_tokens=12)
         return xml.find('<name>', response)
                     
 
@@ -1055,13 +1055,13 @@ Consider:
 
 Respond with only 'True' if repetitive or 'False' if the response adds something new.
 End response with:
-<end/>""")]
+</end>""")]
 
         #print("Repetitive")
         result = self.llm.ask({
             'history': history,
             'response': new_response
-        }, prompt, temp=0.2, stops=['<end/>'], max_tokens=100)
+        }, prompt, temp=0.2, stops=['</end>'], max_tokens=100)
 
         if 'true' in result.lower():
             return True
@@ -1330,6 +1330,7 @@ End response with:
 
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
+        self.driveSignalManager.check_drive_signals()
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
@@ -1417,7 +1418,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 
 Respond ONLY with the above hash-formatted text.
 End response with:
-<end/>
+</end>
 """)]
 
         response = self.llm.ask({"signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
@@ -1430,7 +1431,7 @@ End response with:
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
-                                 }, prompt, temp=0.3, stops=['<end/>'], max_tokens=240)
+                                 }, prompt, temp=0.3, stops=['</end>'], max_tokens=240)
         goals = []
         forms = hash_utils.findall_forms(response)
         for goal_hash in forms:
@@ -1465,6 +1466,7 @@ Also, the collective duration of the tasks should be less than any duration or c
 A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 3-4 steps at most) in satisfying the focus goal.
 The new tasks should be distinct from one another, and advance the focus goal.
 Where possible, include one or more of your intensions in generating task alternatives.
+Make explicit reference to diverse provided resources where logically fitting, ensuring broader environmental engagement across tasks.
 
 A task has a name, description, reason, list of actors, start time and duration, and a termination criterion as shown below.
 Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
@@ -1472,12 +1474,13 @@ Each task should begin with a #task tag, and should end with ## as shown below. 
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #name brief (4-6 words) action name
-#description terse (6-8 words) statement of the action to be taken
+#description terse (6-8 words) statement of the action to be taken. Where appropriate, include brief emotional considerations reflecting character stance (e.g., anxiety, vigilance) in task descriptions or reasons.
 #reason (6-7 words) on why this action is important now
 #actors the names of any other actors involved in this task. if no other actors, use None
 #start_time (2-3 words) expected start time of the action
 #duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action
+#termination (5-7 words) condition test which, if met, would satisfy the goal of this action. Termination criteria should be specific and objectively verifiable.
+
 ##
 
 In refering to other actors. always use their name, without other labels like 'Agent', 
@@ -1485,10 +1488,11 @@ and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
 Order tasks in the assumed order of execution.
 End response with:
-<end/>
+</end>
 """
         mission = """create a sequence of 3-6 tasks to achieve the focus goal: 
 {{$focus_goal}}
+
 
 """
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
@@ -1563,7 +1567,7 @@ observable world updates from most recent act
 Respond ONLY with the concise (10-20 words) statement about the actual achievements with respect to the goal or task.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-<end/>
+</end>
 """)]
 
         response = self.llm.ask({"objective": object.to_string(),
@@ -1573,7 +1577,7 @@ End your response with:
                                  "situation": self.context.current_state,
                                  "world": self.context.current_state,
                                  "consequences": consequences,
-                                 "updates": updates}, prompt, temp=0.5, stops=['<end/>'], max_tokens=30)
+                                 "updates": updates}, prompt, temp=0.5, stops=['</end>'], max_tokens=30)
         return response
 
     async def test_termination(self, object, termination_check, consequences, updates='', type=''):
@@ -1622,7 +1626,7 @@ Respond using this hash-formatted text:
 Respond ONLY with the above hash-formatted text.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-<end/>
+</end>
 """)]
 
 
@@ -1643,7 +1647,7 @@ End your response with:
             "character": self.character,
             "history": self.format_history_for_UI(),
             "relationships": self.narrative.get_summary('medium')
-        }, prompt, temp=0.5, stops=['<end/>'], max_tokens=120)
+        }, prompt, temp=0.5, stops=['</end>'], max_tokens=120)
 
         satisfied = hash_utils.find('status', response)
         progress = hash_utils.find('progress', response)
@@ -1720,7 +1724,7 @@ Speak in the first person, using the character's voice.
 Do not repeat the previous dialog.
 Do not include any introductory, explanatory, formative, or discursive text.
 End response with:
-<end/>
+</end>
 """)]
 
         relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
@@ -1730,7 +1734,7 @@ End response with:
                             "target": target_name,
                             "relationship": relationship,
                             "character": self.character
-                    }, prompt, temp=0.6, stops=['<end/>'])
+                    }, prompt, temp=0.6, stops=['</end>'])
 
         return act
 
@@ -1756,7 +1760,7 @@ recent percepts related to the current goals and tasks include:
 
 {{$goal_memories}}
 
-Respond with tree alternative Acts, including their Mode and action. 
+Respond with two alternative Acts, including their Mode, action, target, and expectedduration. 
 The Acts should vary in mode and action.
 
 In choosing each Act (see format below), you can choose from these Modes:
@@ -1773,7 +1777,7 @@ In choosing each Act (see format below), you can choose from these Modes:
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking.
 
 Review your character and current emotional stance when choosing Mode and action. 
-Emotional tone and orientation can (and should!) heavily influence the phrasing and style of expression for an Act.
+Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression for an Act.
 
 An Act is one which:
 - Is a specific thought, spoken text, physical movement or action.
@@ -1831,7 +1835,6 @@ Response:
 #action Call a meeting with the building management to discuss increased security measures for Annie and the household.
 #target building management
 #duration 10 minutes
-</act>
 
 ----
 
@@ -1844,7 +1847,6 @@ Response:
 #duration 1 minute
 #target Joe
 ##
-</act>
 
 ----
 
@@ -1869,7 +1871,6 @@ Response:
 #duration 15 minute
 #target Samantha
 ##
-</act>
 
 ===End Examples===
 
@@ -1913,7 +1914,7 @@ End your response with:
         task = self.focus_task.peek()
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
-                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=280)
+                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=60)
         response = response.strip()
         if not response.endswith('</act>'):
             response += '\n</act>'
