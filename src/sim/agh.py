@@ -2973,6 +2973,7 @@ End your response with:
                 self.focus_task.push(self.focus_goal.task_plan[0])
                 self.focus_goal.task_plan.pop(0)
                 return True
+            task_count += 1
         return self.focus_task.peek() is None
             
         
