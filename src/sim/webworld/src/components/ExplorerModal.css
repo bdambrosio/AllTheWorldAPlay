@@ -231,10 +231,34 @@
   border-radius: 4px;
 }
 
-.drive-strength {
-  font-size: 0.9em;
-  color: #aaa;
-  margin-top: 4px;
+.drive-text {
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.drive-activation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  background: #333;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.activation-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+  transition: width 0.3s ease;
+}
+
+.activation-value {
+  position: absolute;
+  right: 8px;
+  color: #fff;
+  font-size: 0.8em;
+  text-shadow: 0 0 2px rgba(0,0,0,0.5);
 }
 
 .memories-list {

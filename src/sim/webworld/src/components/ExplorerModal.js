@@ -101,6 +101,10 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
               {explorerState.drives?.map((drive, i) => (
                 <div key={i} className="drive-item">
                   <div className="drive-text">{drive.text}</div>
+                  <div className="drive-activation">
+                    <div className="activation-bar" style={{width: `${drive.activation * 100}%`}}></div>
+                    <span className="activation-value">{Math.round(drive.activation * 100)}%</span>
+                  </div>
                 </div>
               ))}
             </div>
