@@ -449,7 +449,7 @@ class Character:
                 mode_enum = Mode[mode]  # This validates against the enum
                 mode = mode_enum.value  # Get standardized string value
             except KeyError:
-                raise ValueError(f'Invalid mode {mode} in actionable. Must be one of: {", ".join(m.value for m in Mode)}')
+                return None
         
         if mode and action:
             act = Act(
@@ -1359,12 +1359,14 @@ A goal in this context is an overarching objective that captures the central top
 {{$recent_events}}
 </recent_events>
 
-Additional information about the character to support developing your response:
+Additional information about the character to support developing your response
+Drives are the character's basic motivations. Activation indicates how strongle the drive is active at present in the character's consciousness.
 
 <drives>
 {{$drives}}
 </drives>
 
+Relationships are the character's relationships with other actors.
 
 <relationships>
 {{$relationships}}
@@ -1422,7 +1424,7 @@ End response with:
 """)]
 
         response = self.llm.ask({"signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
-                                 "drives": "\n".join([d.text for d in self.drives]),
+                                 "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
                                  "character": self.character,
@@ -1518,7 +1520,7 @@ End response with:
                                'create a sequence of 3-6 tasks to achieve the focus goal', 
                                suffix, 
                                {"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 400)
+                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 200)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -1532,7 +1534,7 @@ End response with:
             if task:
                 task_plan.append(task)
         print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
-        goal.task_plan = task_plan
+        goal.task_plan = task_plan # only use the first task for now, to force replanning in face of new information
         return task_plan
 
     def generate_completion_statement(self, object, termination_check, satisfied, progress, consequences='', updates=''):
@@ -1663,6 +1665,7 @@ End your response with:
             self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             if self.context.current_state.count('Following update may invalidate') > 3:
                 await self.context.update(local_only=True)
+                await asyncio.sleep(0.1)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if progress/100.0 > random.random():
@@ -1670,7 +1673,9 @@ End your response with:
                 statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
                 self.add_perceptual_input(statement, mode='internal')
                 self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
-                #await self.context.update(local_only=True)
+                if self.context.current_state.count('Following update may invalidate') > 3:
+                    await self.context.update(local_only=True)
+                    await asyncio.sleep(0.1)
                 return True, progress
         #elif satisfied != None and 'insufficient' in satisfied.lower():
         #    if progress/100.0 > random.random() + 0.5:
@@ -1741,7 +1746,7 @@ End response with:
     def generate_acts(self, task: Task, goal: Goal=None):
 
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
-        mission = """generate a set of two alternative Acts (Think, Say, Look, Move, Do) for the next step of the following task:
+        mission = """generate a set of two alternative acts (Think, Say, Look, Move, Do) for the next step of the following task:
 
 <task>
 {{$task_string}}
@@ -1760,10 +1765,10 @@ recent percepts related to the current goals and tasks include:
 
 {{$goal_memories}}
 
-Respond with two alternative Acts, including their Mode, action, target, and expectedduration. 
-The Acts should vary in mode and action.
+Respond with two alternative acts, including their Mode, action, target, and expectedduration. 
+The acts should vary in mode and action.
 
-In choosing each Act (see format below), you can choose from these Modes:
+In choosing each act (see format below), you can choose from these Modes:
 - Say - speak, to obtain or share information, to align or coordinate with others, to reason jointly, or to establish or maintain a bond. 
     For example, if you want to build a shelter with Samantha, it might be effective to Say: 'Samantha, let's build a shelter.'
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
@@ -1779,7 +1784,7 @@ In choosing each Act (see format below), you can choose from these Modes:
 Review your character and current emotional stance when choosing Mode and action. 
 Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression for an Act.
 
-An Act is one which:
+An act is:
 - Is a specific thought, spoken text, physical movement or action.
 - Includes only the actual thoughts, spoken words, physical movement, or action.
 - Has a clear beginning and end point.
@@ -1914,11 +1919,8 @@ End your response with:
         task = self.focus_task.peek()
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
-                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=60)
+                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=90)
         response = response.strip()
-        if not response.endswith('</act>'):
-            response += '\n</act>'
-
         # Rest of existing while loop...
         act_hashes = hash_utils.findall_forms(response)
         act_alternatives = []
@@ -2826,7 +2828,9 @@ End your response with:
             #    self.focus_action = acts[0]
             #    return self.focus_action
             self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
-            if not self.focus_action:
+            if not self.focus_action and len(acts) > 0:
+                self.focus_action = acts[0]
+            elif not self.focus_action:
                 print(f'{self.name} request_act_choice: no act selected')
                 return
             return self.focus_action
@@ -2957,6 +2961,12 @@ End your response with:
                 self.focus_goal.task_plan.pop(0)
                 # return allows yield to other coroutines / actors
                 #return True
+            elif self.focus_goal:
+                self.clear_goal_if_satisfied(self.focus_goal)
+                if self.focus_goal:
+                    self.generate_task_plan(self.focus_goal)
+                    self.focus_task.push(self.focus_goal.task_plan[0])
+                    self.focus_goal.task_plan.pop(0)
             elif outcome: # task entire task plan is done
                 return True
             elif self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0: # failed at task, but continue with next task - but let other actors run first
@@ -3165,7 +3175,7 @@ end your response with:
                 'result': last_act.result if last_act else '',
                 'reason': last_act.reason if last_act else ''
             },
-            'drives': [{'text': drive.text or ''} for drive in (self.drives or [])],
+            'drives': [{'text': drive.text or '', 'activation': drive.activation} for drive in (self.drives or [])],
             'emotional_state': [
                 {
                     'text': percept.content or '',

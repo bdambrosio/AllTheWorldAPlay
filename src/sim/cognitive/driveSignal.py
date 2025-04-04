@@ -30,12 +30,38 @@ if TYPE_CHECKING:
 
 _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-@dataclass(frozen=True)
+
+def noisy_add(a: float, b: float) -> float:
+    """
+    Implements noisy-or operation for probabilities a and b in range [0,1].
+    Returns a value that is at least as large as max(a,b) but never exceeds 1.0.
+    The result represents the probability of either event occurring.
+    
+    Args:
+        a: First probability (0 <= a <= 1)
+        b: Second probability (0 <= b <= 1)
+        
+    Returns:
+        Combined probability (0 <= result <= 1)
+    """
+    if not (0 <= a <= 1 and 0 <= b <= 1):
+        raise ValueError("Inputs must be between 0 and 1")
+    
+    # If either input is 1.0, result must be 1.0
+    if a == 1.0 or b == 1.0:
+        return 1.0
+        
+    # For non-1.0 inputs, use the formula: 1 - (1-a)(1-b)
+    # This ensures result is at least max(a,b) but never exceeds 1.0
+    return 1.0 - (1.0 - a) * (1.0 - b)
+
+@dataclass
 class Drive:
     """Represents a character drive with semantic embedding"""
     _id_counter: ClassVar[int] = 0
     _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
     text: str
+    activation: float = 1.0
     embedding: Optional[np.ndarray] = None
     attempted_goals: List[Goal] = field(default_factory=list)   
     satisfied_goals: List[Goal] = field(default_factory=list)   
@@ -373,15 +399,23 @@ class DriveSignalManager:
             return None
                     
         embedding = self._get_embedding(desc)
+        
+        #compute signal importance as raw importance times activation of drives
         drive_ids = drive_ids.split('@')
         drive_ids = [d.strip() for d in drive_ids]
+        activation = 0.0
         signal_drives = []
         for id in drive_ids:
+            id = id.strip()
             if id in Drive._instances:  
                 signal_drives.append(Drive._instances[id])
+                activation = noisy_add(activation, Drive._instances[id].activation)
+            elif id =='' or id is None:
+                continue
             else:
                 print(f"Warning: Drive {id} not found")
-                    
+        importance = activation*importance
+
         signal = DriveSignal(
             text=f'{signal_text}: {desc}',
             drives=signal_drives,
@@ -442,7 +476,7 @@ End your response with:
             for signal_hash in hash_utils.findall_forms(response):
                 signal = self.construct_signal(signal_hash, drives, current_time)
                 if signal:
-                    print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
+                    print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
                     signals.append(signal)
                    
             self.process_signals(signals)
@@ -453,28 +487,28 @@ End your response with:
             print(f"Error analyzing text: {e}")
             return []
  
-    def check_drive_signal(self, drive: Drive, importance: float = 1.0) -> List[DriveSignal]:
+    def check_drive_signal(self, drive: Drive) -> List[DriveSignal]:
         """Analyze drive for self-awareness signals"""
 
         mission = f"""Given the information following, evaluate the awareness of the owner at the current time with respect to the following need: 
         
-{drive.text}
+{drive.id}: {drive.text}
 
 """
 
         suffix = f"""
-        
+
 Report any issues or opportunities you expect the owner is aware of with respect to this need and only this need:
 
-{drive.text}
+{drive.id}: {drive.text}
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#signal 3-4 words naming the issue or opportunity detected
+#signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
 #type issue or opportunity
-#description 4-7 words further detailing the opportunity or issue
-#drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
+#description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
+#drive_ids {drive.id}
 #importance 0-1
 #urgency 0-1
 ##
@@ -498,8 +532,10 @@ End your response with:
             signal = self.construct_signal(signal_hash, [drive], self.owner.context.simulation_time)
 
             if signal:
-                signal.importance = importance*signal.importance
-                print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text}')
+                raw_signal_importance = signal.importance
+                signal.importance = drive.activation*signal.importance
+                drive.activation = .5*drive.activation + .5*max(raw_signal_importance, signal.urgency)
+                print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
                 signals.append(signal)
                    
         self.process_signals(signals)
@@ -509,10 +545,8 @@ End your response with:
             
     def check_drive_signals(self):
         """Check all drives for signals"""
-        importance = 1.0 # importance scales down as we progress down the list of drives
         for drive in self.owner.drives:
-            self.check_drive_signal(drive, importance)
-            importance *= 0.9
+            self.check_drive_signal(drive)
             
     def process_signals(self, signals: List[DriveSignal]):
         """Process new signals and update clusters"""
