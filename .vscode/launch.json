@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+    {"name":"Python Debugger: Current File","type":"debugpy","request":"launch","program":"${file}","console":"integratedTerminal"},
 
         {
             "name": "Python Debugger: Current File",
@@ -35,6 +36,20 @@
                 "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
                 "CUDA_VISIBLE_DEVICES": "0"
             }
+        },
+        {
+            "name": "exl2-server",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/src/utils/",
+                        "module": "fastapi",
+            "args": [
+                "run",
+                "exl2-server.py",
+                "--port",
+                "5000"
+            ],
+            "jinja": true
         },
         {
             "name": "sd3 server",

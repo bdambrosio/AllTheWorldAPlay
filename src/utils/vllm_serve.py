@@ -14,14 +14,14 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 # Configure VLLM engine arguments
 engine_args = AsyncEngineArgs(
     #model="/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B",
-    model="/home/bruce/Downloads/models/Phi-4",
+    model="/home/bruce/Downloads/models/Mistral-Small-3.1-24B-Base-2503",
     tensor_parallel_size=torch.cuda.device_count(),  # Use both GPUs
     dtype="bfloat16",
     #max_seq_len=16384,
     gpu_memory_utilization=0.7,
     trust_remote_code=False,
     enforce_eager=False,
-    max_num_batched_tokens=16384,
+    max_num_batched_tokens=2048,
     quantization=None,
 )
 

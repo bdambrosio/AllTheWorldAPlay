@@ -126,7 +126,7 @@ resource_rules = {
             'resource_type': resource_types.Cave,
             'description': 'A small cave in the rocks',
             'has_npc': True,
-            'count': 2,
+            'count': 1,
             'requires_property': False,
             'terrain_weights': {
                 terrain_types.Mountain: 2.0

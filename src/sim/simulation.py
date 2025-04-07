@@ -130,6 +130,7 @@ class SimulationServer:
         play_name = command.get('play')
         main_dir = Path(__file__).parent
         config_path = (main_dir / '../plays/config.py').resolve()
+        narrative_path = (main_dir / '../plays/narratives/').resolve()
         play_path = (main_dir / '../plays' / play_name).resolve()
         try:
             """Initialize new simulation instance"""
@@ -163,6 +164,8 @@ class SimulationServer:
             
             self.sim_context = module.W
             await self.send_command_ack('load_play')
+            if hasattr(module, 'narrative'):
+                self.sim_context.load_narrative(narrative_path / module.narrative)
             self.initialized = True
 
             await self.send_world_update()
@@ -175,7 +178,8 @@ class SimulationServer:
             self.image_cache = {}
             self.steps_since_last_update = 0
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
-
+            if self.sim_context.narrative:
+                await self.sim_context.run_narrative()
         except Exception as e:
             traceback.print_exc()
             await self.send_result({

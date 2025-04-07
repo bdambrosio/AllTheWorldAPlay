@@ -4,7 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
 import plays.config as configuration
-from sim.scenarios import apocalypse
+from plays.scenarios import apocalypse
 from enum import Enum
 from sim.map import WorldMap
 

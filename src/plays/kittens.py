@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh
 import plays.config as configuration
-import sim.scenarios.garden as garden
+from plays.scenarios import garden
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 

@@ -143,7 +143,7 @@ End your response with the:
         
         response = character.llm.ask({"signalCluster": signalCluster.to_string(), 
                                       "character": character.character
-                                      }, prompt, stops=["<end/>"], max_tokens = 100)
+                                      }, prompt, tag='EmotionalStance.from_signalCluster', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
         if hash_utils.find('arousal', response):
@@ -234,7 +234,7 @@ End your response with the:
         
         response = character.llm.ask({"signalClusters": '\n'.join([signalCluster.to_string() for signalCluster in signalClusters]), 
                                       "character": character.character
-                                      }, prompt, stops=["<end/>"], max_tokens = 100)
+                                      }, prompt, tag='EmotionalStance.from_signalClusters', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
         arousal = Arousal.Relaxed

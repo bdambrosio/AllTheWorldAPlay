@@ -43,7 +43,10 @@ vllm_model = 'deepseek-r1-distill-llama-70b-awq'
 vllm_model = '/home/bruce/Downloads/models/Qwen2.5-32B-Instruct'
 vllm_model = '/home/bruce/Downloads/models/gemma-3-27b-it'
 vllm_model = '/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B'
+vllm_model = '/home/bruce/Downloads/models/phi-4'
 
+elapsed_times = {}
+iteration_count = 0
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
     prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
@@ -197,8 +200,8 @@ class LLM():
             traceback.print_exc()
             raise Exception(response)
 
-    def ask(self, input, prompt_msgs, template=None, temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None):
-
+    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None):
+        global elapsed_times, iteration_count
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
         if top_p is None: top_p = 1.0
@@ -212,7 +215,16 @@ class LLM():
             response = self.run_request(input, prompt_msgs, options)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
-            #print(f'llm: {elapsed:.2f}')
+            if tag != '':
+                if tag not in elapsed_times.keys():
+                    elapsed_times[tag] = 0
+                elapsed_times[tag] += elapsed
+                iteration_count += 1
+                if iteration_count % 100 == 0:
+                    print(f'iteration {iteration_count}')
+                    for k,v in elapsed_times.items():
+                        print(f'{k}: {v:.2f}')
+                    print(f'total: {sum(elapsed_times.values()):.2f}')
             if elapsed > 4.0:
                 print(f'llm excessive time: {elapsed:.2f}')
             if stops is not None and type(response) is str: # claude returns eos

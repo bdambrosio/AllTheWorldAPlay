@@ -10,7 +10,7 @@ import sim.context as context
 import sim.agh as agh
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
-from sim.scenarios import suburban
+from plays.scenarios import suburban
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 

@@ -120,6 +120,6 @@ Your current situation is:
     for key, value in addl_bindings.items():
         bindings[key]=value
     
-    response = character.llm.ask(bindings, prompt, max_tokens=max_tokens, stops=['</end>'])
+    response = character.llm.ask(bindings, prompt, tag='Prompt.character_prompt', max_tokens=max_tokens, stops=['</end>'])
     return response
 

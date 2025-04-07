@@ -72,80 +72,20 @@ class PerceptualState:
                 self.owner.add_to_history(
                     f"{sensory_input.mode.value}: {sensory_input.content}"
                 )
-        self.extract_information(sensory_input)
+        return 
+    # self.extract_information(sensory_input)
     
-    def extract_information(self, sensory_input: PerceptualInput) -> str:
-        """Extract information from sensory input"""
-        prompt = [UserMessage(content="""Extract the highest priority specific information items from the following sensory input:
-
-{{$input}}
-
-A specific information item is important if it is an actor or if it is relevant to current active signals.
-Do NOT perform any inference, return only items that are directly stated in the input.
-The current active signals are:
-
-{{$signals}}
-
-
-List found specific information items in priority order, highest first.
-                              
-A specific information item can be (following are examples, not exhaustive):
-    1 a fact about the world or an item in it (e.g. 'these berries are poisonous')
-    2 a description of the agent's own thoughts or feelings (e.g. 'John am hungry')
-    3 a description of the actions the agent can or did take (e.g. 'Mary can eat the berries', 'I  did eat these berries')
-    4 a change in actor inventory (e.g. 'John now has a map')
-    5 a change in actor beliefs (e.g. 'John now knows that the berries are poisonous')
-    6 a change in actor goals (e.g. 'John now wants to eat the berries')
-    7 a change in another actor's beliefs (e.g. 'Mary now knows that the berries are poisonous')
-    8 a change in another actor's goals (e.g. 'Mary now wants to eat the berries')
-    9 a change in another actor's inventory (e.g. 'Mary now has a map')
-    10 a change in another actor's actions (e.g. 'Mary is looking at the map')
-    11 a change in another actor's thoughts or feelings (e.g. 'Mary is hungry')
-    12 a change in the environment (e.g. 'the door is now open'), especially a change in proximity of other characters.
-
-For each information item, provide the following information:
-- item: the type of information item:
-  - location: {{$name}} is at a location
-  - goal: {{$name}} wants to do something
-  - action: {{$name}} is doing something
-  - inventory: {{$name}} has something or {{$name} no longer has something
-  - knowledge: {{$name}} knows something
-  - thought: {{$name}} is thinking about something
-  - feeling: {{$name}} is feeling something
-  - proximity: {{$name}} is near another actor or resource or is no longer near another actor or resource
-- content: the content of the information item - the location, goal, action, inventory item, thought, feeling, or other actor or resource.
-- permanence: how long the information item remains valid ('transient' or 'permanent'). Any information about direction, distance, or objects at current location is transient, since the actor can move. Similarly, time, temperature, and other changing conditions are transient.
-
-Use the following hash-format for each information item.
-Each item should begin with a #type tag, and should end with ## on a separate line as shown below:
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#item fact / belief / goal / action / inventory / state
-#content concise (max 10 words) description of the information item
-#permanence transient / permanent
-##
-
-Respond only with the hash-formatted items as shown above.
-Do not include any other introductory, explanatory, discursive, or formatting text.
-End you response with
-<end/>
-"""
-        )]
-        ranked_signalClusters = self.owner.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
-
-        response = self.owner.llm.ask({"input": sensory_input.content, "name": self.owner.name, "signals": focus_signalClusters}, prompt, stops=["<end/>"], max_tokens=80)
+    def record_information_items_from_look(self, percept_hash: List[str], resources: List[str], characters: List[str]) -> List[InformationItem]:
+        """Extract information items from perceptual hash - currently only resources and characters"""
         items = []
-        hash_items = hash_utils.findall_forms(response)
-        for hash_item in hash_items:
-            item = InformationItem.from_hash(hash_item, sensory_input.timestamp)
-            if item:
-                # Add embedding to the item
-                item.embedding = self.embedding_model.encode(item.content)
-                self.information_items.append(item)
-                if item.item == 'location':
-                    pass
-                    #self.owner.update_location(self.owner, item.content) #check for location change
+        for resource_name in resources:
+            item = InformationItem('resource', resource_name, 'permanent', self.owner.context.simulation_time)
+            item.embedding = self.embedding_model.encode(item.content)
+            self.information_items.append(item)
+        for character_name in characters:
+            item = InformationItem('character', character_name, 'permanent', self.owner.context.simulation_time)
+            item.embedding = self.embedding_model.encode(item.content)
+            self.information_items.append(item)
         return items
 
     def get_information_items(self, search_text: str, threshold: float = 0.6, max_results: int = 5) -> List[InformationItem]:

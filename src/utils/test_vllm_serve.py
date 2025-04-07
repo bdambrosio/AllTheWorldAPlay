@@ -5,30 +5,23 @@ from Messages import UserMessage, SystemMessage, AssistantMessage
 
 llm = llm_api.LLM('deepseeklocal')
 #llm = llm_api.LLM('local')
-content="""Determine its sensory mode of the following message,
-a terse description of the perceptual content,
-and the emotionalintensity of the perceptual content.
+content="""
+<message>
+You see Joe
+</message>
 
-sense mode may be:
+Your answer must be one of the following:
 auditory
 visual
 movement
 internal
 unclassified
 
-<message>
-You see Joe
-</message>
-
-Respond using this format:
-
-mode
-<end/>
-
-Respond only with the mode. Do not include any introductory, discursive, or explanatory text.
 """
 
-prompt = [UserMessage(content=content)]
+prompt = [SystemMessage(content='Your task is to determine the sensory mode of the following message.'),
+          UserMessage(content=content),
+          AssistantMessage(content='The sensory mode is:')]
 
 for i in range(5):
     start = time.time()

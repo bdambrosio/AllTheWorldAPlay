@@ -200,7 +200,7 @@ End your response with:
                                     "drive": f'{self.text}', 
                                     "attempted_goals": '\n'.join([f'{g.name}: {g.description}; termination criterion: {g.termination}' for g in self.attempted_goals]),
                                     "satisfied_goals": '\n'.join([f'{g.name}: {g.description}; termination criterion: {g.termination}' for g in self.satisfied_goals]),
-                                    "character": f'{character.character}'}, prompt, temp=0.1, stops=['</end>'], max_tokens=30)
+                                    "character": f'{character.character}'}, prompt, tag='DriveSignal.update_drive', temp=0.1, stops=['</end>'], max_tokens=30)
         if result:
             try:
                 return Drive(result.strip())
@@ -306,7 +306,7 @@ Only respond with the label, no other text.
 End your response with:
 </end>
 """)]
-            response = self.manager.llm.ask({"signals": '\n'.join([signal.text for signal in self.signals])}, prompt, temp=0.1, stops=['</end>'], max_tokens=20)
+            response = self.manager.llm.ask({"signals": '\n'.join([signal.text for signal in self.signals])}, prompt, tag='SignalCluster.cluster_name', temp=0.1, stops=['</end>'], max_tokens=20)
             if hash_utils.find('label', response):
                 self.text = hash_utils.find('label', response).strip()
             else:
@@ -466,10 +466,14 @@ be careful to insert line breaks only where shown, separating a value from the n
 Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
-</end>
+                          
+</s>
+
 """)]
             
-            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives]), "surroundings": self.owner.look_percept}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives]), 
+                                     "surroundings": self.owner.look_percept}, 
+                                     prompt, tag='DriveSignal.analyze_text', temp=0.1, stops=['</s>'], max_tokens=180)
             if not response:
                 return []
             print(f'\npercept {text}')        

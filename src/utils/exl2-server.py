@@ -82,9 +82,10 @@ model_init.add_args(parser)
 model_name = "/home/bruce/Downloads/models/QwQ-32B-8.0bpw-h8-exl2"
 model_name = "/home/bruce/Downloads/models/Qwen2.5-32B-Instruct"
 model_name = "/home/bruce/Downloads/models/Llama-3.3-70B-Instruct_exl2_8.0bpw"
+#model_name = "/home/bruce/Downloads/models/phi-4"
 #model_name = "/home/bruce/Downloads/models/LatitudeGames_Wayfarer-Large-70B-Llama-3.3-4.25bpw-h6-exl2"
 #model_name = "/home/bruce/Downloads/models/Qwen2.5-VL-32B-Instruct"
-#model_name = "/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B"
+#model_name = "/home/bruce/Downloads/models/Mistral-Small-3.1-24B-Base-2503"
 args = parser.parse_args(['-m',model_name, '--gpu_split', "32,46"])
 #args = parser.parse_args(['-m',model_name, '--gpu_split', "0,46"])
 
@@ -201,7 +202,7 @@ async def get_stream(request: Request):
 
         if type(stop_conditions) == list and len(stop_conditions) > 0:
             stop_str = stop_conditions[0]
-            stop_seq = tokenizer.encode(stop_conditions[0])
+            stop_seq = exl_tokenizer.encode(stop_conditions[0])
         else:
             stop_str=None
             stop_seq = None
