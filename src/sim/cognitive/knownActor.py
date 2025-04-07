@@ -36,7 +36,7 @@ Do not include any introductory, explanatory, discursive, formatting, or conclud
 End with:
 </end>
 """)]
-        response = self.owner.llm.ask({}, prompt, max_tokens=20, stops=["</end>"])
+        response = self.owner.llm.ask({}, prompt, tag='KnownActor.infer_goal', max_tokens=20, stops=["</end>"])
         if response:
             self.goal = response.strip()
 
@@ -98,7 +98,7 @@ End with:
 </end>
 """)]
 
-        new_relation = self.owner.llm.ask({}, prompt, max_tokens=200, stops=["</end>"])
+        new_relation = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=200, stops=["</end>"])
         if new_relation:
             self.relationship = new_relation.strip()
 
@@ -152,6 +152,11 @@ class KnownActorManager:
     def names(self):
         return [actor.canonical_name for actor in self.known_actors.values()]
     
+    def known(self, name):
+        if name.strip().capitalize() in self.known_actors:
+            return True
+        return False
+        
     def actor_models(self):
         return self.known_actors.values()
     

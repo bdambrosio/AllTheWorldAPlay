@@ -6,7 +6,7 @@ import importlib
 from matplotlib import pyplot as plt
 from sim.context import Context
 from sim.agh import Character
-from sim.scenarios import forest  # Import the forest scenario
+from plays.scenarios import forest  # Import the forest scenario
 import plays.config as configuration
 from src.sim.mapview import MapVisualizer
 
@@ -59,3 +59,9 @@ W = Context([S, J],
 S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", 'internal')
 J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", 'internal')
 J.add_perceptual_input("You think Whoever she is, she is pretty!", 'internal')
+S.look() # get the initial view
+J.look()
+x,y = W.map.random_location_by_terrain('clearing')
+x,y = W.map.random_location_by_terrain('spring')
+
+narrative='lost.json' # comment this out for normal unscripted play.

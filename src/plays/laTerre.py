@@ -6,7 +6,7 @@ import sim.worldsim as worldsim
 import sim.agh as agh
 from sim.context import Context
 import plays.config as configuration
-from sim.scenarios import rural  # Import the entire scenario module
+from plays.scenarios import rural  # Import the entire scenario module
 import importlib
 
 from src.sim.mapview import MapVisualizer

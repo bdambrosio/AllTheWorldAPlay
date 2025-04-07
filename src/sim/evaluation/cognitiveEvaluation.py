@@ -16,15 +16,20 @@ llm = LLM()
 # Define the cognitive metrics to evaluate
 goal_directedness = [UserMessage(content="""
 Read the following lines. For agent {{$name}}, identify one or more goals the agent appears to be pursuing. 
-Are these goals consistent with prior behavior? Are their actions and speech plausibly directed 
-toward achieving those goals? Rate the agent's goal-directedness on a scale from 1 (no goal-seeking behavior) 
- to 5 (clear, consistent pursuit of goals with relevant actions). 
-                                 
+Are these goals consistent with prior behavior? Are their actions and speech plausibly directed toward achieving those goals? 
+Rate the agent's goal-directedness on a scale from 1 (no goal-seeking behavior)  to 5 (clear, consistent pursuit of goals with relevant actions). 
+Also provide a validity score estimating the level of available evidence on which this score is based:
+0.0: No valid evidence to judge performance
+0.3: Minimal/ambiguous evidence
+0.7: Clear but limited evidence
+1.0: Strong, clear evidence            
+                     
 #SCRIPT
 {{$script}}
 
 Use the following hash-formatted text format for your response:
 #score an integer between 1 and 5, where 1 is no goal-seeking behavior and 5 is clear, consistent pursuit of goals with relevant actions.
+#validity a number between 0 and 1 estimating the level of available evidence on which this score is based.
 #justification a concise (3-8 words) explanation of your score.
                                  
 Do not include any other introductory, explanatory, discursive, or formatting text. End your response with:
@@ -33,13 +38,20 @@ Do not include any other introductory, explanatory, discursive, or formatting te
 
 theory_of_mind = [UserMessage(content="""
 Review this dialog. For agent {{$name}}, count the number of times the agent refers to or adapts their speech/actions based on 
-the other character’s mental or emotional state. Rate the agent’s overall theory-of-mind engagement from 1 (no awareness) to 5 (frequent, meaningful engagement with the other's mind).
+the other character’s apparent mental or emotional state. 
+Rate the agent’s overall theory-of-mind engagement from 1 (no awareness) to 5 (frequent, meaningful engagement with the other's mind).
+Also provide a validity score estimating the level of available evidence on which this score is based:
+0.0: No valid evidence to judge performance
+0.3: Minimal/ambiguous evidence
+0.7: Clear but limited evidence
+1.0: Strong, clear evidence            
                               
 #SCRIPT
 {{$script}}
 
 Use the following hash-formatted text format for your response:
 #score an integer between 1 and 5, where 1 is no awareness and 5 is frequent, meaningful engagement with the other's mind.
+#validity a number between 0 and 1 estimating the level of available evidence on which this score is based.
 #justification a concise (3-8 words) explanation of your score.
                                  
 Do not include any other introductory, explanatory, discursive, or formatting text. End your response with:
@@ -53,12 +65,18 @@ Review this dialog segment. For agent {{$name}}, identify instances where the ag
 - Avoids repeating previously unsuccessful behaviors.
 
 Rate the agent's cognitive flexibility from 1 (rigid, repetitive behavior) to 5 (consistently adaptive and flexible).
+Also provide a validity score estimating the level of available evidence on which this score is based:
+0.0: No valid evidence to judge performance
+0.3: Minimal/ambiguous evidence
+0.7: Clear but limited evidence
+1.0: Strong, clear evidence            
 
 #SCRIPT
 {{$script}}
 
 Use the following hash-formatted text format for your response:
 #score an integer between 1 and 5, where 1 is rigid/repetitive and 5 is consistently adaptive.
+#validity a number between 0 and 1 estimating the level of available evidence on which this score is based.
 #justification a concise (3-8 words) explanation of your score.
 
 Do not include any other introductory, explanatory, discursive, or formatting text. End your response with:
@@ -70,7 +88,8 @@ dimensions = [goal_directedness, theory_of_mind, cognitive_flexibility]
 
 def evaluate_cognitive_metric(agent_name: str, dialog_segment: str, dimension: List[UserMessage]) -> Dict:
     prompt = dimension
-    response = llm.ask({'name': agent_name, 'script': dialog_segment}, prompt, max_tokens=20, stops=["<end/>"])
+    response = llm.ask({'name': agent_name, 'script': dialog_segment}, 
+                       prompt, tag='cognitive_evaluation', max_tokens=20, stops=["<end/>"])
     content = response
     return {
         "agent": agent_name,
@@ -80,12 +99,14 @@ def evaluate_cognitive_metric(agent_name: str, dialog_segment: str, dimension: L
 def evaluate_transcript(agents: List[str], transcript: str, window_size: int = 40) -> List[Dict]:
     results = [[] for _ in dimensions]
     scores = [0 for _ in dimensions]
+    validities = [0 for _ in dimensions]
+    counts = [0 for _ in dimensions]
     lines = transcript.strip().split("\n")
     cleaned_lines = []
     line_index = 0
     for line in lines:
         line = line.strip()
-        if line == '' or "cognitive cycle" in line:
+        if line == '' or "----" in line:
             continue
         # clean up transcript so it only has lines from the agents
         newline = False
@@ -115,12 +136,17 @@ def evaluate_transcript(agents: List[str], transcript: str, window_size: int = 4
             try:
                 score = hash_utils.find('score', result["response"]).strip()
                 score = int(score)
+                validity = hash_utils.find('validity', result["response"]).strip()
+                validity = float(validity)
             except:
                 score = 0
-            scores[n] += score
+                validity = 0
+            scores[n] += score * validity
+            validities[n] += validity
+            counts[n] += 1
     for n in range(len(dimensions)):
-        scores[n] /= len(results[n])
-        print(f'dimension {n}: {scores[n]}')
+        scores[n] /= counts[n]
+        print(f'dimension {n}: {scores[n]}, {validities[n]/counts[n]}')
     
     return results
 
@@ -129,216 +155,289 @@ if __name__ == "__main__":
     agents = ["Samantha", "Joe"]
     transcript = """
 Samantha: -----cognitive cycle----- 2025-01-01T06:00:00 
-Samantha: look around for any signs of human activity or artifacts near Fallen_Log#10 and Mushrooms#4.
-  sees Mushrooms#4 at 6 units and Fallen_Log#10 at 11 units northeast. Joe is nearby. Exploring for civilization clues..  
-Samantha: Examine the area around Fallen_Log#10 for any carvings or markings that might indicate human presence
- Resulting in Samantha sees no carvings or markings on Fallen_Log#10 that indicate human presence.
-Samantha remains in the same physical and emotional state. 
-Samantha: Observe Joe's body language and facial expressions for signs of trust or deceit.
-  sees Joe is nearby; observing his body language and facial expressions for signs of trust or deceit..  
-Samantha: 'Hey Joe, what's your story? How'd you end up here?' 
-Joe: 'I wish I knew, Sam. Woke up here, no clue how or why. You? *scratches head, looking around* Maybe we should check out those berries you found, see if they're safe to eat.' 
-Samantha: 'Same here, Joe. Woke up with no memories. Let's check those berries, but carefully. We don't wanna end up sick in the middle of nowhere. *nods towards the berries*' 
-Samantha: Samantha carefully picks a few berries from Berries#2 and rubs them on her skin to test for any allergic reactions.
- Resulting in Samantha rubs a few berries from Berries#2 on her skin.
-Samantha feels the texture of the berries on her skin.
-Samantha observes her skin for any signs of allergic reactions.
-Samantha's possessions remain unchanged.
-Samantha's state remains unchanged. 
-Samantha: 'Hey Joe, I just ate a few berries to see if they're safe. Keep an eye on me for a bit, okay?' 
-Joe: 'Yeah, I'm on it. Let me know if you feel anything weird, okay? *leans in, watching closely*' 
-Samantha: 'Samantha says: So far, so good. No weird vibes from the berries. *gives a thumbs up* Maybe we should gather more and start looking for a way out of here?' 
-Joe: 'Yeah, let's grab more berries and then scout around. Maybe we'll find a clue on how to get out of here. *nods, scanning the surroundings*' 
-Samantha: scan the area to the northeast for any unusual markings or objects near Fallen_Log#10.
-  sees Fallen_Log#10 at 11m northeast, near Mushrooms#4 at 6m. Joe is nearby..  
-Samantha: Samantha begins dragging Fallen_Log#10 towards a clear area, preparing to construct the shelter's frame.
- Resulting in Samantha begins dragging Fallen_Log#10, moving it from its original position 11 meters northeast towards a clear area. 
-Samantha feels the weight of the log and starts to exert effort, becoming slightly fatigued.
-Samantha hears the sound of the log scraping against the forest floor.
-Samantha sees the log's progress as she drags it, noting the clear area getting closer. 
-Samantha: Samantha continues to arrange Fallen_Log#10 and begins to position Fallen_Log#9 to form the base structure of the shelter.
- Resulting in Fallen_Log#10 is positioned as part of the shelter's base structure.
-Fallen_Log#9 is moved closer to the shelter construction site.
-Samantha becomes more fatigued from arranging the logs.
-Samantha sees the logs forming the initial structure of the shelter. 
-Samantha:  moves Berries#2.
-  and notices Joe is nearby. Berries are 4 units north. Other resources like fallen logs and mushrooms are farther away. 
-Samantha: scan the area for any unusual markings or paths that might indicate an exit.
-  sees Joe is nearby to the south. Berries and mushrooms within 10 units in various directions. No visible paths or markings indicating an exit..  
-Samantha: 'Hey Joe, can you help me secure this log? We're almost done with the frame.' 
-Joe: 'Yeah, I'm on it. Let's finish this up and then figure out our next move. *moves to help secure the log*' 
-Samantha: Secure Fallen_Log#9 to the shelter frame, aligning it properly with the existing structure
- Resulting in Fallen_Log#9 is now secured to the shelter frame, aligning with the existing structure.
-Samantha sees the shelter structure becoming more complete.
-Samantha's fatigue level increases due to the effort of securing Fallen_Log#9.
-Samantha gains a better understanding of the shelter's structural integrity. 
-Samantha: Samantha gathers more berries from Berries#2, carefully selecting only the safe ones she tested earlier.
- Resulting in Samantha gathers more berries from Berries#2, increasing her collection of safe berries.
-Samantha's fatigue level increases slightly due to the effort of gathering more berries. 
-Samantha: Samantha continues gathering berries from Berries#2, ensuring she only picks the ones previously identified as safe.
- Resulting in Samantha's collection of safe berries from Berries#2 increases.
-Samantha's fatigue level increases slightly. 
-Samantha: Secure Fallen_Log#17 to the shelter frame, tightening the structure
- Resulting in Fallen_Log#17 is now secured to the shelter frame, making the structure tighter and more stable.
-Samantha sees the shelter frame becoming more robust with the addition of Fallen_Log#17.
-Samantha hears the sound of the log being secured and the slight creaking of the shelter frame as it tightens.
-Samantha becomes more fatigued from the effort of securing the log. 
-Samantha: scan the surroundings for any unusual markings or paths that might lead to an exit.
-  sees Joe is nearby. Berries and mushrooms within 10 units. Fallen logs and uphill paths visible, potential clues or exit routes..  
-Samantha: ...Hmm, if we're looking for an exit, maybe we should start by checking the highest points around here. From up there, we might spot a path or something unusual that could lead us out.... 
-Samantha: 'Hey Joe, while I'm gathering these berries, can you keep an eye out for any signs of a path or clues that might help us get out of here?' 
-Joe: 'Yeah, I'll look around. Maybe we'll find something useful while we're at it. *scans the area, squinting against the morning light*' 
-Samantha: 'Sounds good, Joe. Let's keep an eye out for anything unusual while we work on the shelter. Maybe we'll spot something from a higher point. *glances around, then back at Joe with a hopeful smile*' 
-Samantha: scan the horizon for any signs of paths or unusual landmarks.
-  sees Northeast uphill offers high visibility; Joe is nearby to the south. Berries and mushrooms within 10 units..  
-Samantha:  moves Northeast.
-  and notices Northeast visibility 18, uphill, Fallen_Log#9 at 11. Joe nearby at 3. 
-Samantha:  moves Northeast.
-  and notices Northeast visibility 15, uphill forest, no nearby resources or characters. 
-Samantha: 'Hey Joe, keep an eye out while I grab these last berries, okay? We gotta stay sharp.' 
-Joe: 'Yeah, I'm on it. I'll keep scanning for any signs of a way out. Maybe we'll spot something from a higher vantage point soon.' 
-Samantha: 'Hey Joe, let's finish securing this log and then we can take a break, yeah?' 
-Joe: 'Yeah, sounds good. Let's get this done quick, then we can chill for a bit. I'll keep an eye out for any signs of a way out while we work. *nods and glances around*' 
-Samantha: ...Hmm, if we climb northeast, we might spot a path or something that could lead us out. It's worth a shot, and it'll give us a better view of the area.... 
-Samantha: 'Hey Joe, I'm gonna head northeast to scout for high ground. Keep an eye out here, yeah?' 
-Joe: 'Yeah, I'll keep watch. Be careful up there and let me know if you see anything that could be our way out. *nods, scanning the surroundings*' 
-Samantha: scan the horizon for any signs of paths or unusual landmarks.
-  sees Northeast uphill, visibility 15, no nearby resources or characters. Scanning for paths or landmarks..  
-Samantha: Pick the remaining berries from Berries#2
- Resulting in Samantha gains the remaining 50% of berries from Berries#2.
-Samantha now possesses all the berries from Berries#2.
-Berries#2 is now depleted of berries.
-Samantha sees that Berries#2 is now empty. 
-Samantha: Secure Fallen_Log#18 to the shelter frame, tightening the knots to ensure stability.
- Resulting in Fallen_Log#18 is now secured to the shelter frame, increasing its stability.
-Samantha hears the sound of tightening knots.
-Samantha's hands feel the rough texture of the log and rope.
-The shelter construction is now 60% complete.
-Samantha becomes slightly tired from the effort. 
-Samantha: 'Hey Joe, let's grab Fallen_Log#24 next. We're almost done, and I wanna make sure this shelter's solid.' 
-Joe: 'Yeah, let's do it. I'll grab Fallen_Log#24 while you rest a bit. We're close to finishing this, and then we can focus on finding a way out. *nods, scanning the surroundings*' 
-Samantha: 'Hey Joe, let's get this log in place quick so we can finally chill, yeah?' 
-Joe: 'Yeah, let's do it fast. I'll grab the log, you rest up. We're close to finishing, then we can scout for a way out.' 
-Samantha: Samantha drinks water from her canteen and sits down to rest, taking deep breaths to regain energy.
- Resulting in Samantha's energy level increases as she drinks water and rests. She remains near the shelter, 1 unit north of Joe. The physical environment and her possessions remain unchanged. Samantha feels more relaxed. 
-Samantha:  moves Northeast.
-  and notices Northeast visibility 12, uphill forest. No nearby characters or resources within 10 units. Focused on reaching high ground for exit search. 
-Samantha: scan the horizon for paths or landmarks.
-  sees Northeast visibility 12, uphill forest. No nearby characters or resources within 10 units..  
-Samantha:  moves Northeast.
-  and notices Northeast visibility 10, uphill forest, no resources or characters nearby. 
-Samantha: scan the horizon for paths or landmarks.
-  sees Visibility varies; uphill to Northeast, level Southeast, downhill Southwest. Joe nearby at 9 units. Fallen_Log#10 at 4 units Southeast..  
-Samantha: Samantha descends from the high ground, carefully navigating the terrain to return to Joe's location.
- Resulting in Samantha moves to Joe's location, 9 units southwest of her previous position.
-Samantha sees Joe and the surrounding forest terrain.
-Samantha feels more relaxed and energized. 
-Samantha: 'Hey Joe, I checked out the high ground to the northeast. Didn't see any clear paths out, but there's a weird rock formation that might be worth checking out later.' 
-Joe: 'Yeah, that rock formation sounds interesting. Let's finish the shelter first, then we can check it out. Maybe it'll lead us to a way out.' 
-Samantha:  moves Northeast.
-  and notices Northeast visibility 9, uphill forest. Joe 11 units southwest. No nearby resources. 
-Samantha:  moves Northeast.
-  and notices Northeast visibility 7, uphill forest, no resources. Joe 13 units southwest, near berries and fallen log. 
-Samantha: Samantha carefully examines the rock formation, searching for any unusual markings or hidden compartments that might contain clues.
- Resulting in Samantha sees no unusual markings or hidden compartments on the rock formation.
-Samantha remains energized and relaxed. 
-Samantha:  moves Mushrooms#4.
-  and notices Joe is nearby at 11 units. Mushrooms#4 are close at 5 units. Berries#2 are at 6 units. 
-Samantha:  moves northeast.
-  and notices Northeast visibility 7, uphill forest. Joe 13 units southwest. No nearby resources or characters within 10 units. 
-Samantha: scan the northeast horizon for any signs of paths or unusual landmarks.
-  sees Northeast visibility 7, uphill forest, no paths or landmarks visible. Joe at 13 distance southwest..  
-Samantha: Samantha carefully examines the rock formation, running her hands over the surfaces and peering into any cracks or hollows, searching for any signs
- Resulting in Samantha finds no signs or notable features in the rock formation.
-Samantha remains uninjured and not tired. 
-Samantha: Pick mushrooms#4
- Resulting in Samantha gains 7 units of Mushrooms#4.
-Samantha sees the mushrooms being picked from the ground. 
-Samantha: ...Man, we're halfway there already. Gotta keep pushing to the top to get that full view. What if there's a hidden path or something we can't see from here? I need to stay sharp and keep an eye out for anything unusual.... 
-Samantha: Continue climbing northeast towards the high ground, keeping an eye out for any signs of a path or unusual landmarks.
- Resulting in Samantha continues climbing northeast and reaches a higher point on the high ground.
-Samantha sees more of the forest terrain uphill to the northeast.
-Samantha does not find any signs of a path or unusual landmarks.
-Samantha's position is now further up the northeast high ground.
-Samantha remains healthy and unafraid, but becomes slightly more tired from the climb. 
-Samantha: Samantha carefully examines the rock formation, looking for any unusual markings or hidden compartments that might contain clues.
- Resulting in Samantha sees no unusual markings or hidden compartments on the rock formation.
-Samantha acquires no new clues from the rock formation.
-Samantha remains slightly tired from the climb. 
-Samantha:  moves Berries#2.
-  and notices Berries#2 spotted 6 units southwest, closest resource. Joe is 11 units away in the same direction. 
-Samantha: Collect the remaining berries from Berries#2
- Resulting in Samantha collects the remaining 4 units of Berries#2.
-Samantha gains 4 units of berries.
-Berries#2 are now depleted.
-Samantha becomes slightly more tired. 
-Samantha: Samantha helps Joe position Fallen_Log#24 onto the shelter frame, securing it in place.
- Resulting in Fallen_Log#24 is now part of the shelter frame, increasing its completion to 75%.
-Samantha and Joe are now 10 units apart.
-Samantha becomes more tired. 
-Samantha:  moves Northeast.
-  and notices Northeast visibility 7, uphill forest. No nearby characters or resources within 10 units. 
-Samantha: Samantha surveys the northeast high ground, looking for any visible exit paths or notable features that could lead them out of the forest.
- Resulting in Samantha sees uphill forest terrain to the northeast with no visible exit paths or notable features within 7 units.
-Samantha remains tired. 
-Samantha: 'Hey Joe, let's split up to cover more ground. You take the left side of the rock formation, and I'll check the right. Keep an eye out for anything weird, okay?' 
-Samantha: 'Hey Joe, let's finish this up quick so we can rest and then check out that rock formation.' 
-Joe: 'Yeah, sounds good. Let's wrap up the shelter and then hit the rock formation. I'm curious what we might find there.' 
-Samantha: Samantha places Fallen_Log#10 onto the shelter frame, securing it tightly to increase the shelter's stability.
- Resulting in Fallen_Log#10 is removed from the southeast at a distance of 4 units.
-The shelter's stability increases due to the addition of Fallen_Log#10.
-Samantha's berry inventory remains at 4 units.
-Samantha remains tired. 
-Samantha: Samantha and Joe work together to secure the final pieces of the shelter, ensuring it is sturdy and complete.
- Resulting in The shelter is now 100% complete and sturdy.
-Samantha sees the finished shelter and feels a sense of accomplishment.
-Samantha remains tired.
-Joe is now 10 units away from Samantha. 
-Samantha: Samantha drinks water from her water bottle and lies down on the soft forest floor to rest.
- Resulting in Samantha's water bottle contains less water after she drinks from it. She lies down on the soft forest floor, feeling more rested. The physical environment remains unchanged. 
-Samantha: 'Hey Joe, let's head over to that rock formation and see if it holds any secrets to getting out of here!' 
-Joe: 'Yeah, let's check it out! I'm curious what secrets it might hold. Maybe we'll find a way out of here.' 
-Samantha: Samantha and Joe begin to carefully examine the rock formation, looking for any unusual markings or hidden paths.
- Resulting in Samantha and Joe find no unusual markings or hidden paths on the rock formation.
-Samantha remains tired and needs to hydrate further. 
-Samantha: Take a few sips from the water bottle and then lie down to rest for a bit.
- Resulting in Samantha's water bottle contains less water.
-Samantha is now lying down on the forest floor.
-Samantha feels more rested but still needs to hydrate further.
-Samantha remains tired. 
-Samantha: Samantha carefully examines the crevices and surfaces of the rock formation, searching for any unusual markings or hidden paths that
- Resulting in Samantha finds no unusual markings or hidden paths on the rock formation.
-Samantha remains tired and needs to hydrate further. 
-Samantha: 'Hey Joe, what do you think about checking the other side of this rock formation? Maybe we missed something over there.' 
-Joe: 'Yeah, let's do it. I'm curious what we might find on the other side. Maybe there's a clue we overlooked.' 
-Samantha: Pick berries from Berries#4 bush
- Resulting in Samantha gains berries from Berries#4 bush.
-Samantha sees the berries on Berries#4 bush are now fewer.
-Samantha becomes slightly more tired. 
-Samantha: Drink water from the water bottle and then lie down to rest on the forest floor.
- Resulting in Samantha drinks water from her water bottle, reducing the amount of water in it.
-Samantha lies down on the forest floor, becoming more rested.
-Samantha's energy level increases slightly due to resting. 
-Samantha: Take a few sips from the water bottle and then sit down to rest on a nearby log.
- Resulting in Samantha takes a few sips from her water bottle, reducing the water level in the bottle.
-Samantha sits down on a nearby log, which is Fallen_Log#10 located 4 units to the southeast.
-Samantha's energy level increases slightly due to resting.
-Samantha's hydration level increases slightly due to drinking water. 
-Samantha:  moves Berries#4.
-  and notices Berries#4 visible at 24 units southwest; Joe nearby at 11 units southwest. No immediate resources for gathering. 
-Samantha: Samantha and Joe split up to explore different sections of the rock formation, carefully examining crevices and overhang
- Resulting in Samantha and Joe are now exploring different sections of the rock formation.
-Samantha examines crevices and overhangs but finds no new clues or resources.
-Samantha's energy level decreases slightly due to the physical activity.
-Samantha remains wary but focused on the task. 
-Samantha: Samantha and Joe use sticks to probe deeper into the rock formation's crevices, searching for hidden passages or clues.
- Resulting in Samantha and Joe find no hidden passages or clues in the rock formation's crevices.
-Samantha's energy level decreases slightly due to physical activity.
-Samantha feels more fatigued. 
-Samantha: Samantha carefully examines the crevices and surfaces of the rock formation, searching for any hidden clues or potential exits.
- Resulting in Samantha finds no new clues or potential exits in the rock formation.
-Samantha's energy level decreases slightly due to the physical activity.
-Samantha feels more fatigued.'
+Samantha: Collect apples from Apple_Tree#3
+ Resulting in Samantha gains apples from Apple_Tree#3.
+Samantha sees Apple_Tree#3 at a distance of 27 units to the southwest.
+Samantha's food supply increases.
+Samantha becomes slightly tired from the effort of collecting apples. 
+Samantha: Collect water from Spring#2
+ Resulting in Samantha gains water from Spring#2, increasing her water supply to three-quarters of the required amount for the day.
+Samantha becomes more tired from collecting water.
+Samantha sees Spring#2 in the southeast forest, 21 units away. 
+Samantha:  moves Apple_Tree#14.
+  and notices view Visibility varies, mostly forest, some resources scattered around, no immediate threats; resources Apple_Tree#6,20,Fallen_Log#1,16,Spring#2,19,Fallen_Log#16,19,Mushrooms#5,14,Fallen_Log#6,17,Apple_Tree#10,29,Berries#2,32,Apple_Tree#14,27,Apple_Tree#15,23,Mushrooms#10,26,Apple_Tree#3,27,Thicket#10,23,Thicket#8,16,Mushrooms#7,24,Mushrooms#4,15; characters Joe,2; # 
+Samantha: Gather apples from Apple_Tree#10
+ Resulting in Samantha gains apples from Apple_Tree#10.
+Samantha's food supply increases.
+Samantha becomes more tired.
+Samantha sees Apple_Tree#10 at a distance of 29 units to the southeast. 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T07:25:00 
+Joe:  moves Apple_Tree#3.
+  and notices view Southeast and Southwest offer various resources, East has Samantha nearby; resources Mushrooms#4,15,Fallen_Log#1,18,Spring#2,21,Fallen_Log#16,21,Mushrooms#5,16,Fallen_Log#6,19,Apple_Tree#10,31,Berries#2,34,Apple_Tree#14,29,Apple_Tree#15,25,Mushrooms#10,24,Thicket#10,21,Fallen_Log#4,11,Thicket#8,14,Apple_Tree#7,12,Fallen_Log#19,13,Mushrooms#7,22,Mushrooms#6,13; characters Samantha,2; # 
+Joe: Joe reaches up and starts picking apples from Apple_Tree#3, filling his bag with them.
+ Resulting in Joe gains apples in his bag from Apple_Tree#3.
+Joe becomes slightly tired from picking apples. 
+Joe: ...Man, I'm getting kinda tired, but I need to keep going until I have enough apples to last me the day. Maybe I should grab some berries too after this.... 
+Joe: ...Man, I'm getting pretty tired, but I gotta keep going. Maybe after this, I'll check out those berries too. Just a bit more and I'll have enough apples for today.... 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T08:19:00 
+Samantha: Samantha continues gathering apples from Apple_Tree#14 and then moves to Berries#9 to collect berries.
+ Resulting in Samantha gathers apples from Apple_Tree#14, increasing her food supply.
+Samantha moves to Berries#9 and collects berries, further increasing her food supply.
+Samantha becomes more fatigued from the continued gathering and movement.
+Samantha's bag now contains apples from Apple_Tree#14 and berries from Berries#9. 
+Samantha:  moves Fallen_Log#1.
+  and notices view Forest terrain with varying slopes, visibility ranges from 0 to 36, multiple resources scattered around; resources Fallen_Log#21,3,Fallen_Log#1,14,Spring#2,17; characters; # 
+Samantha: create a makeshift shelter using branches and leaves near Fallen_Log#1
+ Resulting in Samantha creates a makeshift shelter near Fallen_Log#1, using branches and leaves.
+The physical environment around Fallen_Log#1 now includes a small, rudimentary shelter.
+Samantha sees the completed shelter and feels a sense of accomplishment.
+Samantha becomes more fatigued from the effort of building the shelter. 
+Samantha: Lie down on the soft grass near Fallen_Log#1 and close eyes to rest
+ Resulting in Samantha lies down on the soft grass near Fallen_Log#1 and closes her eyes to rest. She feels the mild breeze and hears the rustling of leaves. Samantha's fatigue decreases as she rests. She remains in a sheltered spot near Fallen_Log#1. 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T09:09:00 
+Joe: Joe reaches up and plucks apples from Apple_Tree#11, carefully placing them in his bag.
+ Resulting in Joe gains apples from Apple_Tree#11 in his bag.
+Joe's fatigue increases slightly. 
+Joe: Joe pauses to take deep breaths, calming himself, then resumes picking apples from Apple_Tree#11, placing them carefully in his bag
+ Resulting in Joe's bag now contains more apples from Apple_Tree#11.
+Joe's fatigue decreases slightly due to taking deep breaths.
+Joe feels calmer. 
+Joe:  moves Apple_Tree#10.
+  and notices view Southeast and southwest offer various resources, east has Samantha nearby.; resources Fallen_Log#4,11,Mushrooms#4,13,Mushrooms#6,13,Fallen_Log#19,13,Thicket#8,14,Mushrooms#7,22,Apple_Tree#7,12,Thicket#10,21,Apple_Tree#3,25,Mushrooms#10,24; characters Samantha,2; # 
+Joe: Joe reaches up and picks apples from Apple_Tree#10, placing them carefully into his bag.
+ Resulting in Joe gains apples from Apple_Tree#10 in his bag.
+Joe's fatigue slightly increases. 
+Joe:  moves Apple_Tree#3.
+  and notices view Southeast and Southwest offer downhill paths with various resources, including apple trees.; resources Mushrooms#4,13,Fallen_Log#1,16,Spring#2,19,Fallen_Log#16,19,Mushrooms#5,14,Fallen_Log#6,17,Apple_Tree#10,29,Berries#2,32,Apple_Tree#14,27,Apple_Tree#15,23,Mushrooms#10,22,Apple_Tree#3,23,Thicket#10,19,Fallen_Log#4,9,Thicket#8,12,Apple_Tree#7,10,Fallen_Log#19,11,Mushrooms#7,20,Mushrooms#6,11; characters; # 
+World: 
+
+-----scene----- Searching for Signs
+ 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T09:51:00 
+Joe:  moves Apple_Tree#3.
+  and notices view Forest terrain with varying slopes, visibility up to 40 units, resources and a character nearby; resources Apple_Tree#14,31,Berries#7,10,Thicket#4,2,Fallen_Log#9,22,Berries#3,24,Fallen_Log#23,38,Berries#13,18,Spring#1,5,Apple_Tree#13,21,Berries#15,1,Mushrooms#10,18,Apple_Tree#3,17,Thicket#10,19,Thicket#8,24,Apple_Tree#7,24,Fallen_Log#19,23,Mushrooms#7,12; characters Samantha,2; # 
+Joe: Joe continues to pick apples from Apple_Tree#13, filling his bag more.
+ Resulting in Joe's bag becomes more filled with apples from Apple_Tree#13.
+Joe's fatigue increases slightly.
+Joe sees the apples on Apple_Tree#13 diminishing as he picks them. 
+Joe: Joe reaches out to pick berries from Berries#15, carefully placing them in his bag.
+ Resulting in Joe gains berries from Berries#15.
+The number of berries on Berries#15 decreases.
+Joe's bag becomes more filled with berries.
+Joe's fatigue increases slightly. 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T10:17:00 
+Samantha: scan the area around Spring#1 for any signs or clues.
+  sees view Forest area with varying slopes, visibility ranges from 0 to 40, multiple resources and one character nearby; resources Thicket#4,0,Berries#7,8,Spring#1,5,Berries#15,3,Joe,2; characters Joe,2; #.  
+Samantha: Gather berries from Berries#13
+ Resulting in Samantha gathers berries from Berries#13, reducing the number of berries on Berries#13.
+Samantha's bag now contains more berries from Berries#13.
+Samantha sees the number of berries on Berries#13 decrease.
+Samantha's fatigue increases slightly due to the effort of gathering berries. 
+Samantha: Search Thicket#4 for any hidden clues or signs
+ Resulting in Samantha searches Thicket#4 and finds no hidden clues or signs.
+Samantha's fatigue increases slightly. 
+Samantha: Search Thicket#7 for any hidden clues or signs
+ Resulting in Samantha searches Thicket#7 but finds no hidden clues or signs.
+Samantha's fatigue increases slightly. 
+Samantha: Samantha reaches out and plucks berries from Berries#7, carefully placing them into her bag.
+ Resulting in Samantha gains berries from Berries#7 in her bag.
+The number of berries on Berries#7 decreases.
+Samantha's fatigue slightly increases. 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T11:14:00 
+Joe: Joe continues filling the water container at Spring#1, focusing on the task to alleviate his anxiety about hydration.
+ Resulting in Joe successfully fills the water container at Spring#1.
+Joe's water container is now full.
+Joe's anxiety about hydration decreases slightly.
+Joe remains in the forest near Spring#1. 
+Joe: Joe reaches up and plucks apples from Apple_Tree#8, placing them into his bag
+ Resulting in Joe's bag now contains apples from Apple_Tree#8.
+The number of apples on Apple_Tree#8 has decreased.
+Joe's fatigue has slightly increased. 
+Joe: Pick apples from Apple_Tree#14 and place them in the bag
+ Resulting in Joe picks apples from Apple_Tree#14 and places them in his bag. The number of apples on Apple_Tree#14 decreases. Joe's bag now contains apples from Apple_Tree#10, Apple_Tree#11, Apple_Tree#13, Apple_Tree#8, and Apple_Tree#14, as well as berries from Berries#15. Joe's fatigue increases slightly. 
+Joe: Pick apples from Apple_Tree#3 and place them in the bag
+ Resulting in Joe gains apples from Apple_Tree#3 in his bag.
+The number of apples on Apple_Tree#3 decreases.
+Joe's fatigue increases slightly.
+Joe sees the apples in his bag increase in number.
+Joe knows he has apples from Apple_Tree#3 in his bag. 
+World: 
+
+-----scene----- Survival Priorities
+ 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T11:50:00 
+Samantha: Samantha carefully searches through Thicket#4, looking under leaves and behind branches for any signs or clues.
+ Resulting in Samantha searches Thicket#4 but finds no signs or clues.
+Samantha's fatigue increases slightly. 
+Samantha: Samantha carefully searches through Thicket#9, examining the ground and vegetation for any signs of clues related to her past.
+ Resulting in Samantha searches Thicket#9 but finds no clues related to her past.
+Samantha's fatigue increases slightly. 
+Samantha: Samantha carefully searches through Thicket#10, examining the ground and vegetation for any signs of clues related to her past.
+ Resulting in Samantha searches Thicket#10 but finds no clues related to her past.
+Samantha's fatigue increases slightly. 
+Samantha: ...Man, I've been searching for a while now. Maybe I should try to think about what kind of clues I'm actually looking for. Could be something small, like a piece of fabric or a footprint. Gotta stay sharp and focused.... 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T12:40:00 
+Joe: Joe continues to pick apples from Apple_Tree#10, filling his bag.
+ Resulting in Joe's bag becomes more filled with apples from Apple_Tree#10.
+The number of apples on Apple_Tree#10 decreases.
+Joe's fatigue increases slightly. 
+Joe: Joe continues to pick apples from Apple_Tree#10, filling his bag until it is completely full.
+ Resulting in Joe's bag is now completely full of apples from Apple_Tree#10.
+The number of apples on Apple_Tree#10 has decreased.
+Joe's fatigue has increased slightly. 
+Joe: Joe picks berries from Berries#14 and places them in his bag
+ Resulting in Joe's bag remains completely full of apples, unable to accommodate additional berries from Berries#14.
+Joe sees that Berries#14 still has berries available.
+Joe's fatigue increases slightly. 
+Joe: Joe empties some apples from his bag onto the ground near Berries#14, making room for the berries.
+ Resulting in Joe empties some apples from his bag onto the ground near Berries#14.
+Joe's bag now has space for berries.
+Apples from Joe's bag are now on the ground near Berries#14.
+Joe's fatigue increases slightly. 
+Joe: Joe reaches out and starts picking berries from Berries#14, carefully placing them into his bag.
+ Resulting in Joe's bag now contains berries from Berries#14.
+The number of berries on Berries#14 has decreased.
+Joe's fatigue has increased slightly.
+Apples remain on the ground near Berries#14. 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T13:16:00 
+Samantha: Samantha carefully moves aside branches and leaves in Thicket#9, inspecting the ground and vegetation for any signs of clues.
+ Resulting in Samantha moves aside branches and leaves in Thicket#9, but finds no clues on the ground or vegetation. Her fatigue increases slightly due to the effort. She sees the thicket remains undisturbed except for her actions. 
+Samantha: Samantha uses a stick to gently probe the undergrowth in Thicket#9, carefully lifting leaves and checking for any hidden
+ Resulting in Samantha finds nothing hidden in Thicket#9.
+Samantha's fatigue increases slightly. 
+Samantha: ...Man, I gotta really focus on what I'm looking for. Maybe there's a tiny clue, like a piece of cloth or a weird mark on the log. I need to check every inch of it.... 
+Samantha: ...Maybe I should look for patterns or symbols on the log's bark that could be a clue, not just physical objects... 
+Samantha: Samantha carefully runs her fingers along the surface of Fallen_Log#23, feeling for any unusual textures or indentations
+ Resulting in Samantha feels the rough bark and some moss on Fallen_Log#23 but detects no unusual textures or indentations.
+Samantha's fatigue increases slightly. 
+Samantha: ...Man, I gotta think outside the box here. Maybe there's a clue hidden under the log or in a crack I haven't checked yet. Gotta be thorough!... 
+World: 
+
+---ACT----- Adaptation
+ 
+World: 
+
+-----scene----- Water Source
+ 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T13:34:00 
+Joe:  moves Spring#2.
+  and notices view Forest terrain with varying slopes, visibility ranges from 0 to 40, multiple resources and one character nearby; resources Spring#1,2; characters Samantha,2; # 
+Joe: Fill bag with water from Spring#2
+ Resulting in Joe fills his bag with water from Spring#2.
+Joe's bag now contains water from Spring#2 in addition to apples from Apple_Tree#3, Apple_Tree#10, Apple_Tree#11, Apple_Tree#13, Apple_Tree#14, and berries from Berries#15 and Berries#14.
+Joe's fatigue increases slightly. 
+Joe: Joe quickly gathers apples from Apple_Tree#13, stuffing them into his bag.
+ Resulting in Joe gains more apples from Apple_Tree#13 in his bag.
+The number of apples on Apple_Tree#13 decreases.
+Joe's fatigue increases slightly. 
+Joe: Joe quickly moves to Apple_Tree#18 and starts gathering apples, stuffing them into his bag with urgency.
+ Resulting in Joe moves to Apple_Tree#18 and gathers apples, adding them to his bag.
+Joe's bag now contains more apples from Apple_Tree#18.
+Joe's fatigue increases slightly. 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T14:04:00 
+Samantha: Samantha carefully lifts and turns over sections of the log, inspecting underneath and around the edges for any signs of hidden clues or markings.
+ Resulting in Samantha finds no hidden clues or markings under or around the edges of Fallen_Log#23.
+Samantha's fatigue increases. 
+Samantha: Samantha carefully searches Thicket#4, parting the vegetation to look for any hidden clues.
+ Resulting in Samantha searches Thicket#4 but finds no hidden clues.
+Samantha's fatigue increases. 
+Samantha: Samantha carefully examines the ground and vegetation in Thicket#10, looking for any
+ Resulting in Samantha examines the ground and vegetation in Thicket#10 but finds no clues.
+Samantha's fatigue increases.
+Samantha sees the dense undergrowth and fallen leaves in Thicket#10. 
+Samantha: Samantha carefully inspects the undergrowth and crevices within Thicket#10, using a stick to gently probe
+ Resulting in Samantha's fatigue increases after inspecting Thicket#10.
+Samantha finds no clues or items in Thicket#10.
+Samantha sees nothing unusual in the undergrowth and crevices of Thicket#10.
+Samantha's possessions remain unchanged. 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T14:32:00 
+Joe: Joe reaches out and plucks berries from Berries#15, carefully placing them into his bag.
+ Resulting in Joe gains more berries from Berries#15 in his bag.
+The number of berries on Berries#15 decreases.
+Joe's fatigue increases slightly. 
+Joe:  moves Apple_Tree#8.
+  and notices view Forest terrain with varying slopes, visibility ranges from 0 to 40 in different directions; resources Berries#15,4,Spring#1,2,Thicket#4,3; characters Samantha,2; # 
+Joe:  moves Apple_Tree#15.
+  and notices view Forest terrain with varying slopes, visibility ranges from 0 to 40; resources Berries#7,7,Berries#15,4,Spring#1,4,Apple_Tree#13,20; characters Samantha,4; # 
+Joe: Joe reaches up and plucks apples from Apple_Tree#8, carefully placing them in his bag.
+ Resulting in Joe gains apples from Apple_Tree#8 in his bag.
+The number of apples on Apple_Tree#8 decreases.
+Joe's fatigue increases slightly. 
+Joe: Joe reaches up and plucks apples from Apple_Tree#15, carefully placing them in his bag.
+ Resulting in Joe gains apples from Apple_Tree#15 in his bag.
+The number of apples on Apple_Tree#15 decreases.
+Joe's fatigue increases slightly. 
+World: 
+
+-----scene----- Nightfall
+ 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T15:20:00 
+Samantha: Samantha carefully examines the remaining unsearched areas of Thicket#12, lifting branches and peering into crevices for any signs of clues related to her memory loss.
+ Resulting in Samantha completes the search of Thicket#12, reaching 100% completion.
+Samantha finds no clues related to her memory loss in Thicket#12.
+Samantha's fatigue increases.
+Samantha sees the sun continuing to lower in the sky, casting longer shadows. 
+Samantha: Samantha carefully examines the underside and crevices of Fallen_Log#7, using a stick to probe for any hidden items or markings.
+ Resulting in Samantha finds no hidden items or markings under Fallen_Log#7.
+Samantha's fatigue increases. 
+Samantha: Samantha carefully examines the ground and underbrush around Thicket#10,
+ Resulting in Samantha sees no new clues or items on the ground and underbrush around Thicket#10.
+Samantha's fatigue increases. 
+Samantha: Samantha carefully inspects the leaves and branches of the plants within Thicket#10, looking for any signs of disturbance or hidden objects.
+ Resulting in Samantha finds no signs of disturbance or hidden objects in Thicket#10.
+Samantha's fatigue increases. 
+
+
+Joe: -----cognitive cycle----- 2025-01-01T15:47:00 
+Joe: ...Man, these berries are gonna help a lot. I should keep an eye out for other food sources too, just in case.... 
+Joe: Joe reaches up and plucks more berries from Berries#15, carefully placing them in his bag.
+ Resulting in Joe gains more berries from Berries#15 in his bag. 
+Joe:  moves Apple_Tree#6.
+  and notices view Forest surroundings with varying slopes, visibility ranges from 0 to 40; resources Apple_Tree#6,0,Apple_Tree#15,7; characters Samantha,2; # 
+Joe: ...Man, I gotta stay sharp while I'm picking these apples. Gotta keep an eye out for anything weird in the forest.... 
+Joe: Joe reaches up and plucks apples from Apple_Tree#6, carefully placing them in his bag.
+ Resulting in Joe gains apples from Apple_Tree#6.
+Joe's bag now contains apples from Apple_Tree#6 in addition to his previous items. 
+
+
+Samantha: -----cognitive cycle----- 2025-01-01T16:09:00 
+Samantha: Samantha carefully examines the underside of Fallen_Log#16, looking for any hidden clues or markings.
+ Resulting in Samantha sees no hidden clues or markings on the underside of Fallen_Log#16.
+Samantha becomes more fatigued. 
+Samantha:  moves Thicket#7.
+  and notices view Dense forest with varying slopes, visibility ranges from 0 to 40; resources Apple_Tree#6,2; characters Joe,2; # 
+Samantha: ...Man, I gotta be super thorough with Thicket#9. Maybe I should start by looking for any unusual patterns or disturbances in the vegetation. Could be a sign someone was here.... 
+Samantha: Samantha carefully parts the dense vegetation of Thicket#9, inspecting the ground and lower branches for any signs of disturbance or hidden objects.
+ Resulting in Samantha sees no signs of disturbance or hidden objects in Thicket#9.
+Samantha becomes more fatigued. 
+World: 
+
     """
     evaluate_transcript(agents, transcript)
     sys.exit()

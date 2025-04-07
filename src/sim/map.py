@@ -376,6 +376,51 @@ class WorldMap:
                         print(f"None terrain at ({x}, {y}), elevation: {self.patches[x][y].elevation}")
                         break
 
+    def get_resource_type(self, resource_name):
+        """Check if a string matches a resource type and return the matching resource type.
+        
+        Args:
+            resource_name: String to check against resource types
+            
+        Returns:
+            The matching resource type if found, None otherwise
+        """
+        # Normalize the input string
+        resource_name = resource_name.strip().capitalize()
+        for resource_type in self.resource_types:
+            if resource_type.name == resource_name:
+                return resource_type
+        return None
+    
+    def random_location_by_resource(self, resource_name):
+        """Get a random location of a given resource type"""
+        resource_type = self.get_resource_type(resource_name)
+        if resource_type is None:
+            return random.randint(0, self.width-1), random.randint(0, self.height-1)
+        candidates = []
+        for candidate in self.resource_registry:
+            if self.resource_registry[candidate]['type'] == resource_type:
+                candidates.append(self.resource_registry[candidate]['location'])
+        if len(candidates) == 0:
+            return random.randint(0, self.width-1), random.randint(0, self.height-1)
+        return random.choice(candidates)
+    
+    def random_location_by_terrain(self, terrain_name):
+        """Get a random location of a given terrain type"""
+        if terrain_name is None:
+            return random.randint(0, self.width-1), random.randint(0, self.height-1)
+        terrain_type = self.get_terrain_type(terrain_name)
+        if terrain_type is None:
+            return self.random_location_by_resource(terrain_name)
+        candidates = []
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.patches[x][y].terrain_type == terrain_type:
+                    candidates.append((x, y))
+        if len(candidates) == 0:
+            return random.randint(0, self.width-1), random.randint(0, self.height-1)
+        return random.choice(candidates)
+    
     def generate_properties(self):
         valid_terrain = [getattr(self.terrain_types, t.strip().capitalize()) 
                         for t in self._property_rules['valid_terrain']]
@@ -965,6 +1010,24 @@ class WorldMap:
         
         return base_cost + slope_cost
 
+    def get_terrain_type(self, terrain_name: str):
+        """Check if a string matches a terrain type and return the matching terrain type.
+        
+        Args:
+            terrain_name: String to check against terrain types
+            
+        Returns:
+            The matching terrain type if found, None otherwise
+        """
+        # Normalize the input string
+        terrain_name = terrain_name.strip().capitalize()
+        
+        # Check if the string matches any terrain type
+        for terrain_type in self.terrain_types:
+            if terrain_type.name == terrain_name:
+                return terrain_type
+        return None
+
 class Agent:
     def __init__(self, x, y, world, name):
         self.x = x
@@ -1284,5 +1347,63 @@ def extract_direction_info(xml_string, direction_name):
     return info
 
 
+def hash_direction_info(direction_info, distance_threshold=10):
+    text_view = ""
+    percept = ""
+    percept_summary = ""
+    resources = []
+    characters = []
+    for dir in direction_info.keys():
+        if dir == 'Current':
+            percept_summary = f'You are in {direction_info[dir]['terrain']} terrain. '
+        percept += f"#view {dir}:"
+        if 'visibility' in direction_info[dir]:
+            percept += f" visibility {direction_info[dir]['visibility']}"
+        if 'terrain' in direction_info[dir]:
+            percept += f", terrain {direction_info[dir]['terrain']}"
+        if 'slope' in direction_info[dir]:
+            percept += f", slope {direction_info[dir]['slope']['description']} "
+        percept += "; "
+        if 'resources' in direction_info[dir] and len(direction_info[dir]['resources']) > 0:
+            resource_added = False
+            for resource in direction_info[dir]['resources']:
+                if resource['distance'] <= distance_threshold:
+                    if not resource_added:
+                        percept += f"resources: "
+                        resource_added = True
+                    percept += f"{resource['id']} distance {resource['distance']}, "
+                    resources.append(resource['id'])
+            percept = percept[:-2] + '; '
+        if 'characters' in direction_info[dir] and len(direction_info[dir]['characters']) > 0:  
+            character_added = False
+            for character in direction_info[dir]['characters']:
+                if character['distance'] <= distance_threshold:
+                    if not character_added:
+                        percept += f"characters: "
+                        character_added = True
+                    percept += f"{character['name']} distance {character['distance']}, "
+                    characters.append(character['name'])
+            percept = percept[:-2]
+        percept += "\n"
+    percept_summary += f"You see {', '.join(characters)} and {', '.join(resources)} resources"
+    print(percept_summary)
+    return percept, resources, characters, percept_summary
+                
 
+if __name__ == "__main__":
+    import importlib
+    import sys, os
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    import plays.config as configuration
+    from plays.scenarios import forest  # Import the forest scenario
+    from sim.mapview import MapVisualizer
 
+    world = WorldMap(50, 50, forest)
+    agent = Agent(20, 20, world, 'Cave#1_owner')
+    view = {}
+    for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
+                   'South', 'Southwest', 'West', 'Northwest']:
+        dir_obs = extract_direction_info(get_detailed_visibility_description(world, 20, 20, agent, 5), dir)
+        view[dir] = dir_obs    
+    hash_direction_info(view)
+ 

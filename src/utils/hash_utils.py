@@ -9,6 +9,21 @@ def _validate_tag(tag):
         raise ValueError("Tag must start with a letter and contain only letters and underscores")
     return tag.lower()
 
+def parse_hash_item(hash_item: str):
+    """Parse hash item into tag and value.
+    Args:
+        hash_item: Hash item string
+    Returns:
+        Tuple of tag and value
+    """
+    if not hash_item or not isinstance(hash_item, str):
+        return None, None
+    parts = hash_item.split(' ', 1)
+    if len(parts) == 2:
+        return parts[0].strip('#'), parts[1].strip()
+    return None, None
+
+
 def findall(tag, text):
     """Find all occurrences of hash-tagged sections in text.
     Args:

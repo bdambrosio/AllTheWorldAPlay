@@ -68,11 +68,16 @@ class Context():
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
         self.last_update_time = self.simulation_time
-        
-        for actor in self.actors + self.npcs:
+        self.narrative = None
+
+        for actor in self.actors:
             #place all actors in the world
             actor.set_context(self)
-            actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
+            if actor.mapAgent is None:
+                actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
+            else:
+                actor.mapAgent.x = actor.init_x
+                actor.mapAgent.y = actor.init_y
             # Initialize relationships with valid character names
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
@@ -102,7 +107,7 @@ DATE: Month DD
 If either piece of information is not explicitly stated in the text, make a reasonable inference based on context clues (e.g., "early morning" suggests morning time, "soft light" might suggest spring or summer). 
 If absolutely no information is available for either field, use "unknown" for that field.
 """)]
-        response = self.llm.ask({"situation": situation}, prompt, temp=0.5, max_tokens=10)
+        response = self.llm.ask({"situation": situation}, prompt, tag='Context.extract_simulation_time', temp=0.5, max_tokens=20)
         lines = response.strip().split('\n')
         time_str = None
         date_str = None
@@ -348,7 +353,7 @@ End your response with:
                   ]
 
         response = self.llm.ask({"consequences": consequences, "state": self.current_state},
-                                prompt, temp=0.5, stops=['</end>'], max_tokens=60)
+                                prompt, tag='Context.world_updates_from_act_consequences', temp=0.5, stops=['</end>'], max_tokens=60)
         updates = xml.find('<updates>', response)
         if updates is not None:
             self.current_state += '\n' + updates.strip()
@@ -391,7 +396,7 @@ End your response with:
                   ]
 
         response = self.llm.ask({"consequences": consequences, "actor_state": actor.narrative.get_summary('medium'), "state": self.current_state},
-                                prompt, temp=0.5, stops=['</end>'], max_tokens=60)
+                                prompt, tag='Context.character_updates_from_act_consequences', temp=0.5, stops=['</end>'], max_tokens=60)
         updates = xml.find('<updates>', response)
         if updates is not None:
             self.current_state += '\n' + updates.strip()
@@ -455,7 +460,8 @@ End your response with:
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, prompt, temp=0.7, stops=['</end>'], max_tokens=300)
+                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, 
+                                     prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -468,12 +474,12 @@ End your response with:
         return consequences, world_updates, character_updates
 
 
-    async def update(self, local_only=False):
+    async def update(self, narrative='', local_only=False):
 
         history = self.history()
 
         event = ""
-        if not local_only and random.randint(1, 7) == 1:
+        if not local_only and random.randint(1, 7) == -1:
             event = """
 Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
 natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
@@ -505,7 +511,10 @@ Joe finds a sharp object that can be used as a tool.
 """
 
         prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
-Include day/night cycles and weather patterns. It is now {{$time}}.
+Include day/night cycles and weather patterns. 
+{{$narrative}}
+                              
+It is now {{$time}}.
 Update location and other physical situation characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical situation.
         """ + event + """
@@ -543,8 +552,16 @@ Ensure your response is surrounded with <situation> and </situation> tags as sho
 End your response with:
 </end>""")]
 
-        response = self.llm.ask({"situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
-                                temp=0.6, stops=['</end>'], max_tokens=270)
+        narrative_insert = ''
+        if narrative:
+            narrative_insert = f"""The scene has changed to:
+
+$narrative
+            
+Ensure your response reflects this change.
+"""
+        response = self.llm.ask({"narrative": narrative_insert, "situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
+                                tag='Context.update', temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         if not local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
@@ -745,7 +762,8 @@ End your response with:
             await self.update(local_only=True) 
             self.last_update_time = self.simulation_time# update the world to get the latest situation
         
-        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, prompt, temp=0.4, stops=['</end>'], max_tokens=20)
+        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, 
+                             prompt, tag='Context.choose_delay', temp=0.4, stops=['</end>'], max_tokens=20)
 
         try:
             delay_str = hash_utils.find('delay', delay)
@@ -754,3 +772,48 @@ End your response with:
         except Exception as e:
             print(f'Error choosing delay: {e}')
             return 0.0
+
+    async def run_scene(self, scene):
+        """Run a scene"""
+        print(f'Running scene: {scene["scene_title"]}')
+        self.message_queue.put({'name':self.name, 'text':f'\n-----scene----- {scene["scene_title"]}'})
+        await asyncio.sleep(0.1)
+        location = scene['location']
+        x,y = self.map.random_location_by_terrain(location)
+        characters_at_location = []
+        for character_name in scene['action_order']:
+            if character_name in characters_at_location:
+                # only need to place each character once
+                continue
+            character = self.get_actor_by_name(character_name)
+            character.mapAgent.x = x
+            character.mapAgent.y = y
+            character.look()
+            characters_at_location.append(character)
+        self.update(scene['pre_narrative']+'\n'+scene['post_narrative'])
+        for character_name in scene['action_order']: #characters can appear multiple times in the action order
+            character = self.get_actor_by_name(character_name)
+            goal = scene['characters'][character_name]['goal']
+            character.instantiate_narrative_goal(goal)
+            await character.cognitive_cycle()
+
+    def load_narrative(self, narrative):
+        """Load a narrative"""
+        try:
+            with open(narrative, 'r') as f:
+                self.narrative = json.load(f)
+        except Exception as e:
+            print(f'Error loading narrative: {e}')
+            return None
+
+    async def run_narrative(self):
+        """Run a narrative"""
+        for act in self.narrative['acts']:
+            print(f'Running act: {act["act_title"]}')
+            self.message_queue.put({'name':self.name, 'text':f'\n---ACT----- {act["act_title"]}'})
+            await asyncio.sleep(0.1)
+            for scene in act['scenes']:
+                print(f'Running scene: {scene["scene_title"]}')
+                await self.run_scene(scene)
+            self.update()
+                

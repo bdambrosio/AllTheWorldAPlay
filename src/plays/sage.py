@@ -3,7 +3,7 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.worldsim as worldsim
 import sim.context as context, sim.agh as agh, sim.human as human
-import sim.scenarios.suburban as suburban
+from plays.scenarios import suburban
 import plays.config as configuration
 
 importlib.reload(configuration)# force reload in case cached version

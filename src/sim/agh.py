@@ -246,7 +246,7 @@ class Character:
         else:
             self.reference_dscp = self.llm.ask({}, [SystemMessage(content='generate a concise single sentence description for this character useful for reference resolution. Respond only with the description. End your response with: </end>'), 
                                                     UserMessage(content=f"""character name {self.name}\ncharacter description:\n{character_description}\n\nEnd your response with: </end>""")
-        ], max_tokens=24, stops=["</end>"]).strip()
+        ], tag='reference_dscp', max_tokens=24, stops=["</end>"]).strip()
         self.context: Context = None
 
         self.show = ''  # to be displayed by main thread in UI public text widget
@@ -593,7 +593,7 @@ End your response with:
             'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]+[npc.name for npc in self.context.npcs]),
             'action_type': 'internal thought' if act_mode == 'Think' else 'spoken message',
             "message": text
-        }, prompt, temp=0.2, stops=['</end>'], max_tokens=20)
+        },  prompt, tag='Agh.say_target', temp=0.2, stops=['</end>'], max_tokens=20)
 
         candidate = xml.find('<name>', response)
         if candidate is not None:
@@ -602,6 +602,21 @@ End your response with:
                 return target.name
         return None
     # World interaction methods
+
+    def format_hash_percept(self, percept_hash):
+        """Format a perceptual hash into a string"""
+        percept = ''
+        if len(percept_hash) > 1:
+            print('surprise')
+        percept_hash = percept_hash[0]
+        if type(percept_hash) != str:
+            print('surprise2')
+        for form in percept_hash.split('\n'):
+            form = form[1:].strip()+'; '
+            percept += form
+        percept = percept[:-2]
+        return percept
+
     def look(self, interest='', height=5):
         """Get visual information about surroundings"""
         if self.mapAgent is None:
@@ -614,81 +629,37 @@ End your response with:
             view[dir] = dir_obs
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
-        text_view = ""
+        view_text, resources, characters, percept_summary = map.hash_direction_info(view)
+        view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL)
+ 
         visible_actors = []
         for dir in view.keys():
-            try:
-                text_view += f"\n{dir}:"
-                if 'visibility' in view[dir]:
-                    text_view += f" visibility {view[dir]['visibility']}, "
-                if 'terrain' in view[dir]:
-                    text_view += f"terrain {view[dir]['terrain']}, "
-                if'slope' in view[dir]:
-                    text_view += f"slope {view[dir]['slope']}, "
-                if 'resources' in view[dir]:
-                    text_view += f"\n   resources {view[dir]['resources']}, "
-                    self.resource_models.add_seen_resources(view[dir]['resources'])
-                if 'characters' in view[dir]:
-                    text_view += f"\n   characters {view[dir]['characters']}, "
-                    visible_actors.extend(view[dir]['characters'])
-                if 'water' in view[dir]:
-                    text_view += f"\n  water {view[dir]['water']}"
-            except Exception as e:
-                pass
-            text_view += "\n"
+            if 'characters' in view[dir]:
+                for character_name in view[dir]['characters']:
+                    character, character_name= self.actor_models.resolve_character(character_name['name'])
+                    if character:
+                        visible_actors.append(character)  
         
         # update actor visibility.
         self.actor_models.set_all_actors_invisible()
         for actor in visible_actors:
-            self.actor_models.get_actor_model(actor['name'], create_if_missing=True).visible = True
-         # Create visual perceptual input
-        prompt = [UserMessage(content="""Your current state is :
-                              
-<interests>
-{{$interests}}
-</interests>
+            new_actor = False
+            if not self.actor_models.known(actor.name):
+                new_actor = True
+            self.actor_models.get_actor_model(actor.name, create_if_missing=True).visible = True
+            if new_actor:
+                # first encounter with an actor is a big deal!
+                perceptual_input = PerceptualInput(
+                    mode=SensoryMode.VISUAL,
+                    content=f'You see {actor.name}',
+                    timestamp=self.context.simulation_time,
+                    intensity=0.9,  # Medium-high for direct observation
+                )       
+                self.perceptual_state.add_input(perceptual_input)       
 
-<state>
-{{$state}}
-</state>
-
-And your current focus task is:
-
-<focus_task>
-{{$focus_task}}
-</focus_task>
-
-You see the following:
-
-<view>
-{{$view}}
-</view>
-
-Provide a concise description of what you notice, highlighting the most important features given your current interests, state and tasks. 
-This should include the names of all nearby (distance 10 or less) characters or resources you see.
-Respond using the following XML format:
-
-<perception>a concise (30 words or less) description of perceptual content</perception>
-
-End your response with:
-</end>
-""")]
-        #print("Look",end=' ')
-        response = self.llm.ask({"view": text_view, 
-                                 "interests": interest,
-                                 "state": self.narrative.get_summary(),
-                                 "focus_task": self.focus_task.peek().to_string() if self.focus_task.peek() else ''}, 
-                                prompt, temp=0.2, stops=['</end>'], max_tokens=100)
-        percept = xml.find('<perception>', response)
-        perceptual_input = PerceptualInput(
-            mode=SensoryMode.VISUAL,
-            content=percept,
-            timestamp=self.context.simulation_time,
-            intensity=0.7,  # Medium-high for direct observation
-        )       
-        self.perceptual_state.add_input(perceptual_input)       
-        self.look_percept = percept
-        return percept
+        items = self.perceptual_state.record_information_items_from_look(view_text, resources, characters)
+        self.look_percept = percept_summary
+        return percept_summary
 
     def format_look(self):
         """Format the agent's current map view"""
@@ -865,7 +836,7 @@ adjective, adjective, adjective
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.text for memory in recent_memories)
             #print("Char generate image description", end=' ')
-            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, temp=0.2, stops=['</end>'], max_tokens=10)
+            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=10)
             if response:
                 description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. Background: '+context
             else:
@@ -916,7 +887,7 @@ mode
 Respond only with a single choice of mode. Do not include any introductory, discursive, or explanatory text.
 """)]
             #print("Perceptual input",end=' ')
-            response = self.llm.ask({"message": message}, prompt, temp=0, stops=['</end>'], max_tokens=150)
+            response = self.llm.ask({"message": message}, prompt, tag='perceptual_input', temp=0, stops=['</end>'], max_tokens=150)
             if response:
                 mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
             else:
@@ -1015,7 +986,7 @@ Do not include any introductory, discursive, or explanatory text.
 End your response with:
 </end>
 """)]
-        response = self.llm.ask({"reason":reason}, instruction, temp=0.3, stops=['</end>'], max_tokens=12)
+        response = self.llm.ask({"reason":reason}, instruction, tag='task_name', temp=0.3, stops=['</end>'], max_tokens=12)
         return xml.find('<name>', response)
                     
 
@@ -1061,7 +1032,7 @@ End response with:
         result = self.llm.ask({
             'history': history,
             'response': new_response
-        }, prompt, temp=0.2, stops=['</end>'], max_tokens=100)
+        }, prompt, tag='repetitive', temp=0.2, stops=['</end>'], max_tokens=100)
 
         if 'true' in result.lower():
             return True
@@ -1328,6 +1299,129 @@ End response with:
                             actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         self.previous_action_mode = act_mode           
 
+    def instantiate_narrative_goal(self, goal_statement):
+        """instantiate a goal from a narrative"""
+        self.driveSignalManager.check_drive_signals()
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        signal_memories = []
+        for sc in focus_signalClusters:
+            sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
+            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
+            signal_memories.extend(perceptual_memories)
+
+        prompt = [UserMessage(content="""Instantiate a goal object for the following goal directive.
+                              
+<goal_directive>
+{{$goal_statement}}
+</goal_directive>
+
+<situation>
+{{$situation}}
+</situation>
+
+<surroundings>
+{{$surroundings}}
+</surroundings>
+
+<character>
+{{$character}}
+</character>
+
+<recent_events>
+{{$recent_events}}
+</recent_events>
+
+Additional information about the character to support developing your response
+Drives are the character's basic motivations. Activation indicates how strongle the drive is active at present in the character's consciousness.
+
+<drives>
+{{$drives}}
+</drives>
+
+Relationships are the character's relationships with other actors.
+
+<relationships>
+{{$relationships}}
+</relationships>
+                              
+<recent_memories>
+{{$recent_memories}}
+</recent_memories>
+
+
+Following are a few signalClusters ranked by impact. These are issues or opportunities nagging at the periphery of the character's consciousness.
+These clusters may overlap.
+                              
+<signalClusters>
+{{$signalClusters}}
+</signalClusters>
+
+Following are memories relevant to the signalClusters above. Consider them in your goal generation:
+
+<signal_memories>
+{{$signal_memories}}
+</signal_memories>
+
+Consider:
+1. The goal directive is the central issue / opportunity / obligation demanding the character's attention.
+2. Any patterns or trends in the past goals, tasks, or actions should be considered only insofar as the goal must be consistent with them.
+3. Identify any other actors involved in the goal, and their relationships to the character, insofar as the goal must be consistent with them.
+
+
+Respond with the instantiated goal consistent with the goal directive, in the following parts: 
+    goal - a terse (5-8 words) name for the goal, 
+    description - concise (8-14 words) further details of the goal, intended to guide task generation, 
+    otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
+    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
+    preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
+    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#goal terse (5-8) words) name for this goal
+#description concise (8-14) words) further details of this goal
+#otherActorName name of the other actor involved in this goal, or None if no other actor is involved
+#signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
+#preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
+#termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+##
+
+
+Respond ONLY with the above hash-formatted text.
+End response with:
+</end>
+""")]
+
+        response = self.llm.ask({"goal_statement":goal_statement,
+                                 "signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
+                                 "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
+                                 "situation": self.context.current_state if self.context else "",
+                                 "surroundings": self.look_percept,
+                                 "character": self.character,
+                                 "recent_events": self.narrative.get_summary('medium'),
+                                 "relationships": self.actor_models.format_relationships(include_transcript=True),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "signal_memories": "\n".join([m.content for m in signal_memories]),
+                                 #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
+                                 }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
+        goals = []
+        forms = hash_utils.findall_forms(response)
+        for goal_hash in forms:
+            goal = self.validate_and_create_goal(goal_hash)
+            if goal:
+                print(f'{self.name} generated goal: {goal.to_string()}')
+                goals.append(goal)
+            else:
+                print(f'Warning: Invalid goal generation response for {goal_hash}')
+        self.goals = goals
+        self.driveSignalManager.clear_clusters()
+        print(f'{self.name} generated {len(goals)} goals')
+        return goals
+
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
         self.driveSignalManager.check_drive_signals()
@@ -1433,7 +1527,7 @@ End response with:
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
-                                 }, prompt, temp=0.3, stops=['</end>'], max_tokens=240)
+                                 }, prompt, tag='generate_goal_alternatives', temp=0.3, stops=['</end>'], max_tokens=240)
         goals = []
         forms = hash_utils.findall_forms(response)
         for goal_hash in forms:
@@ -1520,7 +1614,7 @@ End response with:
                                'create a sequence of 3-6 tasks to achieve the focus goal', 
                                suffix, 
                                {"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 200)
+                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 150)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -1534,7 +1628,7 @@ End response with:
             if task:
                 task_plan.append(task)
         print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
-        goal.task_plan = task_plan # only use the first task for now, to force replanning in face of new information
+        goal.task_plan = task_plan[:1] # only use the first task for now, to force replanning in face of new information
         return task_plan
 
     def generate_completion_statement(self, object, termination_check, satisfied, progress, consequences='', updates=''):
@@ -1579,7 +1673,7 @@ End your response with:
                                  "situation": self.context.current_state,
                                  "world": self.context.current_state,
                                  "consequences": consequences,
-                                 "updates": updates}, prompt, temp=0.5, stops=['</end>'], max_tokens=30)
+                                 "updates": updates}, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=30)
         return response
 
     async def test_termination(self, object, termination_check, consequences, updates='', type=''):
@@ -1622,7 +1716,7 @@ For concrete termination checks (e.g., 'sufficient food gathered'), the full com
 Respond using this hash-formatted text:
 
 #status complete/partial/insufficient
-#progress>0-100
+#progress 0-100
 ##
 
 Respond ONLY with the above hash-formatted text.
@@ -1649,7 +1743,7 @@ End your response with:
             "character": self.character,
             "history": self.format_history_for_UI(),
             "relationships": self.narrative.get_summary('medium')
-        }, prompt, temp=0.5, stops=['</end>'], max_tokens=120)
+        }, prompt, tag='test_termination', temp=0.5, stops=['</end>'], max_tokens=20)
 
         satisfied = hash_utils.find('status', response)
         progress = hash_utils.find('progress', response)
@@ -1739,7 +1833,7 @@ End response with:
                             "target": target_name,
                             "relationship": relationship,
                             "character": self.character
-                    }, prompt, temp=0.6, stops=['</end>'])
+                    }, prompt, tag='refine_say_act', temp=0.6, stops=['</end>'])
 
         return act
 
@@ -2085,7 +2179,7 @@ End your response with:
                                  "reason":reason,
                                  "intensions":'\n'.join(task.to_string() for task in self.intensions[-5:]),
                                  "name":self.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=150)
+                                 prompt, tag='update_actions_wrt_say_think', temp=0.1, stops=['</end>'], max_tokens=150)
         intension_hashes = hash_utils.findall('task', response)
         if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
@@ -2205,7 +2299,7 @@ End your response with:
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
                                  "target_name":target.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+                                 prompt, tag='update_individual_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=180)
         source = Task('dialog with '+target.name, 
                       description='dialog with '+target.name, 
                       reason='dialog with '+target.name, 
@@ -2312,7 +2406,7 @@ End your response with:
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
                                  "target_name":target.name}, 
-                                 prompt, temp=0.1, stops=['</end>'], max_tokens=240)
+                                 prompt, tag='update_joint_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=240)
         source = Task('dialog with '+target.name, 
                       description='dialog with '+target.name, 
                       reason='dialog with '+target.name, 
@@ -2374,7 +2468,7 @@ End your response with:
 </end>
 """)]   
         transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
-        response = self.llm.ask({"transcript":transcript}, prompt, temp=0.1, stops=['</end>'], max_tokens=180)
+        response = self.llm.ask({"transcript":transcript}, prompt, tag='natural_dialog_end', temp=0.1, stops=['</end>'], max_tokens=180)
         if response is None:
             return False
         try:
@@ -2593,7 +2687,7 @@ End your response with:
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
             'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
             'duplicative_insert': duplicative_insert
-            }, prompt, temp=0.8, stops=['</end>'], max_tokens=180)
+            }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:
             print(f'No response to hear')
@@ -2674,7 +2768,7 @@ End your response with:
                                          'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
-                                         prompt, temp=0.8, stops=['</end>'], max_tokens=180)
+                                         prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=180)
                 if response:
                     admissible = xml.find('admissible', response)
                     if admissible.lower() == 'true':
@@ -3159,7 +3253,7 @@ end your response with:
 </end>
 """)]
         
-        result = self.llm.ask({}, prompt, max_tokens=100, stops=['</end>'])
+        result = self.llm.ask({}, prompt, tag='find_say_result', max_tokens=100, stops=['</end>'])
         return result or ""
 
     def get_explorer_state(self):

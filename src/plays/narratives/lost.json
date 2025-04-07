@@ -1,0 +1,131 @@
+{
+  "title": "Lost in the Woods",
+  "acts": [
+    {
+      "act_number": 1,
+      "act_title": "Disorientation",
+      "scenes": [
+        {
+          "scene_number": 1,
+          "scene_title": "First Encounter",
+          "location": "Clearing",
+          "characters": {"Samantha": {"goal": "Understand her surroundings and who Joe is"},
+            "Joe": {"goal": "Determine if Samantha is a threat or ally"}},
+          "action_order": ["Samantha", "Joe", "Samantha", "Joe"],
+          "pre_narrative": "The two strangers wake up with no memory in a forest clearing.",
+          "post_narrative": "Initial wariness gives way to cautious alliance as they realize they share the same predicament."
+        },
+        {
+          "scene_number": 2,
+          "scene_title": "Searching for Signs",
+          "location": "Thicket",
+          "characters": {"Joe": {"goal": "Find evidence of how they got there"},
+            "Samantha": {"goal": "Look for signs of civilization"}},
+          "action_order": ["Joe", "Samantha", "Joe"],
+          "pre_narrative": "The pair searches the area for clues, finding nothing but wilderness.",
+          "post_narrative": "They discover strange matching bracelets on their wrists they can't remove, suggesting they're not here by accident."
+        },
+        {
+          "scene_number": 3,
+          "scene_title": "Survival Priorities",
+          "location": "Berries",
+          "characters": {"Samantha": {"goal": "Find food and water"},
+            "Joe": {"goal": "Create a safe camp before nightfall"}},
+          "action_order": ["Samantha", "Joe", "Samantha"],
+          "pre_narrative": "As the day progresses, immediate survival needs take precedence.",
+          "post_narrative": "Joe reveals practical skills while Samantha demonstrates knowledge of edible plants. They begin to form a tentative bond through cooperation."
+        }
+      ]
+    },
+    {
+      "act_number": 2,
+      "act_title": "Adaptation",
+      "scenes": [
+        {
+          "scene_number": 4,
+          "scene_title": "Water Source",
+          "location": "Spring",
+          "characters": {"Joe": {"goal": "Secure a steady water supply"},
+            "Samantha": {"goal": "Try to trigger memories by routine actions"}},
+          "action_order": ["Joe", "Samantha", "Joe"],
+          "pre_narrative": "At the spring, Samantha has faint memory flashes that disturb her. Joe notices but is unsure how to help.",
+          "post_narrative": "They establish a base camp near the water."
+        },
+        {
+          "scene_number": 5,
+          "scene_title": "Nightfall",
+          "location": "Fallen_Log",
+          "characters": {"Samantha": {"goal": "Process her partial memories"},
+            "Joe": {"goal": "Comfort Samantha while hiding his own fear"}},
+          "action_order": ["Samantha", "Joe", "Samantha"],
+          "pre_narrative": "Their first night brings vulnerability and deeper conversation.",
+          "post_narrative": "Joe shares his scientific background, while Samantha reveals philosophical interests. The emotional connection grows despite their confusion."
+        },
+        {
+          "scene_number": 6,
+          "scene_title": "The Strange Lights",
+          "location": "Forest",
+          "characters": {"Samantha": {"goal": "Investigate unusual lights in the distance"},
+            "Joe": {"goal": "Protect Samantha while managing his fear"}},
+          "action_order": ["Samantha", "Joe", "Context"],
+          "pre_narrative": "They spot strange, pulsing lights through the trees.",
+          "post_narrative": "Following them leads to a clearing with geometric patterns etched in the ground that trigger simultaneous headaches in both characters. Context introduces unexplained phenomena that further the mystery."
+        }
+      ]
+    },
+    {
+      "act_number": 3,
+      "act_title": "Revelation",
+      "scenes": [
+        {
+          "scene_number": 7,
+          "scene_title": "The Cave",
+          "location": "Cave",
+          "characters": {"Joe": {"goal": "Explore the cave for shelter or answers"},
+            "Samantha": {"goal": "Decode strange symbols found inside"}},
+          "action_order": ["Joe", "Samantha", "Context", "Joe"],
+          "pre_narrative": "Inside the cave, they find wall markings similar to the clearing patterns.",
+          "post_narrative": "Context introduces a hermit who speaks cryptically about 'the experiment' and 'subjects.' The hermit vanishes when questioned directly, leaving them more confused."
+        },
+        {
+          "scene_number": 8,
+          "scene_title": "The Hut",
+          "location": "Hut",
+          "characters": {"Samantha": {"goal": "Search the hut for answers"},
+            "Joe": {"goal": "Find a way to contact the outside world"}},
+          "action_order": ["Samantha", "Joe", "Context"],
+          "pre_narrative": "They discover an abandoned researcher's hut with equipment and journals describing a study on memory and human bonding under stress.",
+          "post_narrative": "They learn they may be unwitting participants, with their memories temporarily suppressed."
+        },
+        {
+          "scene_number": 9,
+          "scene_title": "Decision Point",
+          "location": "Meadow",
+          "characters": {"Joe": {"goal": "Follow the path to freedom/civilization"},
+            "Samantha": {"goal": "Consider whether leaving is the right choice"},
+            "Context": {"goal": "Present a choice through environmental cues"}},
+          "action_order": ["Joe", "Samantha", "Context"],
+          "pre_narrative": "They discover what appears to be an exit path. Joe is eager to leave, but Samantha hesitates, sensing there's more to learn.",
+          "post_narrative": "Their bracelets begin to beep as they approach the forest edge. Context introduces a dramatic choice: leave with partial answers or stay for the full truth."
+        }
+      ]
+    },
+    {
+      "act_number": 4,
+      "act_title": "Epilogue: Choice and Consequence",
+      "scenes": [
+        {
+          "scene_number": 10,
+          "scene_title": "The Threshold",
+          "location": "Forest Edge",
+          "characters": {"Samantha": {"goal": "Make peace with her decision"},
+            "Joe": {"goal": "Support Samantha while addressing his own needs"},
+            "Context": {"goal": "Reveal the final truth depending on their choice"}},
+          "action_order": ["Samantha", "Joe", "Context"],
+          "pre_narrative": "The final scene shows their choice and immediate consequences.",
+          "post_narrative": "If they leave, they begin to regain memories but wonder what they've left behind. If they stay, they discover more about the experiment and find a communication device. Either way, their relationship has been transformed by the experience, and they face the future as partners rather than strangers."
+        }
+      ]
+    }
+  ]
+}
