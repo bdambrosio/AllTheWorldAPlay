@@ -2,6 +2,8 @@
 ### A playground for cognitive software and other beings.
 
 - Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
+- LLM api support for OpenRouter.ai and for llama.cpp local
+  - see config.py in plays. for OpenRouter.ai an extra parameter - the model to use. If running llama.cpp server, specify --port=5000, choose server_name='local' in config.py (must be on same machine as AllTheWorld is running)
 - Reference resolution! - both characters (e.g., Jean's father) and resources (e.g. move to the thicket) now go through reference resolution. A bit crude, but significantly reduces frequency of missed references.
 - Map! very crude placeholder, but maybe fun. As with most other stuff, only try while paused. If it hangs, close the window. It takes up to a minute or so to generate the map, be patient
 
