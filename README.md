@@ -81,7 +81,19 @@ I use this launch.json in Cursor to launch the main simulation engine:
 # if all is well that will display a combo box of available plays. Pick one and click the load button. Wait.
 # Note: at the moment the Alex, Demo, laTerre, and lost plays should work, I'm still porting the others.
 ```
-
+API keys to put in your env (minimally, only the one you use, if not local):
+  ```code
+export OPENAI_API_KEY
+export GOOGLE_KEY=
+export GOOGLE_CX=
+export MISTRAL_API_KEY=
+export CLAUDE_API_KEY=
+export DEEPSEEK_API_KEY=
+export HIVE_API_KEY= (for Hive image server if not running a local tti)
+export XAI_API_KEY=
+export COHERE_API_KEY=
+export OPENROUTER_API_KEY= (don't forget to set model name in plays/config.py)
+```
 - ATWAP uses several ports, including 3000, 5000, 5008, 5555, 5556, and 8000. That's probably horrible. I apologize. I am a jack of all trades, master of none.
 - It needs two external services - a model (LLM) server, and a tti (text-to-image) server.
   - model server: in plays/config.py you can uncomment the appropriate line to use a variety of sources. Put your api-key in your env.
