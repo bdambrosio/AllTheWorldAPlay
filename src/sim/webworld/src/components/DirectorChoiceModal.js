@@ -5,7 +5,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
   // State for new goal form
   const [newGoal, setNewGoal] = useState({
     name: '',
-    actors: '',
+    actors: request?.character_name || '',
     description: '',
     termination: ''
   });
@@ -13,10 +13,20 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
   // State for new task form
   const [newTask, setNewTask] = useState({
     name: '',
-    actors: '',
+    actors: request?.character_name || '',
     description: '',
     reason: '',
     termination: ''
+  });
+
+  // Add new state for act form
+  const [newAct, setNewAct] = useState({
+    mode: 'Do',
+    action: '',
+    actors: request?.character_name || '',
+    reason: '',
+    duration: '1',
+    target: ''
   });
 
   const [formError, setFormError] = useState('');
@@ -38,6 +48,16 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
     const { name, value } = e.target;
     setFormError(''); // Clear error when user makes changes
     setNewTask(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Add handler for act form changes
+  const handleNewActChange = (e) => {
+    const { name, value } = e.target;
+    setFormError(''); // Clear error when user makes changes
+    setNewAct(prev => ({
       ...prev,
       [name]: value
     }));
@@ -87,6 +107,23 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
     return true;
   };
 
+  // Add validation for act form
+  const validateActForm = () => {
+    if (!newAct.mode.trim()) {
+      setFormError('Mode is required');
+      return false;
+    }
+    if (!newAct.action.trim()) {
+      setFormError('Action is required');
+      return false;
+    }
+    if (!newAct.actors.trim()) {
+      setFormError('At least one actor is required');
+      return false;
+    }
+    return true;
+  };
+
   const handleNewGoalSubmit = (e) => {
     e.preventDefault();
     
@@ -124,6 +161,28 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
 
     // Pass both the 'custom' id and the task data
     onChoice('custom', customTask);
+  };
+
+  // Add handler for act form submission
+  const handleNewActSubmit = (e) => {
+    e.preventDefault();
+    
+    if (!validateActForm()) {
+      return;
+    }
+
+    // Create a custom act object
+    const customAct = {
+      mode: newAct.mode.trim(),
+      action: newAct.action.trim(),
+      actors: newAct.actors.split(',').map(actor => actor.trim()),
+      reason: newAct.reason.trim(),
+      duration: parseInt(newAct.duration) || 1,
+      target: newAct.target.trim() || undefined
+    };
+
+    // Pass both the 'custom' id and the act data
+    onChoice('custom', customAct);
   };
 
   return (
@@ -282,6 +341,91 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
                 </div>
                 <button type="submit" className="submit-button">
                   Create New Task
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Act form - only show for act choices */}
+          {request.choice_type === 'act' && (
+            <div className="new-act-form">
+              <h4>Create New Action</h4>
+              <form onSubmit={handleNewActSubmit}>
+                {formError && <div className="form-error">{formError}</div>}
+                <div className="form-group">
+                  <label htmlFor="mode">Mode:</label>
+                  <select
+                    id="mode"
+                    name="mode"
+                    value={newAct.mode}
+                    onChange={handleNewActChange}
+                  >
+                    <option value="Think">Think</option>
+                    <option value="Say">Say</option>
+                    <option value="Do">Do</option>
+                    <option value="Move">Move</option>
+                    <option value="Look">Look</option>
+                    <option value="Listen">Listen</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="action">Action:</label>
+                  <input
+                    type="text"
+                    id="action"
+                    name="action"
+                    value={newAct.action}
+                    onChange={handleNewActChange}
+                    placeholder="Enter action description"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="actors">Actors (comma-separated):</label>
+                  <input
+                    type="text"
+                    id="actors"
+                    name="actors"
+                    value={newAct.actors}
+                    onChange={handleNewActChange}
+                    placeholder="Enter actor names"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="reason">Reason (optional):</label>
+                  <input
+                    type="text"
+                    id="reason"
+                    name="reason"
+                    value={newAct.reason}
+                    onChange={handleNewActChange}
+                    placeholder="Enter reason for this action"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="duration">Duration (optional):</label>
+                  <input
+                    type="number"
+                    id="duration"
+                    name="duration"
+                    value={newAct.duration}
+                    onChange={handleNewActChange}
+                    placeholder="Enter duration (default: 1)"
+                    min="1"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="target">Target (optional):</label>
+                  <input
+                    type="text"
+                    id="target"
+                    name="target"
+                    value={newAct.target}
+                    onChange={handleNewActChange}
+                    placeholder="Enter target character or object"
+                  />
+                </div>
+                <button type="submit" className="submit-button">
+                  Create New Action
                 </button>
               </form>
             </div>

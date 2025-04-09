@@ -17,6 +17,9 @@ import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
 import utils.DeepSeekLocalClient as DeepSeekLocalClient
 import utils.CohereClient as cohere_client
+
+MODEL = '' # set by simulation from config.py
+
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
 url = 'http://127.0.0.1:5000/v1/chat/completions'
@@ -49,6 +52,13 @@ vllm_model = '/home/bruce/Downloads/models/phi-4'
 
 elapsed_times = {}
 iteration_count = 0
+
+def set_model(model):
+    global MODEL
+    MODEL = model
+    if hasattr(OpenRouterClient, 'MODEL'):
+        OpenRouterClient.MODEL = model
+
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
     prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
@@ -103,6 +113,7 @@ pattern = r'\{\$[^}]*\}'
 
 # options include 'local', 'Claude', 'OpenAI', 'deepseek-chat',
 class LLM():
+
     def __init__(self, server_name='local'):
         global vllm_model
         self.server_name = server_name
@@ -183,7 +194,11 @@ class LLM():
                     text = text[index+8:].strip()
                 return text
             elif 'local' in self.server_name:
-                text = response.content.decode('utf-8').strip()
+                try:
+                    jsonr = response.json()
+                    text = jsonr['choices'][0]['message']['content']
+                except Exception as e:
+                    return response.content.decode('utf-8')
                 return text
 
             if 'deepseeklocal' in self.server_name and (index := text.find('</think>')) > -1:
