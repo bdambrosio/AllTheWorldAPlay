@@ -48,10 +48,10 @@ W = Context([J, F],
     scenario_module=rural,  # Pass the entire module
     server_name=server_name)
 
-J.mapAgent.move_to_resource('Marquart farm')
+J.mapAgent.move_to_resource('MarquartFarm')
 W.reference_manager.declare_relationship('Marquart farm_owner', 'father of', 'Jean', 'child_of')
 J.look()
-F.mapAgent.move_to_resource('Fouan farm')
+F.mapAgent.move_to_resource('FouanFarm')
 W.reference_manager.declare_relationship('Fouan farm_owner', 'father of', 'Francoise', 'child_of')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", 'internal')
 J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", 'internal')

@@ -958,15 +958,18 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         recent_memories = self.structured_memory.get_recent(n)
         return ' \n '.join(memory.text for memory in recent_memories)
     
-    def map_goals(self):
+    def map_goals(self, goal=None):
         """ map goals for llm input """
         header = """A goal is a terse description of a need or desire the character has.  
 Each goal has an urgency and a trigger.  A goal is satisfied when the termination condition is met.
 Here are this character's goals:
 """
         mapped = [header]
-        for goal in self.goals:
+        if goal:
             mapped.append(goal.to_string())
+        else:
+            for goal in self.goals:
+                mapped.append(goal.to_string())
         return '\n'.join(mapped)
 
 
@@ -2658,7 +2661,10 @@ End your response with:
 
         prompt = [UserMessage(content=prompt_string)]
 
-        mapped_goals = self.map_goals()
+        if self.focus_goal:
+            mapped_goals = self.map_goals(self.focus_goal)
+        else:
+            mapped_goals = self.map_goals()
         activity = ''
         if self.focus_task.peek() != None and self.focus_task.peek().name.startswith('dialog'):
             activity = f'You are currently actively engaged in {self.focus_task.peek().name}'
@@ -2823,13 +2829,23 @@ End your response with:
             
                 # Wait for response with timeout
                 waited = 0
-                while waited < 40.0:
+                while waited < 999.0:
                     await asyncio.sleep(0.1)
                     waited += 0.1
                     if not self.context.choice_response.empty():
                         try:
                             response = self.context.choice_response.get_nowait()
-                            if response and response.get('selected_id') is not None:
+                            if response and response.get('custom_data'):
+                                print(f'{self.name} request_goal_choice: custom data {response["custom_data"]}')
+                                custom_data = response['custom_data']
+                                if custom_data.get('name') and custom_data.get('description') and custom_data.get('actors') and custom_data.get('termination'):
+                                    actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
+                                    actors = [actor for actor in actors if actor] # strip actors that could not be found
+                                    self.focus_goal = Goal(name=custom_data['name'], description=custom_data['description'], 
+                                                           actors=actors, termination=custom_data['termination'], signalCluster=None, 
+                                                           drives=None, preconditions=None)
+                                return self.focus_goal
+                            elif response and response.get('selected_id') is not None:
                                 self.focus_goal = goals[response['selected_id']]
                                 return self.focus_goal
                         except Exception as e:
@@ -2854,11 +2870,7 @@ End your response with:
                 self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
                 return self.focus_task.peek()
         else:
-            if len(tasks) < 3:
-                print(f'{self.name} request_task_choice: not enough tasks')
-            if len(tasks) > 0: # debugging
-                # Send choice request to UI
-                choice_request = {
+            choice_request = {
                     'text': 'task_choice',
                     'character_name': self.name,
                     'options': [{
@@ -2867,43 +2879,56 @@ End your response with:
                         'description': task.description,
                         'reason': task.reason,
                         'context': {
-                            'signal_cluster': task.goal.signalCluster.to_string(),
+                            'signal_cluster': task.goal.signalCluster.to_string() if task.goal and task.goal.signalCluster else '',
                             'emotional_stance': {
-                                'arousal': str(task.goal.signalCluster.emotional_stance.arousal.value),
-                                'tone': str(task.goal.signalCluster.emotional_stance.tone.value),
-                                'orientation': str(task.goal.signalCluster.emotional_stance.orientation.value)
+                                'arousal': str(task.goal.signalCluster.emotional_stance.arousal.value) if task.goal and task.goal.signalCluster else '',
+                                'tone': str(task.goal.signalCluster.emotional_stance.tone.value) if task.goal and task.goal.signalCluster else '',
+                                'orientation': str(task.goal.signalCluster.emotional_stance.orientation.value) if task.goal and task.goal.signalCluster else ''
                             }
                         }
                     } for i, task in enumerate(tasks)]
                 }
-                # Drain any old responses from the queue
-                while not self.context.choice_response.empty():
-                    _ = self.context.choice_response.get_nowait()
+            # Drain any old responses from the queue
+            while not self.context.choice_response.empty():
+                 _ = self.context.choice_response.get_nowait()
                 
-                # Send choice request to UI
-                self.context.message_queue.put(choice_request)
+            # Send choice request to UI
+            self.context.message_queue.put(choice_request)
             
-                # Wait for response with timeout
-                waited = 0
-                while waited < 40.0:
-                    await asyncio.sleep(0.1)
-                    waited += 0.1
-                    if not self.context.choice_response.empty():
-                        try:
-                            response = self.context.choice_response.get_nowait()
-                            if response and response.get('selected_id') is not None:
-                                self.focus_task.push(tasks[response['selected_id']])
-                                return
-                        except Exception as e:
-                            print(f'{self.name} request_task_choice error: {e}')
-                            break
+            # Wait for response with timeout
+            waited = 0
+            while waited < 999.0:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                if not self.context.choice_response.empty():
+                    try:
+                        response = self.context.choice_response.get_nowait()
+                        if response and response.get('custom_data'):
+                            print(f'{self.name} request_task_choice: custom data {response["custom_data"]}')
+                            custom_data = response['custom_data']
+                            if custom_data.get('name') and custom_data.get('description') and custom_data.get('actors') and custom_data.get('reason') and custom_data.get('termination'):
+                                actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
+                                actors = [actor for actor in actors if actor] # strip actors that could not be found
+                                task = Task(name=custom_data['name'], 
+                                             description=custom_data['description'],
+                                             reason=custom_data['reason'],
+                                             termination=custom_data['termination'],
+                                             goal=self.focus_goal,
+                                             actors=actors,
+                                             start_time=self.context.simulation_time,
+                                             duration=1)
+                                self.focus_task.push(task)
+                                return task
+                        elif response and response.get('selected_id') is not None:
+                            self.focus_task.push(tasks[response['selected_id']])
+                            return self.focus_task.peek()
+                    except Exception as e:
+                        print(f'{self.name} request_task_choice error: {e}')
+                        break
             
-                # If we get here, either timed out or had an error
-                self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
-                return self.focus_task
-            else:
-                self.focus_task = None
-                return None
+            # If we get here, either timed out or had an error
+            self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
+            return self.focus_task.peek()
 
 
     def ActWeight(self, count, n, act):

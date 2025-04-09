@@ -21,7 +21,9 @@ unclassified
 
 prompt = [SystemMessage(content='Your task is to determine the sensory mode of the following message.'),
           UserMessage(content=content),
-          AssistantMessage(content='The sensory mode is:')]
+          UserMessage(content='Respond with only the single word for the sensory mode, no other text.\n'),
+          #AssistantMessage(content='')
+          ]
 
 for i in range(5):
     start = time.time()
