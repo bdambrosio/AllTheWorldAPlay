@@ -1,6 +1,7 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
+- Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
 - Reference resolution! - both characters (e.g., Jean's father) and resources (e.g. move to the thicket) now go through reference resolution. A bit crude, but significantly reduces frequency of missed references.
 - Map! very crude placeholder, but maybe fun. As with most other stuff, only try while paused. If it hangs, close the window. It takes up to a minute or so to generate the map, be patient
 
@@ -32,6 +33,7 @@ cd AllTheWorldAPlay
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
+# you also need npm, React, etc installed. I just had cursor do it for me, can't help much there, I'm not a js guy.
 ```
 
 ## Use
