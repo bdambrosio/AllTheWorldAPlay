@@ -34,6 +34,8 @@ except openai.OpenAIError as e:
 import utils.GrokClient as GrokClient
 grok_client = GrokClient
 
+import utils.OpenRouterClient as OpenRouterClient
+openrouter_client = OpenRouterClient.OpenRouterClient(api_key=os.getenv("OPENROUTER_API_KEY"))
 
 deepseek_client = DeepSeekClient.DeepSeekClient()
 deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
@@ -156,8 +158,8 @@ class LLM():
         if 'Grok' in self.server_name:
             response= GrokClient.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'openai' in self.server_name or (options.model is not None and 'gpt' in options.model):
-            response= openai_client.executeRequest(prompt=substituted_prompt, options=options)
+        if 'openrouter' in self.server_name.lower():
+            response= openrouter_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         else:
             if options.stops is None: options.stops = []

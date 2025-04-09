@@ -238,14 +238,25 @@ function App() {
     await sendMessageSafely(message);
   };
 
-  const handleChoice = (choiceId) => {
+  const handleChoice = (choiceId, customData = null) => {
     if (!choiceRequest) return;
     
-    sendCommand('choice_response', {
+    const response = {
       character_name: choiceRequest.character_name,
       selected_id: choiceId
-    });
+    };
+
+    if (customData) {
+      response.custom_data = {
+        name: customData.name,
+        actors: customData.actors,
+        description: customData.description,
+        termination: customData.termination,
+        reason: customData?.reason || ''
+      };
+    }
     
+    sendCommand('choice_response', response);
     setChoiceRequest(null);
   };
 

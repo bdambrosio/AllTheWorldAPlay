@@ -401,9 +401,12 @@ class SimulationServer:
             elif cmd_name == 'choice_response':
                 # Put the response in the context's choice_response queue
                 if self.sim_context:
-                    self.sim_context.choice_response.put_nowait({
+                    response = {
                         'selected_id': command.get('selected_id')
-                    })
+                    }
+                    if command.get('custom_data'):
+                        response['custom_data'] = command.get('custom_data')
+                    self.sim_context.choice_response.put_nowait(response)
                 await asyncio.sleep(0.1)
             elif cmd_name == 'set_autonomy':
                 await self.set_autonomy_cmd(command)

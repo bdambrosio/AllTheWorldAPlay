@@ -708,7 +708,7 @@ Ensure your response reflects this change.
         """Choose a delay for the next cognitive cycle"""
         prompt = [SystemMessage(content="""You are a delay chooser.
 Your task is to choose a delay for the next cognitive cycle.
-The delay asyncio.shield be a number of hours from now  .
+The delay should be a number of hours from now.
 The delay should be between 0 and 12 hours.
 The delay should be a multiple of 0.5 hours.
 
