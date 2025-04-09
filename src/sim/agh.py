@@ -2993,7 +2993,7 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 40.0:
+            while waited < 999.0:
                 await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
