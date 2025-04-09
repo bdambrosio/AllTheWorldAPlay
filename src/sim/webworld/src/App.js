@@ -249,10 +249,14 @@ function App() {
     if (customData) {
       response.custom_data = {
         name: customData.name,
+        mode: customData?.mode || '',
+        action: customData?.action || '',
         actors: customData.actors,
         description: customData.description,
+        target: customData?.target || '',
         termination: customData.termination,
-        reason: customData?.reason || ''
+        reason: customData?.reason || '',
+        duration: customData?.duration || 1
       };
     }
     

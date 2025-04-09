@@ -2477,8 +2477,13 @@ End your response with:
         try:
             rating = int(response.lower().replace('</end>','').strip())
         except ValueError:
-            print(f'{self.name} natural_dialog_end: invalid rating: {response}')
-            rating = 7
+            try:
+                rating = int(''.join(filter(str.isdigit, response)))
+                if rating < 0 or rating > 10:
+                    rating = 7
+            except ValueError:
+                print(f'{self.name} natural_dialog_end: invalid rating: {response}')
+                rating = 7
         # force end to run_on conversations
         end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10))
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
@@ -2843,7 +2848,7 @@ End your response with:
                                     actors = [actor for actor in actors if actor] # strip actors that could not be found
                                     self.focus_goal = Goal(name=custom_data['name'], description=custom_data['description'], 
                                                            actors=actors, termination=custom_data['termination'], signalCluster=None, 
-                                                           drives=None, preconditions=None)
+                                                           drives=[], preconditions='')
                                 return self.focus_goal
                             elif response and response.get('selected_id') is not None:
                                 self.focus_goal = goals[response['selected_id']]
@@ -2972,17 +2977,17 @@ End your response with:
                     'target': act.target.name if act.target else '',
                     'context': {
                         'emotional_stance': {
-                            'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
-                            'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
-                            'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value) if act.source and act.source.goal and act.source.goal.signalCluster else ''
+                                'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
+                                'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
+                                'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value) if act.source and act.source.goal and act.source.goal.signalCluster else ''
+                            }
                         }
-                    }
-                } for i, act in enumerate(acts)]
+                    } for i, act in enumerate(acts)]
             }
             # Drain any old responses from the queue
             while not self.context.choice_response.empty():
                 _ = self.context.choice_response.get_nowait()
-                
+
             # Send choice request to UI
             self.context.message_queue.put(choice_request)
             
@@ -2995,8 +3000,37 @@ End your response with:
                     try:
                         response = self.context.choice_response.get_nowait()
                         if response and response.get('selected_id') is not None:
+                            if response.get('selected_id') == 'custom' and response.get('custom_data'):
+                                # Handle custom act
+                                custom_data = response['custom_data']
+                                mode = custom_data['mode']
+                                if mode:
+                                    mode = mode.strip().capitalize()
+                                    try:
+                                        mode_enum = Mode[mode]  # This validates against the enum
+                                        mode = mode_enum.value  # Get standardized string value
+                                    except KeyError:
+                                        self.focus_action = acts[0]
+                                        return self.focus_action
+
+                                actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
+                                actors = [actor for actor in actors if actor] # strip actors that could not be found
+                                target = self.actor_models.resolve_character(custom_data['target'])[0]
+                                custom_act = Act(
+                                        mode=mode,
+                                        action=custom_data['action'],
+                                        actors=actors,
+                                        reason=custom_data.get('reason', ''),
+                                        duration=custom_data.get('duration', 1),
+                                        source=self.focus_task.peek(),
+                                        target=target
+                                    )
+                                if custom_act:
+                                    print(f'{self.name} request_act_choice: custom act {custom_act.mode} {custom_act.action}')
+                                    self.focus_action = custom_act
+                                    return self.focus_action
                             self.focus_action = acts[response['selected_id']]
-                            return
+                            return self.focus_action    
                     except Exception as e:
                         print(f'{self.name} request_act_choice error: {e}')
                         break

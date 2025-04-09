@@ -8,12 +8,12 @@ from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
 api_key=os.getenv("OPENROUTER_API_KEY")
-model= "meta-llama/llama-4-maverick"
+MODEL = 'google/gemini-2.0-flash-001'
+
 
 class OpenRouterClient():
     DefaultEndpoint = 'https://openrouter.ai'
     UserAgent = 'Owl'
-
     def __init__(self, api_key=None):
         self.api_key = api_key
         
@@ -38,7 +38,7 @@ class OpenRouterClient():
                         "X-Title": "Tuuyi", # Optional. Site title for rankings on openrouter.ai.
                     },
                 data=json.dumps({
-                    "model": model, # Optional
+                    "model": MODEL, # Optional
                     "messages": prompt,
                     "max_tokens": options.max_tokens,
                     "temperature": options.temperature,

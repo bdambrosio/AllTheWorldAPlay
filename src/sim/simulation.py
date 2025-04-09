@@ -11,11 +11,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sim.agh import Act, Character, Task
 from sim.context import Context
+import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
 import base64
-from sim.human import Human  # Add this import
 import asyncio
-from collections import deque
 from typing import Dict, Any
 import logging
 import traceback  # Add at top if not already imported
@@ -145,7 +144,14 @@ class SimulationServer:
             spec.loader.exec_module(module)
             if not hasattr(module, 'server_name'):
                 raise ValueError("config.py must define a 'server_name' variable")
-            server_name = module.server_name
+            if hasattr(module, 'server_name'):
+                # scenario specific server name
+                self.server_name = module.server_name
+
+            if hasattr(module, 'model'):
+                self.model = module.model
+                llm_api.MODEL = self.model
+                llm_api.set_model(self.model)
 
             if 'webworld_play' in sys.modules:
                 del sys.modules['webworld_play']
@@ -154,9 +160,7 @@ class SimulationServer:
             spec.loader.exec_module(module)            
             if not hasattr(module, 'W'):
                 raise ValueError("Play file must define a 'W' variable holding context")
-            if hasattr(module, 'server_name'):
-                # scenario specific server name
-                self.server_name = module.server_name
+
             if hasattr(module, 'world_name'):
                 self.world_name = module.world_name
             else:
