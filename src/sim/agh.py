@@ -1183,6 +1183,9 @@ End response with:
                         self.context.transcript.append(f'{self.name}: {self.show}')
                         self.show = '' # has been added to message queue!
                         await asyncio.sleep(0.1)
+                    else:
+                        act_mode = 'Do'
+                        act_arg = 'move to ' + act_arg
             except Exception as e:
                 traceback.print_exc()
                 print(f'{self.name} move_toward failure: {e}')
@@ -1543,7 +1546,7 @@ End response with:
         if len(goals) < 2:
             print(f'Warning: Only {len(goals)} goals generated for {self.name}')
         self.goals = goals
-        self.driveSignalManager.clear_clusters()
+        self.driveSignalManager.clear_clusters(goals)
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
@@ -1590,6 +1593,7 @@ End response with:
 </end>
 """
         mission = """create a sequence of 3-6 tasks to achieve the focus goal: 
+
 {{$focus_goal}}
 
 
@@ -1614,10 +1618,10 @@ End response with:
         if not goal:
             raise ValueError(f'No focus goal for {self.name}')
         response = default_ask(self, 
-                               'create a sequence of 3-6 tasks to achieve the focus goal', 
+                               mission, 
                                suffix, 
                                {"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 150)
+                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 350)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -1631,7 +1635,7 @@ End response with:
             if task:
                 task_plan.append(task)
         print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
-        goal.task_plan = task_plan[:1] # only use the first task for now, to force replanning in face of new information
+        goal.task_plan = task_plan # only use the first task for now, to force replanning in face of new information
         return task_plan
 
     def generate_completion_statement(self, object, termination_check, satisfied, progress, consequences='', updates=''):
@@ -3071,22 +3075,21 @@ End your response with:
                                                   self.character.strip(),
                                                   relationsOnly=True )
 
+        if not self.goals or len(self.goals) == 0:
+            self.generate_goal_alternatives()
+        await self.request_goal_choice(self.goals)
         if not self.focus_goal:
-            await self.regenerate_goal_hierarchy()
-            
-        if self.focus_task.peek():
-            await self.clear_task_if_satisfied(self.focus_task.peek())
-        if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
-            if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
-                self.focus_task.push(self.focus_goal.task_plan[0])
-                self.focus_goal.task_plan.pop(0)
-            else:
-                await self.regenerate_goal_hierarchy()
+            print(f'{self.name} cognitive_cycle: no focus goal')
 
-        if not self.focus_task.peek():
-            raise Exception(f'{self.name} cognitive_cycle: no focus task')
+        if not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0:
+            self.generate_task_plan(self.focus_goal)
+        await self.request_task_choice(self.focus_goal.task_plan)
+        if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
+            print(f'{self.name} cognitive_cycle: no focus task')
             
+        # input - a task on top of self.focus_task, the next task to run for self.focus_goal
         await self.step_tasks()
+
         delay = await self.context.choose_delay()
         try:
             old_time = self.context.simulation_time
@@ -3101,37 +3104,36 @@ End your response with:
             print(f'{self.name} cognitive_cycle error: {e}')
 
        
-    async def step_tasks(self):
+    async def step_tasks(self, n: int=1):
+        #runs through up to n tasks in a task_plan
         task_count = 0
-        while task_count < 3 and self.focus_task.peek():
-            step_count = 0
-            while step_count < 3 and self.focus_task.peek(): # run task and any intensions created by it
-                outcome = await self.step_task()
-                step_count += 1
-            # outcome is False if task is not completed
-            if outcome and self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
-                self.focus_task.push(self.focus_goal.task_plan[0])
-                self.focus_goal.task_plan.pop(0)
-                # return allows yield to other coroutines / actors
-                #return True
-            elif self.focus_goal:
-                self.clear_goal_if_satisfied(self.focus_goal)
-                if self.focus_goal:
-                    self.generate_task_plan(self.focus_goal)
+        while task_count < n and self.focus_task.peek():
+    
+            task = self.focus_task.peek()
+            outcome = await self.step_task(task)
+            task_count += 1
+
+            if task == self.focus_task.peek():
+                print(f'{self.name} step_tasks: task {task.name} still on focus stack!')
+            # outcome is False if task is not completed. if true proceed to next task
+            if not outcome or not self.focus_goal:
+                return False
+            
+            await self.clear_goal_if_satisfied(self.focus_goal)
+            if self.focus_goal and (not self.focus_goal.task_plan or (self.focus_goal.task_plan and len(self.focus_goal.task_plan) == 0)): 
+                self.generate_task_plan(self.focus_goal)
+                if task_count < n-1: # if we're not at the last task, push the next task onto the stack
                     self.focus_task.push(self.focus_goal.task_plan[0])
                     self.focus_goal.task_plan.pop(0)
-            elif outcome: # task entire task plan is done
-                return True
-            elif self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0: # failed at task, but continue with next task - but let other actors run first
-                self.focus_task.push(self.focus_goal.task_plan[0])
-                self.focus_goal.task_plan.pop(0)
-                return True
-            task_count += 1
-        return self.focus_task.peek() is None
+                return False
+        return 
             
         
     async def step_task(self, sense_data='', ui_queue=None):
-        """Perform a single task from the current goal task_plan. Returns False if task is not completed."""
+        """Perform a single task from the current goal task_plan. 
+           Task is popped from goal plan and focus_task if completed.
+           Returns False if task is not completed.
+           However, current code always pretends task is completed. (outcome is always True, task is popped)"""
         # if I have an active task, keep on with it.
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
@@ -3183,7 +3185,7 @@ End your response with:
             
 
         if self.focus_task.peek() is task:
-            self.focus_task.pop() # didn't get done by turn limitpretend task is done
+            self.focus_task.pop() # didn't get done by turn limit pretend task is done
             return True # probably need to replan around step failure, but we're not going to do that here
         else: # clear assigned task and all intensions created by it, out of turns for this task
             while task in self.focus_task.stack:

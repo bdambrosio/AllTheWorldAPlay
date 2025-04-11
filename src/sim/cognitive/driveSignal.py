@@ -351,8 +351,12 @@ class DriveSignalManager:
     def set_context(self, context):
         self.context = context
 
-    def clear_clusters(self):
-        self.clusters = []
+    def clear_clusters(self, goals: List[Goal]):
+        new_clusters = []
+        for cluster in self.clusters:
+            if cluster in [g.signalCluster for g in goals]:
+                new_clusters.append(cluster)
+        self.clusters = new_clusters
         
     def _get_embedding(self, text: str) -> np.ndarray:
         """Get vector embedding for text using memory consolidation's embedding"""
