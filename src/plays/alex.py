@@ -1,5 +1,6 @@
 # Custom terrain types for suburban environment
 import asyncio
+from datetime import timedelta, datetime, time
 from enum import Enum
 import importlib
 import sys, os
@@ -38,6 +39,7 @@ class SuburbanResource(Enum):
 # Main character - person with morning routine and job
 Alex = agh.Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
 You live in a suburban house with your significant other Susan.
+Your main priority is to get to the job interview on time, make a good impression, and get the job.
 You're organized but often running late in the mornings.
 You speak in a pragmatic, straightforward manner.
 """, server_name=server_name)
@@ -45,9 +47,6 @@ You speak in a pragmatic, straightforward manner.
 Alex.drives = [
     Drive("Be financially secure."),
     Drive("get to the job interview on time and making a good impression, and get the job"),
-    Drive("maintaining basic needs: hygiene, food, and appropriate appearance"),
-    #Drive("managing anxiety about the interview"),
-    Drive("keeping your home in reasonable order")
 ]
 
 
@@ -70,6 +69,10 @@ Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell co
 receptionist =W.get_npc_by_name('Receptionist', description="A young man with a kind face", x=20, y=20, create_if_missing=True)
 receptionist.mapAgent.move_to_resource('Office#1')
 W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office#1', 'works_at')
+
+# If simulation_time is None, use today's date
+base_datetime = W.simulation_time if W.simulation_time else datetime.now()
+W.simulation_time = base_datetime.replace(hour=7, minute=15, second=0, microsecond=0)
 
 interviewer = W.get_npc_by_name('Interviewer', description="A middle-aged man with an alert, questioning face", x=20, y=20, create_if_missing=True)
 interviewer.mapAgent.move_to_resource('Office#1')
