@@ -1,6 +1,7 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
+- Major debug cycle on the overall character cognitive cycle. Longer term action stays on task better, imho. 
 - Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
 - LLM api support for OpenRouter.ai and for llama.cpp local
   - see config.py in plays. for OpenRouter.ai an extra parameter - the model to use. If running llama.cpp server, specify --port=5000, choose server_name='local' in config.py (must be on same machine as AllTheWorld is running)
@@ -115,6 +116,8 @@ export OPENROUTER_API_KEY= (don't forget to set model name in plays/config.py)
 ## Random notes
 - if you don't like how a play is going, reload it! Every run is different.
 - If you don't like something about a character, tweak the play (they are all in src/plays). Plays are python, best to just edit the text strings unless you've looked at the engine code.
+- Play debugging - 4/11/2025 new logging of goals / tasks / actions to sim/simulation.log.
+  - Load the log into utils/format_prompt.py using the Import File button, the Format Text to see the generation prompts and responses and execution trace.
 
 Ideas / contributions (via PRs?) most welcome.
 
