@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
 import socket
 import time
+import logging
 from pathlib import Path
 from sympy import Ordinal
 from utils.DeepSeekLocalClient import DeepSeekLocalClient
@@ -124,7 +125,7 @@ class LLM():
         IMAGE_PATH.mkdir(parents=True, exist_ok=True)
         print(f"Directory '{IMAGE_PATH}' created.")
 
-    def run_request(self, bindings, prompt, options):
+    def run_request(self, bindings, prompt, options, log=False):
         global vllm_model
         #
         ### first substitute for {{$var-name}} in prompt
@@ -150,7 +151,9 @@ class LLM():
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
-        print(f'\n{substituted_prompt}\n')
+            print(f'\n{substituted_prompt}\n')      
+        if log:
+            logging.debug(f'Prompt: {substituted_prompt}\n')
         if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
@@ -197,9 +200,10 @@ class LLM():
                 try:
                     jsonr = response.json()
                     text = jsonr['choices'][0]['message']['content']
+                    return text
                 except Exception as e:
                     return response.content.decode('utf-8')
-                return text
+
 
             if 'deepseeklocal' in self.server_name and (index := text.find('</think>')) > -1:
                 text = text[index+8:].strip()
@@ -217,7 +221,7 @@ class LLM():
             traceback.print_exc()
             raise Exception(response)
 
-    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None):
+    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=False):
         global elapsed_times, iteration_count
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
@@ -229,7 +233,7 @@ class LLM():
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
-            response = self.run_request(input, prompt_msgs, options)
+            response = self.run_request(input, prompt_msgs, options, log=log)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
             if tag != '':
@@ -251,6 +255,9 @@ class LLM():
                         eos_index=response.rfind(stop)
                         if eos_index > -1:
                             response=response[:eos_index]
+            if log:
+                logging.debug(f'Response:\n{response}\n')
+                logging.getLogger().handlers[0].flush()
             return response
         except Exception as e:
             traceback.print_exc()

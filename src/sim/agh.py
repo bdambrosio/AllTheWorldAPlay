@@ -41,7 +41,7 @@ from sim.ResourceReferenceManager import ResourceReferenceManager
 import re
 import asyncio
 from weakref import WeakValueDictionary
-
+import logging
 from sim.prompt import ask as default_ask
 
 if TYPE_CHECKING:
@@ -310,6 +310,7 @@ class Character:
         #self.tasks = [] 
         self.intensions = []
         self.actions = []
+        self.achievments = [] # a list of short strings summarizing the character's achievments
         self.autonomy = Autonomy()
 
     def x(self):
@@ -1075,6 +1076,7 @@ End response with:
 
         weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode == Mode.Say])
         if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
+            satisfied = True # force completion
             if task == self.focus_task.peek():
                 self.focus_task.pop()
                 self.focus_action = None
@@ -1082,7 +1084,11 @@ End response with:
                 self.focus_goal.task_plan.remove(task)
             if self.focus_goal:
                 pass #self.focus_goal.tasks_completed.append(task)
-
+            self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n{task.to_string()}"
+            self.add_perceptual_input(f"Following task has been satisfied. This may invalidate parts of the above:\n{task.short_string()}", mode='internal')
+            self.achievments.append(task.short_string())
+            await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
+ 
         return satisfied
 
     async def clear_goal_if_satisfied(self, goal: Goal, consequences='', world_updates=''):
@@ -1106,11 +1112,20 @@ End response with:
             self.goal_history.append(goal)
             if goal == self.focus_goal:
                 self.focus_goal = None
-                self.context.update()
-                self.goals = [] # force regeneration. Why not reuse remaining goals?
-
+            self.context.current_state += f"\nFollowing goal has been satisfied. This may invalidate parts of the above:\n{goal.to_string()}"
+            self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
+            self.achievments.append(goal.short_string())
+            if goal in self.goals:
+                self.goals.remove(goal)            
+            await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
+            if len(self.goals) == 0:
                 self.update_drives(goal)
 
+            if goal.name == 'preconditions':
+                for  goal2 in self.goals:
+                    if goal2.preconditions == goal.termination:
+                        goal2.preconditions = None # remove preconditions, we've already satisfied them
+                await self.request_goal_choice(self.goals)
         return satisfied
 
 
@@ -1533,7 +1548,7 @@ End response with:
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
-                                 }, prompt, tag='generate_goal_alternatives', temp=0.3, stops=['</end>'], max_tokens=240)
+                                 }, prompt, tag='generate_goal_alternatives', temp=0.3, stops=['</end>'], max_tokens=240, log=True)
         goals = []
         forms = hash_utils.findall_forms(response)
         for goal_hash in forms:
@@ -1621,7 +1636,7 @@ End response with:
                                mission, 
                                suffix, 
                                {"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 350)
+                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 350, log=True)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -2020,7 +2035,7 @@ End your response with:
         task = self.focus_task.peek()
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
-                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=90)
+                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=90, log=True)
         response = response.strip()
         # Rest of existing while loop...
         act_hashes = hash_utils.findall_forms(response)
@@ -2739,9 +2754,15 @@ End your response with:
     def admissible_goals(self, goals):
         """test if any of the goals meet preconditions"""
         admissible_goals = []
+        impossible_goals = []
         for goal in goals:
             if goal.preconditions:
-                prompt = [UserMessage(content="""Given the following goal and current situation, determine if the goal preconditions are loosely satisfied and the goal can be attempted.
+                prompt = [UserMessage(content="""Given the following goal and current situation, determine if the goal preconditions are weakly satisfied.
+In this determination, assume a condition is satisfied unless there is evidence to the contrary.
+If a precondition specifies an action, eg, 'wake up asap', then the precondition is satisfied if the current situation includes the action consequences, e.g. the actor is awake.
+If the goal preconditions are weakly satisfied, respond with <admissible>True</admissible>, <impossible>False</impossible>.
+If the goal preconditions are not weakly satisfied, but it is possible that they will be satisfied in the future, respond with <admissible>False</admissible>, <impossible>False</impossible>.
+If the goal preconditions could never be satisfied in the future (e.g., a time that has already passed), respond with <admissible>False</admissible>, <impossible>True</impossible>.
 
 <goal>
 {{$goal}}
@@ -2759,16 +2780,18 @@ End your response with:
 {{$situation}}
 </situation>    
 
+The following tasks and goals have been completed or achieved:
+
+{{$achievments}}
+
 <time>
 {{$time}}
 </time>
 
-
 Respond in this XMLformat:
                                       
 <admissible>True/False</admissible>
-<reason>terse (4-6 words) reason for this answer</reason> 
-                                      
+<impossible>True/False</impossible>
 
 Only respond with the above XML
 Do not include any additional text. 
@@ -2780,32 +2803,42 @@ End your response with:
                     self.look()
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
+                                         'achievments': '\n'.join(self.achievments),
                                          'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
-                                         prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=180)
+                                         prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=180, log=True)
                 if response:
                     admissible = xml.find('admissible', response)
-                    if admissible.lower() == 'true':
+                    impossible = xml.find('impossible', response)
+                    if admissible.lower() == 'true' and impossible.lower() == 'false':
                         admissible_goals.append(goal)
-        return admissible_goals
+                    elif admissible.lower() == 'false' and impossible.lower() == 'true':
+                        logging.debug(f'{self.name} admissible_goals: goal {goal.name} is impossible')
+                        impossible_goals.append(goal)
+                    else:
+                        logging.debug(f'{self.name} admissible_goals: goal {goal.name} is not admissible')
+            else:
+                admissible_goals.append(goal)
+        return admissible_goals, impossible_goals
 
 
     async def request_goal_choice(self, goals):
         """Request a goal choice from the UI"""
         if self.autonomy.goal:
-            admissible_goals = self.admissible_goals(goals)
+            no_admissible_goals = True
+            untried = True
+            admissible_goals, impossible_goals = self.admissible_goals(goals)
             if len(admissible_goals) == 0:
-                if goals[0].preconditions:
-                    subgoal = Goal(name='preconditions', actors=[self], description=goals[0].preconditions, preconditions=None, 
-                                termination=goals[0].preconditions, signalCluster=goals[0].signalCluster, drives=goals[0].drives)
-                    self.focus_goal = subgoal
-                    return subgoal
-                else:
-                    return None
-            else:
-                self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.9)
-                return self.focus_goal
+                for goal in goals.copy():
+                    if goal.preconditions:
+                        subgoal = Goal(name='preconditions', actors=[self], description=goal.preconditions, preconditions=None, 
+                                        termination=goal.preconditions, signalCluster=goal.signalCluster, drives=goal.drives)
+                        self.goals.append(subgoal)
+                        admissible_goals.append(subgoal)
+
+            self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.9)
+            return self.focus_goal
 
         else:
             if len(self.goals) > 0: # debugging
@@ -2942,7 +2975,7 @@ End your response with:
 
     def ActWeight(self, count, n, act):
         """Weight for act choice using exponential decay"""
-        base = 0.5  # Controls how quickly weights decay
+        base = 0.75  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
             return raw * 0.2
@@ -3083,6 +3116,9 @@ End your response with:
 
         if not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0:
             self.generate_task_plan(self.focus_goal)
+        
+        logging.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
+
         await self.request_task_choice(self.focus_goal.task_plan)
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
             print(f'{self.name} cognitive_cycle: no focus task')
@@ -3139,6 +3175,7 @@ End your response with:
             raise Exception(f'No focus task')
 
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
+        logging.debug(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
@@ -3185,12 +3222,11 @@ End your response with:
             
 
         if self.focus_task.peek() is task:
-            self.focus_task.pop() # didn't get done by turn limit pretend task is done
-            return True # probably need to replan around step failure, but we're not going to do that here
+            self.focus_task.pop() # didn't get done by turn limit pretend task is done            return True # probably need to replan around step failure, but we're not going to do that here
         else: # clear assigned task and all intensions created by it, out of turns for this task
             while task in self.focus_task.stack:
                 self.focus_task.pop()
-            return True # probably need to replan around step failure, maybe we pushed an intension and exhausted our turns, who knows?
+        return True # probably need to replan around step failure, maybe we pushed an intension and exhausted our turns, who knows?
 
 
     async def act_on_action(self, action: Act, task: Task):
@@ -3225,7 +3261,7 @@ End your response with:
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
-           
+        logging.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
         if hasattr(action, 'duration'):
             act_duration = action.duration
         elif action.mode == 'Think': 

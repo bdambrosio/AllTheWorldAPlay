@@ -1,7 +1,9 @@
 from __future__ import annotations
 import json
+import os
 import traceback
 import random
+import logging
 from queue import Queue
 from typing import TYPE_CHECKING
 from sim import map
@@ -17,6 +19,27 @@ from sim.prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
+print(f"Current working directory: {os.getcwd()}")
+print(f"Absolute path of this file: {os.path.abspath(__file__)}")
+print(f"Directory of this file: {os.path.dirname(os.path.abspath(__file__))}")
+
+log_path = os.path.join(os.getcwd(), 'simulation.log')
+print(f"Attempting to create log file at: {log_path}")
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename=log_path,
+    filemode='w'
+)
+
+# Test write
+logging.info("Test message")
+logging.getLogger().handlers[0].flush()
+
+# Verify file exists
+print(f"File exists after write: {os.path.exists(log_path)}")
+
 class Context():
     def __init__(self, characters, description, scenario_module, server_name=None):
         """Initialize a context with characters and world description
@@ -27,6 +50,8 @@ class Context():
             scenario_module: Module containing scenario types and rules
             server_name: Optional server name for image generation
         """
+        # Initialize logging
+        
         self.characters = characters
         self.description = description
         self.scenario_module = scenario_module
@@ -710,7 +735,7 @@ Ensure your response reflects this change.
 Your task is to choose a delay for the next cognitive cycle.
 The delay should be a number of hours from now.
 The delay should be between 0 and 12 hours.
-The delay should be a multiple of 0.5 hours.
+The delay should be a multiple of 0.1 hours.
 
 Following is a record of the current situation and recent events, followed by a transcript of the recent scene.
 Use these to choose a delay that is appropriate for the next cognitive cycle. 
@@ -768,7 +793,8 @@ End your response with:
         try:
             delay_str = hash_utils.find('delay', delay)
             delay_f = float(delay_str.strip())
-            return delay_f
+            return 0.0
+            #return delay_f
         except Exception as e:
             print(f'Error choosing delay: {e}')
             return 0.0
