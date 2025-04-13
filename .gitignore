@@ -68,3 +68,4 @@ dmypy.json
 
 images/*.png
 
+src/sim/simulation.log
