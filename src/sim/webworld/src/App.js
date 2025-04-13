@@ -310,8 +310,8 @@ function App() {
           <button onClick={handleRefresh} className="control-button">
             Refresh
           </button>
-          <button className="control-button">Load World</button>
-          <button className="control-button">Save World</button>
+          <button className="control-button" onClick={() => sendCommand('load_known_actors')}>Load</button>
+          <button className="control-button" onClick={() => sendCommand('save_known_actors')}>Save</button>
         </div>
         <div className="status-area">
           {currentPlay && <div>Play: {currentPlay}</div>}

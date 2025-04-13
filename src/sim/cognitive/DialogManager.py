@@ -13,7 +13,7 @@ class Dialog:
         """Tracks the context of an ongoing dialog"""
         self.actor = owner  # character modeling this dialog, an Agh
         self.target = other_actor    # other character in dialog
-        self.start_time: float = field(default_factory=time.time)
+        self.start_time = owner.context.simulation_time  # Use simulation time from context
         self.turn_count: int = 0
         self.fatigue: float = 0.0  # Add fatigue counter
         self.fatigue_threshold: float = 5.0  # Configurable threshold
@@ -21,6 +21,33 @@ class Dialog:
         self.active: bool = False
         self.transcript: List[str] = []
     
+    def to_json(self):
+        """Convert dialog state to JSON-serializable dict, excluding runtime references"""
+        return {
+            'start_time': self.start_time.isoformat(),  # Convert datetime to ISO format string
+            'turn_count': self.turn_count,
+            'fatigue': self.fatigue,
+            'fatigue_threshold': self.fatigue_threshold,
+            'interrupted_task': self.interrupted_task,
+            'active': self.active,
+            'transcript': self.transcript,
+            'actor_name': self.actor.name if self.actor else None,
+            'target_name': self.target.name if self.target else None
+        }
+    
+    @classmethod
+    def from_json(cls, data, actor, target):
+        """Create a new Dialog instance from JSON data using resolved Character instances"""
+        dialog = cls(actor, target)
+        dialog.start_time = datetime.fromisoformat(data['start_time'])  # Convert ISO string back to datetime
+        dialog.turn_count = data['turn_count']
+        dialog.fatigue = data['fatigue']
+        dialog.fatigue_threshold = data['fatigue_threshold']
+        dialog.interrupted_task = data['interrupted_task']
+        dialog.active = data['active']
+        dialog.transcript = data['transcript']
+        return dialog
+
     def activate(self, source=None):
         """Initialize a new dialog context"""
         if self.active:

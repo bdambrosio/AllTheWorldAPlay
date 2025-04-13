@@ -64,4 +64,4 @@ J.look()
 x,y = W.map.random_location_by_terrain('clearing')
 x,y = W.map.random_location_by_terrain('spring')
 
-narrative='lost.json' # comment this out for normal unscripted play.
+#narrative='lost.json' # comment this out for normal unscripted play.

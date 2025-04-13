@@ -21,6 +21,7 @@ import zmq.asyncio
 import subprocess
 import websockets
 import matplotlib.pyplot as plt
+import logging
 
 app = FastAPI()
 
@@ -155,6 +156,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 continue
                 
             if data.get('type') == 'command':
+                await sim_manager.send_command(data)
+                
+            elif data['action'] == 'load_known_actors':
+                await sim_manager.send_command(data)
+                
+            elif data['action'] == 'save_known_actors':
                 await sim_manager.send_command(data)
                 
     except WebSocketDisconnect:

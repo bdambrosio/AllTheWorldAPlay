@@ -100,7 +100,7 @@ Your current situation is:
 
     bindings = {"name":character.name,
                 "mission":mission,
-                "character":character.character,
+                "character":character.get_character_description(),
                 "drives":'\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives]),
                 "narrative":character.narrative.get_summary('medium'),
                 "signals": "\n".join([sc.to_string() for sc in focus_signalClusters]),

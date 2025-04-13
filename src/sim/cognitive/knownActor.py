@@ -20,6 +20,45 @@ class KnownActor:
         self.dialog = Dialog(self.owner, self.actor_agh)
         self.relationship = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
 
+    def to_json(self):
+        """Convert KnownActor state to JSON-serializable dict, excluding runtime references"""
+        return {
+            'canonical_name': self.canonical_name,
+            'name': self.name,
+            'visible': self.visible,
+            'goal': self.goal,
+            'model': self.model,
+            'distance': self.distance,
+            'relationship': self.relationship,
+            'dialog': self.dialog.to_json() if self.dialog else None
+        }
+    
+    @classmethod
+    def from_json(cls, data, owner, kam):
+        """Create a new KnownActor instance from JSON data using KnownActorManager to resolve characters"""
+        # Resolve the actor_agh using the KnownActorManager
+        actor_agh, _ = kam.resolve_character(data['name'])
+        if not actor_agh:
+            return None
+            
+        # Create new instance
+        known_actor = cls(owner, actor_agh)
+        
+        # Restore state
+        known_actor.canonical_name = data['canonical_name']
+        known_actor.name = data['name']
+        known_actor.visible = data['visible']
+        known_actor.goal = data['goal']
+        known_actor.model = data['model']
+        known_actor.distance = data['distance']
+        known_actor.relationship = data['relationship']
+        
+        # Restore dialog if it exists, passing the resolved characters
+        if data['dialog']:
+            known_actor.dialog = Dialog.from_json(data['dialog'], owner, actor_agh)
+            
+        return known_actor
+
     def infer_goal(self, percept):
         """infer the goal of the actor based on a perceptual input"""
         prompt = [UserMessage(content=f"""Analyze the perceptual input below and infer the goal of the {self.canonical_name}, 
@@ -210,6 +249,22 @@ class KnownActorManager:
         relationships = self.get_known_relationships(include_transcript)
         return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])
 
+    def get_known_actor_model(self, actor_name: str) -> str:
+        """
+        Get the known actor model for the specified actor if it exists.
+        Returns an empty string if no model exists.
+        
+        Args:
+            actor_name: Name of the actor to get the model for
+            
+        Returns:
+            str: The known actor model if it exists, empty string otherwise
+        """
+        actor_name = actor_name.strip().capitalize()
+        if actor_name in self.known_actors:
+            return self.known_actors[actor_name].model
+        return ''
+
     def resolve_or_create_character(self, reference_text):
         """
         Resolve a reference to a character, creating one if it doesn't exist
@@ -251,3 +306,49 @@ class KnownActorManager:
         if resource:
             return resource, reference_text
         return None, None
+
+    def to_json(self):
+        """Convert manager state to JSON-serializable dict"""
+        return {
+            'known_actors': {
+                name: actor.to_json() 
+                for name, actor in self.known_actors.items()
+            },
+            'resolution_cache': {
+                key: (value[0].name, value[1])  # Store just the names
+                for key, value in self.resolution_cache.items()
+            }
+        }
+
+    def save_to_file(self, filepath):
+        """Save state to file"""
+        import json
+        with open(filepath, 'w') as f:
+            json.dump(self.to_json(), f)
+
+    @classmethod
+    def from_json(cls, data, owner, context):
+        """Create new instance from JSON data"""
+        manager = cls(owner, context)
+        
+        # Restore known_actors
+        for name, actor_data in data['known_actors'].items():
+            actor = KnownActor.from_json(actor_data, owner, manager)
+            if actor:
+                manager.known_actors[name] = actor
+                
+        # Restore resolution_cache
+        for key, (char_name, canon_name) in data['resolution_cache'].items():
+            char, _ = manager.resolve_or_create_character(char_name)
+            if char:
+                manager.resolution_cache[key] = (char, canon_name)
+                
+        return manager
+
+    @classmethod
+    def load_from_file(cls, filepath, owner, context):
+        """Load state from file"""
+        import json
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        return cls.from_json(data, owner, context)
