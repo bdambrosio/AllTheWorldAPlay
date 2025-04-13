@@ -463,8 +463,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 #type issue or opportunity
 #description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
-#importance 0-1
-#urgency 0-1
+#importance 0.0-1.0
+#urgency 0.0-1.0
 ##
 
 Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
@@ -517,8 +517,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 #type issue or opportunity
 #description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids {drive.id}
-#importance 0-1
-#urgency 0-1
+#importance 0.0-1.0
+#urgency 0.0-1.0
 ##
 
 Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.

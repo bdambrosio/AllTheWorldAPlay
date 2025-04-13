@@ -340,7 +340,12 @@ class Character:
         if 'action' in autonomy_json:
             self.autonomy.action = autonomy_json['action']
 
-
+    def get_character_description(self):
+        description = self.character
+        if self.actor_models.get_known_actor_model(self.name):
+            description += '\n\n' + self.actor_models.get_known_actor_model(self.name)
+        return description
+    
     def validate_and_create_goal(self, goal_hash, signalCluster=None):
         """Validate a goal hash and create a goal object
         
@@ -519,7 +524,7 @@ class Character:
                 
         return related_drives
 
-    def forward(self, step):
+    def update(self):
         """Move time forward, update state"""
         # Consolidate memories if we have drives
         if hasattr(self, 'drives'):
@@ -535,13 +540,7 @@ class Character:
                 character_desc=self.character,
                 relationsOnly=False
             )
-
-        # Update state and tasks
-        self.focus_goal = None
-        self.goals = []
-        self.focus_task = Stack()
-        self.intensions = []
-        # Reset new memory counter
+       # Reset new memory counter
         self.new_memory_cnt = 0
 
 
@@ -589,7 +588,7 @@ End your response with:
 """)]
         #print('say target')
         response = self.llm.ask({
-            'character': self.character,
+            'character': self.get_character_description(),
             'history': self.narrative.get_summary('medium'),
             'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]+[npc.name for npc in self.context.npcs]),
             'action_type': 'internal thought' if act_mode == 'Think' else 'spoken message',
@@ -1045,6 +1044,7 @@ End response with:
 
     def update_drives(self, goal: Goal):
         """Update drives based on goal satisfaction"""
+        self.update()
         if hasattr(goal, 'drives'):
             for drive in goal.drives:
                 drive.satisfied_goals.append(goal)
@@ -1087,6 +1087,7 @@ End response with:
             self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n{task.to_string()}"
             self.add_perceptual_input(f"Following task has been satisfied. This may invalidate parts of the above:\n{task.short_string()}", mode='internal')
             self.achievments.append(task.short_string())
+            self.update()
             await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
  
         return satisfied
@@ -1118,9 +1119,7 @@ End response with:
             if goal in self.goals:
                 self.goals.remove(goal)            
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
-            if len(self.goals) == 0:
-                self.update_drives(goal)
-
+            self.update_drives(goal)
             if goal.name == 'preconditions':
                 for  goal2 in self.goals:
                     if goal2.preconditions == goal.termination:
@@ -1177,8 +1176,8 @@ End response with:
                     if act_arg.startswith('s '): # just in case towards instead of toward
                         act_arg = act_arg[len('s '):]
                 moved = self.move_toward(act_arg)
-                percept = self.look(interest=act_arg)
                 if moved:
+                    percept = self.look()
                     self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
                     self.context.message_queue.put({'name':self.name, 'text':self.show})
                     self.context.transcript.append(f'{self.name}: {self.show}')
@@ -1422,7 +1421,7 @@ End response with:
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
-                                 "character": self.character,
+                                 "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
@@ -1517,8 +1516,8 @@ Respond with the two highest priority, most encompassing goal alternatives, in t
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
     signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
-    preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
-    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+    preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
+        These should be necessary pre-conditions for the expected initial tasks of this goal.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
@@ -1542,7 +1541,7 @@ End response with:
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
-                                 "character": self.character,
+                                 "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
@@ -1762,7 +1761,7 @@ End your response with:
             "situation": self.context.current_state,
             "memories": memory_text,  # Updated from 'memory'
             "events": consequences + '\n' + updates,
-            "character": self.character,
+            "character": self.get_character_description(),
             "history": self.format_history_for_UI(),
             "relationships": self.narrative.get_summary('medium')
         }, prompt, tag='test_termination', temp=0.5, stops=['</end>'], max_tokens=20)
@@ -1854,7 +1853,7 @@ End response with:
                             "dialog": dialog,
                             "target": target_name,
                             "relationship": relationship,
-                            "character": self.character
+                            "character": self.get_character_description()
                     }, prompt, tag='refine_say_act', temp=0.6, stops=['</end>'])
 
         return act
@@ -2705,7 +2704,7 @@ End your response with:
         emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)
 
         answer_xml = self.llm.ask({
-            'character': self.character,
+            'character': self.get_character_description(),
             'emotionalState': emotionalState.to_definition(),
             'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
             "situation": self.context.current_state,
@@ -2799,8 +2798,6 @@ End your response with:
 </end>
 """)]
 
-                if not self.look_percept or len(self.look_percept) < 2:
-                    self.look()
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
                                          'achievments': '\n'.join(self.achievments),
@@ -3105,7 +3102,7 @@ End your response with:
                                                   self.narrative, 
                                                   self.actor_models,
                                                   self.context.simulation_time, 
-                                                  self.character.strip(),
+                                                  self.get_character_description().strip(),
                                                   relationsOnly=True )
 
         if not self.goals or len(self.goals) == 0:
@@ -3182,7 +3179,7 @@ End your response with:
         act_count=0
         subtask_count = 0
         while act_count < 2 and self.focus_task.peek():
-            self.look(task.name+': '+task.description)
+            #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
             await self.request_act_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
@@ -3196,7 +3193,7 @@ End your response with:
             while task in self.focus_task.stack and self.focus_task.peek() != task and subtask_count < 2: # only allow 2 subtasks
                 # just recursively call step_task here?
                 subtask = self.focus_task.peek()
-                self.look(task.name+': '+task.description)
+                #self.look(task.name+': '+task.description)
                 action_alternatives: List[Act] = self.generate_acts(task)
                 await self.request_act_choice(action_alternatives) # sets self.focus_action
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
@@ -3307,7 +3304,7 @@ End your response with:
             'show': self.show.strip(),  # Current visible state
             'thoughts': self.format_thought_for_UI(),  # Current thoughts
             'tasks': self.format_tasks_for_UI(),
-            'description': self.character.strip(),  # For image generation
+            'description': self.get_character_description().strip(),  # For image generation
             'history': self.format_history_for_UI().strip(), # Recent history, limited to last 5 entries
             'narrative': {
                 'recent_events': self.narrative.recent_events,

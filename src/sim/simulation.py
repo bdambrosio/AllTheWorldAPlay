@@ -9,6 +9,7 @@ from src.sim.mapview import MapVisualizer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.sim.cognitive.knownActor import KnownActorManager
 from sim.agh import Act, Character, Task
 from sim.context import Context
 import utils.llm_api as llm_api
@@ -48,7 +49,7 @@ class SimulationServer:
         self.step_task = None  # Add field for current step task
         self.image_cache = {}
         self.next_actor_index = 0
-
+        self.known_actors_dir = None
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
         self.result_socket.connect("tcp://127.0.0.1:5556")
@@ -181,6 +182,10 @@ class SimulationServer:
             self.next_actor_index = 0
             self.image_cache = {}
             self.steps_since_last_update = 0
+            home = str(Path.home())
+            self.known_actors_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'known_actors', play_name.replace('.py', '/'))
+            if not os.path.exists(self.known_actors_dir):
+                os.makedirs(self.known_actors_dir)
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
             if self.sim_context.narrative:
                 await self.sim_context.run_narrative()
@@ -202,6 +207,7 @@ class SimulationServer:
                 # Process character step
                 print(f'{char.name} cognitive cycle')   
                 await char.cognitive_cycle()
+                #char.actor_models.save_to_file(os.path.join(self.known_actors_dir, f'{char.name}_known_actors.json'))
                 await self.send_character_update(char)
                 await asyncio.sleep(0.1)
                 self.next_actor_index += 1
@@ -222,6 +228,11 @@ class SimulationServer:
                 
                 # Send command acknowledgment
                 await self.send_command_ack('step')
+        except Exception as e:
+            logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            self.is_running = False
+            raise  # Re-raise to maintain existing error handling
         finally:
             self.processing = False  # Clear processing flag
             
@@ -415,6 +426,12 @@ class SimulationServer:
             elif cmd_name == 'set_autonomy':
                 await self.set_autonomy_cmd(command)
                 await asyncio.sleep(0.1)
+            elif cmd_name == 'load_known_actors':
+                self.load_known_actors()
+                await asyncio.sleep(0.1)
+            elif cmd_name == 'save_known_actors':
+                self.save_known_actors()
+                await asyncio.sleep(0.1)
             elif cmd_name == 'showMap':
                 try:
                     viz = MapVisualizer(self.sim_context.map)
@@ -556,6 +573,27 @@ class SimulationServer:
                 'error': f'Failed to get character details: {str(e)}',
                 'processing': False
             })
+
+    def load_known_actors(self):
+        """Load known actors for all characters from default location"""
+        for char in self.sim_context.actors:
+            try:
+                filepath = os.path.join(self.known_actors_dir, f'{char.name}_known_actors.json')
+                if os.path.exists(filepath):
+                    char.actor_models = char.actor_models.load_from_file(filepath, char, self.sim_context)
+            except Exception as e:
+                logging.error(f"Error loading known actors for {char.name}: {e}")
+
+    def save_known_actors(self):
+        """Save known actors for all characters to default location"""
+        for char in self.sim_context.actors:
+            try:
+                filepath = os.path.join(self.known_actors_dir, f'{char.name}_known_actors.json')
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                char.actor_models.save_to_file(filepath)
+            except Exception as e:
+                logging.error(f"Error saving known actors for {char.name}: {e}")
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
 
 if __name__ == "__main__":
     server = SimulationServer()

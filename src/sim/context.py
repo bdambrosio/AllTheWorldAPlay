@@ -611,7 +611,7 @@ Ensure your response reflects this change.
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            #actor.forward(self.step)  # forward three hours and update history, etc
+            actor.update()  # forward three hours and update history, etc
         return response
 
 
