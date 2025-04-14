@@ -1,0 +1,135 @@
+{
+  "title": "Harbor Crossroads",
+  "acts": [
+    {
+      "act_number": 1,
+      "act_title": "The Offer",
+      "scenes": [
+        {
+          "scene_number": 1,
+          "scene_title": "Evening Reflections",
+          "location": "Harbor Bench",
+          "characters": {"Maya": {"goal": "Share news about the gallery offer with Elijah"},
+            "Elijah": {"goal": "Share workshop expansion plans with Maya"}},
+          "action_order": ["Maya", "Elijah", "Maya"],
+          "pre_narrative": "Maya and Elijah sit overlooking the harbor at sunset, each holding news that will affect their future together.",
+          "post_narrative": "The tension of competing dreams emerges as they both realize their paths may be diverging rather than converging."
+        },
+        {
+          "scene_number": 2,
+          "scene_title": "Workshop Plans",
+          "location": "Boat Workshop",
+          "characters": {"Elijah": {"goal": "Show Maya his vision for their future in town"},
+            "Maya": {"goal": "Understand what staying would mean for her art"}},
+          "action_order": ["Elijah", "Maya", "Elijah"],
+          "pre_narrative": "Elijah proudly shows Maya his workshop expansion plans that represent his commitment to building their life together in the town.",
+          "post_narrative": "Maya sees the beauty in Elijah's vision but feels the weight of her own untapped potential and ambitions that point elsewhere."
+        },
+        {
+          "scene_number": 3,
+          "scene_title": "The Gallery Call",
+          "location": "Maya's Studio",
+          "characters": {"Chrys": {"goal": "Persuade Maya to accept the position"},
+            "Maya": {"goal": "Evaluate whether the opportunity is worth the sacrifice"}},
+          "action_order": ["Chrys", "Maya", "Chrys"],
+          "pre_narrative": "Chrys calls to follow up on the offer, painting an enticing picture of Maya's potential future in the city art scene.",
+          "post_narrative": "Maya is torn between excitement for the opportunity and guilt about what it would mean for her relationship with Elijah and the community."
+        }
+      ]
+    },
+    {
+      "act_number": 2,
+      "act_title": "Divided Hearts",
+      "scenes": [
+        {
+          "scene_number": 4,
+          "scene_title": "Community Connections",
+          "location": "Downtown",
+          "characters": {"Maya": {"goal": "Gauge what leaving would mean for her community ties"},
+            "Elijah": {"goal": "Demonstrate to Maya the value of their life in town"}},
+          "action_order": ["Maya", "Elijah", "Context"],
+          "pre_narrative": "Maya and Elijah walk through town, greeted warmly by locals who know and value them both.",
+          "post_narrative": "The deep connections they've built become apparent, making Maya's decision more complex as she sees the richness of the life she'd be leaving."
+        },
+        {
+          "scene_number": 5,
+          "scene_title": "Surprise Visit",
+          "location": "Gallery",
+          "characters": {"Chrys": {"goal": "Strengthen her connection with Maya and intrigue Elijah"},
+            "Maya": {"goal": "Show Elijah the possibilities of her career"},
+            "Elijah": {"goal": "Support Maya while assessing the gallery world"}},
+          "action_order": ["Chrys", "Maya", "Elijah"],
+          "pre_narrative": "Chrys makes a surprise visit to the coastal town, inviting Maya and Elijah to a pop-up exhibition she's organizing.",
+          "post_narrative": "Elijah sees Maya shine in the gallery environment, while Chrys subtly reveals her own interest in both Maya's art and Elijah himself, complicating the dynamics."
+        },
+        {
+          "scene_number": 6,
+          "scene_title": "Midnight Doubt",
+          "location": "Beach",
+          "characters": {"Maya": {"goal": "Process her conflicting desires"},
+            "Elijah": {"goal": "Come to terms with Maya's potential departure"}},
+          "action_order": ["Maya", "Elijah", "Context"],
+          "pre_narrative": "Unable to sleep, Maya walks the moonlit beach and finds Elijah already there, both grappling with their uncertain future.",
+          "post_narrative": "They express their deepest fears - Maya's fear of regret if she doesn't pursue her art career, Elijah's fear of losing her - leading to a painful but honest conversation about what they truly want."
+        }
+      ]
+    },
+    {
+      "act_number": 3,
+      "act_title": "Unexpected Pathways",
+      "scenes": [
+        {
+          "scene_number": 7,
+          "scene_title": "The Proposal",
+          "location": "Boat",
+          "characters": {"Elijah": {"goal": "Offer Maya a reason to stay"},
+            "Maya": {"goal": "Reconcile love with ambition"},
+            "Chrys": {"goal": "Secure Maya's talent for her gallery"}},
+          "action_order": ["Elijah", "Maya", "Chrys"],
+          "pre_narrative": "Elijah takes Maya out on his newly finished boat, revealing not just a proposal of marriage but also his idea for creating a cooperative waterfront arts space that could fulfill both their dreams.",
+          "post_narrative": "As Maya considers this unexpected compromise, Chrys arrives with a new offer that would allow Maya to split her time between the city gallery and coastal town, creating a potential third path."
+        },
+        {
+          "scene_number": 8,
+          "scene_title": "Creative Catalyst",
+          "location": "Bridge",
+          "characters": {"Maya": {"goal": "Find a solution that honors all parts of herself"},
+            "Elijah": {"goal": "Support Maya while protecting their relationship"},
+            "Chrys": {"goal": "Adapt her plans to the changing situation"}},
+          "action_order": ["Maya", "Elijah", "Chrys"],
+          "pre_narrative": "Standing on the bridge that connects the coastal town to the mainland, Maya experiences a moment of creative clarity about her art and her life.",
+          "post_narrative": "Maya proposes a bold new arrangement where she could create a series of works connecting city and coastal life, requiring travel but maintaining her home base with Elijah, while Chrys sees the marketing potential in this authentic narrative."
+        },
+        {
+          "scene_number": 9,
+          "scene_title": "The Decision",
+          "location": "Workshop Gallery",
+          "characters": {"Maya": {"goal": "Commit to a path forward"},
+            "Elijah": {"goal": "Embrace change without losing what matters most"},
+            "Chrys": {"goal": "Secure a business arrangement that benefits her gallery"}},
+          "action_order": ["Maya", "Elijah", "Chrys"],
+          "pre_narrative": "In Elijah's workshop, temporarily transformed into a gallery space for Maya's current work, the three come together to formalize their arrangement.",
+          "post_narrative": "They create a three-way partnership: Maya will be creative director for Chrys's city gallery part-time while also helping establish Elijah's workshop as a cooperative arts space, with Chrys providing city connections and investment."
+        }
+      ]
+    },
+    {
+      "act_number": 4,
+      "act_title": "Harbor Horizons",
+      "scenes": [
+        {
+          "scene_number": 10,
+          "scene_title": "New Beginnings",
+          "location": "Gallery Opening",
+          "characters": {"Maya": {"goal": "Celebrate the integration of her worlds"},
+            "Elijah": {"goal": "Support Maya's success while establishing their shared vision"},
+            "Chrys": {"goal": "Capitalize on the unique partnership"},
+            "Context": {"goal": "Reveal the transformed relationships and possibilities"}},
+          "action_order": ["Context", "Maya", "Elijah", "Chrys"],
+          "pre_narrative": "Six months later, Maya's first major exhibition opens, featuring works created between the coastal town and city, with the harbor workshop's satellite gallery connected via livestream to Chrys's city gallery.",
+          "post_narrative": "Maya and Elijah announce their engagement amidst the celebration, Chrys reveals plans for a coastal art festival featuring local craftspeople including Elijah, and all three recognize that by refusing to accept conventional limitations, they've created something more meaningful than they could have imagined alone. The final scene shows Maya painting at dawn, with the city skyline visible across the water, symbolizing not a choice between worlds but the creation of a new one that encompasses both."
+        }
+      ]
+    }
+  ]
+}

@@ -79,3 +79,4 @@ Maya and Elijah are sitting on a bench overlooking the harbor, where Elijah's ne
 scenario_module=coastal,
 server_name=server_name)
 
+narrative='demo.json' # comment this out for normal unscripted play.

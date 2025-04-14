@@ -183,7 +183,7 @@ End with:
 
         if not relationsOnly:
             narrative.last_update = current_time
-            new_activities = self.llm.ask({}, prompt, stops=["</End>"])
+            new_activities = self.llm.ask({}, prompt, stops=["</End>"], tag='MemoryConsolidator.ongoing_activities')
             if new_activities:
                 narrative.ongoing_activities = new_activities.strip()
         
@@ -221,7 +221,7 @@ End with:
 """)]
 
         if not relationsOnly:
-            new_events = self.llm.ask({}, prompt, stops=["</end>"])
+            new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events')
             if new_events:
                 narrative.recent_events = new_events.strip()
         
