@@ -1447,8 +1447,10 @@ End response with:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
 
         self.goals = goals
-        #self.driveSignalManager.clear_clusters([])
-        print(f'{self.name} generated {len(goals)} goals')
+        if len(goals) > 0:
+            self.focus_goal = goals[0]
+        if len(goals) > 1:
+            print(f'{self.name} generated {len(goals)} goals for scene!')
         return goals
 
     def generate_goal_alternatives(self):
@@ -3190,7 +3192,7 @@ End your response with:
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
         subtask_count = 0
-        while act_count < 2 and self.focus_task.peek():
+        while act_count < 3 and self.focus_task.peek():
             #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
             await self.request_act_choice(action_alternatives) # sets self.focus_action

@@ -807,25 +807,40 @@ End your response with:
         await asyncio.sleep(0.1)
         if scene.get('pre_narrative'):
             self.update(scene['pre_narrative'])
+
+        #construct a list of characters in the scene in the order in which they appear
+        characters_in_scene = []
+        for character_name in scene['action_order']:
+            character = self.get_actor_by_name(character_name)
+            if character_name == 'Context':
+                continue
+            if character not in characters_in_scene:
+                characters_in_scene.append(character)
+
+        # establish character locations and goals for scene
         location = scene['location']
         x,y = self.map.random_location_by_terrain(location)
         characters_at_location = []
-        for character_name in scene['action_order']:
-            if character_name == 'Context' or character_name in characters_at_location:
-                # only need to place each character once
-                continue
-            character = self.get_actor_by_name(character_name)
+        scene_goals = {}
+        for character in characters_in_scene:
             character.mapAgent.x = x
             character.mapAgent.y = y
             character.look()
             characters_at_location.append(character)
-        for character_name in scene['action_order']: #characters can appear multiple times in the action order
-            if character_name == 'Context':
-                continue
-            character = self.get_actor_by_name(character_name)
-            goal = scene['characters'][character_name]['goal']
-            character.instantiate_narrative_goal(goal)
-            await character.cognitive_cycle()
+        
+            goal_text = scene['characters'][character.name]['goal']
+            scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
+
+        # ok, actors - live!
+        characters_finished_tasks = []
+        while len(characters_in_scene) > len(characters_finished_tasks):
+            for character in characters_in_scene:
+                if character in characters_finished_tasks:
+                    continue
+                await character.cognitive_cycle()
+                if character.focus_task.peek() is None and (character.focus_goal is None or character.focus_goal.task_plan is None):
+                    characters_finished_tasks.append(character)
+
         if scene.get('post_narrative'):
             self.update(scene['post_narrative'])    
 

@@ -1,0 +1,29 @@
+2025-04-14 08:20:00,669 - INFO - Test message
+2025-04-14 08:20:00,684 - INFO - Use pytorch device_name: cuda
+2025-04-14 08:20:00,684 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 08:20:01,988 - INFO - Loading faiss with AVX512 support.
+2025-04-14 08:20:02,028 - INFO - Successfully loaded faiss with AVX512 support.
+2025-04-14 08:20:02,850 - WARNING - !!!!!!!!!!!!megablocks not available, using torch.matmul instead
+2025-04-14 08:20:04,883 - WARNING - <All keys matched successfully>
+2025-04-14 08:20:04,940 - INFO - SimulationServer: ZMQ connections established and ready for commands
+2025-04-14 08:20:50,865 - INFO - Use pytorch device_name: cuda
+2025-04-14 08:20:50,865 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 08:20:59,635 - INFO - Use pytorch device_name: cuda
+2025-04-14 08:20:59,635 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 08:21:07,217 - INFO - Use pytorch device_name: cuda
+2025-04-14 08:21:07,218 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 08:21:38,943 - INFO - SimulationServer: Play 'demo.py' loaded and fully initialized with 3 actors
+2025-04-14 09:51:58,764 - INFO - Use pytorch device_name: cuda
+2025-04-14 09:51:58,765 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:17:04,244 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:17:04,245 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:17:06,431 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:17:06,431 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:26:13,373 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:26:13,373 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:37:54,381 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:37:54,382 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:47:36,480 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:47:36,480 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-04-14 10:57:45,689 - INFO - Use pytorch device_name: cuda
+2025-04-14 10:57:45,689 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
