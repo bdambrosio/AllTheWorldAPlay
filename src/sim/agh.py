@@ -265,7 +265,7 @@ class Character:
         self.narrative = NarrativeSummary(
             recent_events="",
             ongoing_activities="",
-            last_update=datetime.now(),  # Will be updated to simulation time
+            last_update=datetime.now(),  # Will be updated to simulation time when set_context is called
             active_drives=[]
         )
 
@@ -278,7 +278,6 @@ class Character:
             self.my_map = [[{} for i in range(100)] for i in range(100)]
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
-        self.sense_threshold = timedelta(hours=4)
         self.act = None
         self.previous_action_name = None
         self.look_percept = ''
@@ -312,6 +311,8 @@ class Character:
         self.actions = []
         self.achievments = [] # a list of short strings summarizing the character's achievments
         self.autonomy = Autonomy()
+        self.step = 2 # start at step 2 to skip first update
+        self.update_interval = 4
 
     def x(self):
         return self.mapAgent.x
@@ -324,6 +325,12 @@ class Character:
         self.actor_models = KnownActorManager(self, context)
         self.resource_models = KnownResourceManager(self, context)
         self.resourceRefManager = ResourceReferenceManager(self, context, self.llm)
+        self.narrative = NarrativeSummary(
+            recent_events="",
+            ongoing_activities="",
+            last_update=self.context.simulation_time, 
+            active_drives=[]
+        )
         if self.driveSignalManager:
             self.driveSignalManager.context = context
         if self.memory_consolidator:
@@ -542,6 +549,7 @@ class Character:
             )
        # Reset new memory counter
         self.new_memory_cnt = 0
+        self.step = self.update_interval+1 # skip next update
 
 
     def say_target(self, act_mode, text, source=None):
@@ -1437,8 +1445,9 @@ End response with:
                 goals.append(goal)
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
+
         self.goals = goals
-        self.driveSignalManager.clear_clusters()
+        #self.driveSignalManager.clear_clusters([])
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
@@ -3098,14 +3107,17 @@ End your response with:
         self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
         self.thought = ''
+        
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
                                                   self.narrative, 
                                                   self.actor_models,
                                                   self.context.simulation_time, 
                                                   self.get_character_description().strip(),
-                                                  relationsOnly=True )
+                                                  relationsOnly=self.step % self.update_interval != 0 )
+        self.step += 1
 
         if not self.goals or len(self.goals) == 0:
+            self.update()
             self.generate_goal_alternatives()
         await self.request_goal_choice(self.goals)
         if not self.focus_goal:

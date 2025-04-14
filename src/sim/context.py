@@ -27,7 +27,7 @@ log_path = os.path.join(os.getcwd(), 'simulation.log')
 print(f"Attempting to create log file at: {log_path}")
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename=log_path,
     filemode='w'
@@ -536,10 +536,11 @@ Joe finds a sharp object that can be used as a tool.
 """
 
         prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
-Include day/night cycles and weather patterns. 
+Include day/night cycles and weather patterns. It is now {{$time}}.
+
+
 {{$narrative}}
                               
-It is now {{$time}}.
 Update location and other physical situation characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical situation.
         """ + event + """
@@ -611,7 +612,7 @@ Ensure your response reflects this change.
         print(f'World updates:\n{updates}')
         for actor in self.actors:
             actor.add_to_history(f"you notice {updates}\n")
-            actor.update()  # forward three hours and update history, etc
+            actor.update()  # update history, etc
         return response
 
 
@@ -802,13 +803,15 @@ End your response with:
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
-        self.message_queue.put({'name':self.name, 'text':f'\n-----scene----- {scene["scene_title"]}'})
+        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]}'})
         await asyncio.sleep(0.1)
+        if scene.get('pre_narrative'):
+            self.update(scene['pre_narrative'])
         location = scene['location']
         x,y = self.map.random_location_by_terrain(location)
         characters_at_location = []
         for character_name in scene['action_order']:
-            if character_name in characters_at_location:
+            if character_name == 'Context' or character_name in characters_at_location:
                 # only need to place each character once
                 continue
             character = self.get_actor_by_name(character_name)
@@ -816,12 +819,15 @@ End your response with:
             character.mapAgent.y = y
             character.look()
             characters_at_location.append(character)
-        self.update(scene['pre_narrative']+'\n'+scene['post_narrative'])
         for character_name in scene['action_order']: #characters can appear multiple times in the action order
+            if character_name == 'Context':
+                continue
             character = self.get_actor_by_name(character_name)
             goal = scene['characters'][character_name]['goal']
             character.instantiate_narrative_goal(goal)
             await character.cognitive_cycle()
+        if scene.get('post_narrative'):
+            self.update(scene['post_narrative'])    
 
     def load_narrative(self, narrative):
         """Load a narrative"""
