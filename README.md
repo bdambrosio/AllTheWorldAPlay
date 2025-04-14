@@ -1,6 +1,7 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
+- Multi-act plays! Fully self-generated. For now only an early draft release of narrative-following, with narratives in src/plays/narratives. These are in fact auto-generated from play and scenario files, I'll release the auto-gen code after a few more tweaks/tests.
 - Major debug cycle on the overall character cognitive cycle. Longer term action stays on task better, imho. 
 - Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
 - LLM api support for OpenRouter.ai and for llama.cpp local
