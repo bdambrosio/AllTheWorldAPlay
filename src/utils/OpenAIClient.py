@@ -28,7 +28,7 @@ class OpenAIClient():
         if options.model is not None:
             model = options.model
         else:
-            model = 'gpt-4o-mini'
+            model = 'gpt-4.1-mini'
         try:
             response = client.chat.completions.create(
                 model=model, messages=prompt,
