@@ -1,7 +1,9 @@
 import requests, time, copy
 from typing import Optional, Dict, Any, Union
 from dataclasses import dataclass, asdict
-import json, os
+import json, os,sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from utils.Messages import SystemMessage
 from utils.Messages import AssistantMessage
 from openai import OpenAI
@@ -13,7 +15,7 @@ class OpenAIClient():
     DefaultEndpoint = 'https://api.openai.com'
     UserAgent = 'Owl'
 
-    def __init__(self, client, api_key=None):
+    def __init__(self, client=client, api_key=None):
         self._session = requests.Session()
         self._client = client
         

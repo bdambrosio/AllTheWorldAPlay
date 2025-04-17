@@ -188,7 +188,7 @@ End with:
                 narrative.ongoing_activities = new_activities.strip()
         
         # Update recent events
-        recent_window = current_time - timedelta(hours=24)  # Last 4 hours
+        recent_window = current_time - timedelta(hours=2)  # Last 4 hours
         recent_abstracts = [abs for abs in memory.get_recent_abstractions(5)
                            if abs.start_time >= recent_window]
         recent_concretes = [mem for mem in memory.get_recent(10)
@@ -221,17 +221,17 @@ End with:
 """)]
 
         if not relationsOnly:
-            new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events')
+            new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events', max_tokens=240)
             if new_events:
                 narrative.recent_events = new_events.strip()
         
         # Update key relationships
-        valid_chars = [a.name for a in self.context.actors 
-                      if a.name != self.owner.name] + self.owner.actor_models.names()
+        valid_chars = [a.name for a in self.context.actors + self.context.npcs
+                      if a.name != self.owner.name]
         
         # Extract character names from memory text
         all_abstracts = memory.get_recent_abstractions(10)
-        recent_window = current_time - timedelta(days=1)  # Look back 24 hours
+        recent_window = current_time - timedelta(hours=2)  # Look back 24 hours
         recent_memories = [mem for mem in memory.get_recent(20) 
                           if mem.timestamp >= recent_window]
         all_texts = [mem.text for mem in recent_memories] + [abs.summary for abs in all_abstracts]
@@ -244,13 +244,13 @@ End with:
             for i, word in enumerate(words):
                 if (word[0].isupper() and  # Capitalized
                     len(word) > 1 and      # Not single letter
-                    i > 0 and              # Not start of sentence
-                    word.lower() not in {'i', 'me', 'my', 'mine'}):  # Not pronouns
-                    potential_chars.add(word)
+                    i > 0 and word.lower() not in {'i', 'me', 'my', 'mine','you', 'your', 'yours', 'he', 'she', 'it', 'they', 'them', 'their', 'theirs'}):  # Not pronouns
+                    if word not in potential_chars:
+                        potential_chars.add(word)
         
         # Only use valid characters from potential and existing chars
-        all_chars = set(valid_chars) & (set(knownActorManager.names()) | potential_chars)
-        knownActorManager.update_all_relationships(all_texts)
+        all_char_names = set(valid_chars) & (set(knownActorManager.names()) | potential_chars)
+        knownActorManager.update_all_relationships(all_texts, all_char_names)
         
         
 

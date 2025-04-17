@@ -151,9 +151,12 @@ class LLM():
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
-        print(f'\n{substituted_prompt}\n')      
+        print(f'\n{json.dumps(substituted_prompt)}\n')      
         if log:
             logging.debug(f'Prompt: {substituted_prompt}\n')
+        if 'openai' in self.server_name:
+            response = openai_client.executeRequest(prompt=substituted_prompt, options=options)
+            return response
         if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
