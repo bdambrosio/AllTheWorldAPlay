@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+from pathlib import Path
 import traceback
 import random
 import logging
@@ -26,6 +27,11 @@ print(f"Directory of this file: {os.path.dirname(os.path.abspath(__file__))}")
 log_path = os.path.join(os.getcwd(), 'simulation.log')
 print(f"Attempting to create log file at: {log_path}")
 
+home = str(Path.home())
+logs_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'logs/')
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+log_path = os.path.join(logs_dir, 'simulation.log')
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
