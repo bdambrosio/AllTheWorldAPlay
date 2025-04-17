@@ -108,8 +108,8 @@ Recent Interactions:
 Describe their current relationship in a brief statement that captures:
 1. Character's perception of the other character's nature
 2. Character's current emotional state towards the other character
-3. Any recent changes in their relationship
-4. Ongoing dynamics
+3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
+4. Any recent changes in their relationship with you?
 
 Respond with a concise updated relationship description of up to 120 tokens, no additional text.
 End with:
@@ -132,7 +132,7 @@ Describe their current self-model in a brief statement that captures:
 3. Any recent changes in their self-model
 4. Ongoing dynamics
 
-Respond with a concise updated self-model description of up to 120 tokens, no additional text.
+Respond with a concise updated self-model description of up to 160 tokens, no additional text.
 End with:
 </end>
 """)]
@@ -168,8 +168,8 @@ Recent Interactions:
 Create a short (6-10 word) update to the relationship estimate above that captures any changes in:
 1. Character's perception of the other character's nature
 2. Character's current emotional state towards the other character
-3. Any recent changes in their relationship
-4. Ongoing dynamics
+3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
+4. Any recent changes in their relationship with you?
 
 Respond with a concise updated relationship description of up to 10 words, no additional text.
 End with:
