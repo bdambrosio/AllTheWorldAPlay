@@ -27,7 +27,7 @@ log_path = os.path.join(os.getcwd(), 'simulation.log')
 print(f"Attempting to create log file at: {log_path}")
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename=log_path,
     filemode='w'
@@ -94,6 +94,8 @@ class Context():
         self.last_updates = '' # for world updates from recent acts
         self.last_update_time = self.simulation_time
         self.narrative = None
+        self.scene_pre_narrative = '' # setting up the scene
+        self.scene_post_narrative = '' # dominant theme of the scene, concluding note
 
         for actor in self.actors:
             #place all actors in the world
@@ -732,6 +734,7 @@ Ensure your response reflects this change.
 
     async def choose_delay(self):
         """Choose a delay for the next cognitive cycle"""
+        return 0.0
         prompt = [SystemMessage(content="""You are a delay chooser.
 Your task is to choose a delay for the next cognitive cycle.
 The delay should be a number of hours from now.
@@ -806,7 +809,11 @@ End your response with:
         self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]}'})
         await asyncio.sleep(0.1)
         if scene.get('pre_narrative'):
-            self.update(scene['pre_narrative'])
+            self.current_state += '\n\n'+scene['pre_narrative']
+            self.scene_pre_narrative = scene['pre_narrative']
+        if scene.get('post_narrative'):
+            self.current_state += '\n'+scene['post_narrative']
+            self.scene_post_narrative = scene['post_narrative']
 
         #construct a list of characters in the scene in the order in which they appear
         characters_in_scene = []
@@ -838,11 +845,9 @@ End your response with:
                 if character in characters_finished_tasks:
                     continue
                 await character.cognitive_cycle()
-                if character.focus_task.peek() is None and (character.focus_goal is None or character.focus_goal.task_plan is None):
+                if character.focus_goal is None and (not character.goals  or len(character.goals) == 0):
                     characters_finished_tasks.append(character)
 
-        if scene.get('post_narrative'):
-            self.update(scene['post_narrative'])    
 
     def load_narrative(self, narrative):
         """Load a narrative"""

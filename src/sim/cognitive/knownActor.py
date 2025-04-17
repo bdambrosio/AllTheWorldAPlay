@@ -141,6 +141,66 @@ End with:
         if new_relation:
             self.relationship = new_relation.strip()
 
+    def short_update_relationship(self, all_texts, use_all_texts=False):      
+        """self is An instance of a model of another actor 
+          updating beliefs about owner relationship to this actor
+          this is a quick update, not a full analysis, following a dialog turn"""
+        if use_all_texts:
+            char_memories = all_texts
+        else:
+            char_memories = [text for text in all_texts if self.canonical_name.lower() in text.lower()]
+        if char_memories is None or len(char_memories) == 0:
+            return
+
+        if self.owner.name is not self.actor_agh.name:
+            prompt = [UserMessage(content=f"""Analyze relationship between these characters based on recent interactions.
+Character: 
+{self.owner.character}
+
+Other Character: {self.actor_agh.name}
+
+Previous Relationship Estimate:
+{self.relationship}
+
+Recent Interactions:
+{chr(10).join(f"- {text}" for text in char_memories)}
+
+Create a short (6-10 word) update to the relationship estimate above that captures any changes in:
+1. Character's perception of the other character's nature
+2. Character's current emotional state towards the other character
+3. Any recent changes in their relationship
+4. Ongoing dynamics
+
+Respond with a concise updated relationship description of up to 10 words, no additional text.
+End with:
+</end>
+""")]
+        else:
+            prompt = [UserMessage(content=f"""Analyze self-model of this character based on recent thoughts.
+Character: 
+{self.owner.character}
+
+Previous self-model:
+{self.relationship}
+
+Recent Thoughts:
+{chr(10).join(f"- {text}" for text in char_memories)}
+
+Create a short (6-10 word) update to the relationship estimate above that captures any changes in:
+1. Character's perception of his/her own nature
+2. Character's current emotional comfort level with his/her own nature
+3. Any recent changes in their self-model
+4. Ongoing dynamics
+
+Respond with a concise updated self-model description of up to 10 words, no additional text.
+End with:
+</end>
+""")]
+
+        relation_update = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=24, stops=["</end>"])
+        if relation_update:
+            self.relationship +=relation_update.strip()
+
 class KnownActorManager:
     def __init__(self, owner, context):
         self.owner = owner
@@ -228,12 +288,14 @@ class KnownActorManager:
         for actor in self.known_actors.values():
             actor.visible = False
 
-    def update_all_relationships(self, all_texts):
-        valid_chars = [a.name for a in self.context.actors if a.name != self.owner.name] + [a.name for a in self.context.npcs]
-        all_chars = set(valid_chars) & set(self.names())
+    def update_all_relationships(self, all_texts, char_names=None):
+        if char_names is None:
+            valid_chars = [a.name for a in self.context.actors if a.name != self.owner.name] + [a.name for a in self.context.npcs]
+            char_names = set(valid_chars) & set(self.names())
         for actor in self.known_actors.values():
-            #actor is a KnownActor instance, a model of the owner's relationship to this actor
-            actor.update_relationship(all_texts)
+            if actor.canonical_name in char_names:
+                #actor is a KnownActor instance, a model of the owner's relationship to this actor
+                actor.update_relationship(all_texts)
 
     def get_known_relationships(self, include_transcript=False):
         relationships = {}

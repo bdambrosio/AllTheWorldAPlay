@@ -1327,7 +1327,7 @@ End response with:
                             actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         self.previous_action_mode = act_mode           
 
-    def instantiate_narrative_goal(self, goal_statement):
+    def instantiate_narrative_goal(self, goal_statement, generate_conditions=True):
         """instantiate a goal from a narrative"""
         self.driveSignalManager.check_drive_signals()
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
@@ -1404,7 +1404,7 @@ Respond with the instantiated goal consistent with the goal directive, in the fo
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
     signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
     preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
-    termination  - a condition (5-6 words) that would mark achievement or partial achievement of the goal.
+    termination  - a condition (5-6 words) that would mark satisficing achievement of the goal.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
@@ -1441,12 +1441,17 @@ End response with:
         for goal_hash in forms:
             goal = self.validate_and_create_goal(goal_hash)
             if goal:
+                if not generate_conditions:
+                    goal.description = goal.name+': '+goal.description
+                    goal.name = 'postconditions'
+                    goal.preconditions = None
+                    goal.termination = None
                 print(f'{self.name} generated goal: {goal.to_string()}')
                 goals.append(goal)
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
 
-        self.goals = goals
+        self.goals.extend(goals)
         if len(goals) > 0:
             self.focus_goal = goals[0]
         if len(goals) > 1:
@@ -1585,7 +1590,7 @@ End response with:
             goal = self.focus_goal
         suffix = """
 
-Create about 3-6 specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
+Create about {{$ntasks}} specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
 Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
@@ -1614,13 +1619,15 @@ In refering to other actors. always use their name, without other labels like 'A
 and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
 Order tasks in the assumed order of execution.
+
+{{$scene_post_narrative}}
+
 End response with:
 </end>
 """
-        mission = """create a sequence of 3-6 tasks to achieve the focus goal: 
+        mission = """create a sequence of {{$ntasks}} tasks to achieve the focus goal: 
 
 {{$focus_goal}}
-
 
 """
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
@@ -1642,11 +1649,18 @@ End response with:
             goal = self.focus_goal
         if not goal:
             raise ValueError(f'No focus goal for {self.name}')
+        ntasks = 1 if (goal.name == 'postconditions' or goal.name == 'postconditions') else 4
+        if self.context.scene_post_narrative:
+            scene_post_narrative = f"\n\nThe dominant theme of the scene is: {self.context.scene_post_narrative}. The task sequence should be consistent with this theme."
+        else:
+            scene_post_narrative = ''
         response = default_ask(self, 
                                mission, 
                                suffix, 
                                {"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories])}, 350, log=True)
+                                "goal_memories": "\n".join([m.content for m in goal_memories]),
+                                "ntasks": ntasks,
+                                "scene_post_narrative": scene_post_narrative}, 350, log=True)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -2026,6 +2040,8 @@ Again, the task to translate into alternative acts is:
 {{$task_string}} 
 </task>
 
+{{$scene_post_narrative}}
+
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
@@ -2043,9 +2059,15 @@ End your response with:
                 if tm not in goal_memories:
                     goal_memories.append(tm)
         task = self.focus_task.peek()
+        if self.context.scene_post_narrative:
+            scene_post_narrative = f"\n\nThe dominant theme of the scene is: {self.context.scene_post_narrative}. The act alternatives should be consistent with this theme."
+        else:
+            scene_post_narrative = ''
+
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
-                                              "goal_memories": "\n".join([m.content for m in goal_memories])}, max_tokens=90, log=True)
+                                              "goal_memories": "\n".join([m.content for m in goal_memories]),
+                                              "scene_post_narrative": scene_post_narrative}, max_tokens=200, log=True)
         response = response.strip()
         # Rest of existing while loop...
         act_hashes = hash_utils.findall_forms(response)
@@ -2537,7 +2559,7 @@ End your response with:
                 dialog = dialog_model.get_current_dialog()
                 self.add_perceptual_input(f'Internal monologue:\n {dialog}', percept=False, mode='internal')
                 dialog_as_list = dialog.split('\n') 
-                self.actor_models.get_actor_model(self.name).update_relationship(dialog_as_list, use_all_texts=True)
+                self.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
                 dialog_model.deactivate_dialog()
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
@@ -2577,7 +2599,7 @@ End your response with:
             self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
             dialog_as_list = dialog.split('\n') 
-            self.actor_models.get_actor_model(from_actor.name).update_relationship(dialog_as_list, use_all_texts=True)
+            self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
             self.last_task = self.focus_task.peek()
             self.focus_task.pop()
@@ -2588,7 +2610,7 @@ End your response with:
             dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
             from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
             dialog_as_list = dialog.split('\n') 
-            from_actor.actor_models.get_actor_model(self.name).update_relationship(dialog_as_list, use_all_texts=True)
+            from_actor.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor.focus_task.pop()
@@ -2680,12 +2702,15 @@ Use the following XML template in your response:
 {{$duplicative_insert}}
 
 Guidance: 
-- The response can include occasional body language or facial expressions as well as speech
-- Respond in a way that advances the dialog. E.g., express an opinion or propose a next step.
+- The response can occasionally include occasional body language or facial expressions as well as speech
+- Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
+- Do not respond to a question with a question.
 - If the intent is to agree, state agreement without repeating the statement.
-- Speak in your own voice. Do not echo the speech style of the Input. 
+- Above all, speak in your own voice. Do not echo the speech style of the statement. 
 - Character emotional state should have maximum impact on the tone, phrasing, and content of the response.
 - Respond in the style of natural spoken dialog. Use short sentences and casual language, but avoid repeating stereotypical phrases in the dialog to this point.
+
+{{$scene_post_narrative}}
  
 Respond only with the above XML
 Do not include any additional text. 
@@ -2713,6 +2738,10 @@ End your response with:
         trying = 0
 
         emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)
+        if self.context.scene_post_narrative:
+            scene_post_narrative = f"\nThe dominant theme of the scene is: {self.context.scene_post_narrative} The act alternatives should be consistent with this theme."
+        else:
+            scene_post_narrative = ''
 
         answer_xml = self.llm.ask({
             'character': self.get_character_description(),
@@ -2726,7 +2755,8 @@ End your response with:
             'history': self.narrative.get_summary('medium'),
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
             'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
-            'duplicative_insert': duplicative_insert
+            'duplicative_insert': duplicative_insert,
+            "scene_post_narrative": scene_post_narrative
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -3135,9 +3165,11 @@ End your response with:
             print(f'{self.name} cognitive_cycle: no focus task')
             
         # input - a task on top of self.focus_task, the next task to run for self.focus_goal
+        task_to_run = self.focus_task.peek()
         await self.step_tasks()
 
-        delay = await self.context.choose_delay()
+        delay = 0.0
+        #delay = await self.context.choose_delay()
         try:
             old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
@@ -3153,26 +3185,55 @@ End your response with:
        
     async def step_tasks(self, n: int=1):
         #runs through up to n tasks in a task_plan
+        # like step_task, the invariant is that the task stack is empty on return, and the first task in focus_goal task_plan is the next task to run, if it exists
         task_count = 0
         while task_count < n and self.focus_task.peek():
     
             task = self.focus_task.peek()
+            task_to_run = task
             outcome = await self.step_task(task)
             task_count += 1
 
             if task == self.focus_task.peek():
                 print(f'{self.name} step_tasks: task {task.name} still on focus stack!')
+                self.focus_task.pop()
             # outcome is False if task is not completed. if true proceed to next task
             if not outcome or not self.focus_goal:
                 return False
             
-            await self.clear_goal_if_satisfied(self.focus_goal)
-            if self.focus_goal and (not self.focus_goal.task_plan or (self.focus_goal.task_plan and len(self.focus_goal.task_plan) == 0)): 
-                self.generate_task_plan(self.focus_goal)
-                if task_count < n-1: # if we're not at the last task, push the next task onto the stack
+            if self.focus_goal and not self.focus_goal.task_plan:
+                await self.clear_goal_if_satisfied(self.focus_goal)
+                if self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
+                    # termination not yet satisfied, and this is a main goal (has termination), subgoal on termination clause
+                    old_goal = self.focus_goal
+                    self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
+                    if old_goal in self.goals:
+                        self.goals.remove(old_goal) # don't try this goal again
+                    return False
+                elif self.focus_goal and self.focus_goal.termination:
+                    # is a precondition goal, look for another goal with this termination as preconditions
+                    for goal in self.goals:
+                        if goal.preconditions and self.focus_goal.termination == goal.preconditions:
+                            goal.preconditions = None # remove precondition
+                    if self.focus_goal in self.goals:
+                        self.goals.remove(self.focus_goal)
+                        self.focus_goal = None
+                        return False
+                else:
+                    # if no termination clause, then can't subgoal on it, so we're done
+
+                    if self.focus_goal in self.goals:
+                        self.goals.remove(self.focus_goal)
+                    self.focus_goal = None
+                    return False
+                
+            if task_count < n-1: # if we're not at the last task, push the next task onto the stack
                     self.focus_task.push(self.focus_goal.task_plan[0])
                     self.focus_goal.task_plan.pop(0)
-                return False
+
+            if self.focus_task.peek() == task_to_run:
+                self.focus_task.pop()
+                print(f'{self.name} step_tasks: task {task_to_run.name} still on focus stack, invariant violated')
         return 
             
         

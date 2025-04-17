@@ -89,12 +89,12 @@ class Dialog:
         """End current dialog with fatigue consideration"""
         self.active = False
         # Store fatigue level for future interactions
-        self.actor.memory_consolidator.update_cognitive_model(
-            memory=self.actor.structured_memory,
-            narrative=self.actor.narrative,
-            knownActorManager=self.actor.actor_models,
-            current_time=self.actor.context.simulation_time,
-            character_desc=self.actor.character
-        )
+        #self.actor.memory_consolidator.update_cognitive_model(
+        #    memory=self.actor.structured_memory,
+        #    narrative=self.actor.narrative,
+        #    knownActorManager=self.actor.actor_models,
+        #    current_time=self.actor.context.simulation_time,
+        #    character_desc=self.actor.character
+        #)
         
         # again, read only on actor, let actor manage focus task stack

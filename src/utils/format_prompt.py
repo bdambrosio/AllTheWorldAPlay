@@ -9,8 +9,13 @@ import json, requests
 import sys
 import os
 import re
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from openai import OpenAI
+from LLMRequestOptions import LLMRequestOptions
+from OpenAIClient import OpenAIClient
+
+
+client = OpenAIClient()
 
 def import_file():
     file_path, _ = QFileDialog.getOpenFileName(
@@ -36,32 +41,24 @@ def clear_text():
     text_edit.clear()
 
 def submit_to_llm():
-    prompt = text_edit.toPlainText()
-    if not prompt.strip():
-        QMessageBox.warning(window, "Error", "Please enter text before submitting")
-        return
-    
-    # Convert only unescaped single quotes to double quotes
-    prompt = prompt.replace('"', '\\"')
-    prompt = re.sub(r"(?<!\\)'", '"', prompt)
-    
+    prompt = text_edit.toPlainText().strip()
     try:
-        prompt = prompt.replace("\n", "\\n").replace("\t", "\\t")
-        prompt = prompt.replace("\\\\\\n", "\\n")
-        prompt = prompt.replace("\\\\\\t", "\\t")
-        prompt = literal_eval(prompt)
+        promptj=json.loads(prompt)
     except Exception as e:
-        QMessageBox.warning(window, "Error", f"Failed to parse prompt: {str(e)}")
-        return
+        print(f'Error parsing prompt: {e}')
+        pass
     progress = QProgressDialog("Waiting for LLM response...", None, 0, 0, window)
     progress.setWindowModality(Qt.WindowModal)
     progress.show()
     
     try:
-        url = 'http://localhost:5000/v1/chat/completions'
-        response =  requests.post(url, headers={"Content-Type":"application/json"}, json=prompt)
-        text = response.content.decode('utf-8').strip()
-        dialog = ResponseDialog(text, window)
+        options = LLMRequestOptions()
+        options.model = 'gpt-4o-mini'
+        options.temperature = 0.0
+        options.max_tokens = 400
+        options.top_p = 1.0
+        response = client.executeRequest(promptj, options)
+        dialog = ResponseDialog(response, window)
         progress.close()
         dialog.exec_()
     except Exception as e:
