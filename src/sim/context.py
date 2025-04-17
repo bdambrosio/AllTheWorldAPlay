@@ -850,9 +850,11 @@ End your response with:
             for character in characters_in_scene:
                 if character in characters_finished_tasks:
                     continue
-                await character.cognitive_cycle()
-                if character.focus_goal is None and (not character.goals  or len(character.goals) == 0):
+                elif character.focus_goal is None and (not character.goals  or len(character.goals) == 0):
                     characters_finished_tasks.append(character)
+                    continue
+                else:
+                    await character.cognitive_cycle()
 
 
     def load_narrative(self, narrative):

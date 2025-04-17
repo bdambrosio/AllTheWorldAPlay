@@ -1092,8 +1092,8 @@ End response with:
                 self.focus_goal.task_plan.remove(task)
             if self.focus_goal:
                 pass #self.focus_goal.tasks_completed.append(task)
-            self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n{task.to_string()}"
-            self.add_perceptual_input(f"Following task has been satisfied. This may invalidate parts of the above:\n{task.short_string()}", mode='internal')
+            self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n  {task.to_string()}"
+            self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
             self.achievments.append(task.short_string())
             self.update()
             await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
@@ -1649,7 +1649,9 @@ End response with:
             goal = self.focus_goal
         if not goal:
             raise ValueError(f'No focus goal for {self.name}')
-        ntasks = 1 if (goal.name == 'postconditions' or goal.name == 'postconditions') else 4
+        ntasks = 4
+        if goal.name == 'preconditions' or goal.name == 'postconditions':
+            ntasks = 1
         if self.context.scene_post_narrative:
             scene_post_narrative = f"\n\nThe dominant theme of the scene is: {self.context.scene_post_narrative}. The task sequence should be consistent with this theme."
         else:
@@ -2688,14 +2690,19 @@ Your last action was:
 
 """
 
-        prompt_string += """generate a next thought in the internal dialog below:""" if self is from_actor else """generate a response to the statement below:"""
+        prompt_string += """generate a next thought in the internal dialog below:""" if self is from_actor else """generate a response to the statement below in the dialog:"""
         prompt_string += """
 <statement>
 {{$statement}}
 </statement>
-                              
-Use the following XML template in your response:
-                              
+"""
+
+        prompt_string += "" if self is from_actor else """Use how you think of speaker as a key determinant in composing your response. 
+Do you trust that speaker's drives and goals align with yours? Do you believe speaker's statement is sincere?
+What is speaker's emotional state? Would they enjoy humor at this point, or should your response be cautious and measured?
+"""
+        prompt_string += """Use the following XML template in your response:
+
 <response>response / next thought</response>
 <reason>terse (4-6 words) reason for this response / thought</reason>
 
@@ -2709,7 +2716,6 @@ Guidance:
 - Above all, speak in your own voice. Do not echo the speech style of the statement. 
 - Character emotional state should have maximum impact on the tone, phrasing, and content of the response.
 - Respond in the style of natural spoken dialog. Use short sentences and casual language, but avoid repeating stereotypical phrases in the dialog to this point.
-
 {{$scene_post_narrative}}
  
 Respond only with the above XML
@@ -2739,7 +2745,7 @@ End your response with:
 
         emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)
         if self.context.scene_post_narrative:
-            scene_post_narrative = f"\nThe dominant theme of the scene is: {self.context.scene_post_narrative} The act alternatives should be consistent with this theme."
+            scene_post_narrative = f"- Most importantly, the dominant theme of the scene is:\n {self.context.scene_post_narrative}\n  The response must be consistent with this theme."
         else:
             scene_post_narrative = ''
 
@@ -2802,7 +2808,7 @@ In this determination, assume a condition is satisfied unless there is evidence 
 If a precondition specifies an action, eg, 'wake up asap', then the precondition is satisfied if the current situation includes the action consequences, e.g. the actor is awake.
 If the goal preconditions are weakly satisfied, respond with <admissible>True</admissible>, <impossible>False</impossible>.
 If the goal preconditions are not weakly satisfied, but it is possible that they will be satisfied in the future, respond with <admissible>False</admissible>, <impossible>False</impossible>.
-If the goal preconditions could never be satisfied in the future (e.g., a time that has already passed), respond with <admissible>False</admissible>, <impossible>True</impossible>.
+If the goal preconditions is impossible to satisfy(e.g., a time that has already passed), respond with <admissible>False</admissible>, <impossible>True</impossible>.
 
 <goal>
 {{$goal}}
@@ -2831,7 +2837,7 @@ The following tasks and goals have been completed or achieved:
 Respond in this XMLformat:
                                       
 <admissible>True/False</admissible>
-<impossible>True/False</impossible>
+<impossible>False/True</impossible>
 
 Only respond with the above XML
 Do not include any additional text. 
@@ -2854,6 +2860,8 @@ End your response with:
                     elif admissible.lower() == 'false' and impossible.lower() == 'true':
                         logging.debug(f'{self.name} admissible_goals: goal {goal.name} is impossible')
                         impossible_goals.append(goal)
+                        goal.preconditions = None # let it thru next time - maybe this should be llm to soften preconditions?
+                        admissible_goals.append(goal)
                     else:
                         logging.debug(f'{self.name} admissible_goals: goal {goal.name} is not admissible')
             else:
@@ -3155,7 +3163,7 @@ End your response with:
         if not self.focus_goal:
             print(f'{self.name} cognitive_cycle: no focus goal')
 
-        if not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0:
+        if not self.focus_goal or not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0:
             self.generate_task_plan(self.focus_goal)
         
         logging.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
@@ -3253,7 +3261,7 @@ End your response with:
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
         subtask_count = 0
-        while act_count < 3 and self.focus_task.peek():
+        while act_count < 2 and self.focus_task.peek():
             #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
             await self.request_act_choice(action_alternatives) # sets self.focus_action
