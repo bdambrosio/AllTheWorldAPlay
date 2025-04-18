@@ -15,7 +15,7 @@ import utils.hash_utils as hash_utils
 import utils.choice as choice   
 #from sim.cognitive.DialogManager import Dialog
 
-def ask (character:Character, mission:str, suffix:str='', addl_bindings:dict={}, max_tokens:int=100, log:bool=False):
+def ask (character:Character, mission:str, suffix:str='', addl_bindings:dict={}, max_tokens:int=100, log:bool=False, tag:str=''):
 
     prompt = [UserMessage(content=mission+"""\nYou are {{$name}}.
 
@@ -120,6 +120,6 @@ Your current situation is:
     for key, value in addl_bindings.items():
         bindings[key]=value
     
-    response = character.llm.ask(bindings, prompt, tag='Prompt.character_prompt', max_tokens=max_tokens, stops=['</end>'], log=log)
+    response = character.llm.ask(bindings, prompt, tag=tag, max_tokens=max_tokens, stops=['</end>'], log=log)
     return response
 

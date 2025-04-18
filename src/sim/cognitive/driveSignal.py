@@ -255,6 +255,7 @@ class SignalCluster:
         self.history = []
         self.score = 0.0
         self.emotional_stance = None
+        self.new_signal_count = 0 # number of new signals added to this cluster since last cluster name update
         self.id = f"sc{SignalCluster._id_counter}"
         SignalCluster._instances[self.id] = self
         SignalCluster._id_counter += 1
@@ -275,12 +276,17 @@ class SignalCluster:
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
         self.signals.append(signal)
+        self.new_signal_count += 1
         # Update centroid as mean of all embeddings
         for drive in signal.drives:
             if drive not in self.drives:
                 self.drives.append(drive)
         embeddings = [s.embedding for s in self.signals]
         self.centroid = np.mean(embeddings, axis=0)
+        if self.new_signal_count > len(self.signals)/5:
+            self.cluster_name()
+            self.new_signal_count = 0
+
 
     def cluster_name(self):
         if len(self.signals) == 0:
@@ -528,7 +534,7 @@ End your response with:
 """
             
         try:
-            response = self.ask(self.owner, mission, suffix=suffix, addl_bindings= {}, max_tokens=80)
+            response = self.ask(self.owner, mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=120)
         except Exception as e:
             traceback.print_exc()
             print(f"Error checking drive signal: {e}")
@@ -578,13 +584,10 @@ End your response with:
                     text=signal.text
                 )
                 self.clusters.append(new_cluster)
-                if not any(new_cluster is cluster for cluster in updated_clusters):
-                    updated_clusters.append(new_cluster)
+                # below not needed - singleton clusters already have a name
+                #if not any(new_cluster is cluster for cluster in updated_clusters):
+                #    updated_clusters.append(new_cluster)
 
-        for cluster in updated_clusters:
-            cluster.cluster_name()
-        #scored = self.get_scored_clusters()
-        #return scored
                 
     def get_active_signals(self, max_age_hours: int = 24) -> List[SignalCluster]:
         """Get clusters with recent signals"""
@@ -707,8 +710,10 @@ End your response with:
             
         # Check if outliers should be preserved
         for outlier_signal in outlier_signals:
-            age_minutes = max(30, (current_time - outlier_signal.timestamp).total_seconds() / 60)
-            if (30/age_minutes <= 30 * outlier_signal.importance * outlier_signal.urgency)**.33 >= 0.6:
+            age_minutes = max(15, (current_time - outlier_signal.timestamp).total_seconds() / 60)
+            recency = 15/age_minutes
+            signal_strength = outlier_signal.importance * outlier_signal.urgency
+            if (recency * signal_strength)**.33 >= 0.5:
                 # Create singleton cluster for important recent outlier
                 outlier_cluster = SignalCluster(
                     manager=self,
@@ -718,10 +723,38 @@ End your response with:
                     is_opportunity=outlier_signal.is_opportunity,
                     text='outlier_'+outlier_signal.text.lstrip(':')
                 )
-                # Add remaining signals
-                outlier_cluster.cluster_name()
                 self.clusters.append(outlier_cluster)
             
         self.get_scored_clusters() # rank new clusters
         print(f"Reclustered into {len(self.clusters)} clusters")
+        
+    def get_signals_for_drive(self, drive: Drive, n: int = 3) -> List[Tuple[SignalCluster, float]]:
+        """Get the n highest scoring SignalClusters most similar to the given Drive.
+        
+        Args:
+            drive: The Drive to find similar clusters for
+            n: Maximum number of clusters to return (default 3)
+            
+        Returns:
+            List of tuples (cluster, similarity_score) sorted by descending similarity * cluster.score
+        """
+        if not self.clusters:
+            return []
+        
+        # Get scored clusters first
+        scored_clusters = self.get_scored_clusters()
+        if not scored_clusters:
+            return []
+        
+        # Calculate similarity scores
+        similar_clusters = []
+        for cluster, cluster_score in scored_clusters:
+            similarity = self._cosine_similarity(drive.embedding, cluster.centroid)
+            # Combine similarity with cluster's existing score
+            combined_score = similarity * cluster_score
+            similar_clusters.append((cluster, combined_score))
+        
+        # Sort by combined score and return top n
+        similar_clusters.sort(key=lambda x: x[1], reverse=True)
+        return [cluster for cluster, _ in similar_clusters[:n]]
         

@@ -48,7 +48,7 @@ Return None if you cannot determine the resource. Do not include any introductor
 End your response with:
 <end/>
 """
-        response = ask(self.character, mission, suffix, {}, 15)
+        response = ask(self.character, mission, suffix, {}, 15, tag = 'ResourceReferenceManager.resolve_reference_with_llm')
         resource = self.context.map.get_resource_by_name(response.strip())
         if resource:
             return resource, response.strip()
