@@ -33,7 +33,7 @@ if not os.path.exists(logs_dir):
     os.makedirs(logs_dir)
 log_path = os.path.join(logs_dir, 'simulation.log')
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename=log_path,
     filemode='w'
@@ -822,7 +822,7 @@ End your response with:
             self.scene_post_narrative = scene['post_narrative']
 
         #construct a list of characters in the scene in the order in which they appear
-        characters_in_scene = []
+        characters_in_scene: List[Character] = []
         for character_name in scene['action_order']:
             character = self.get_actor_by_name(character_name)
             if character_name == 'Context':
@@ -835,12 +835,15 @@ End your response with:
         x,y = self.map.random_location_by_terrain(location)
         characters_at_location = []
         scene_goals = {}
+        #set characters in scene at scene location
         for character in characters_in_scene:
             character.mapAgent.x = x
             character.mapAgent.y = y
-            character.look()
             characters_at_location.append(character)
-        
+
+        #now that all characters are in place, establish their goals
+        for character in characters_in_scene:
+            character.look() # important to do this after everyone is in place.
             goal_text = scene['characters'][character.name]['goal']
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
 

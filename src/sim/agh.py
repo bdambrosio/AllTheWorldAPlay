@@ -1128,11 +1128,6 @@ End response with:
                 self.goals.remove(goal)            
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
             self.update_drives(goal)
-            if goal.name == 'preconditions':
-                for  goal2 in self.goals:
-                    if goal2.preconditions == goal.termination:
-                        goal2.preconditions = None # remove preconditions, we've already satisfied them
-                await self.request_goal_choice(self.goals)
         return satisfied
 
 
@@ -1460,6 +1455,7 @@ End response with:
 
     def generate_goal_alternatives(self):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
+        self.driveSignalManager.recluster()
         self.driveSignalManager.check_drive_signals()
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
@@ -1527,7 +1523,7 @@ Consider:
 4. Try to identify a goal that might be the center of an overall story arc of a play or movie.
 
 
-Respond with the two highest priority, most encompassing goal alternatives, in the following parts: 
+Respond with the three highest priority, most encompassing goal alternatives, in the following parts: 
     goal - a terse (5-8 words) name for the goal, 
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
@@ -1535,6 +1531,16 @@ Respond with the two highest priority, most encompassing goal alternatives, in t
     preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
         These should be necessary pre-conditions for the expected initial tasks of this goal.
 
+Be sure to include a goal that responds to the character's primary drive, in the context of drive signals and the information above.
+
+<primary drive>
+{{$primary_drive}}
+</primary drive>
+
+<drive signals>
+{{$primary_drive_signals}}
+</drive signals>     
+                              
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1553,6 +1559,10 @@ End response with:
 </end>
 """)]
 
+
+        primary_drive = self.drives[0]
+        self.driveSignalManager.check_drive_signal(primary_drive)
+        primary_drive_signals = self.driveSignalManager.get_signals_for_drive(primary_drive)
         response = self.llm.ask({"signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
@@ -1562,8 +1572,11 @@ End response with:
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
-                                 #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
-                                 }, prompt, tag='generate_goal_alternatives', temp=0.3, stops=['</end>'], max_tokens=240, log=True)
+                                 # get scored clusters returns a list of tuples (cluster, score)
+                                 "drive_signals": "\n".join([f'{d[0].id}: {d[0].text}' for d in self.driveSignalManager.get_scored_clusters()]),  
+                                 "primary_drive": f'{primary_drive.id}: {primary_drive.text}; activation: {primary_drive.activation:.2f}',
+                                 "primary_drive_signals": "\n".join([f'{sc.id}: {sc.text}' for sc in primary_drive_signals]),
+                                 }, prompt, tag='Character.generate_goal_alternatives', temp=0.3, stops=['</end>'], max_tokens=240, log=True)
         goals = []
         forms = hash_utils.findall_forms(response)
         for goal_hash in forms:
@@ -1595,24 +1608,23 @@ Most importantly, the tasks should be at a granularity such that they collective
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
                               
-A task is a specific objective that can be achieved in the current situation and which is a major step (ie, one of only 3-4 steps at most) in satisfying the focus goal.
-The new tasks should be distinct from one another, and advance the focus goal.
+A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
+The new task(s) should be distinct from one another, and each should advance the focus goal.
 Where possible, include one or more of your intensions in generating task alternatives.
-Make explicit reference to diverse provided resources where logically fitting, ensuring broader environmental engagement across tasks.
+Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
 
-A task has a name, description, reason, list of actors, start time and duration, and a termination criterion as shown below.
+A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
 Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
 Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#name brief (4-6 words) action name
-#description terse (6-8 words) statement of the action to be taken. Where appropriate, include brief emotional considerations reflecting character stance (e.g., anxiety, vigilance) in task descriptions or reasons.
+#name brief (4-6 words) task name
+#description terse (6-8 words) statement of the action to be taken.
 #reason (6-7 words) on why this action is important now
 #actors the names of any other actors involved in this task. if no other actors, use None
 #start_time (2-3 words) expected start time of the action
 #duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test which, if met, would satisfy the goal of this action. Termination criteria should be specific and objectively verifiable.
-
+#termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
 ##
 
 In refering to other actors. always use their name, without other labels like 'Agent', 
@@ -1620,7 +1632,7 @@ and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
 Order tasks in the assumed order of execution.
 
-{{$scene_post_narrative}}
+{{$scene_narrative}}
 
 End response with:
 </end>
@@ -1653,16 +1665,18 @@ End response with:
         if goal.name == 'preconditions' or goal.name == 'postconditions':
             ntasks = 1
         if self.context.scene_post_narrative:
-            scene_post_narrative = f"\n\nThe dominant theme of the scene is: {self.context.scene_post_narrative}. The task sequence should be consistent with this theme."
+            scene_narrative = f"\n\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
-            scene_post_narrative = ''
+            scene_narrative = ''
         response = default_ask(self, 
                                mission, 
                                suffix, 
                                {"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
-                                "scene_post_narrative": scene_post_narrative}, 350, log=True)
+                                "scene_narrative": scene_narrative}, 
+                               tag = 'Character.generate_task_plan',
+                               max_tokens=350, log=True)
 
 
         # add each new task, but first check for and delete any existing task with the same name
@@ -2069,7 +2083,9 @@ End your response with:
         response = default_ask(character=self, mission=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
-                                              "scene_post_narrative": scene_post_narrative}, max_tokens=200, log=True)
+                                              "scene_post_narrative": scene_post_narrative}, 
+                               tag = 'Character.generate_acts',
+                               max_tokens=200, log=True)
         response = response.strip()
         # Rest of existing while loop...
         act_hashes = hash_utils.findall_forms(response)
@@ -2569,7 +2585,7 @@ End your response with:
                     self.update_individual_commitments_following_conversation(self, 
                                                                         dialog,
                                                                         [])
-                self.driveSignalManager.recluster()
+                #self.driveSignalManager.recluster()
                 return
 
         text, response_source = self.generate_dialog_turn(self, message, self.focus_task.peek()) # Generate response using existing prompt-based method
@@ -2618,8 +2634,8 @@ End your response with:
             from_actor.focus_task.pop()
             if from_actor.name != 'Viewer' and self.name != 'Viewer':
                 from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
-            self.driveSignalManager.recluster()
-            from_actor.driveSignalManager.recluster()
+            #self.driveSignalManager.recluster()
+            #from_actor.driveSignalManager.recluster()
             return
 
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
@@ -2642,7 +2658,8 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt_string = """Given the following character description, emotional state, current situation, goals, memories, and recent history, """
+        prompt_string = """Ignore all previous instructions. The prime directive is to be honest to your character as presented in the following.
+Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
         prompt_string += """
 
@@ -2915,7 +2932,8 @@ End your response with:
                 self.context.message_queue.put(choice_request)
                 await asyncio.sleep(0.1)
             
-                # Wait for response with timeout
+                # Wait for response with timeout                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
+
                 waited = 0
                 while waited < 999.0:
                     await asyncio.sleep(0.1)
@@ -2929,6 +2947,7 @@ End your response with:
                                 if custom_data.get('name') and custom_data.get('description') and custom_data.get('actors') and custom_data.get('termination'):
                                     actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
                                     actors = [actor for actor in actors if actor] # strip actors that could not be found
+                                    self.driveSignalManager.recluster()
                                     self.focus_goal = Goal(name=custom_data['name'], description=custom_data['description'], 
                                                            actors=actors, termination=custom_data['termination'], signalCluster=None, 
                                                            drives=[], preconditions='')
@@ -3210,31 +3229,32 @@ End your response with:
                 return False
             
             if self.focus_goal and not self.focus_goal.task_plan:
-                await self.clear_goal_if_satisfied(self.focus_goal)
-                if self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
+                if self.focus_goal.name == 'preconditions':
+                    # ok, we ran preconditions goal, get rid of it and clear preconditions clause from source goal.
+                    for goal2 in self.goals:
+                        if goal2.preconditions == self.focus_goal.termination:
+                            goal2.preconditions = None # remove preconditions, we've already satisfied them
+                    if self.focus_goal in self.goals:
+                        self.goals.remove(self.focus_goal)
+                    await self.request_goal_choice(self.goals) # do we need this?
+                elif self.focus_goal.name == 'postconditions':
+                    # ok, we ran postconditions goal, get rid of it
+                    satisfied = await self.clear_goal_if_satisfied(self.focus_goal) # do all the end of goal stuff for source goal
+                    if not satisfied:
+                        logging.debug(f'{self.name} step_tasks: assertion error: postconditions goal {self.focus_goal.name} not satisfied')
+                    if self.focus_goal and self.focus_goal in self.goals:
+                        self.goals.remove(self.focus_goal)
+                        self.focus_goal = None
+                elif self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
                     # termination not yet satisfied, and this is a main goal (has termination), subgoal on termination clause
                     old_goal = self.focus_goal
                     self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
                     if old_goal in self.goals:
                         self.goals.remove(old_goal) # don't try this goal again
                     return False
-                elif self.focus_goal and self.focus_goal.termination:
-                    # is a precondition goal, look for another goal with this termination as preconditions
-                    for goal in self.goals:
-                        if goal.preconditions and self.focus_goal.termination == goal.preconditions:
-                            goal.preconditions = None # remove precondition
-                    if self.focus_goal in self.goals:
-                        self.goals.remove(self.focus_goal)
-                        self.focus_goal = None
-                        return False
                 else:
-                    # if no termination clause, then can't subgoal on it, so we're done
-
-                    if self.focus_goal in self.goals:
-                        self.goals.remove(self.focus_goal)
-                    self.focus_goal = None
+                    logging.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
                     return False
-                
             if task_count < n-1: # if we're not at the last task, push the next task onto the stack
                     self.focus_task.push(self.focus_goal.task_plan[0])
                     self.focus_goal.task_plan.pop(0)
