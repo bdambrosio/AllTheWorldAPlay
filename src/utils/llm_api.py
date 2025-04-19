@@ -50,6 +50,7 @@ vllm_model = '/home/bruce/Downloads/models/Qwen2.5-32B-Instruct'
 vllm_model = '/home/bruce/Downloads/models/gemma-3-27b-it'
 vllm_model = '/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B'
 vllm_model = '/home/bruce/Downloads/models/phi-4'
+vllm_model = 'google/gemma-3-27b-it'
 
 elapsed_times = {}
 iteration_count = 0

@@ -13,9 +13,6 @@ class Human(Character):
 
     def hear(self, from_actor, message, source='dialog', respond=True):
         pass
-
-    def generate_response(self, from_actor, message, source):
-        pass
     
     def tell(self, to_actor, message, source='inject', respond=True):
         pass

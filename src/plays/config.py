@@ -6,6 +6,6 @@ server_name='local'
 #server_name='openai'
 #server_name='gemini'
 #server_name='gemini-pro'
-#server_name='Grok'
+#server_name='Grok' ; 
 #server_name='Cohere'
-#server_name='openrouter'; model='meta-llama/llama-4-scout'
+#server_name='openrouter'; model='meta-llama/llama-4-maverick'

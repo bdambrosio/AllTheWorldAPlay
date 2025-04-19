@@ -723,7 +723,6 @@ water: the water resources visible
             if actor == self:
                 return
             message = f"Hi, I'm {self.name}"
-            actor.tell(self, message)
             actor.show += f'\n{self.name}: {message}'
             return
     
@@ -1446,9 +1445,10 @@ End response with:
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
 
-        self.goals.extend(goals)
+
         if len(goals) > 0:
             self.focus_goal = goals[0]
+            self.goals.extend(goals)
         if len(goals) > 1:
             print(f'{self.name} generated {len(goals)} goals for scene!')
         return goals
