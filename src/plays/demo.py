@@ -25,8 +25,8 @@ You express yourself with careful consideration, often using artistic metaphors.
 """, server_name=server_name)
 
 Maya.drives = [
-    Drive("pursuing your artistic ambitions and professional recognition."),
-    Drive("maintaining and deepening your relationship with Elijah and your community."),
+    Drive("Pursue your artistic ambitions and professional recognition."),
+    Drive("maintain and deepening your relationship with Elijah and your community."),
     Drive("finding balance between personal fulfillment and meaningful connections."),
     Drive("achieving stability and security for your future.")
 ]

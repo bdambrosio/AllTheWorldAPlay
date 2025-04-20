@@ -39,14 +39,14 @@ class SuburbanResource(Enum):
 # Main character - person with morning routine and job
 Alex = agh.Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
 You live in a suburban house with your significant other Susan.
-Your main priority is to get to the job interview on time, make a good impression, and get the job.
+Your main priority is to get a job.
 You're organized but often running late in the mornings.
 You speak in a pragmatic, straightforward manner.
 """, server_name=server_name)
 
 Alex.drives = [
     Drive("Be financially secure."),
-    Drive("get to the job interview on time and making a good impression, and get the job"),
+    Drive("Have happy life with Susan.")
 ]
 
 

@@ -606,7 +606,7 @@ Ensure your response reflects this change.
         if new_situation is None:
             return
         self.current_state = new_situation
-        if local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
+        if local_only or self.simulation_time - self.last_update_time > timedelta(minutes=15):
             self.last_update_time = self.simulation_time
             return
         self.show = new_situation
