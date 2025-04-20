@@ -3210,7 +3210,7 @@ End your response with:
                                                   relationsOnly=self.step % self.update_interval != 0 )
         self.step += 1
 
-        if self.focus_goal:
+        if self.focus_goal and not narrative:
             satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
             if satisfied:
                 self.focus_goal = None
@@ -3313,8 +3313,8 @@ End your response with:
             if self.focus_task.peek() == task_to_run:
                 self.focus_task.pop()
                 print(f'{self.name} step_tasks: task {task_to_run.name} still on focus stack, invariant violated')
-            if self.focus_goal:
-                self.clear_goal_if_satisfied(self.focus_goal)
+            #if self.focus_goal:
+            #    self.clear_goal_if_satisfied(self.focus_goal)
         return 
             
         
