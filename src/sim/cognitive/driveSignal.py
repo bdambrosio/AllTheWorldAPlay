@@ -188,8 +188,7 @@ The basic personality of the character for whom you are updating the drive is:
 
 {{$character}}
 
-
-Use your knowledge of human and animal nature, together with your understanding of story and narrative arc, to create a significant update to this drive.
+Use your knowledge of human and animal nature, together with your understanding of story and narrative arc, to create an evolution of this drive.
                               
 Respond with the updated drive (8-12 words) only.
 Do not include any introductory, explanatory, formative or discursive text.

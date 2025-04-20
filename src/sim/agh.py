@@ -400,6 +400,8 @@ class Character:
             name = hash_utils.find('task', task_hash)
         description = hash_utils.find('description', task_hash)
         reason = hash_utils.find('reason', task_hash)
+        if not reason:
+            reason = ' '
         termination = hash_utils.find('termination', task_hash)
         start_time = hash_utils.find('start_time', task_hash)
         duration = hash_utils.find('duration', task_hash)
@@ -1055,16 +1057,18 @@ End response with:
         if hasattr(goal, 'drives'):
             for drive in goal.drives:
                 drive.satisfied_goals.append(goal)
-                if len(drive.attempted_goals) > 0:
-                    if drive in self.drives: # only update if drive still exists, may have already been rewritten
-                        update = drive.update_on_goal_completion(self, goal)
-                        if update:
-                            try:
-                                self.drives.remove(drive)
-                                # remove from any signalClusters too!
-                            except:
-                                pass
-                            self.drives.append(update)
+                # don't update the primary drive
+                if drive is not self.drives[0]:
+                    if len(drive.attempted_goals) > 0:
+                        if drive in self.drives: # only update if drive still exists, may have already been rewritten
+                            update = drive.update_on_goal_completion(self, goal)
+                            if update:
+                                try:
+                                    self.drives.remove(drive)
+                                    # remove from any signalClusters too!
+                                except:
+                                    pass
+                                self.drives.append(update)
 
     async def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
@@ -1093,7 +1097,7 @@ End response with:
                 pass #self.focus_goal.tasks_completed.append(task)
             self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n  {task.to_string()}"
             self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
-            self.achievments.append(task.short_string())
+            self.achievments.append(task.termination)
             self.update()
             await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
  
@@ -1118,15 +1122,20 @@ End response with:
 
         if satisfied:
             self.goal_history.append(goal)
-            if goal == self.focus_goal:
-                self.focus_goal = None
+            if goal.name != 'preconditions':
+                # remove preconditions goal if it is satisfied
+                for goal in self.goals.copy():
+                    if goal.name == 'preconditions' and goal.description == self.focus_goal.preconditions:
+                        self.goals.remove(goal)
             self.context.current_state += f"\nFollowing goal has been satisfied. This may invalidate parts of the above:\n{goal.to_string()}"
             self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
-            self.achievments.append(goal.short_string())
+            self.achievments.append(goal.termination)
             if goal in self.goals:
                 self.goals.remove(goal)            
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
             self.update_drives(goal)
+            if self.focus_goal is goal:
+                self.focus_goal = None
         return satisfied
 
 
@@ -1481,6 +1490,7 @@ A goal in this context is an overarching objective that captures the central top
 {{$character}}
 </character>
 
+Recent events. Ignore those that conflict with achievements noted below, they are superceded by subsequent events.
 <recent_events>
 {{$recent_events}}
 </recent_events>
@@ -1498,6 +1508,7 @@ Relationships are the character's relationships with other actors.
 {{$relationships}}
 </relationships>
                               
+Recent memories. Ignore those that seem to conflict with achievements
 <recent_memories>
 {{$recent_memories}}
 </recent_memories>
@@ -1516,14 +1527,21 @@ Following are memories relevant to the signalClusters above. Consider them in yo
 {{$signal_memories}}
 </signal_memories>
 
+Following are the character's achievments to date:
+
+<achievments>
+{{$achievments}}
+</achievments>
+
 Consider:
 1. What is the central issue / opportunity / obligation demanding the character's attention?
 2. Any patterns or trends in the past goals, tasks, or actions that might affect the choice of goal?
 3. Identify any other actors involved in the goal, and their relationships to the character.
 4. Try to identify a goal that might be the center of an overall story arc of a play or movie.
+5. Goals must be distinct from one another.
 
 
-Respond with the three highest priority, most encompassing goal alternatives, in the following parts: 
+Respond with up to three highest priority, most encompassing goal alternatives, in the following parts: 
     goal - a terse (5-8 words) name for the goal, 
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
@@ -1531,7 +1549,8 @@ Respond with the three highest priority, most encompassing goal alternatives, in
     preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
         These should be necessary pre-conditions for the expected initial tasks of this goal.
 
-Be sure to include a goal that responds to the character's primary drive, in the context of drive signals and the information above.
+Be sure to include a goal that responds to the character's primary drive, in the context of drive signals and the information above. 
+Other goals must not duplicate or significantly overlap this goal. 
 
 <primary drive>
 {{$primary_drive}}
@@ -1572,6 +1591,7 @@ End response with:
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
+                                 "achievments": '\n'.join(self.achievments[:6]),
                                  # get scored clusters returns a list of tuples (cluster, score)
                                  "drive_signals": "\n".join([f'{d[0].id}: {d[0].text}' for d in self.driveSignalManager.get_scored_clusters()]),  
                                  "primary_drive": f'{primary_drive.id}: {primary_drive.text}; activation: {primary_drive.activation:.2f}',
@@ -1603,7 +1623,7 @@ End response with:
             goal = self.focus_goal
         suffix = """
 
-Create about {{$ntasks}} specific, actionable tasks, individually distinct and collectively exhaustive for achieving the focus goal.
+Create up to {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
 Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
@@ -1627,6 +1647,10 @@ be careful to insert line breaks only where shown, separating a value from the n
 #termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
 ##
 
+Start with an appropriate task recognizing previous achievments. 
+
+{{$achievments}}
+
 In refering to other actors. always use their name, without other labels like 'Agent', 
 and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
@@ -1637,7 +1661,7 @@ Order tasks in the assumed order of execution.
 End response with:
 </end>
 """
-        mission = """create a sequence of {{$ntasks}} tasks to achieve the focus goal: 
+        mission = """create a sequence of up to {{$ntasks}} tasks to achieve the focus goal: 
 
 {{$focus_goal}}
 
@@ -1674,6 +1698,7 @@ End response with:
                                {"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
+                                "achievments": '\n'.join(self.achievments[:5]),
                                 "scene_narrative": scene_narrative}, 
                                tag = 'Character.generate_task_plan',
                                max_tokens=350, log=True)
@@ -1681,7 +1706,9 @@ End response with:
 
         # add each new task, but first check for and delete any existing task with the same name
         task_plan = []
-        for task_hash in hash_utils.findall_forms(response):
+        for t, task_hash in enumerate(hash_utils.findall_forms(response)):
+            if t > ntasks:
+                break
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
             if not self.focus_goal:
                 print(f'{self.name} generate_plan: no focus goal, skipping task')
@@ -1748,7 +1775,9 @@ Consider these factors in determining task completion:
 - Environmental or time constraints
 - "Good enough" vs perfect completion
 
-For concrete termination checks (e.g., 'sufficient food gathered'), the full completion criterion is the actual achievement of the termination check, not merely thought, conversation, or movement towards it."""),
+For concrete termination checks (e.g., 'sufficient food gathered'), the full completion criterion is the actual achievement of the termination check, not merely thought, conversation, or movement towards it.
+A good way to test completion is to first generate a concise statement of actual achievement, and then test if the statement satisfies the termination check.
+Do not output your reasoning or your achievment statement."""),
                   UserMessage(content="""
                               
 <situation>
@@ -1824,7 +1853,9 @@ End your response with:
                 await asyncio.sleep(0.1)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
-            if progress/100.0 > random.random():
+            if type == 'task': threshold = 0.0
+            else: threshold = 0.1 # goal threshold is higher
+            if progress/100.0 > random.random() + threshold:
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
                 statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
                 self.add_perceptual_input(statement, mode='internal')
@@ -2814,11 +2845,15 @@ End your response with:
         return '\n'.join(task_list)
     
 
-    def admissible_goals(self, goals):
+    async def admissible_goals(self, goals):
         """test if any of the goals meet preconditions"""
         admissible_goals = []
         impossible_goals = []
-        for goal in goals:
+        for goal in goals.copy():
+            # test, goal may have been cleared by completion of another goal
+            sat = await self.clear_goal_if_satisfied(goal)
+            if not goal in self.goals:
+                continue
             if goal.preconditions:
                 prompt = [UserMessage(content="""Given the following goal and current situation, determine if the goal preconditions are weakly satisfied.
 In this determination, assume a condition is satisfied unless there is evidence to the contrary.
@@ -2864,11 +2899,11 @@ End your response with:
 
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
-                                         'achievments': '\n'.join(self.achievments),
-                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
+                                         'achievments': '\n'.join(self.achievments[:5]),
+                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(5)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
-                                         prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=180, log=True)
+                                         prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
                 if response:
                     admissible = xml.find('admissible', response)
                     impossible = xml.find('impossible', response)
@@ -2891,7 +2926,7 @@ End your response with:
         if self.autonomy.goal:
             no_admissible_goals = True
             untried = True
-            admissible_goals, impossible_goals = self.admissible_goals(goals)
+            admissible_goals, impossible_goals = await self.admissible_goals(goals)
             if len(admissible_goals) == 0:
                 for goal in goals.copy():
                     if goal.preconditions:
@@ -2900,7 +2935,7 @@ End your response with:
                         self.goals.append(subgoal)
                         admissible_goals.append(subgoal)
 
-            self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.9)
+            self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.5)
             return self.focus_goal
 
         else:
@@ -3175,14 +3210,23 @@ End your response with:
                                                   relationsOnly=self.step % self.update_interval != 0 )
         self.step += 1
 
-        if not self.goals or len(self.goals) == 0:
+        if self.focus_goal:
+            satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+
+        if not self.focus_goal and (not self.goals or len(self.goals) == 0):
             self.update()
             self.generate_goal_alternatives()
-        await self.request_goal_choice(self.goals)
+            await self.request_goal_choice(self.goals)
+            for goal in self.goals.copy():
+                if goal is self.focus_goal:
+                    pass
+                else:
+                    self.goals.remove(goal) # once we've selected a goal, remove all other goals
+        
         if not self.focus_goal:
-            print(f'{self.name} cognitive_cycle: no focus goal')
+            await self.request_goal_choice(self.goals)
 
-        if not self.focus_goal or not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0:
+        if self.focus_goal and (not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0):
             self.generate_task_plan(self.focus_goal)
         
         logging.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
@@ -3248,9 +3292,12 @@ End your response with:
                 elif self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
                     # termination not yet satisfied, and this is a main goal (has termination), subgoal on termination clause
                     old_goal = self.focus_goal
-                    self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
-                    if old_goal in self.goals:
-                        self.goals.remove(old_goal) # don't try this goal again
+                    satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+                    if not satisfied:
+                        logging.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
+                        self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
+                        if old_goal in self.goals:
+                            self.goals.remove(old_goal) # don't try this goal again
                     return False
                 else:
                     logging.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
