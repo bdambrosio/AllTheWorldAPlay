@@ -8,4 +8,4 @@ server_name='local'
 #server_name='gemini-pro'
 #server_name='Grok' ; 
 #server_name='Cohere'
-#server_name='openrouter'; model='meta-llama/llama-4-maverick'
+server_name='openrouter'; model='meta-llama/llama-4-maverick'

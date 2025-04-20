@@ -857,7 +857,7 @@ End your response with:
                     characters_finished_tasks.append(character)
                     continue
                 else:
-                    await character.cognitive_cycle()
+                    await character.cognitive_cycle(narrative=True)
 
 
     def load_narrative(self, narrative):

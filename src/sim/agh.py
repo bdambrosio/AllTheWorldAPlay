@@ -3194,7 +3194,7 @@ End your response with:
 
 
 
-    async def cognitive_cycle(self, sense_data='', ui_queue=None):
+    async def cognitive_cycle(self, sense_data='', narrative=False, ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
         self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
@@ -3212,8 +3212,12 @@ End your response with:
 
         if self.focus_goal:
             satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+            if satisfied:
+                self.focus_goal = None
 
         if not self.focus_goal and (not self.goals or len(self.goals) == 0):
+            if narrative:
+                return
             self.update()
             self.generate_goal_alternatives()
             await self.request_goal_choice(self.goals)
@@ -3309,6 +3313,8 @@ End your response with:
             if self.focus_task.peek() == task_to_run:
                 self.focus_task.pop()
                 print(f'{self.name} step_tasks: task {task_to_run.name} still on focus stack, invariant violated')
+            if self.focus_goal:
+                self.clear_goal_if_satisfied(self.focus_goal)
         return 
             
         
