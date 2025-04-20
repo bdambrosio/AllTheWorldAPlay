@@ -2935,7 +2935,10 @@ End your response with:
                         self.goals.append(subgoal)
                         admissible_goals.append(subgoal)
 
-            self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.5)
+            if len(admissible_goals) > 0:
+                self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.5)
+            else:
+                self.focus_goal = None
             return self.focus_goal
 
         else:
@@ -3008,9 +3011,11 @@ End your response with:
                 self.focus_task.push(self.focus_goal.task_plan[0])
                 self.focus_goal.task_plan.pop(0)
                 return self.focus_task.peek()
-            else:
+            elif len(tasks) > 0:
                 self.focus_task.push(choice.exp_weighted_choice(tasks, 0.67))
                 return self.focus_task.peek()
+            else:
+                return None
         else:
             choice_request = {
                     'text': 'task_choice',
