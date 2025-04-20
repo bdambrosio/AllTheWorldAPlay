@@ -27,7 +27,9 @@ Why?
 Limitations:
 This is very much *Alpha* software. In particular, load/save only saves actor-models (high priority, design complete). Also, this is not clone and run. There may be hardcoded paths you will need to edit for things like LLM model files, for example (post an issue, please!). It doesn't (yet) know about your GPU config, or, if you are using cloud services, has most of the major direct providers, see src/plays/config.py Finally, it is slow. Faster than real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor. So, for example, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. openai o1-mini or comparable competitors aren't bad, gemma-3-27b-it is fun to run local.
 
-So this is NOT at this time for those unprepared to dig into the software at all the levels required to make llm-based raw python work. However, I can promise to work hard to support anyone willing to give it a try. E.G. find a hardcoded path I need to fix, post an issue!. Having said that, I'm a lone developer, and load/save, porting the remaining plays from older format, and more documentation (e.g. how to write plays, and the scenarios underneath them) are high priority. However, I get distracted by new ideas, hence the new narrative capability
+So this is NOT at this time for those unprepared to dig into the software at all the levels required to make llm-based raw python work. However, I can promise to work hard to support anyone willing to give it a try. E.G. find a hardcoded path I need to fix, post an issue!. Having said that, I'm a lone developer, and load/save, porting the remaining plays from older format, and more documentation (e.g. how to write plays, and the scenarios underneath them) are high priority. However, I get distracted by new ideas, hence the new narrative capability.
+
+More info in wiki.
 
 ## Installation:
 
