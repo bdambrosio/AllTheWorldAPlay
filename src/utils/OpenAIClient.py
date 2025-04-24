@@ -10,6 +10,7 @@ from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+model = 'gpt-4.1-mini'
 
 class OpenAIClient():
     DefaultEndpoint = 'https://api.openai.com'

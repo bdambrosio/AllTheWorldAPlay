@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 from utils.llm_api import LLM
 
-llm = LLM()
+llm = LLM('openai')
 # Define the cognitive metrics to evaluate
 goal_directedness = [UserMessage(content="""
 Read the following lines. For agent {{$name}}, identify one or more goals the agent appears to be pursuing. 
@@ -132,7 +132,7 @@ def evaluate_transcript(agents: List[str], transcript: str, window_size: int = 4
     print(f'lines {len(lines)}, window {window_size}')
     for n in range(len(dimensions)):
         for result in results[n]:
-            print(f'  agent {result["agent"]} {result["response"]}')
+            #print(f'  agent {result["agent"]} {result["response"]}')
             try:
                 score = hash_utils.find('score', result["response"]).strip()
                 score = int(score)
@@ -439,8 +439,8 @@ Samantha becomes more fatigued.
 World: 
 
     """
-    evaluate_transcript(agents, transcript)
-    sys.exit()
-    with open('/home/bruce/Downloads/AllTheWorldAPlay/src/sim/evaluation/baseline_script.txt', 'r') as f:
+    evaluate_transcript(agents, transcript, 60)
+
+    with open('/home/bruce/Downloads/AllTheWorldAPlay/src/sim/evaluation/Offer_04_23_2025.txt', 'r') as f:
         transcript = f.readlines()
-        results = evaluate_transcript('Samantha, Joe', '\n'.join(transcript))
+        results = evaluate_transcript(['Maya', 'Elijah', 'Chrys'], '\n'.join(transcript), 60)

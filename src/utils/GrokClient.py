@@ -5,13 +5,14 @@ from dataclasses import dataclass, asdict
 import json, os, sys
 from utils.Messages import SystemMessage, AssistantMessage, asdicts
 from utils.LLMRequestOptions import LLMRequestOptions
-import anthropic
+from openai import OpenAI
 
 api_key = os.environ["XAI_API_KEY"]
-client = anthropic.Client(
-  api_key=api_key,
-  base_url="https://api.x.ai",
-)# quick test of Claude API
+client = OpenAI(
+    base_url="https://api.x.ai/v1",
+    api_key=os.getenv("XAI_API_KEY"),
+)
+#quick test of Grok API
 """
 message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
 message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Grok}])
@@ -58,19 +59,22 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
             
     try:
 
-        response = client.messages.create(#model = 'grok-beta', 
+        response = client.chat.completions.create(#model = 'grok-beta', 
                                           #model = 'grok-mini-beta', 
-                                          model="grok-2-latest",
+                                          model="grok-3-mini-beta",
                                           messages = msgs,
-                                          stop_sequences = stop_sequences,
+                                          reasoning_effort="low",
+                                          #stop = stop_sequences, havent figured out how to use this yet for openAI
                                           max_tokens = max_t)
         #print(json.loads(response.json())["content"][0]["text"])
     except Exception as e:
         print(e)
         return {"status":'error', "message":{"content": str(e)}}
 
-    #print(json.loads(response.json())["content"][0]["text"])
-    response_text = json.loads(response.json())["content"][0]["text"].strip()
+   #print("\nFinal Response:")
+    #print(response.choices[0].message.content)
+    #response_text = json.loads(response.json())["content"][0]["text"].strip()
+    response_text = response.choices[0].message.content
     if type(stop_sequences) == list and len(stop_sequences) > 0 and response_text.endswith(stop_sequences[0]):
         response_text = response_text[:-len(stop_sequences[0])]
     return response_text

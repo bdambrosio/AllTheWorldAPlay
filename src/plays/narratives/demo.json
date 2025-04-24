@@ -1,135 +1,157 @@
 {
-  "title": "Harbor Crossroads",
-  "acts": [
-    {
-      "act_number": 1,
-      "act_title": "The Offer",
-      "scenes": [
-        {
-          "scene_number": 1,
-          "scene_title": "Evening Reflections",
-          "location": "Harbor Bench",
-          "characters": {"Maya": {"goal": "Share news about the gallery offer with Elijah"},
-            "Elijah": {"goal": "Share workshop expansion plans with Maya"}},
-          "action_order": ["Maya", "Elijah", "Maya"],
-          "pre_narrative": "Maya and Elijah sit overlooking the harbor at sunset, each holding news that will affect their future together.",
-          "post_narrative": "The tension of competing dreams emerges as they both realize their paths may be diverging rather than converging."
-        },
-        {
-          "scene_number": 2,
-          "scene_title": "Workshop Plans",
-          "location": "Boat Workshop",
-          "characters": {"Elijah": {"goal": "Show Maya his vision for their future in town"},
-            "Maya": {"goal": "Understand what staying would mean for her art"}},
-          "action_order": ["Elijah", "Maya", "Elijah"],
-          "pre_narrative": "Elijah proudly shows Maya his workshop expansion plans that represent his commitment to building their life together in the town.",
-          "post_narrative": "Maya sees the beauty in Elijah's vision but feels the weight of her own untapped potential and ambitions that point elsewhere."
-        },
-        {
-          "scene_number": 3,
-          "scene_title": "The Gallery Call",
-          "location": "Maya's Studio",
-          "characters": {"Chrys": {"goal": "Persuade Maya to accept the position"},
-            "Maya": {"goal": "Evaluate whether the opportunity is worth the sacrifice"}},
-          "action_order": ["Chrys", "Maya", "Chrys"],
-          "pre_narrative": "Chrys calls to follow up on the offer, painting an enticing picture of Maya's potential future in the city art scene.",
-          "post_narrative": "Maya is torn between excitement for the opportunity and guilt about what it would mean for her relationship with Elijah and the community."
-        }
-      ]
-    },
-    {
-      "act_number": 2,
-      "act_title": "Divided Hearts",
-      "scenes": [
-        {
-          "scene_number": 4,
-          "scene_title": "Community Connections",
-          "location": "Downtown",
-          "characters": {"Maya": {"goal": "Gauge what leaving would mean for her community ties"},
-            "Elijah": {"goal": "Demonstrate to Maya the value of their life in town"}},
-          "action_order": ["Maya", "Elijah", "Context"],
-          "pre_narrative": "Maya and Elijah walk through town, greeted warmly by locals who know and value them both.",
-          "post_narrative": "The deep connections they've built become apparent, making Maya's decision more complex as she sees the richness of the life she'd be leaving."
-        },
-        {
-          "scene_number": 5,
-          "scene_title": "Surprise Visit",
-          "location": "Gallery",
-          "characters": {"Chrys": {"goal": "Strengthen her connection with Maya and intrigue Elijah"},
-            "Maya": {"goal": "Show Elijah the possibilities of her career"},
-            "Elijah": {"goal": "Support Maya while assessing the gallery world"}},
-          "action_order": ["Chrys", "Maya", "Elijah"],
-          "pre_narrative": "Chrys makes a surprise visit to the coastal town, inviting Maya and Elijah to a pop-up exhibition she's organizing.",
-          "post_narrative": "Elijah sees Maya shine in the gallery environment, while Chrys subtly reveals her own interest in both Maya's art and Elijah himself, complicating the dynamics."
-        },
-        {
-          "scene_number": 6,
-          "scene_title": "Midnight Doubt",
-          "location": "Beach",
-          "characters": {"Maya": {"goal": "Process her conflicting desires"},
-            "Elijah": {"goal": "Come to terms with Maya's potential departure"}},
-          "action_order": ["Maya", "Elijah", "Context"],
-          "pre_narrative": "Unable to sleep, Maya walks the moonlit beach and finds Elijah already there, both grappling with their uncertain future.",
-          "post_narrative": "They express their deepest fears - Maya's fear of regret if she doesn't pursue her art career, Elijah's fear of losing her - leading to a painful but honest conversation about what they truly want."
-        }
-      ]
-    },
-    {
-      "act_number": 3,
-      "act_title": "Unexpected Pathways",
-      "scenes": [
-        {
-          "scene_number": 7,
-          "scene_title": "The Proposal",
-          "location": "Boat",
-          "characters": {"Elijah": {"goal": "Offer Maya a reason to stay"},
-            "Maya": {"goal": "Reconcile love with ambition"},
-            "Chrys": {"goal": "Secure Maya's talent for her gallery"}},
-          "action_order": ["Elijah", "Maya", "Chrys"],
-          "pre_narrative": "Elijah takes Maya out on his newly finished boat, revealing not just a proposal of marriage but also his idea for creating a cooperative waterfront arts space that could fulfill both their dreams.",
-          "post_narrative": "As Maya considers this unexpected compromise, Chrys arrives with a new offer that would allow Maya to split her time between the city gallery and coastal town, creating a potential third path."
-        },
-        {
-          "scene_number": 8,
-          "scene_title": "Creative Catalyst",
-          "location": "Bridge",
-          "characters": {"Maya": {"goal": "Find a solution that honors all parts of herself"},
-            "Elijah": {"goal": "Support Maya while protecting their relationship"},
-            "Chrys": {"goal": "Adapt her plans to the changing situation"}},
-          "action_order": ["Maya", "Elijah", "Chrys"],
-          "pre_narrative": "Standing on the bridge that connects the coastal town to the mainland, Maya experiences a moment of creative clarity about her art and her life.",
-          "post_narrative": "Maya proposes a bold new arrangement where she could create a series of works connecting city and coastal life, requiring travel but maintaining her home base with Elijah, while Chrys sees the marketing potential in this authentic narrative."
-        },
-        {
-          "scene_number": 9,
-          "scene_title": "The Decision",
-          "location": "Workshop Gallery",
-          "characters": {"Maya": {"goal": "Commit to a path forward"},
-            "Elijah": {"goal": "Embrace change without losing what matters most"},
-            "Chrys": {"goal": "Secure a business arrangement that benefits her gallery"}},
-          "action_order": ["Maya", "Elijah", "Chrys"],
-          "pre_narrative": "In Elijah's workshop, temporarily transformed into a gallery space for Maya's current work, the three come together to formalize their arrangement.",
-          "post_narrative": "They create a three-way partnership: Maya will be creative director for Chrys's city gallery part-time while also helping establish Elijah's workshop as a cooperative arts space, with Chrys providing city connections and investment."
-        }
-      ]
-    },
-    {
-      "act_number": 4,
-      "act_title": "Harbor Horizons",
-      "scenes": [
-        {
-          "scene_number": 10,
-          "scene_title": "New Beginnings",
-          "location": "Gallery Opening",
-          "characters": {"Maya": {"goal": "Celebrate the integration of her worlds"},
-            "Elijah": {"goal": "Support Maya's success while establishing their shared vision"},
-            "Chrys": {"goal": "Capitalize on the unique partnership"},
-            "Context": {"goal": "Reveal the transformed relationships and possibilities"}},
-          "action_order": ["Context", "Maya", "Elijah", "Chrys"],
-          "pre_narrative": "Six months later, Maya's first major exhibition opens, featuring works created between the coastal town and city, with the harbor workshop's satellite gallery connected via livestream to Chrys's city gallery.",
-          "post_narrative": "Maya and Elijah announce their engagement amidst the celebration, Chrys reveals plans for a coastal art festival featuring local craftspeople including Elijah, and all three recognize that by refusing to accept conventional limitations, they've created something more meaningful than they could have imagined alone. The final scene shows Maya painting at dawn, with the city skyline visible across the water, symbolizing not a choice between worlds but the creation of a new one that encompasses both."
-        }
-      ]
-    }
-  ]
-}
+    "title": "Splintered Tides (Play Draft)",
+    "acts": [
+      {
+        "act_number": 1,
+        "act_title": "Hairline Cracks",
+        "scenes": [
+          {
+            "scene_number": 1,
+            "scene_title": "Unread Letter",
+            "location": "Maya's Studio",
+            "characters": {
+              "Maya": { "goal": "Conceal the offer until she is sure of her choice" },
+              "Elijah": { "goal": "Sense what Maya is hiding and keep the evening warm" }
+            },
+            "action_order": ["Maya", "Elijah", "Maya"],
+            "task_limit": 5,
+            "pre_narrative": "Small studio, dim lamp, scent of linseed. Maya slips a sealed envelope under sketches just before Elijah enters. Both want connection, both dodge truth.",
+            "post_narrative": "A surface‑pleasant chat leaves a pulse of mistrust. Maya watches Elijah exit, envelope suddenly heavy."
+          },
+          {
+            "scene_number": 2,
+            "scene_title": "Rumor on the Wharf",
+            "location": "Dockside Tavern",
+            "characters": {
+              "Elijah": { "goal": "Confirm whispers that a city gallery wants Maya" },
+              "Maya": { "goal": "Deflect gossip and keep control of the story" }
+            },
+            "action_order": ["Elijah", "Maya", "Elijah"],
+            "task_limit": 5,
+            "pre_narrative": "Tavern back room, low voices and dartboard thuds. A fisherman’s off-hand joke about ‘big city art deals’ hangs in the air as Maya arrives.",
+            "post_narrative": "They share a brittle toast; unspoken questions crowd the room louder than the patrons."
+          },
+          {
+            "scene_number": 3,
+            "scene_title": "Deadlines",
+            "location": "Phone Booth by the Harbor",
+            "characters": {
+              "Chrys": { "goal": "Impose a 24‑hour ultimatum" },
+              "Maya": { "goal": "Buy time without losing the offer" }
+            },
+            "action_order": ["Chrys", "Maya", "Chrys", "Maya"],
+            "task_limit": 4,
+            "pre_narrative": "Rain taps metal booth. Chrys’s voice crackles with urgency; Maya clutches receiver, glancing toward town lights.",
+            "post_narrative": "Receiver down, Maya exhales—now a literal clock is ticking."
+          }
+        ]
+      },
+      {
+        "act_number": 2,
+        "act_title": "Riptide",
+        "scenes": [
+          {
+            "scene_number": 4,
+            "scene_title": "Blueprints & Fractures",
+            "location": "Boat Workshop",
+            "characters": {
+              "Elijah": { "goal": "Anchor Maya with a shared future here" },
+              "Maya": { "goal": "Confess the offer before Elijah hears it elsewhere" }
+            },
+            "action_order": ["Elijah", "Maya", "Elijah"],
+            "task_limit": 6,
+            "pre_narrative": "Sawdust, half‑built hull. Elijah unveils plans for an expanded community workspace.",
+            "post_narrative": "Maya’s disclosure splinters Elijah’s hopes; rolled‑out blueprints lie forgotten."
+          },
+          {
+            "scene_number": 5,
+            "scene_title": "City Lights, Cold Shadows",
+            "location": "Gallery Rooftop",
+            "characters": {
+              "Chrys": { "goal": "Seduce Maya with instant validation" },
+              "Maya": { "goal": "Test how the city feels on her skin" },
+              "Elijah": { "goal": "See if he belongs in Maya’s future world" }
+            },
+            "action_order": ["Chrys", "Maya", "Elijah"],
+            "pre_narrative": "String lights, skyline backdrop. Chrys introduces Maya as ‘the next coastal sensation’. Elijah stands slightly apart, nursing a glass.",
+            "post_narrative": "Applause fades; Elijah leaves early. Maya tastes triumph tinged with loss."
+          },
+          {
+            "scene_number": 6,
+            "scene_title": "Fault Line",
+            "location": "Old Pier at Night",
+            "characters": {
+              "Maya":   { "goal": "Make the hard choice aloud" },
+              "Elijah": { "goal": "Voice hurt without losing dignity" }
+            },
+            "action_order": ["Elijah", "Maya", "Elijah"],
+            "task_limit": 3,
+            "pre_narrative": "A single storm lantern swings in the wind, creaking boards beneath. Elijah has rehearsed calm words, but flares in anger.",
+            "post_narrative": "Elijah’s sudden flare of anger cracks the surface; both see the cost of Maya’s decision in stark relief before they part."
+          }
+                  ]
+      },
+      {
+        "act_number": 3,
+        "act_title": "Breakwater",
+        "scenes": [
+          {
+            "scene_number": 7,
+            "scene_title": "Empty Studio",
+            "location": "Maya's Vacant Studio",
+            "characters": {
+              "Elijah": { "goal": "Gather Maya’s forgotten pieces—decide what to keep, what to let go" }
+            },
+            "action_order": ["Elijah"],
+            "pre_narrative": "Single shaft of morning light. Dust dances; canvases stacked like memories.",
+            "post_narrative": "Elijah pockets a charcoal stub, locks up, shoulders heavier but spine straighter."
+          },
+          {
+            "scene_number": 8,
+            "scene_title": "Opening Night",
+            "location": "City Gallery Interior",
+            "characters": {
+              "Chrys": { "goal": "Claim success through Maya" },
+              "Maya": { "goal": "Own her triumph while feeling the cost" }
+            },
+            "action_order": ["Chrys", "Chrys", "Maya"],
+            "task_limit": 5,
+            "pre_narrative": "Empty rooftop ten minutes before guests arrive. Chrys rehearses a victory speech into her phone’s voice-memo—each take shorter, harder.",
+            "post_narrative": "After guests depart, Maya sketches a small boat on the back of a program, alone."
+          }
+        ]
+      },
+      {
+        "act_number": 4,
+        "act_title": "Undertow",
+        "scenes": [
+          {
+            "scene_number": 9,
+            "scene_title": "Crossing Paths",
+            "location": "Harbor Bridge Pre‑Dawn",
+            "characters": {
+              "Maya": { "goal": "See Elijah—not sure why" },
+              "Elijah": { "goal": "Protect his heart, yet meet her halfway" }
+            },
+            "action_order": ["Maya", "Elijah"],
+            "task_limit": 3,
+            "pre_narrative": "Grey light, gulls cry. They meet mid‑span, words scarce, eyes full.",
+            "post_narrative": "A shared silence richer than dialogue. They part again—futures ambiguous, connection undeniable."
+          },
+          {
+            "scene_number": 10,
+            "scene_title": "Low Tide Dawn",
+            "location": "Beach at Sunrise",
+            "characters": {
+              "Maya": { "goal": "Paint the honest aftermath" }
+            },
+            "action_order": ["Maya"],
+            "task_limit": 2,
+            "pre_narrative": "Stage left: empty horizon; stage right: easel planted in wet sand. Palette limited, intent fierce.",
+            "post_narrative": "Brush lifts. Lights fade on Maya mid‑stroke—story unresolved, life in motion."
+          }
+        ]
+      }
+    ]
+  }
+  

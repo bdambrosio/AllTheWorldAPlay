@@ -1625,6 +1625,7 @@ End response with:
 
 Create up to {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
 Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
+Each task should be an important component of the overall narrative arc of the scene achieving the focus goal. Do not include tasks merely to fill time or number of tasks.
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
                               
@@ -1688,6 +1689,8 @@ End response with:
         ntasks = 4
         if goal.name == 'preconditions' or goal.name == 'postconditions':
             ntasks = 1
+        elif self.context.current_scene:
+            ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
         if self.context.scene_post_narrative:
             scene_narrative = f"\n\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
