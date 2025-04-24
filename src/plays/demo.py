@@ -79,4 +79,9 @@ Maya and Elijah are sitting on a bench overlooking the harbor, where Elijah's ne
 scenario_module=coastal,
 server_name=server_name)
 
+Maya.mapAgent.move_to_resource('Workshop')
+Elijah.mapAgent.move_to_resource('Workshop')
+Chrys.mapAgent.move_to_resource('Gallery')
+
 narrative='demo.json' # comment this out for normal unscripted play.
+

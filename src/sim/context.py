@@ -7,8 +7,8 @@ import random
 import logging
 from queue import Queue
 from typing import TYPE_CHECKING
-from sim import map
-from src.sim.referenceManager import ReferenceManager
+import sim.map as map
+from sim.referenceManager import ReferenceManager
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import utils.choice as choice
 from typing import List
 import asyncio
-from sim.prompt import ask as default_ask
+from prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
@@ -100,6 +100,7 @@ class Context():
         self.last_updates = '' # for world updates from recent acts
         self.last_update_time = self.simulation_time
         self.narrative = None
+        self.current_scene = None
         self.scene_pre_narrative = '' # setting up the scene
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
 
@@ -808,12 +809,23 @@ End your response with:
         except Exception as e:
             print(f'Error choosing delay: {e}')
             return 0.0
+        
+    def compute_task_plan_limits(self, scene):
+        """Compute the task plan limits for a scene"""
+        characters_in_scene = scene.get('characters', ['a','b'])
+        try:
+            task_limit = scene.get('task_limit', 3*len(characters_in_scene))/len(characters_in_scene)
+        except Exception as e:
+            print(f'Error computing task plan limits: {e}')
+            task_limit = 3*len(characters_in_scene)
+        return task_limit
 
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
         self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]}'})
         await asyncio.sleep(0.1)
+        self.current_scene = scene
         if scene.get('pre_narrative'):
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
