@@ -13,6 +13,7 @@
 ![Play screenshot](docs/images/WebworldMain.png)
 
 more at [Slide Show](http://www.tuuyi.com)
+or [Devin] (https://deepwiki.com/bdambrosio/AllTheWorldAPlay)
 
 ## A stage on which plays are presented, with AI cognitive agents as actors.
 
