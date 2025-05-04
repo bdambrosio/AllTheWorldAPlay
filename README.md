@@ -1,6 +1,7 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
+- MAJOR upgrade - full automatic narrative generation. stick with release for older version, this one is incompatible. Still Alpha, needs more testing and documentation. 'Narrative' button probably doesn't work. See existing plays. declaration of map_file is what triggers the new narrative level.
 - Multi-act plays! Fully self-generated. For now only an early draft release of narrative-following, with narratives in src/plays/narratives. These are auto-generated from play and scenario files, I'll release the auto-gen code after a few more tweaks/tests. See wiki for more.
 - Major debug cycle on the overall character cognitive cycle. Longer term action stays on task better, imho. 
 - Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
