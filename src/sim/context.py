@@ -1,4 +1,6 @@
 from __future__ import annotations
+from asyncio.log import logger
+import copy
 import json
 import os
 from pathlib import Path
@@ -6,9 +8,11 @@ import traceback
 import random
 import logging
 from queue import Queue
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, cast
 import sim.map as map
 from sim.referenceManager import ReferenceManager
+from sim.cognitive.EmotionalStance import EmotionalStance
+from sim.narrativeCharacter import NarrativeCharacter
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -20,34 +24,11 @@ from prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
 
-print(f"Current working directory: {os.getcwd()}")
-print(f"Absolute path of this file: {os.path.abspath(__file__)}")
-print(f"Directory of this file: {os.path.dirname(os.path.abspath(__file__))}")
 
-log_path = os.path.join(os.getcwd(), 'simulation.log')
-print(f"Attempting to create log file at: {log_path}")
-
-home = str(Path.home())
-logs_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'logs/')
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
-log_path = os.path.join(logs_dir, 'simulation.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename=log_path,
-    filemode='w'
-)
-
-# Test write
-logging.info("Test message")
-logging.getLogger().handlers[0].flush()
-
-# Verify file exists
-print(f"File exists after write: {os.path.exists(log_path)}")
+logger = logging.getLogger('simulation_core')
 
 class Context():
-    def __init__(self, characters, description, scenario_module, server_name=None):
+    def __init__(self, characters, description, scenario_module, server_name=None, model_name=None):
         """Initialize a context with characters and world description
         
         Args:
@@ -62,6 +43,7 @@ class Context():
         self.description = description
         self.scenario_module = scenario_module
         self.server_name = server_name
+        self.model_name = model_name
         # Initialize characters in world
         for character in characters:
             character.context = self
@@ -72,9 +54,10 @@ class Context():
         self.actors: List[Character] = characters
         self.npcs = [] # created as needed
         self.map = map.WorldMap(60, 60, scenario_module)
-        self.step = '0 hours'  # amount of time to step per scene update
+        self.step = False  # Boolean step indicator from simulation server
+        self.run = False # Boolean run indicator from simulation server
         self.name = 'World'
-        self.llm = llm_api.LLM(server_name)
+        self.llm = llm_api.LLM(server_name, model_name)
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = '0 hours'  # Amount to advance each step
         # Add new fields for UI independence
@@ -103,6 +86,8 @@ class Context():
         self.current_scene = None
         self.scene_pre_narrative = '' # setting up the scene
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
+        self.play_file = None
+        self.map_file = None
 
         for actor in self.actors:
             #place all actors in the world
@@ -124,6 +109,51 @@ class Context():
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
 
+    
+    def repair_json(self, response, error):
+        """Repair JSON if it is invalid"""
+        prompt = [UserMessage(content="""You are a JSON repair tool.
+Your task is to repair the following JSON:
+
+<json>
+{{$json}}
+</json> 
+
+The reported error is:
+{{$error}}
+
+Respond with the repaired JSON string. Make sure the string is in a format that can be parsed by the json.loads function. No commentary, no code fences.
+""")]
+        response = self.llm.ask({"json": response, "error": error}, prompt, tag='repair_json', temp=0.2, max_tokens=3500)
+        try:
+            return json.loads(response.replace("```json", "").replace("```", "").strip())
+        except Exception as e:
+            print(f'Error parsing JSON: {e}')
+            return None
+
+    def reserialize_narrative_json(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validates the narrative JSON structure and returns (is_valid, error_message)
+        """
+        # Check top-level structure
+        if not isinstance(json_data, dict):
+            return False, "Root must be a JSON object"
+        reserialized = copy.deepcopy(json_data)
+        for act in reserialized["acts"]:
+            if "scenes" not in act or not isinstance(act["scenes"], list):
+                continue
+            for scene in act["scenes"]:
+                if isinstance(scene["time"], datetime):
+                    scene["time"] = scene["time"].isoformat()
+                else:
+                    print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
+        return reserialized
+
+    def reserialize_act_to_string(self, act: Dict[str, Any]) -> str:
+        """Reserialize the act to a string"""
+        serialized_str = self.reserialize_narrative_json({"acts":[act]})
+        return json.dumps(serialized_str['acts'][0], indent=2)
+
     def extract_simulation_time(self, situation):
         # Extract simulation time from situation description
         prompt = [UserMessage(content="""You are a simulation time extractor.
@@ -133,44 +163,48 @@ Your task is to extract the exact time of day and datefrom the following situati
 {{$situation}}
 </situation>
 
-Respond with the simulation time in a format that can be parsed by the datetime.parse function, assuming reasonable defaults for missing components based on the context of the situation.
+Respond with the simulation time in a isoformat string that can be parsed by the datetime.parse function. Supply missing components using reasonable defaults based on the context of the situation.
 Respond with two lines in exactly this format:
-TIME: HH:MM AM/PM
-DATE: Month DD
 
-If either piece of information is not explicitly stated in the text, make a reasonable inference based on context clues (e.g., "early morning" suggests morning time, "soft light" might suggest spring or summer). 
-If absolutely no information is available for either field, use "unknown" for that field.
+#year yyyy, e.g. 2001
+#month mm, e.g. 05
+#day dd, e.g. 15
+#hour hh, e.g. 15
+#ampm am/pm, e.g. pm
+
+
+If any piece of information is not explicitly stated in the text, make a reasonable inference based on context clues (e.g., "early morning" suggests morning time, "soft light" might suggest spring or summer). 
+If absolutely no information is available for any field, use "unknown" for that field. However, always make best effort to supply a specific value consistent with the context.
 """)]
         response = self.llm.ask({"situation": situation}, prompt, tag='Context.extract_simulation_time', temp=0.5, max_tokens=20)
-        lines = response.strip().split('\n')
-        time_str = None
-        date_str = None
-        
-        # Extract time and date from response
-        for line in lines:
-            if line.startswith('TIME:'):
-                time_str = line.replace('TIME:', '').strip()
-            elif line.startswith('DATE:'):
-                date_str = line.replace('DATE:', '').strip()
-    
-        # Handle unknown values
-        if not time_str or time_str == 'unknown':
-            time_str = '12:00 PM'  # Default to noon
-        if not date_str or date_str == 'unknown':
-            date_str = 'January 1'  # Default to January 1
-        
-        # Combine date and time strings
-        datetime_str = f"{date_str} {time_str}"
-    
-        # Use current year as default
-        current_year = datetime.now().year
-    
         try:
-            # Parse the combined string
-            dt = datetime.strptime(f"{datetime_str} {current_year}", "%B %d %I:%M %p %Y")
-            return dt
-        except ValueError as e:
+            year = hash_utils.find('year', response)
+            if year is None or not year.strip().isdigit():
+                year = datetime.now().year
+            else:
+                year = int(year.strip())
+            month = hash_utils.find('month', response)
+            if month is None or not month.strip().isdigit():
+                month = datetime.now().month
+            else:
+                month = int(month.strip())
+            day = hash_utils.find('day', response)
+            if day is None or not day.isdigit():
+                day = datetime.now().day
+            else:
+                day = int(day.strip())
+            hour = hash_utils.find('hour', response)
+            if hour is None or not hour.isdigit():
+                hour = datetime.now().hour
+            else:
+                hour = int(hour.strip())
+            ampm = hash_utils.find('ampm', response)
+            if ampm is None or ampm.strip() == 'unknown':
+                ampm = 'AM' if hour < 12 else 'PM'
+            return datetime(year, month, day, hour, 0, 0, tzinfo=datetime.now().tzinfo)
+        except Exception as e:  
             print(f"Error parsing datetime: {e}")
+            logger.error(f"Error parsing datetime: {e}\n {response}")
             return datetime.now()
 
 
@@ -595,7 +629,7 @@ $narrative
             
 Ensure your response reflects this change.
 """
-        response = self.llm.ask({"narrative": narrative_insert, "situation": self.current_state, 'history': history, 'step': self.step, 'time': self.simulation_time.isoformat()}, prompt,
+        response = self.llm.ask({"narrative": narrative_insert, "situation": self.current_state, 'history': history, 'time': self.simulation_time.isoformat()}, prompt,
                                 tag='Context.update', temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
@@ -739,91 +773,21 @@ Ensure your response reflects this change.
             mapped_actors.append(self.map_actor(actor))
         return '\n'.join(mapped_actors)
 
-    async def choose_delay(self):
-        """Choose a delay for the next cognitive cycle"""
-        return 0.0
-        prompt = [SystemMessage(content="""You are a delay chooser.
-Your task is to choose a delay for the next cognitive cycle.
-The delay should be a number of hours from now.
-The delay should be between 0 and 12 hours.
-The delay should be a multiple of 0.1 hours.
-
-Following is a record of the current situation and recent events, followed by a transcript of the recent scene.
-Use these to choose a delay that is appropriate for the next cognitive cycle. 
-For example, if it is currently evening and the characters are awaiting an event the next day, a delay of 12 hours or until morning would be appropriate
-If one or more characters are engaged in an urgent activity, a delay of 0.1 hours to 0.5 hours, or even 0.0 hours, might be appropriate.
-Characters engaging in repetitive Thinking or planning might be a strong indicator they are passing time waiting for something to happen, and so a longer delay might be appropriate.
-In all cases, the delay should be chosen to move the timeline to the next significant event or activity.
-
-Use the following method to choose the delay:
-
-1. Determine the current time of day
-2. Identify the nearest deadline for significant events or activities that are currently occurring or expected to occur soon
-3. Base delay is the elapsed time between now and the nearest deadline
-4. Review the tasks in actor task lists to identify any tasks that need to be completed by the above nearest deadline
-5. Include implicit tasks such as sleeping, eating, etc.
-6. Final delay is Base delay minus remaining-task elapsed time.
-                                
-Do NOT report any of the above steps in your response.
-Respond only with the nearest deadline, the elapsed time needed for remaining tasks, and the delay in hours, to the nearest 0.1 hours.
-
-"""),
-UserMessage(content="""
-
-Situation
-{{$situation}}
-            
-Actors
-{{$actors}}
-            
-
-Transcript of recent activity, observations, and events
-{{$transcript}}
-
-Respond only with the nearest deadline, the elapsed time needed for remaining tasks, and the delay in hours, to the nearest 0.1 hours. Do not include units (e.g. 'hours')
-use the following hash-format for your response:
-
-#delay delay to nearest 0.1 hours
-#deadline time of nearest deadline to the nearest 0.1 hours
-#tasks elapsed time needed for remaining tasks to the nearest 0.1 hours
-##
-
-            
-Do not include any introductory, explanatory, or discursive text, just the delay in the above format.
-End your response with:
-</end>
-"""
-)]
-        if  self.last_update_time < self.simulation_time - timedelta(hours=1):
-            await self.update(local_only=True) 
-            self.last_update_time = self.simulation_time# update the world to get the latest situation
-        
-        delay = self.llm.ask({"situation":self.current_state, "actors":self.map_actors(), "transcript":'\n'.join(self.transcript[-20:])}, 
-                             prompt, tag='Context.choose_delay', temp=0.4, stops=['</end>'], max_tokens=20)
-
-        try:
-            delay_str = hash_utils.find('delay', delay)
-            delay_f = float(delay_str.strip())
-            return 0.0
-            #return delay_f
-        except Exception as e:
-            print(f'Error choosing delay: {e}')
-            return 0.0
         
     def compute_task_plan_limits(self, scene):
-        """Compute the task plan limits for a scene"""
+        """Compute the task plan limits for an actor for a scene"""
         characters_in_scene = scene.get('characters', ['a','b'])
         try:
-            task_limit = scene.get('task_limit', 3*len(characters_in_scene))/len(characters_in_scene)
+            character_task_limit = scene.get('task_budget', int(1.3*len(characters_in_scene)))/len(characters_in_scene)
         except Exception as e:
             print(f'Error computing task plan limits: {e}')
-            task_limit = 3*len(characters_in_scene)
-        return task_limit
+            character_task_limit = 1
+        return int(character_task_limit)
 
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
-        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]}'})
+        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]} - {scene["location"]} at {scene["time"]}'})
         await asyncio.sleep(0.1)
         self.current_scene = scene
         if scene.get('pre_narrative'):
@@ -852,11 +816,13 @@ End your response with:
             character.mapAgent.x = x
             character.mapAgent.y = y
             characters_at_location.append(character)
+            character.current_scene = scene
 
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
             character.look() # important to do this after everyone is in place.
             goal_text = scene['characters'][character.name]['goal']
+            # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
 
         # ok, actors - live!
@@ -872,23 +838,178 @@ End your response with:
                     await character.cognitive_cycle(narrative=True)
 
 
-    def load_narrative(self, narrative):
-        """Load a narrative"""
-        try:
-            with open(narrative, 'r') as f:
-                self.narrative = json.load(f)
-        except Exception as e:
-            print(f'Error loading narrative: {e}')
-            return None
-
-    async def run_narrative(self):
+    async def run_narrative_act(self, act):
         """Run a narrative"""
-        for act in self.narrative['acts']:
-            print(f'Running act: {act["act_title"]}')
-            self.message_queue.put({'name':self.name, 'text':f'\n---ACT----- {act["act_title"]}'})
-            await asyncio.sleep(0.1)
-            for scene in act['scenes']:
-                print(f'Running scene: {scene["scene_title"]}')
-                await self.run_scene(scene)
-            self.update()
+        scenes = act.get('scenes', [])
+        if len(scenes) == 0:
+            logger.error(f'No scenes in act: {act["act_title"]}')
+            return
+        print(f'Running act: {act["act_title"]}')
+        self.message_queue.put({'name':'', 'text':f'\n---ACT----- {act["act_title"]}'})
+        await asyncio.sleep(0.1)
+        for scene in act['scenes']:
+            while self.step is False and  self.run is False:
+                await asyncio.sleep(0.5)
+            print(f'Running scene: {scene["scene_title"]}')
+            await self.run_scene(scene)
+            self.step = False
+        await self.update()
                 
+    async def create_character_narratives(self, play_file, map_file):
+        """called from the simulation server to create narratives for all characters"""
+        self.play_file = play_file
+        self.map_file = map_file
+        """Create narratives for all characters,
+            then share them with each other (selectively),
+            then update them with the latest sharedinformation"""
+        for character in cast(List[NarrativeCharacter], self.actors):
+            self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
+            character.write_narrative(play_file, map_file)
+        for character in cast(List[NarrativeCharacter], self.actors):
+            self.message_queue.put({'name':character.name, 'text':f'---- sharing narrative -----'})
+            await character.share_narrative()
+        for character in cast(List[NarrativeCharacter], self.actors):
+            self.message_queue.put({'name':character.name, 'text':f'----- updating narrative -----'})
+            character.update_narrative_from_shared_info()
+            logger.info(f'\n{character.name}\n{json.dumps(character.reserialize_narrative_json(character.plan), indent=2)}')
+        self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
+
+    async def integrate_narratives(self, character_narrative_blocks):
+        """Integrate narratives into a single coherent narrative for a single act
+        character_narrative_blocks is a list of lists, each containing a character and their planned next play act
+        """
+        # reformat character_narrative_blocks into a list of character plans for the prompt
+        character_plans = []
+        for character_block in character_narrative_blocks:
+            character = character_block[0]
+            character_narrative = character.reserialize_act_to_string(character_block[1])
+            character_plans.append(f'{character.name}\n{character_narrative}\n')
+        character_plans = '\n'.join(character_plans)
+
+        character_backgrounds = []
+        for character in cast(List[NarrativeCharacter], self.actors):
+            drives = '\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives])
+            narrative = character.narrative.get_summary('medium')
+            surroundings = character.look_percept
+            memories = '\n'.join(memory.text for memory in character.structured_memory.get_recent(8))
+            emotionalState = EmotionalStance.from_signalClusters(character.driveSignalManager.clusters, character)        
+            emotional_stance = emotionalState.to_definition()
+            character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
+        character_backgrounds = '\n'.join(character_backgrounds)
+
+        prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
+You are given a list of plans (play outlines), one from each of the characters in the play. These plans were created by each character independently.
+Your job is to integrate them into a single coherent plan across all characters.
+A plan is a JSON object containing a sequence of acts, each with a sequence of scenes (think of a play).
+Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
+In integrating scenes within an act across characters, pay special attention to the pre- and post-narratives, as well as the characters's goals, to create a coherent scene. 
+It may be necessary for the integrated narrative to have more scenes than any of the original plans.
+Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
+The integrated plan should be a single JSON object with a sequence of acts, each with a sequence of scenes. 
+The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
+
+Here are the original, independent, plans for each character:
+{{$plans}}
+
+In the performance it is currently {{$time}}. Use this information to generate a time-appropriate sequence of scenes for your integrated Act.
+The following additional information about the state of the performance will be useful in integrating the acts.
+
+{{$backgrounds}}
+
+Respond with the updated act, using the following format:
+
+```json
+updated act
+```
+
+Act format is as follows:
+
+An Act is a single JSON document that outlines a short-term plan for yourself
+###  Structure
+Return exactly one JSON object with these keys:
+
+- `act_number` (int, copied from the original act)  
+- `act_title`   (string, copied from the original act or rewritten as appropriate)  
+- `scenes`      (array) 
+
+Each **scene** object must have:
+{ "scene_number": int, // sequential within the play 
+ "scene_title": string, // concise descriptor 
+ "location": string, // pick from resource or terrain names in the map file
+ "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
+ "duration": mm, // the duration of the scene, in minutes
+ "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
+ "action_order": [ "<Name>", … ], // 2-4 beats max, list only characters present 
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ // OPTIONAL: 
+ "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
+ }
+
+Never break JSON validity.  Ensure the returned form is parseable by the json.loads function.
+Keep the JSON human-readable (indent 2 spaces).
+
+Return **only** the JSON.  No commentary, no code fences.
+End your response with </end>
+""")]
+        response = self.llm.ask(
+                              {"time": self.simulation_time.isoformat(), "plans": character_plans, "backgrounds": character_backgrounds},
+                              prompt, max_tokens=3000, stops=['</end>'], tag='integrate_narratives')
+        try:
+            updated_narrative_plan = None
+            if not response:
+                return None
+            response = response.replace("```json", "").replace("```", "").strip()
+            updated_narrative_plan = json.loads(response)
+            logger.info(f'Integrated act: {self.reserialize_act_to_string(updated_narrative_plan)}')
+        except Exception as e:
+            print(f'Error parsing updated act: {e}')
+            updated_narrative_plan = self.repair_json(response, e)
+        self.narrative = updated_narrative_plan
+        return updated_narrative_plan
+
+    async def run_integrated_narrative(self):
+        """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
+        Integrates on an act by act basis, assuming that, since characters had a chance to share their narratives, actwise integration is coherent"""
+        # get length of longest character narrative plan
+        integrated_act_count = 0
+        for character in cast(List[NarrativeCharacter], self.actors):
+            character_narrative_act_count = len(character.plan['acts'])
+            if character_narrative_act_count > integrated_act_count:
+                integrated_act_count = character_narrative_act_count
+
+        character_narrative_blocks = []
+        for i in range(integrated_act_count):
+            previous_act = None
+            for character in cast(List[NarrativeCharacter], self.actors):
+                if i < len(character.plan['acts']):
+                    character.replan_narrative_act(character.plan['acts'][i], previous_act)
+                    character_narrative_blocks.append([character, character.plan['acts'][i]])  
+            next_act = await self.integrate_narratives(character_narrative_blocks)
+            if next_act is None:
+                logger.error('No act to run')
+            await self.run_narrative_act(next_act)
+            previous_act = next_act
+        return
+
+
+    async def step_act(self):
+        """Step through the act - only execute one scene, main job is to find the next scene to run"""
+        next_scene_time = self.simulation_time + timedelta(hours=1000)
+        next_character = None
+        next_scene = None
+        characters_finished_act = []
+        for character in cast(List[NarrativeCharacter], self.actors):
+            if character in characters_finished_act:
+                continue
+            else:
+                scene = character.current_scene
+                if scene is not None:
+                    if scene.get('time') < next_scene_time:
+                        next_scene_time = scene.get('time')
+                        next_character = character
+                        next_scene = scene
+                else:
+                    characters_finished_act.append(character)
+        return next_character, next_scene
+

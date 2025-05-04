@@ -1,17 +1,22 @@
-from enum import Enum
-import importlib
 import sys, os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import sim.worldsim as worldsim
-import sim.context as context, sim.agh as agh
+
+import importlib
+import sim.context as context
+from src.sim.agh import Character
 import plays.config as configuration
+from sim.cognitive.driveSignal import Drive
 from plays.scenarios import garden
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
+model_name = configuration.model_name
 importlib.reload(garden)
 
-lemon = agh.Character("Lemonade", """I am a pale grey kitten. 
+map_file_name = 'garden.py' # needed to trigger narrative creation
+
+lemon = Character("Lemonade", """I am a pale grey kitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
 My name is Lemonade, others often call me Lemon""", server_name=server_name)
@@ -22,7 +27,7 @@ lemon.set_drives([
     "safety from threats including accident, physical threats from unknown or adversarial actors or adverse events by staying close to meow-meow",
 ])
 
-meow = agh.Character("Meow-Meow", """I am a grey full-grown tabby cat. 
+meow = Character("Meow-Meow", """I am a grey full-grown tabby cat. 
 I love Lemonade, but sometimes need a break from her playfulness.
 I like to sleep, and occasionally hunt bugs and butterflys.
 My name is Meow-Meow""", server_name=server_name)

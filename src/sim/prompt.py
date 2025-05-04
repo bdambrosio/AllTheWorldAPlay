@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.Messages import UserMessage, SystemMessage
-from src.sim.cognitive.EmotionalStance import EmotionalStance
+from sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
 import utils.xml_utils as xml
 import sim.map as map
@@ -82,7 +82,7 @@ Your current situation is:
     recent_memories = character.structured_memory.get_recent(8)
     memory_text = '\n'.join(memory.text for memory in recent_memories)
     
-    emotionalState = EmotionalStance.from_signalClusters(character.driveSignalManager.clusters, character)        
+    emotionalState = character.emotionalStance        
 
     task = addl_bindings.get("task", None)
     if not task:

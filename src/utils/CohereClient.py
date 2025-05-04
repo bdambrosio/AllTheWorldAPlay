@@ -7,10 +7,20 @@ from utils.Messages import SystemMessage, AssistantMessage, asdicts
 from utils.LLMRequestOptions import LLMRequestOptions
 import cohere
 
-api_key = os.environ["COHERE_API_KEY"]
+api_key = None
+try:
+    api_key = os.environ["COHERE_API_KEY"]
+except Exception as e:
+    print(f"Error getting Cohere API key: {e}")
+
 from cohere import ClientV2
 
-client = ClientV2(api_key=api_key)        
+client = None
+if api_key is not None and api_key != '':
+    try:
+        client = ClientV2(api_key=api_key)        
+    except Exception as e:
+        print(f"Error creating Cohere client: {e}")
 # quick test of Claude API
 
 def executeRequest(prompt: list, options: LLMRequestOptions):

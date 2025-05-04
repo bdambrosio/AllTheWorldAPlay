@@ -1,43 +1,28 @@
-# Custom terrain types for suburban environment
-import asyncio
-from datetime import timedelta, datetime, time
-from enum import Enum
-import importlib
+from datetime import datetime
 import sys, os
-import wave
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import importlib
 import sim.context as context
-import sim.agh as agh
+from src.sim.agh import Character
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 from plays.scenarios import suburban
 
+importlib.reload(configuration)  # force reload in case cached version
+server_name = configuration.server_name 
+model_name = configuration.model_name
+
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
+model_name = configuration.model_name
 importlib.reload(suburban)
 
-class SuburbanTerrain(Enum):
-    House = 1
-    Yard = 2
-    Street = 3
-    Sidewalk = 4
-    Park = 5
-    OfficeBuilding = 6
-
-# Resources that might be found in this environment
-class SuburbanResource(Enum):
-    Refrigerator = 1
-    Shower = 2
-    Closet = 3
-    Car = 4
-    BusStop = 5
-    Mailbox = 6
-    Coffee = 7
-    Breakfast = 8
+map_file_name = 'suburban.py' # needed to trigger narrative creation
 
 # Main character - person with morning routine and job
-Alex = agh.Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
+Alex = Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
 You live in a suburban house with your significant other Susan.
 Your main priority is to get a job.
 You're organized but often running late in the mornings.

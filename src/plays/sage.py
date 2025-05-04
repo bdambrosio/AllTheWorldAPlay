@@ -1,17 +1,23 @@
-import importlib
 import sys, os
+
+from src.sim.agh import Character
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import sim.worldsim as worldsim
-import sim.context as context, sim.agh as agh, sim.human as human
-from plays.scenarios import suburban
+
+import importlib
+import sim.context as context
+from src.sim.agh import Character
 import plays.config as configuration
+from sim.cognitive.driveSignal import Drive
+from plays.scenarios import suburban
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
+model_name = configuration.model_name
 importlib.reload(suburban)
 
 # Create the human player character
-Sage = agh.Character("Sage", """I am a 60-year-old herbalist who has become a mentor figure.
+Sage = Character("Sage", """I am a 60-year-old herbalist who has become a mentor figure.
 I have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi and the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    
 I am a Zen Buddhist and a member of the Soka Gakkai, a lay Buddhist organization.
 I am also deeply knowledgeable in more traditional philosophy, including the works of Plato, Aristotle, and the Stoics, as well as more recent thinkers like Hegel, Nietzsche, and Heidegger.

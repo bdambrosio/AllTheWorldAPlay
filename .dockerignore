@@ -1,0 +1,67 @@
+# Version control
+.git
+.gitignore
+
+# Python virtual environments
+venv/
+**/venv/
+env/
+**/env/
+.env
+**/.env
+
+# Python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js/React
+**/node_modules/
+**/build/
+**/dist/
+**/.next/
+
+# Temp files and logs
+**/logs/
+**/*.log
+**/temp/
+**/tmp/
+
+# Development files
+.vscode/
+.idea/
+**/.DS_Store
+
+# Large data files
+**/data/
+**/dataset/
+**/*.pkl
+**/worlds/
+**/*.h5
+**/*.model
+**/*.bin
+**/*.vec
+**/*.tar.gz
+**/*.zip
+**/*.tar
+**/*.rar
+
+# Images and media
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+**/*.mp4
+**/*.mp3
+**/*.wav
+**/images/
+
+# Other
+**/old/
+**/backup/
+**/archive/

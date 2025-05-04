@@ -1,20 +1,20 @@
-import importlib
 import sys, os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import sim.worldsim as worldsim
-import sim.context as context, sim.agh as agh
+
+import importlib
+import sim.context as context
+from src.sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
+from sim.cognitive.driveSignal import Drive
 from plays.scenarios import apocalypse
-from enum import Enum
-from sim.map import WorldMap
 
 importlib.reload(configuration)# force reload in case cached version
-server_name = configuration.server_name 
-importlib.reload(apocalypse)
-
+map_file_name = 'apocalypse.py' # needed to trigger narrative creation
 
 server_name = configuration.server_name
-K = agh.Character("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
+
+K = NarrativeCharacter("Kidd", """You are a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
 You are a newcomer to the strange, isolated city of Bellona.
 You are intelligent, introspective, and somewhat disoriented by your new surroundings.
 You are curious about the city and its inhabitants, driven by a deep loneliness and longing for something more from life.
@@ -28,7 +28,7 @@ K.set_drives([
     "expressing yourself through writing and art.",
 ])
 K.add_to_history("You think: Where am I? This city seems so strange and unfamiliar. I feel disoriented, but also intrigued by the unusual atmosphere.")
-L = agh.Character("Lanya", """You are a young, attractive woman living in the city of Bellona.
+L = NarrativeCharacter("Lanya", """You are a young, attractive woman living in the city of Bellona.
 You are confident, independent, and adapted to the city's unconventional way of life.
 You are open-minded and comfortable with your sexuality.
 You have a strong sense of self and a deep understanding of the city's dynamics.

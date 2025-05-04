@@ -7,15 +7,17 @@ from utils.Messages import SystemMessage, AssistantMessage, asdicts
 from utils.LLMRequestOptions import LLMRequestOptions
 import anthropic
 
-api_key = os.environ["CLAUDE_API_KEY"]
+api_key = None
+try:
+    api_key = os.environ["CLAUDE_API_KEY"]
+except Exception as e:
+    print(f"Error getting Claude API key: {e}")
 template = "haiku"
-client = anthropic.Client(api_key=api_key)
-# quick test of Claude API
-"""
-message = client.messages.create(model="claude-3-sonnet-20240229",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
-message = client.messages.create(model="claude-3.5-sonnet-20240620",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
-print(f"\nClaude:\n{message.content}\n\n")
-"""
+if api_key is not None and api_key != '':
+    try:
+        client = anthropic.Client(api_key=api_key)
+    except Exception as e:
+        print(f"Error creating Claude client: {e}")
 
 def executeRequest(prompt: list, options: LLMRequestOptions):
         

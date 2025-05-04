@@ -1,0 +1,35 @@
+# Base image for Python
+FROM python:3.10
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    npm \
+    nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy the application code
+COPY . .
+
+# Install Python dependencies (using your existing requirements.txt)
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt cohere
+
+# Build the frontend
+WORKDIR /app/src/sim/webworld
+RUN if [ -f "package.json" ]; then npm install && npm run build; fi
+
+# Go back to app directory
+WORKDIR /app
+
+# Expose ports (adjust as needed)
+EXPOSE 3000 5555 5556
+
+# Command to run the application
+#CMD ["python", "src/sim/main.py"]
+
+# Last line of your Dockerfile
+COPY start.sh /app/start.sh
+CMD ["/bin/bash", "/app/start.sh"]

@@ -24,6 +24,8 @@ class CoastalResources(Enum):
     Gallery = auto()  # Required by map.py
     Workshop = auto()
     Bridge = auto()
+    Cafe = auto()
+    Studio = auto()
 
 class CoastalProperty(Enum):
     Workshop = auto()     # Boat building
@@ -116,7 +118,7 @@ resource_rules = {
             'count': 1,
             'requires_property': True,
             'terrain_weights': {
-                terrain_types.Workshop: 1.0
+                terrain_types.Harbor: 1.0
             }
         },
         {
@@ -135,6 +137,24 @@ resource_rules = {
             'requires_property': True,
             'terrain_weights': {
                 terrain_types.Downtown: 2.0  # Higher weight to ensure placement
+            }
+        },
+        {
+            'resource_type': resource_types.Cafe,  # Required by map.py
+            'description': 'The local cafe',
+            'count': 1,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.Harbor: 2.0  # Higher weight to ensure placement
+            }
+        },
+        {
+            'resource_type': resource_types.Studio,  # Required by map.py
+            'description': 'The artist studio',
+            'count': 1,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.Harbor: 2.0  # Higher weight to ensure placement
             }
         }
     ]

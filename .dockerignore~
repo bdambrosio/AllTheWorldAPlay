@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+
+# Python virtual environments
+venv
+**/venv
+env
+**/env
+.env
+**/.env
+
+# Python cache files
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+.pytest_cache
+.coverage
+htmlcov
+
+# Node.js/React
+**/node_modules
+**/build
+**/dist
+**/.next
+
+# Temp files and logs
+**/logs
+**/*.log
+**/temp
+**/tmp
+
+# Development files
+.vscode
+.idea
+**/.DS_Store
+
+# Large data files (if any)
+**/data
+**/dataset

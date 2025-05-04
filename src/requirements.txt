@@ -9,3 +9,12 @@ replicate>=0.8.0
 python-dotenv>=0.19.0
 requests>=2.26.0
 pillow>=9.0.0 
+numpy
+scipy
+networkx
+matplotlib
+zmq
+colorama
+perlin-noise
+sentencepiece
+sentence_transformers

@@ -7,11 +7,20 @@ from utils.Messages import SystemMessage, AssistantMessage, asdicts
 from utils.LLMRequestOptions import LLMRequestOptions
 from openai import OpenAI
 
-api_key = os.environ["XAI_API_KEY"]
-client = OpenAI(
-    base_url="https://api.x.ai/v1",
-    api_key=os.getenv("XAI_API_KEY"),
-)
+api_key = None
+try:
+    api_key = os.environ["XAI_API_KEY"]
+except Exception as e:
+    print(f"Error getting Grok API key: {e}")
+    client = None
+if api_key is not None and api_key != '':
+    try:
+        client = OpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=api_key,
+        )
+    except Exception as e:
+        print(f"Error creating Grok client: {e}")
 #quick test of Grok API
 """
 message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
@@ -65,7 +74,7 @@ def executeRequest(prompt: list, options: LLMRequestOptions):
                                           messages = msgs,
                                           reasoning_effort="low",
                                           #stop = stop_sequences, havent figured out how to use this yet for openAI
-                                          max_tokens = max_t)
+                                          max_tokens = 300+max_t)
         #print(json.loads(response.json())["content"][0]["text"])
     except Exception as e:
         print(e)
