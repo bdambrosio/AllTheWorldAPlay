@@ -13,7 +13,11 @@ class DeepSeekLocalClient():
 
 
     def __init__(self, api_key=None):
-        client = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="http://localhost:5000/v1")
+        client = None
+        try:
+            client = OpenAI(api_key=api_key, base_url="http://localhost:5000/v1")
+        except Exception as e:
+            print(f"Error opening DeepSeekLocal client: {e}")
         self._session = requests.Session()
         self._client = client
         
@@ -29,7 +33,7 @@ class DeepSeekLocalClient():
         try:
             print(f"****\ntrying deepseek client:\n {prompt}")
             response = self._client.chat.completions.create(
-                model='/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B', messages=prompt,
+                model='Qwen/Qwen3-32B', messages=prompt,
                 max_tokens=options.max_tokens, temperature=0, top_p=options.top_p,
                 stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
             item = response.json()['choices'][0]['text']

@@ -13,7 +13,12 @@ class DeepSeekClient():
 
 
     def __init__(self, api_key=None):
-        client = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+        client = None
+        if api_key is not None and api_key != '':
+            try:
+                client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+            except Exception as e:
+                print(f"Error creating DeepSeek client: {e}")
         self._session = requests.Session()
         self._client = client
         

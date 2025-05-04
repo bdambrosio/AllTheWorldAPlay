@@ -1,0 +1,16 @@
+services:
+  webworld:
+    build: .
+    ports:
+      - "3000:3000"  # For the FastAPI server
+      - "5555:5555"  # For ZMQ
+      - "5556:5556"  # For ZMQ
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:-""}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-""}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-""}
+      - IMAGE_GEN_API_KEY=${IMAGE_GEN_API_KEY:-""}
+    volumes:
+      - ./src/plays:/app/src/plays
+      - ./src/scenarios:/app/src/scenarios
+      - ./src/configs:/app/src/configs

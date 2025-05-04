@@ -1,3 +1,4 @@
+from __future__ import annotations
 import importlib
 from pathlib import Path
 import random
@@ -9,9 +10,15 @@ from src.sim.mapview import MapVisualizer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.sim.cognitive.knownActor import KnownActorManager
-from sim.agh import Act, Character, Task
-from sim.context import Context
+
+from src.sim.character_dataclasses import Act, Goal, Task
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from sim.agh import Act, Character, Goal, Task
+    from sim.context import Context  # Only imported during type checking
+    from src.sim.cognitive.knownActor import KnownActorManager
+    from sim.context import Context
+
 import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
 import base64
@@ -24,12 +31,31 @@ import zmq
 import zmq.asyncio
 import matplotlib.pyplot as plt
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+home = str(Path.home())
+logs_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'logs/')
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+log_path = os.path.join(logs_dir, 'simulation.log')
+
+# Create the logger
+sim_logger = logging.getLogger('simulation_core')
+sim_logger.setLevel(logging.INFO)
+
+# Create file handler and set level
+file_handler = logging.FileHandler(log_path, mode='w')
+file_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add handler to logger
+sim_logger.addHandler(file_handler)
+
+# Test write using the named logger
+sim_logger.info("Test message")
+
+logger = logging.getLogger('simulation_core')
 
 class SimulationServer:
     def __init__(self):
@@ -50,10 +76,13 @@ class SimulationServer:
         self.image_cache = {}
         self.next_actor_index = 0
         self.known_actors_dir = None
+        self.narrative_play = False # if True, run integrated narrative, otherwise run step from here
+
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
         self.result_socket.connect("tcp://127.0.0.1:5556")
-        logger.info("SimulationServer: ZMQ connections established and ready for commands")
+        await self.send_result({'type': 'show_update',
+                            'message': {'name':'SimulationServer', 'text':f'----- SimulationServer started-----'}})
                 
     async def send_result(self, result):
         try:
@@ -148,11 +177,10 @@ class SimulationServer:
             if hasattr(module, 'server_name'):
                 # scenario specific server name
                 self.server_name = module.server_name
-
-            if hasattr(module, 'model'):
-                self.model = module.model
-                llm_api.MODEL = self.model
-                llm_api.set_model(self.model)
+            if hasattr(module, 'model_name'):
+                self.model_name = module.model_name
+                llm_api.MODEL = self.model_name
+                llm_api.set_model(self.model_name)
 
             if 'webworld_play' in sys.modules:
                 del sys.modules['webworld_play']
@@ -187,8 +215,16 @@ class SimulationServer:
             if not os.path.exists(self.known_actors_dir):
                 os.makedirs(self.known_actors_dir)
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
+            self.sim_context.message_queue.put({'name':'self.sim_context.name', 'text':f'----- {play_name} loaded-----'})
             if self.sim_context.narrative:
                 await self.sim_context.run_narrative()
+            elif hasattr(module, 'map_file_name'):
+                await self.sim_context.create_character_narratives(play_name, module.map_file_name)
+                self.narrative_play = True
+                #await self.sim_context.run_character_narratives()
+                self.narrative_task = asyncio.create_task(self.sim_context.run_integrated_narrative())
+            else:
+                print(f'No narrative or map file name found for {play_name}, running unplanned')
         except Exception as e:
             traceback.print_exc()
             await self.send_result({
@@ -202,7 +238,9 @@ class SimulationServer:
             self.processing = True  # Mark as processing
             # Process any queued injects before the step
 
-            if self.initialized:
+            if self.initialized and self.narrative_play:
+                self.sim_context.step = True
+            elif self.initialized:
                 char = self.sim_context.actors[self.next_actor_index]
                 # Process character step
                 print(f'{char.name} cognitive cycle')   
@@ -239,6 +277,7 @@ class SimulationServer:
     async def run_loop(self):
         """Separate task for running continuous steps"""
         try:
+
             while self.running and not self.paused:
                 try:
                     # Complete the full step
@@ -268,17 +307,18 @@ class SimulationServer:
         """Start continuous simulation"""
         self.running = True
         self.paused = False
-        
+        if self.narrative_play:
+            self.sim_context.run = True
+            await self.send_command_ack('run')
         # Cancel existing run task if any
-        if self.run_task:
+        elif self.run_task:
             self.run_task.cancel()
             try:
                 await self.run_task
             except asyncio.CancelledError:
                 pass
-                
-        # Start new run task
-        self.run_task = asyncio.create_task(self.run_loop())
+            # Start new run task
+            self.run_task = asyncio.create_task(self.run_loop())
         
         # Send command acknowledgment
         await self.send_command_ack('run')
@@ -288,6 +328,8 @@ class SimulationServer:
         # Signal the run loop to stop at next safe point
         self.paused = True
         self.running = False
+        self.sim_context.step = False
+        self.sim_context.run = False
         
         # Wait for run task to complete its current step and exit
         if self.run_task:
@@ -332,7 +374,7 @@ class SimulationServer:
             # does an npc have a task or goal? - acts say will handle this automagically
             task = Task(name='idle', description='inject', reason='inject', start_time=self.sim_context.simulation_time, duration=1, termination=f'talked to {target_name}', goal=None, actors=[Viewer, target])
             Viewer.focus_task.push(task)
-            await Viewer.act_on_action(Act(mode='Say', action=text, actors=[Viewer, target], reason='inject', duration=1, source=None, target=target), task)
+            await Viewer.act_on_action(Act(mode='Say', action=text, actors=[Viewer, target], reason='inject', duration=1, source=None, target=[target]), task)
             Viewer.focus_task.pop()
             await asyncio.sleep(0.1)
             await self.send_result({
@@ -379,40 +421,58 @@ class SimulationServer:
                 await asyncio.sleep(0.1)
             elif cmd_name == 'step':
                 # Cancel any existing step task
-                if self.step_task and not self.step_task.done():
+                if self.narrative_play:
+                    self.sim_context.step = True
+                    await self.send_command_ack('step')
+                    await asyncio.sleep(0.1)
+                    return
+                elif self.step_task and not self.step_task.done():
                     self.step_task.cancel()
                     try:
                         await self.step_task
                     except asyncio.CancelledError:
                         pass
-                # Start new step task
-                self.step_task = asyncio.create_task(self.step())
-                # Don't await it - let it run independently
-                await asyncio.sleep(0.1)
+                    # Start new step task
+                    self.step_task = asyncio.create_task(self.step())
+                    # Don't await it - let it run independently
+                    await asyncio.sleep(0.1)
+                    return
             elif cmd_name == 'run':
                 await self.run_cmd()
                 await asyncio.sleep(0.1)
+                return
+            elif cmd_name == 'narrative':
+                await self.sim_context.run_narrative()
+                await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'pause':
                 await self.pause_cmd()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'stop':
                 await self.stop_cmd()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'save_world':
                 await self.save_world_cmd() 
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'load_world':
                 await self.load_world_cmd()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'inject':
                 await self.inject_cmd(command)
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'get_character_details':
                 await self.get_character_details(command)
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'get_character_states':
                 await self.get_character_states_cmd()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'choice_response':
                 # Put the response in the context's choice_response queue
                 if self.sim_context:
@@ -423,15 +483,19 @@ class SimulationServer:
                         response['custom_data'] = command.get('custom_data')
                     self.sim_context.choice_response.put_nowait(response)
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'set_autonomy':
                 await self.set_autonomy_cmd(command)
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'load_known_actors':
                 self.load_known_actors()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'save_known_actors':
                 self.save_known_actors()
                 await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'showMap':
                 try:
                     viz = MapVisualizer(self.sim_context.map)

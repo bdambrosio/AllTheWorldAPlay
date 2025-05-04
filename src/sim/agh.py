@@ -3,6 +3,8 @@ import os, json, math, time, requests, sys
 
 from sklearn import tree
 
+from src.sim.SpeechStylizer import SpeechStylizer
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,18 +45,11 @@ import asyncio
 from weakref import WeakValueDictionary
 import logging
 from sim.prompt import ask as default_ask
-
+from src.sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
 
-class Mode(Enum):
-    Think = "Think"
-    Say = "Say"
-    Do = "Do" 
-    Move = "Move"
-    Look = "Look"
-    Listen = "Listen"
-
+logger = logging.getLogger('simulation_core')
 
 
 def find_first_digit(s):
@@ -64,68 +59,6 @@ def find_first_digit(s):
     return None  # Return None if no digit is found
 
 
-class Stack:
-    def __init__(self):
-        """Simple stack implementation"""
-        self.stack = []
-        #print("Stack initialized")  # Debug print
-
-    def push(self, item):
-        self.stack.append(item)
-
-    def pop(self):
-        if not self.is_empty():
-            return self.stack.pop()
-        return None
-
-    def peek(self):
-        if not self.is_empty():
-            return self.stack[-1]
-        return None
-
-    def is_empty(self):
-        return len(self.stack) == 0
-
-    def size(self):
-        return len(self.stack)
-
-class Goal:
-    _id_counter = 0
-    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
-    
-    def __init__(self, name, actors, description, preconditions, termination, signalCluster, drives):
-        Goal._id_counter += 1
-        self.id = f"g{Goal._id_counter}"
-        Goal._instances[self.id] = self
-        self.name = name
-        self.actors = actors
-        self.description = description
-        self.termination = termination
-        self.preconditions = preconditions
-        self.drives = drives
-        self.signalCluster = signalCluster
-        self.progress = 0
-        self.task_plan = []
-        self.tasks = []
-
-    def __eq__(self, other):
-        if not isinstance(other, Goal):
-            return False
-        return self.id == other.id
-
-    def __hash__(self):
-        return hash(self.id)
-    
-    @classmethod
-    def get_by_id(cls, id: str):
-        return cls._instances.get(id)
-    
-    def short_string(self):
-        return f'{self.name}: {self.description}; \n preconditions: {self.preconditions}; \n termination: {self.termination}'
-    
-    def to_string(self):
-        return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions};  termination: {self.termination}'
-    
 from datetime import timedelta
 
 def parse_duration(duration_str: str) -> timedelta:
@@ -157,82 +90,7 @@ def parse_duration(duration_str: str) -> timedelta:
         except:
             # If all parsing fails, default to 1 minute
             return timedelta(minutes=1)
-        
-class Task:
-    _id_counter = 0
-    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
-    
-    def __init__(self, name, description, reason, termination, goal, actors, start_time, duration):
-        Task._id_counter += 1
-        self.id = f"t{Task._id_counter}"
-        Task._instances[self.id] = self
-        self.name = name
-        self.description = description
-        self.reason = reason
-        self.start_time = start_time
-        self.duration = parse_duration(duration)
-        self.termination = termination
-        self.goal = goal
-        self.actors = actors
-        self.needs = ''
-        self.result = ''
-        self.acts = []
 
-    def __eq__(self, other):
-        if not isinstance(other, Task):
-            return False
-        return self.id == other.id
-
-    def __hash__(self):
-        return hash(self.id)
-    
-    @classmethod
-    def get_by_id(cls, id: str):
-        return cls._instances.get(id)
-    
-    def short_string(self):
-        return f'{self.name}: {self.description} \n reason: {self.reason} \n termination: {self.termination}'
-
-    def to_string(self):
-        return f'Task {self.name}: {self.description}; actors: {[actor.name for actor in self.actors]}; reason: {self.reason}; termination: {self.termination}'
-    
-    def to_fullstring(self):
-        return f'Task {self.name}: {self.description}\n   Reason: {self.reason}\n   Actors: {[actor.name for actor in self.actors]}\n    Start time: {self.start_time};  Duration: {self.duration}\n    Termination Criterion: {self.termination}'
- 
-    def test_termination(self, events=''):
-        """Test if recent acts, events, or world update have satisfied termination"""
-        pass
-    
-class Act:
-    _id_counter = 0
-    _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
-    
-    def __init__(self, mode, action, actors, reason='', duration=1, source=None, target=None, result=''):
-        Act._id_counter += 1
-        self.id = f"a{Act._id_counter}"
-        Act._instances[self.id] = self
-        self.mode = mode
-        self.action = action
-        self.actors = actors
-        self.reason = reason
-        self.duration = parse_duration(duration)
-        self.source = source  # a task
-        self.target = target  # an actor
-        self.result = result
-
-    @classmethod
-    def get_by_id(cls, id: str):
-        return cls._instances.get(id)
-
-    def to_string(self):
-        return f'Act t{self.id} {self.mode}: {self.action}; reason: {self.reason}; result: {self.result}'
-
-class Autonomy:
-    def __init__(self, signal=True, goal=True, task=True, action=True):
-        self.signal = signal
-        self.goal = goal
-        self.task = task
-        self.action = action
 
 # Character base class
 class Character:
@@ -246,7 +104,11 @@ class Character:
         else:
             self.reference_dscp = self.llm.ask({}, [SystemMessage(content='generate a concise single sentence description for this character useful for reference resolution. Respond only with the description. End your response with: </end>'), 
                                                     UserMessage(content=f"""character name {self.name}\ncharacter description:\n{character_description}\n\nEnd your response with: </end>""")
-        ], tag='reference_dscp', max_tokens=24, stops=["</end>"]).strip()
+        ], tag='reference_dscp', max_tokens=24, stops=["</end>"])
+        if self.reference_dscp:
+            self.reference_dscp = self.reference_dscp.strip()
+        else:
+            self.reference_dscp = ''
         self.context: Context = None
 
         self.show = ''  # to be displayed by main thread in UI public text widget
@@ -313,6 +175,8 @@ class Character:
         self.autonomy = Autonomy()
         self.step = 2 # start at step 2 to skip first update
         self.update_interval = 4
+        self.emotionalStance = EmotionalStance()
+        #self.speech_stylizer = SpeechStylizer(self)
 
     def x(self):
         return self.mapAgent.x
@@ -335,6 +199,10 @@ class Character:
             self.driveSignalManager.context = context
         if self.memory_consolidator:
             self.memory_consolidator.context = context
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        self.emotionalStance = EmotionalStance.from_signalClusters(focus_signalClusters, self)
+        self.speech_stylizer = SpeechStylizer(self) 
  
 
     def set_autonomy(self, autonomy_json):
@@ -388,6 +256,29 @@ class Character:
             print(f"Warning: Invalid goal generation response for {goal_hash}") 
             return None
         
+    def characters_from_hash(self, hash_form):
+        """Get character names from a hash string"""
+        targets = []
+        try:
+            target_form = hash_utils.find('actors', hash_form)
+            if not target_form:
+                target_form = hash_utils.find('target', hash_form)
+            if not target_form:
+                target_form = hash_utils.find('targets', hash_form)
+            if target_form:
+                target_names = target_form.split(',') if target_form else []
+                for name in target_names:
+                    name = name.strip().capitalize()
+                    names = name.split(' and ')
+                    for n in names:
+                        if n and n.strip() != '':
+                            target,_ = self.actor_models.resolve_or_create_character(n)
+                            if target:
+                                targets.append(target)
+        except Exception as e:
+            targets = []
+        return targets
+
     def validate_and_create_task(self, task_hash, goal=None):
         """Validate a task hash and create a task object
         
@@ -406,33 +297,27 @@ class Character:
         start_time = hash_utils.find('start_time', task_hash)
         duration = hash_utils.find('duration', task_hash)
         try:
-            actor_names = hash_utils.find('actors', task_hash)
-            if actor_names:
-                actor_names = [name.strip().capitalize() for name in actor_names.split(',') if name.strip()]
-            else:
-                actor_names = []
+            characters = self.characters_from_hash(task_hash)
         except Exception as e:
             print(f"Warning: invalid actors field in {task_hash}") 
-            actor_names = []
+            characters = []
         if self.mapAgent:
             default_x = self.mapAgent.x
             default_y = self.mapAgent.y
         else:
             default_x = 30
             default_y = 30
-        for actor_name in actor_names:
-            a,_ = self.actor_models.resolve_character(actor_name)
-            if a and hasattr(a, 'mapAgent'):
-                default_x = a.mapAgent.x
-                default_y = a.mapAgent.y
-            elif a:
-                print(f"Warning: {a} is not a character")
-        actors = [self.actor_models.resolve_or_create_character(actor_name)[0] for actor_name in actor_names if actor_name]
-        actors = [actor for actor in actors if actor is not None]
+        for character in characters:
+            if character and hasattr(character, 'mapAgent'):
+                default_x = character.mapAgent.x
+                default_y = character.mapAgent.y
+            elif character:
+                print(f"Warning: {character} is not a character")
+        actors = [actor for actor in characters if actor is not None]
         if not self in actors:
             actors =  [self] + actors
 
-        if name and description and reason and termination and actor_names:
+        if name and description and reason and termination and actors:
             task = Task(name, description, reason, termination.replace('##','').strip(), goal, actors, start_time, duration)
             return task
         else:
@@ -449,14 +334,7 @@ class Character:
         mode = hash_utils.find('mode', hash_string)
         action = hash_utils.find('action', hash_string)
         duration = hash_utils.find('duration', hash_string)
-        try:
-            target_name = hash_utils.find('target', hash_string)
-            if target_name:
-                target,_ = self.actor_models.resolve_or_create_character(target_name)
-            else:
-                target = None
-        except Exception as e:
-            target = None
+        targets = self.characters_from_hash(hash_string)
         # Clean up mode string and validate against Mode enum
         if mode:
             mode = mode.strip().capitalize()
@@ -466,15 +344,21 @@ class Character:
             except KeyError:
                 return None
         
+        actors = [self]
+        if targets:
+            if self in targets:
+                actors = targets
+            else:
+                actors = [self] + targets
         if mode and action:
             act = Act(
                 mode=mode,
                 action=action,
-                actors=[self, target] if target else [self],
+                actors=actors,
                 reason=action,
                 duration=duration,
                 source=task,
-                target=target
+                target=targets
             )
             return act
         else:
@@ -897,9 +781,10 @@ Respond only with a single choice of mode. Do not include any introductory, disc
 """)]
             #print("Perceptual input",end=' ')
             response = self.llm.ask({"message": message}, prompt, tag='perceptual_input', temp=0, stops=['</end>'], max_tokens=150)
-            if response:
+            if response and type(response) == str:
                 mode = response.strip().split()[0].strip()  # Split on any whitespace and take first word
             else:
+                logger.error(f'Error parsing perceptual input: {response}')
                 mode = 'unclassified'
 
         try:
@@ -1277,13 +1162,15 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             self.show += f"{act_arg}'"
+            style_block = self.speech_stylizer.get_style_directive(target)
+            act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target:
-                target=act.target
+                target=act.target[0]
             # open dialog
             if target:
                 if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
@@ -1302,7 +1189,10 @@ End response with:
                     if target.focus_task.peek() and target.focus_task.peek().name.startswith('dialog with '+self.name):
                         target.focus_task.pop()
                     # create a new dialog task
-                    dialog_task = Task('dialog with '+self.name, 
+                    target_ranked_signalClusters = target.driveSignalManager.get_scored_clusters()
+                    target_focus_signalClusters = [rc[0] for rc in target_ranked_signalClusters[:3]] # first 3 in score order
+                    target.emotionalStance = EmotionalStance.from_signalClusters(target_focus_signalClusters, target)
+                    target_dialog_task = Task('dialog with '+self.name, 
                                     description='dialog with '+self.name, 
                                     reason=act_arg+'; '+reason, 
                                     termination='natural end of dialog', 
@@ -1310,7 +1200,7 @@ End response with:
                                     start_time=self.context.simulation_time,
                                     duration=2,
                                     actors=[target, self])
-                    target.focus_task.push(dialog_task)
+                    target.focus_task.push(target_dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
 
                 # self is speaker, don't get confused about first arg to add_turn
@@ -1631,6 +1521,9 @@ Also, the collective duration of the tasks should be less than any duration or c
                               
 A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
 The new task(s) should be distinct from one another, and each should advance the focus goal.
+Use known actor names in the task description unless deliberately introducing a new actor. Characters known to this character include:
+{{$known_actors}}
+
 Where possible, include one or more of your intensions in generating task alternatives.
 Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
 
@@ -1642,7 +1535,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #name brief (4-6 words) task name
 #description terse (6-8 words) statement of the action to be taken.
 #reason (6-7 words) on why this action is important now
-#actors the names of any other actors involved in this task. if no other actors, use None
+#actors the names of any other actors involved in this task, comma separated. if no other actors, use None
 #start_time (2-3 words) expected start time of the action
 #duration (2-3 words) expected duration of the action in minutes
 #termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
@@ -1686,21 +1579,27 @@ End response with:
             goal = self.focus_goal
         if not goal:
             raise ValueError(f'No focus goal for {self.name}')
-        ntasks = 4
+        ntasks = 2
         if goal.name == 'preconditions' or goal.name == 'postconditions':
             ntasks = 1
+        elif self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
+            ntasks = self.context.compute_task_plan_limits(self.current_scene)
+        elif self.__class__.__name__ == 'NarrativeCharacter':
+            logger.info(f'{self.name} generate_task_plan: no current scene, using default ntasks: {ntasks}')
         elif self.context.current_scene:
             ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
         if self.context.scene_post_narrative:
             scene_narrative = f"\n\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
             scene_narrative = ''
+        logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
         response = default_ask(self, 
                                mission, 
                                suffix, 
                                {"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
+                                "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[:5]),
                                 "scene_narrative": scene_narrative}, 
                                tag = 'Character.generate_task_plan',
@@ -1879,8 +1778,8 @@ End your response with:
     def refine_say_act(self, act: Act, task: Task):
         """Refine a say act to be more natural and concise"""
         if act.target:
-            target = act.target
-            target_name = act.target.name
+            target = act.target[0]
+            target_name = act.target[0].name
         elif task.actors:
             for actor in task.actors:
                 if actor is not self:
@@ -1994,7 +1893,8 @@ IMPORTANT: When evaluating a potential Act, the primary consideration is whether
 Dialog guidance:
 - If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
-- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. Use contractions and casual language appropriate to the character's personality,emotion emotional tone and orientation. Speak in the first person.
+- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
+    Use contractions and casual language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
 - If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
     then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
@@ -2016,7 +1916,7 @@ Respond in hash-formatted text:
 
 #mode Do, Move, Look, Say, or Think, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
 #action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name.
-#target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable, otherwise omit.
+#target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
 ##
 
@@ -2067,6 +1967,18 @@ Response:
 #target Samantha
 ##
 
+----
+
+Task: dialog with Elijah and Chrys: Maya talks with Elijah and Chrys to strengthen community and collaboration.
+
+Response:
+#mode Say
+#action Hey, Elijah, Chrys - how about we meet at Chrys's café this afternoon to sketch out some joint project ideas? What time works best for you both?
+#duration 1 minute
+#target Elijah, Chrys
+##
+
+
 ===End Examples===
 
 Use the following hash-formatted text format for each act.
@@ -2102,6 +2014,10 @@ End your response with:
         if not goal:
             raise ValueError(f'No goal for {self.name}')
         goal_memories = []
+        #generate emotional state for this task
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        self.emotionalStance = EmotionalStance.from_signalClusters(focus_signalClusters, self)
         memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.1, max_results=3)
         for t in goal.task_plan:
             memories = self.perceptual_state.get_information_items(t.short_string(), threshold=0.1, max_results=3)
@@ -2549,7 +2465,7 @@ End your response with:
                 content = re.sub(r'\.\.\..*?\.\.\.', '', message)
                 self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, content)
         
-        self.acts(Act(mode='Say', target=to_actor, action=message, reason=message, duration=1, source=source), to_actor, 'tell', message, self.reason, source)
+        self.acts(Act(mode='Say', target=[to_actor], action=message, reason=message, duration=1, source=source), to_actor, 'tell', message, self.reason, source)
         
 
     def natural_dialog_end(self, from_actor):
@@ -2575,7 +2491,8 @@ End your response with:
 """)]   
         transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
         response = self.llm.ask({"transcript":transcript}, prompt, tag='natural_dialog_end', temp=0.1, stops=['</end>'], max_tokens=180)
-        if response is None:
+        if response is None or type(response) != str:
+            logger.error(f'Error parsing natural_dialog_end: {response}')
             return False
         try:
             rating = int(response.lower().replace('</end>','').strip())
@@ -2673,7 +2590,7 @@ End your response with:
             return
 
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
-        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=from_actor)
+        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=[from_actor])
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
@@ -2794,7 +2711,7 @@ End your response with:
         duplicative_insert = ''
         trying = 0
 
-        emotionalState = EmotionalStance.from_signalClusters(self.driveSignalManager.clusters, self)
+        emotionalState = self.emotionalStance
         if self.context.scene_post_narrative:
             scene_post_narrative = f"- Most importantly, the dominant theme of the scene is:\n {self.context.scene_post_narrative}\n  The response must be consistent with this theme."
         else:
@@ -2913,12 +2830,12 @@ End your response with:
                     if admissible.lower() == 'true' and impossible.lower() == 'false':
                         admissible_goals.append(goal)
                     elif admissible.lower() == 'false' and impossible.lower() == 'true':
-                        logging.debug(f'{self.name} admissible_goals: goal {goal.name} is impossible')
+                        logger.debug(f'{self.name} admissible_goals: goal {goal.name} is impossible')
                         impossible_goals.append(goal)
                         goal.preconditions = None # let it thru next time - maybe this should be llm to soften preconditions?
                         admissible_goals.append(goal)
                     else:
-                        logging.debug(f'{self.name} admissible_goals: goal {goal.name} is not admissible')
+                        logger.debug(f'{self.name} admissible_goals: goal {goal.name} is not admissible')
             else:
                 admissible_goals.append(goal)
         return admissible_goals, impossible_goals
@@ -3119,7 +3036,7 @@ End your response with:
                     'mode': act.mode,
                     'action': act.action,
                     'reason': act.reason,
-                    'target': act.target.name if act.target else '',
+                    'target': act.target[0].name if act.target else '',
                     'context': {
                         'emotional_stance': {
                                 'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
@@ -3168,7 +3085,7 @@ End your response with:
                                         reason=custom_data.get('reason', ''),
                                         duration=custom_data.get('duration', 1),
                                         source=self.focus_task.peek(),
-                                        target=target
+                                        target=[target]
                                     )
                                 if custom_act:
                                     print(f'{self.name} request_act_choice: custom act {custom_act.mode} {custom_act.action}')
@@ -3205,7 +3122,9 @@ End your response with:
     async def cognitive_cycle(self, sense_data='', narrative=False, ui_queue=None):
         """Perform a complete cognitive cycle"""
         print(f'{self.name} cognitive_cycle')
-        self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
+        logger.info(f'{self.name} cognitive_cycle')
+        if not narrative:
+            self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
         self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0.1)
         self.thought = ''
@@ -3237,11 +3156,13 @@ End your response with:
         
         if not self.focus_goal:
             await self.request_goal_choice(self.goals)
+            if not self.focus_goal and narrative: # if we don't have a goal, and we're in narrative mode, we're done
+                return
 
         if self.focus_goal and (not self.focus_goal.task_plan or len(self.focus_goal.task_plan) == 0):
             self.generate_task_plan(self.focus_goal)
         
-        logging.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
+        logger.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
 
         await self.request_task_choice(self.focus_goal.task_plan)
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
@@ -3270,6 +3191,7 @@ End your response with:
         #runs through up to n tasks in a task_plan
         # like step_task, the invariant is that the task stack is empty on return, and the first task in focus_goal task_plan is the next task to run, if it exists
         task_count = 0
+        logger.info(f'{self.name} step_tasks: {self.focus_task.peek()}')
         while task_count < n and self.focus_task.peek():
     
             task = self.focus_task.peek()
@@ -3297,7 +3219,7 @@ End your response with:
                     # ok, we ran postconditions goal, get rid of it
                     satisfied = await self.clear_goal_if_satisfied(self.focus_goal) # do all the end of goal stuff for source goal
                     if not satisfied:
-                        logging.debug(f'{self.name} step_tasks: assertion error: postconditions goal {self.focus_goal.name} not satisfied')
+                        logger.debug(f'{self.name} step_tasks: assertion error: postconditions goal {self.focus_goal.name} not satisfied')
                     if self.focus_goal and self.focus_goal in self.goals:
                         self.goals.remove(self.focus_goal)
                         self.focus_goal = None
@@ -3306,13 +3228,14 @@ End your response with:
                     old_goal = self.focus_goal
                     satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
                     if not satisfied:
-                        logging.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
+                        logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
+                        logger.info(f'{self.name} step_tasks: termination fail focus goal {self.focus_goal.name} instantiating termination goal {self.focus_goal.termination}')
                         self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
                         if old_goal in self.goals:
                             self.goals.remove(old_goal) # don't try this goal again
                     return False
                 else:
-                    logging.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
+                    logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
                     return False
             if task_count < n-1: # if we're not at the last task, push the next task onto the stack
                     self.focus_task.push(self.focus_goal.task_plan[0])
@@ -3336,7 +3259,7 @@ End your response with:
             raise Exception(f'No focus task')
 
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
-        logging.debug(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
+        logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
@@ -3404,15 +3327,16 @@ End your response with:
             self.act_mode = act_mode.strip()
         act_arg = action.action
         print(f'\n{self.name} act_on_action: {act_mode} {act_arg}')
+        logger.info(f'{self.name} act_on_action: {act_mode} {act_arg}')
         self.reason = action.reason
         source = action.source
         #print(f'{self.name} choose {action}')
         target = None
         target_name = None
         #responses, at least, explicitly name target of speech.
-        if action.target and (action.target != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
-            target_name = action.target.name
-            target = action.target
+        if action.target and (action.target[0] != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
+            target_name = action.target[0].name
+            target = action.target[0]
         elif self.focus_task.peek() and self.focus_task.peek().name.startswith('internal dialog'):
             target_name = self.name
             target = self
@@ -3422,7 +3346,7 @@ End your response with:
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
-        logging.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
+        logger.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
         if hasattr(action, 'duration'):
             act_duration = action.duration
         elif action.mode == 'Think': 

@@ -1,34 +1,25 @@
 import requests, time, copy
 from typing import Optional, Dict, Any, Union
 from dataclasses import dataclass, asdict
-import json, os,sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+import json, os
 from utils.Messages import SystemMessage
 from utils.Messages import AssistantMessage
 from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
-client = None
 
-api_key = None
-try:
-    api_key = os.getenv("OPENAI_API_KEY")
-except Exception as e:
-    print(f"Error getting OpenAI API key: {e}")
+class DeepSeekLocalClient():
+    DefaultEndpoint = 'http://localhost:5000/v1'
 
-if api_key is not None and api_key != '':
-    try:
-        client = OpenAI(api_key=api_key)
-    except Exception as e:
-        print(f"Error opening OpenAI client: {e}")
-model = 'gpt-4.1-mini'
 
-class OpenAIClient():
-    DefaultEndpoint = 'https://api.openai.com'
-    UserAgent = 'Owl'
+    def __init__(self, api_key=None):
+        client = None
+        try:
+            client = OpenAI(api_key=api_key, base_url="http://localhost:5000/v1")
+            self.model=client.models.list()[0].id
 
-    def __init__(self, client=client, api_key=None):
+        except Exception as e:
+            print(f"Error opening DeepSeekLocal client: {e}")
         self._session = requests.Session()
         self._client = client
         
@@ -40,16 +31,15 @@ class OpenAIClient():
             stops=[]
         if options.stop_on_json:
             stops.append('}')
-        if options.model is not None:
-            model = options.model
-        else:
-            model = 'gpt-4.1-mini'
+
         try:
-            response = client.chat.completions.create(
-                model=model, messages=prompt,
-                max_tokens=options.max_tokens, temperature=options.temperature, top_p=options.top_p,
+            print(f"****\ntrying deepseek client:\n {prompt}")
+            response = self._client.chat.completions.create(
+                model=self.model, messages=prompt,
+                max_tokens=options.max_tokens, temperature=0, top_p=options.top_p,
                 stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
-            item = response.choices[0].message
+            item = response.json()['choices'][0]['text']
+            print(f'****\nresponse:\n{item}')
             return item.content
             #return {"status":'success', "message":{"role":'assistant', "content":item.content}}
         except Exception as e:

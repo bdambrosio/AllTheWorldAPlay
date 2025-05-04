@@ -3,7 +3,7 @@ import PIL.Image
 import torch
 import numpy as np
 from transformers import AutoModelForCausalLM
-from janus.models import MultiModalityCausalLM, VLChatProcessor
+from janus.models import MultiModalityCausalLM, VLChatProcessor # type: ignore
 from fastapi import FastAPI, Response
 from PIL import Image
 from io import BytesIO

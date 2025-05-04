@@ -8,7 +8,11 @@ import requests
 app = FastAPI()
 
 
-HIVE_API_KEY = os.getenv('HIVE_API_KEY')
+HIVE_API_KEY = None
+try:
+    HIVE_API_KEY = os.getenv('HIVE_API_KEY')
+except Exception as e:
+    print(f"Error getting Hive API key: {e}")
 prompt = "A raccoon trapped inside a glass jar full of colorful candies, the background is steamy with vivid colors."
 print(f"HIVE_API_KEY: {HIVE_API_KEY}")
 

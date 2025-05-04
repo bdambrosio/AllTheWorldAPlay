@@ -1,11 +1,13 @@
 from __future__ import annotations
+import os, sys, re, traceback, requests, json
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ast import List
 from enum import Enum
 from typing import Any
-from src.utils import hash_utils
-from src.utils.Messages import UserMessage
+from utils import hash_utils
+from utils.Messages import UserMessage
 import utils.xml_utils as xml
-from src.sim.cognitive.driveSignal import Drive, SignalCluster
+from sim.cognitive.driveSignal import Drive, SignalCluster
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -72,7 +74,7 @@ stance_definitions = {
 }
 class EmotionalStance:
     """Represents an emotional stance of a character"""
-    def __init__(self, arousal: Arousal, tone: Tone, orientation: Orientation):
+    def __init__(self, arousal: Arousal=Arousal.Relaxed, tone: Tone=Tone.Content, orientation: Orientation=Orientation.Connecting):
         self.arousal = arousal
         self.tone = tone
         self.orientation = orientation

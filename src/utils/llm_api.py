@@ -7,7 +7,6 @@ import time
 import logging
 from pathlib import Path
 from sympy import Ordinal
-from utils.DeepSeekLocalClient import DeepSeekLocalClient
 from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
@@ -16,7 +15,6 @@ import utils.ClaudeClient as anthropic_client
 import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
-import utils.DeepSeekLocalClient as DeepSeekLocalClient
 import utils.CohereClient as cohere_client
 
 MODEL = '' # set by simulation from config.py
@@ -28,12 +26,21 @@ tabby_api_key = os.getenv("TABBY_API_KEY")
 headers = {'x-api-key': tabby_api_key}
 from openai import OpenAI
 import openai
-openai_api_key = os.getenv("OPENAI_API_KEY")
+
+api_key = None
 try:
-   openai_api = OpenAI()
-   openai_client = openai_client.OpenAIClient(openai_api)
-except openai.OpenAIError as e:
-   print(e)
+    api_key = os.getenv("OPENAI_API_KEY")
+except Exception as e:
+    print(f"Error getting OpenAI API key: {e}")
+
+if api_key is not None and api_key != '':
+    try:
+        openai_client = openai_client.OpenAIClient()
+    except Exception as e:
+        print(f"Error opening OpenAI client: {e}")
+else:
+    openai_client = None
+model = 'gpt-4.1-mini'
 
 import utils.GrokClient as GrokClient
 grok_client = GrokClient
@@ -42,7 +49,6 @@ import utils.OpenRouterClient as OpenRouterClient
 openrouter_client = OpenRouterClient.OpenRouterClient(api_key=os.getenv("OPENROUTER_API_KEY"))
 
 deepseek_client = DeepSeekClient.DeepSeekClient()
-deepseeklocal_client = DeepSeekLocalClient.DeepSeekLocalClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
 vllm_model = 'deepseek-r1-distill-llama-70b-awq'
@@ -116,15 +122,31 @@ pattern = r'\{\$[^}]*\}'
 # options include 'local', 'Claude', 'OpenAI', 'deepseek-chat',
 class LLM():
 
-    def __init__(self, server_name='local'):
+    def __init__(self, server_name='local', model_name=None):
         global vllm_model
         self.server_name = server_name
         print(f'will use {self.server_name} as llm')
         self.context_size = 16384  # conservative local mis/mixtral default
+        if model_name is not None:
+            self.model = model_name
+        else:
+            self.model = MODEL
+        if self.server_name == 'vllm':
+            try:
+                response = requests.get('http://localhost:5000/v1/models', headers=headers)
+                response.raise_for_status()  # Raises an HTTPError for bad responses (4xx, 5xx)
+                data = response.json()
+                if data.get('data') and len(data['data']) > 0:
+                    self.model = data['data'][0]['id']
+                else:
+                    raise ValueError("No models found in the response")
+            except (requests.RequestException, KeyError, ValueError) as e:
+                # Handle the error appropriately
+                raise Exception(f"Failed to get model information: {str(e)}")
 
-    if not IMAGE_PATH.exists():
-        IMAGE_PATH.mkdir(parents=True, exist_ok=True)
-        print(f"Directory '{IMAGE_PATH}' created.")
+        if not IMAGE_PATH.exists():
+            IMAGE_PATH.mkdir(parents=True, exist_ok=True)
+            print(f"Directory '{IMAGE_PATH}' created.")
 
     def run_request(self, bindings, prompt, options, log=False):
         global vllm_model
@@ -158,10 +180,10 @@ class LLM():
         if 'openai' in self.server_name:
             response = openai_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if options.model is not None and 'deepseek' in options.model and 'deepseeklocal' not in options.model:
+        if options.model is not None and 'deepseek' in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'deepseek' in self.server_name and 'deepseeklocal' not in self.server_name:
+        if 'deepseek' in self.server_name:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         if 'llama.cpp' in self.server_name:
@@ -181,12 +203,12 @@ class LLM():
             return response
         else:
             if options.stops is None: options.stops = []
-            if 'deepseeklocal' in self.server_name:
+            if 'vllm' in self.server_name:
                 headers = {"Content-Type": "application/json"}
                 url = 'http://localhost:5000/v1/completions'
                 content = '\n'.join([msg['content'] for msg in substituted_prompt])
                 response =  requests.post(url, headers= headers,
-                                          json={"model":vllm_model, 
+                                          json={"model":self.model, 
                                                 "prompt":content, "temperature":0.0,
                                                "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
             else:
@@ -195,7 +217,7 @@ class LLM():
                                   json={"messages":substituted_prompt, "temperature":options.temperature,
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
-            if 'deepseeklocal' in self.server_name:
+            if 'vllm' in self.server_name:
                 text = response.json()['choices'][0]['text']
                 if (index := text.find('</think>')) > -1:
                     text = text[index+8:].strip()
@@ -209,7 +231,7 @@ class LLM():
                     return response.content.decode('utf-8')
 
 
-            if 'deepseeklocal' in self.server_name and (index := text.find('</think>')) > -1:
+            if 'vllm' in self.server_name and (index := text.find('</think>')) > -1:
                 text = text[index+8:].strip()
                 return text
             if text.startswith('{'):

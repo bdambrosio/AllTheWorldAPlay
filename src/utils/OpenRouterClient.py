@@ -7,8 +7,14 @@ from utils.Messages import AssistantMessage
 from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
-api_key=os.getenv("OPENROUTER_API_KEY")
-MODEL = 'google/gemini-2.0-flash-001'
+api_key = None
+try:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+except Exception as e:
+    print(f"Error getting OpenRouter API key: {e}")
+#MODEL = 'google/gemini-2.0-flash-001'
+#MODEL = 'meta-llama/llama-4-maverick'
+MODEL = 'google/gemma-3-27b-it'
 
 
 class OpenRouterClient():
