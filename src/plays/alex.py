@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
-from src.sim.agh import Character
+from src.sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 from plays.scenarios import suburban
@@ -22,7 +22,7 @@ importlib.reload(suburban)
 map_file_name = 'suburban.py' # needed to trigger narrative creation
 
 # Main character - person with morning routine and job
-Alex = Character("Alex", """You are Alex, an unemployed 34-year-old software developer.
+Alex = NarrativeCharacter("Alex", """You are Alex, an unemployed 34-year-old software developer.
 You live in a suburban house with your significant other Susan.
 Your main priority is to get a job.
 You're organized but often running late in the mornings.
