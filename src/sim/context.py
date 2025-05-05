@@ -310,7 +310,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         # create a new NPC
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
-            npc = Character(name, character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
+            npc = NarrativeCharacter(name, character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
             npc.set_context(self)
             npc.llm = self.llm
             map_agent = self.map.get_agent(name)
@@ -323,6 +323,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             self.npcs.append(npc)
             return npc
         return None
+
 
     def get_actor_or_npc_by_name(self, name):
         """Helper to find actor or NPC by name"""
@@ -801,6 +802,9 @@ Ensure your response reflects this change.
         characters_in_scene: List[Character] = []
         for character_name in scene['action_order']:
             character = self.get_actor_by_name(character_name)
+            if character is None:
+                print(f'Character {character_name} not found in scene {scene["scene_title"]}')
+                character = self.get_npc_by_name(character_name, create_if_missing=True)
             if character_name == 'Context':
                 continue
             if character not in characters_in_scene:
@@ -930,6 +934,7 @@ Return exactly one JSON object with these keys:
 
 - `act_number` (int, copied from the original act)  
 - `act_title`   (string, copied from the original act or rewritten as appropriate)  
+- `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - `scenes`      (array) 
 
 Each **scene** object must have:
@@ -978,13 +983,13 @@ End your response with </end>
             if character_narrative_act_count > integrated_act_count:
                 integrated_act_count = character_narrative_act_count
 
-        character_narrative_blocks = []
         for i in range(integrated_act_count):
             previous_act = None
+            character_narrative_blocks = []
             for character in cast(List[NarrativeCharacter], self.actors):
                 if i < len(character.plan['acts']):
-                    character.replan_narrative_act(character.plan['acts'][i], previous_act)
-                    character_narrative_blocks.append([character, character.plan['acts'][i]])  
+                    updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act)
+                    character_narrative_blocks.append([character, updated_act])  
             next_act = await self.integrate_narratives(character_narrative_blocks)
             if next_act is None:
                 logger.error('No act to run')

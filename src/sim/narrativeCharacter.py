@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger('simulation_core')
 
 class NarrativeCharacter(Character):
-    def __init__(self, name, description, server_name='local'):
-        super().__init__(name, description, server_name=server_name)
+    def __init__(self, name, character_description= '', reference_description='', init_x=50, init_y=50, server_name='local'):
+        super().__init__(name, character_description, reference_description=reference_description, init_x=init_x, init_y=init_y, server_name=server_name)
         # Narrative files
         self.play_file = None 
         self.map_file = None
@@ -246,6 +246,7 @@ Return exactly one JSON object with these keys:
 * `"acts"` – an array of act objects.  Each act object has  
   - `act_number` (int, 1-based)  
   - `act_title`   (string)  
+  - `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
   - `scenes`      (array) (only for the first act)
 
 Each **scene** object must have:
@@ -269,7 +270,7 @@ You will have the opportunity to revise your plan as you go along, observe the r
 
 ### 2.2  Guidelines
 1. Base every character’s *stated goal* on their `.drives`, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3–4 acts, each 2–4 scenes (10–14 scenes total is ideal). Be careful to not repeat scenes across acts, keep the momentum going.  
+2. Craft 3–8 acts, each 2–4 scenes (10–14 scenes total is ideal). Be careful to not repeat scenes across acts, keep the momentum going. By the end there should be some resolution of the dramatic tension and the character's primary drive.
 3. Escalate tension act-to-act; expect to be challenged, and to be forced to reconsider your goals and perhaps change them in future.  
 4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals.  
@@ -287,7 +288,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "map": self.map_file_content,
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat()}, 
-                                 max_tokens=4000, tag='narrative')
+                                 max_tokens=6000, tag='narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
         except Exception as e:
@@ -392,6 +393,7 @@ Return exactly one JSON object with these keys:
 * `"acts"` – an array of act objects.  Each act object has  
   - `act_number` (int, 1-based)  
   - `act_title`   (string)  
+  - `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
   - `scenes`      (array) (only for the first act)
 
 Each **scene** object must have:
@@ -500,7 +502,7 @@ You have already created a initial plan for the following act, and now need to u
 Based on prior conversations and events recorded below, update your plan for the following act. 
 The act may be empty, ie have no scenes. In this case, you should flesh out the act with scenes based on it's title and place in the play. Make sure the overall narrative arc is maintained.
 If there are scenes in the act, they may have already occurred in the performance so far, or may no longer be relevant (e.g. other actor's plans have changed), and if so should be removed or rewritten to reflect the new information.
-Other scenes may need to be added or modified to better reflect the new information.
+Other scenes may need to be added or modified to better reflect the new information. Analyze the act description and design the new act to achieve the dramatic tension described. Extend with new scenes if needed.
 Note also that time has passed since you originally formulated this act. For example, you might have been planning to have breakfast, but it may now be past noon.
 the current time is {{$time}}
 your original act was:
@@ -538,6 +540,7 @@ Return exactly one JSON object with these keys:
 
 - `act_number` (int, copied from the original act)  
 - `act_title`   (string, copied from the original act or rewritten as appropriate)  
+- `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - `scenes`      (array) 
 
 Each **scene** object must have:
@@ -559,6 +562,7 @@ Each **scene** object must have:
 {
   "act_number": {{$act_number}},
   "act_title": "rewritten act title",
+  "act_description": "short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
   "scenes": [
     {
       "scene_number": 1,  
