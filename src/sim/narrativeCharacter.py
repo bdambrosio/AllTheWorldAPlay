@@ -543,6 +543,8 @@ End your response with </end>
 
         mission = """You are a skilled playwright working interactively to create a dynamic performance. 
 You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
+Note the tensions and relationships with other characters, as these may have changed.
+Note also the post-narrative of the previous act, and check consistency with the assumptions made in this act, including it's title, pre-narrative, goals, description, and character goals in the initial scene.
 Based on prior conversations and events recorded below, update your plan for the following act. 
 The act may be empty, ie have no scenes. In this case, you should flesh out the act with scenes based on it's title and place in the play. Make sure the overall narrative arc is maintained.
 If there are scenes in the act, they may have already occurred in the performance so far, or may no longer be relevant (e.g. other actor's plans have changed), and if so should be removed or rewritten to reflect the new information.

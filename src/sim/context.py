@@ -56,7 +56,7 @@ class Context():
         self.map = map.WorldMap(60, 60, scenario_module)
         self.step = False  # Boolean step indicator from simulation server
         self.run = False # Boolean run indicator from simulation server
-        self.name = 'World'
+        self.name = ''
         self.llm = llm_api.LLM(server_name, model_name)
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = '0 hours'  # Amount to advance each step
@@ -635,7 +635,7 @@ Ensure your response reflects this change.
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         if not local_only:
-            self.message_queue.put({'name':self.name, 'text':f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n'})
+            self.message_queue.put({'name':self.name, 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}\n'})
             self.transcript.append(f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n')
             await asyncio.sleep(0.1)
          
@@ -809,7 +809,7 @@ Ensure your response reflects this change.
                     for other_character in characters:
                         if other_character != character or len(characters) == 1:
                             character.add_perceptual_input(f'Issue: {issue} {"with "+ other_character.name if len(characters) > 1 else ""}')
-                            character.actor_models.get_actor_model(other_character.name, create_if_missing=True).add_relationship_item(issue)
+                            character.actor_models.get_actor_model(other_character.name, create_if_missing=True).add_tension(issue)
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 

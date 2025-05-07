@@ -166,7 +166,7 @@ class SpeechStylizer:
 
     # ---------------------------------------------------------------------
     def __init__(self, character, global_variability: float = 0.5, style_rotation_period: int = 3, rng: Optional[random.Random] = None) -> None:
-        self.char = character
+        self.char: NarrativeCharacter = character
         self.global_var = max(0.0, min(1.0, global_variability))
         self.rotation_period = max(1, style_rotation_period)
         self.rng = rng or random.Random()
@@ -343,7 +343,7 @@ Format your response as valid JSON only, no other text.
             return {"tone": [], "formality": 0.5}
         
         # Get the relationship text from the character's known actor model
-        known_actor: KnownActor = self.char.actor_models.get_known_actor_model(target.name)
+        known_actor: KnownActor = self.char.actor_models.get_actor_model(target.name)
         if not known_actor:
             return {"tone": [], "formality": 0.5}
         
