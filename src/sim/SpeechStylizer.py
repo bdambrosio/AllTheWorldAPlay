@@ -358,8 +358,8 @@ Given a relationship description between two characters, determine how it should
 Focus on formality level and emotional tone.
 
 Provide your analysis as a hash-formatted text with these keys:
-#tone: list of emotional qualities
-#formality: float 0-1 (0 being very informal, 1 being very formal)
+#tone list of emotional qualities
+#formality float 0-1 (0 being very informal, 1 being very formal)
 ##
 
 End your response with:
@@ -372,8 +372,8 @@ Target: {target.name}
 Relationship: {relationship}
 
 Provide your analysis as a hash-formatted text with these keys:
-#tone: list of emotional qualities
-#formality: float 0-1 (0 being very informal, 1 being very formal)
+#tone list of emotional qualities
+#formality float 0-1 (0 being very informal, 1 being very formal)
 ##
 
 End your response with:
@@ -384,7 +384,7 @@ End your response with:
         style = {"tone": [], "formality": 0.5}
         try:
             style = {"tone": [], "formality": 0.5}
-            response = self.char.llm.ask(prompt, tag='relationship_style', max_tokens=150)
+            response = self.char.llm.ask({}, prompt, tag='relationship_style', max_tokens=150)
             if response is None:
                 return style
             tone = hash_utils.find('tone', response)
