@@ -4,20 +4,22 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
-from src.sim.agh import Character
+from src.sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+model_name = configuration.model_name
 from plays.scenarios import rural
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 model_name = configuration.model_name
 importlib.reload(rural)
-from sim.cognitive.driveSignal import Drive
 
 map_file_name = 'rural.py' # needed to trigger narrative creation
 
-J = Character("Jean", """You are Jean Macquart, a hardworking young unmarried peasant farmer working his father's farm. 
+J = NarrativeCharacter("Jean", """You are Jean Macquart, a hardworking young unmarried peasant farmer working his father's farm. 
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.
 You speak plainly and directly, in the style of a volatile 19th century french peasant speaking to an acquaintance.
@@ -30,7 +32,7 @@ Drive("finding love and a wife to build a family with"),
 Drive("immediate needs of survival - food, shelter, health, rest from backbreaking labor")
 ]
 
-F = Character("Francoise", """You are Francoise Fouan, an attractive unmarried young woman from a neighboring peasant family in the same village as Jean.
+F = NarrativeCharacter("Francoise", """You are Francoise Fouan, an attractive unmarried young woman from a neighboring peasant family in the same village as Jean.
 You are hardworking and stoic, accustomed to the unending labor required on a farm.
 You conceal your feelings and speak carefully, knowing every word will be gossiped about in the village.
 You dream of marrying and having a farm of your own to manage one day.

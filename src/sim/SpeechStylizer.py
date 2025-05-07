@@ -12,7 +12,7 @@ import utils.hash_utils as hash_utils
 
 if TYPE_CHECKING:
     from sim.narrativeCharacter import NarrativeCharacter
-
+    from sim.cognitive.knownActor import KnownActor
 logger = logging.getLogger('simulation_core')
 
 class ThemeManager:
@@ -337,17 +337,20 @@ Format your response as valid JSON only, no other text.
         return style
 
     # ---------------------------------------------------------------------
-    def _from_relationship(self, target) -> Dict:
+    def _from_relationship(self, target: NarrativeCharacter) -> Dict:
         """Analyze relationship text to determine speech style adjustments."""
         if not target:
             return {"tone": [], "formality": 0.5}
         
         # Get the relationship text from the character's known actor model
-        known_actor = self.char.actor_models.get_known_actor_model(target.name)
+        known_actor: KnownActor = self.char.actor_models.get_known_actor_model(target.name)
         if not known_actor:
             return {"tone": [], "formality": 0.5}
         
-        relationship = known_actor.relationship
+        if type(known_actor) == str:
+            logger.error(f"KnownActor {target.name} is not a KnownActor: {known_actor}")
+        else:
+            relationship = known_actor.relationship
         
         prompt = [
             SystemMessage(content="""You are a dialogue style analyzer.

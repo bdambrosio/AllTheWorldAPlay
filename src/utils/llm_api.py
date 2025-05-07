@@ -16,6 +16,7 @@ import utils.OpenAIClient as openai_client
 import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
 import utils.CohereClient as cohere_client
+import utils.GeminiClient as gemini_client
 
 MODEL = '' # set by simulation from config.py
 
@@ -48,6 +49,9 @@ grok_client = GrokClient
 import utils.OpenRouterClient as OpenRouterClient
 openrouter_client = OpenRouterClient.OpenRouterClient(api_key=os.getenv("OPENROUTER_API_KEY"))
 
+import utils.GeminiClient as gemini_client
+gemini_client = gemini_client.GeminiClient()
+
 deepseek_client = DeepSeekClient.DeepSeekClient()
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -57,7 +61,7 @@ vllm_model = '/home/bruce/Downloads/models/gemma-3-27b-it'
 vllm_model = '/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B'
 vllm_model = '/home/bruce/Downloads/models/phi-4'
 vllm_model = 'google/gemma-3-27b-it'
-
+vllm_model = 'Qwen/Qwen3-32B'
 elapsed_times = {}
 iteration_count = 0
 
@@ -180,26 +184,29 @@ class LLM():
         if 'openai' in self.server_name:
             response = openai_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if options.model is not None and 'deepseek' in options.model:
+        elif options.model is not None and 'deepseek' in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'deepseek' in self.server_name:
+        elif 'deepseek' in self.server_name:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'llama.cpp' in self.server_name:
+        elif 'llama.cpp' in self.server_name:
             response= llcpp_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
-        if 'Claude' in self.server_name:
+        elif 'Claude' in self.server_name:
             response= anthropic_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
-        if 'Cohere' in self.server_name:
+        elif 'Cohere' in self.server_name:
             response= cohere_client.executeRequest(prompt=substituted_prompt, options= options)
             return response
-        if 'Grok' in self.server_name:
+        elif 'Grok' in self.server_name:
             response= GrokClient.executeRequest(prompt=substituted_prompt, options=options)
             return response
-        if 'openrouter' in self.server_name.lower():
+        elif 'openrouter' in self.server_name.lower():
             response= openrouter_client.executeRequest(prompt=substituted_prompt, options=options)
+            return response
+        elif 'gemini' in self.server_name.lower():
+            response= gemini_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         else:
             if options.stops is None: options.stops = []

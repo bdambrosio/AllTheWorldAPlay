@@ -7,7 +7,11 @@ import sim.context as context
 from src.sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
+importlib.reload(configuration)# force reload in case cached version
+server_name = configuration.server_name 
+model_name = configuration.model_name
 import plays.scenarios.forest as forest
+
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 model_name = configuration.model_name
@@ -20,15 +24,15 @@ S = NarrativeCharacter("Samantha", """You are Samantha, a healthy, attractive yo
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 
 You have a uncomfortable history, maybe it is just as well you don't remember it.
-You are informal, chatty, think and speak in informal teen style, and are a playful when relaxed. 
+You are informal, chatty, think and speak in informal teen style, and are a playful when relaxed, but at other times can be argumentative and defensive.
 You are comfortable on long treks, and are unafraid of hard work. 
 You are wary of strangers.""", 
 server_name=server_name)
 
 S.set_drives([
     "solve the mystery of how they ended up in the forest. Find a way back home.",
-    "love and belonging, including home, acceptance, friendship, trust, intimacy.",
-    "immediate physiological needs: survival, shelter, water, food, rest."
+    "adventure, excitement, and the thrill of the unknown.",
+    "love and belonging, including home, acceptance, friendship, trust, intimacy."
 ])
 
 

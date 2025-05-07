@@ -506,21 +506,21 @@ with current situation:
 {{$narrative}}
 </situation>
 
-Respond with the observable result.
+Respond with the observable result. Target a sentence or two at most as your response length.
 Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
-Be careful to include any effects on the state of {{$name}} in your response.
-It is usually not necessary or desirable to repeat the above action statement in your response.
+Include any effects on the physical, mental, or emotional state of {{$name}} in your response, even if not observable to other characters.
+Do not repeat the above action statement in your response.
 Observable result must be consistent with information provided in the LocalMap.
 Format your response as one or more simple declarative sentences.
 Include in your response:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
 - sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
 - changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
-- changes in {{$name})'s or other actor's state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
-- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form.
+- changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
+- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
-Be extremely terse when reporting character emotional state, only report the most significant emotional state changes.
-Be concise!
+Be  terse when reporting character emotional state, only report the most significant emotional state changes.
+
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
 </end>
@@ -634,21 +634,24 @@ Ensure your response reflects this change.
                                 tag='Context.update', temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
-        if not local_only or self.simulation_time - self.last_update_time > timedelta(hours=3):
-            self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {self.simulation_time.isoformat()}\n'})
-            self.transcript.append(f'\n\n-----scene----- {self.simulation_time.isoformat()}\n')
+        if not local_only:
+            self.message_queue.put({'name':self.name, 'text':f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n'})
+            self.transcript.append(f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n')
             await asyncio.sleep(0.1)
          
         if new_situation is None:
             return
         self.current_state = new_situation
-        if local_only or self.simulation_time - self.last_update_time > timedelta(minutes=15):
+        if local_only:
             self.last_update_time = self.simulation_time
             return
         self.show = new_situation
         self.message_queue.put({'name':self.name, 'text':self.show})
         self.transcript.append(f'{self.show}')
         self.show = '' # has been added to message queue!
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_json()})
+        await asyncio.sleep(0.1)
+
         await asyncio.sleep(0.1)
 
         updates = self.world_updates_from_act_consequences(new_situation)
@@ -785,17 +788,43 @@ Ensure your response reflects this change.
             character_task_limit = 1
         return int(character_task_limit)
 
+
+    def establish_tension_points(self, act):
+        """Establish tension points for an act"""
+        if 'tension_points' not in act or not isinstance(act['tension_points'], list):
+            return
+        for tension_point in act['tension_points']:
+            try:
+                character_names = tension_point['characters']
+                issue = tension_point['issue']
+                resolution_requirement = tension_point['resolution_requirement']
+                characters: List[NarrativeCharacter] = []
+                for character_name in character_names:
+                    character, _ = self.resolve_character(character_name)
+                    if character is None:
+                        print(f'Character {character_name} not found in act {act["act_title"]}')
+                        continue
+                    characters.append(character)
+                for character in characters:
+                    for other_character in characters:
+                        if other_character != character or len(characters) == 1:
+                            character.add_perceptual_input(f'Issue: {issue} {"with "+ other_character.name if len(characters) > 1 else ""}')
+                            character.actor_models.get_actor_model(other_character.name, create_if_missing=True).add_relationship_item(issue)
+            except Exception as e:
+                print(f'Error establishing tension points: {e}')
+
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
-        self.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]} - {scene["location"]} at {scene["time"]}'})
+        self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]} - {scene["location"]} at {scene["time"]}'})
         await asyncio.sleep(0.1)
         self.current_scene = scene
         if scene.get('pre_narrative'):
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
+            self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
+            await asyncio.sleep(0.1)
         if scene.get('post_narrative'):
-            self.current_state += '\n'+scene['post_narrative']
             self.scene_post_narrative = scene['post_narrative']
 
         #construct a list of characters in the scene in the order in which they appear
@@ -840,16 +869,22 @@ Ensure your response reflects this change.
                     continue
                 else:
                     await character.cognitive_cycle(narrative=True)
+        if self.current_scene.get('post_narrative'):
+            self.current_state += '\n'+self.current_scene['post_narrative']
+            self.message_queue.put({'name':'\n', 'text':f'    {self.current_scene["post_narrative"]}\n'})
+            await asyncio.sleep(0.1)
+        await self.update(local_only=True)
 
 
     async def run_narrative_act(self, act):
         """Run a narrative"""
+        self.establish_tension_points(act)
         scenes = act.get('scenes', [])
         if len(scenes) == 0:
             logger.error(f'No scenes in act: {act["act_title"]}')
             return
         print(f'Running act: {act["act_title"]}')
-        self.message_queue.put({'name':'', 'text':f'\n---ACT----- {act["act_title"]}'})
+        self.message_queue.put({'name':'\n', 'text':f'---ACT----- {act["act_title"]}'})
         await asyncio.sleep(0.1)
         for scene in act['scenes']:
             while self.step is False and  self.run is False:
@@ -869,14 +904,18 @@ Ensure your response reflects this change.
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             character.write_narrative(play_file, map_file)
+            await asyncio.sleep(0.1)
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- sharing narrative -----'})
             await character.share_narrative()
+            await asyncio.sleep(0.1)
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'----- updating narrative -----'})
             character.update_narrative_from_shared_info()
             logger.info(f'\n{character.name}\n{json.dumps(character.reserialize_narrative_json(character.plan), indent=2)}')
+            await asyncio.sleep(0.1)
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
+        await asyncio.sleep(0.1)
 
     async def integrate_narratives(self, character_narrative_blocks):
         """Integrate narratives into a single coherent narrative for a single act
@@ -932,10 +971,17 @@ An Act is a single JSON document that outlines a short-term plan for yourself
 ###  Structure
 Return exactly one JSON object with these keys:
 
-- `act_number` (int, copied from the original act)  
-- `act_title`   (string, copied from the original act or rewritten as appropriate)  
-- `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-- `scenes`      (array) 
+- "act_number" (int, copied from the original act)  
+- "act_title"   (string, copied from the original act or rewritten as appropriate)  
+- "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
+- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "tension_points": [
+    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    ...
+  ]
+- "scenes"      (array) 
 
 Each **scene** object must have:
 { "scene_number": int, // sequential within the play 
@@ -959,7 +1005,7 @@ End your response with </end>
 """)]
         response = self.llm.ask(
                               {"time": self.simulation_time.isoformat(), "plans": character_plans, "backgrounds": character_backgrounds},
-                              prompt, max_tokens=3000, stops=['</end>'], tag='integrate_narratives')
+                              prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
         try:
             updated_narrative_plan = None
             if not response:
@@ -983,18 +1029,23 @@ End your response with </end>
             if character_narrative_act_count > integrated_act_count:
                 integrated_act_count = character_narrative_act_count
 
-        for i in range(integrated_act_count):
-            previous_act = None
-            character_narrative_blocks = []
-            for character in cast(List[NarrativeCharacter], self.actors):
-                if i < len(character.plan['acts']):
-                    updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act)
-                    character_narrative_blocks.append([character, updated_act])  
-            next_act = await self.integrate_narratives(character_narrative_blocks)
-            if next_act is None:
-                logger.error('No act to run')
-            await self.run_narrative_act(next_act)
-            previous_act = next_act
+        try:
+            for i in range(integrated_act_count):
+                previous_act = None
+                character_narrative_blocks = []
+                for character in cast(List[NarrativeCharacter], self.actors):
+                    if i < len(character.plan['acts']):
+                        updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act)
+                        character_narrative_blocks.append([character, updated_act])  
+                next_act = await self.integrate_narratives(character_narrative_blocks)
+                if next_act is None:
+                    logger.error('No act to run')
+                    return
+                await self.run_narrative_act(next_act)
+                previous_act = next_act
+        except Exception as e:
+            logger.error(f'Error running integrated narrative: {e}')
+            traceback.print_exc()
         return
 
 

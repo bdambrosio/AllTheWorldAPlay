@@ -8,7 +8,7 @@ from openai import OpenAI
 from utils.LLMRequestOptions import LLMRequestOptions
 
 
-class DeepSeekLocalClient():
+class VLLMClient():
     DefaultEndpoint = 'http://localhost:5000/v1'
 
 
@@ -33,7 +33,7 @@ class DeepSeekLocalClient():
         try:
             print(f"****\ntrying deepseek client:\n {prompt}")
             response = self._client.chat.completions.create(
-                model='Qwen/Qwen3-32B', messages=prompt,
+                model='Qwen/Qwen3-32B', messages=prompt+'<think>/n/n</think>',
                 max_tokens=options.max_tokens, temperature=0, top_p=options.top_p,
                 stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
             item = response.json()['choices'][0]['text']

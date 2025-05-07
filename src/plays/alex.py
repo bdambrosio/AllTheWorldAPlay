@@ -59,7 +59,7 @@ W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office#1',
 base_datetime = W.simulation_time if W.simulation_time else datetime.now()
 W.simulation_time = base_datetime.replace(hour=7, minute=15, second=0, microsecond=0)
 
-interviewer = W.get_npc_by_name('Interviewer', description="A middle-aged man with an alert, questioning face", x=20, y=20, create_if_missing=True)
+interviewer = W.get_npc_by_name('Interviewer', description="A skilled antagonistic interviewer looking for flaws or weaknesses in your skills and or personality", x=20, y=20, create_if_missing=True)
 interviewer.mapAgent.move_to_resource('Office#1')
 W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office#1', 'works_at')
 
