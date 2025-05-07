@@ -201,6 +201,10 @@ End with:
         if relation_update:
             self.relationship +=relation_update.strip()
 
+    def add_relationship_item(self, item):
+        """add an item to the relationship"""
+        self.relationship += f'\n{item}'
+
 class KnownActorManager:
     def __init__(self, owner, context):
         self.owner = owner
@@ -262,7 +266,7 @@ class KnownActorManager:
     def add_actor_model(self, actor_name):
         actor_name = actor_name.strip().capitalize()
         actor_agh,_ = self.context.resolve_character(actor_name)
-        if actor_agh:
+        if actor_agh and (actor_agh.__class__.__name__ == 'NarrativeCharacter' or actor_agh.__class__.__name__ == 'Character'):
             # Always store under both names to be safe
             self.known_actors[actor_agh.name] = KnownActor(self.owner, actor_agh, )
             self.known_actors[actor_name] = self.known_actors[actor_agh.name]
@@ -277,8 +281,10 @@ class KnownActorManager:
                 print(f"{self.owner.name} creating model for {actor_name}")
                 self.add_actor_model(actor_name)
             else:
-                    return None
-        return self.known_actors[actor_name] if actor_name in self.known_actors else None
+                return None
+        actor = self.known_actors[actor_name]
+
+        return actor
 
     def set_all_actors_visible(self):
         for actor in self.known_actors:
@@ -387,6 +393,10 @@ class KnownActorManager:
         import json
         with open(filepath, 'w') as f:
             json.dump(self.to_json(), f)
+
+    def dialogs(self):
+        """return a list of dialogs"""
+        return [f'{actor.canonical_name}:\n {actor.dialog.get_transcript()}\n' for actor in self.known_actors.values() if actor.dialog]
 
     @classmethod
     def from_json(cls, data, owner, context):

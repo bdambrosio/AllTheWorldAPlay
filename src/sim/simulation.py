@@ -264,8 +264,8 @@ class SimulationServer:
                 # Yield control briefly to allow other tasks
                 await asyncio.sleep(0.1)
                 
-                # Send command acknowledgment
-                await self.send_command_ack('step')
+            # Send command acknowledgment
+            await self.send_command_ack('step')
         except Exception as e:
             logger.error(f"Error in simulation step: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")

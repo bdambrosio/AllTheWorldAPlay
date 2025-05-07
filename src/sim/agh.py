@@ -984,7 +984,7 @@ End response with:
             self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
             self.achievments.append(task.termination)
             self.update()
-            await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
+            #await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
  
         return satisfied
 
@@ -1103,6 +1103,8 @@ End response with:
         # Handle world interaction
         if act_mode == 'Do':
             # Get action consequences from world
+            self.context.message_queue.put({'name':self.name, 'text':f'does {act_arg}'})
+            await asyncio.sleep(0.1)
             consequences, world_updates, character_updates = self.context.do(self, act_arg)
             if len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
@@ -1113,11 +1115,11 @@ End response with:
 
             # Update displays
 
-            self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
-            self.context.message_queue.put({'name':self.name, 'text':self.show})
-            self.context.transcript.append(f'{self.name}: {self.show}')
-            self.show = ''
-            await asyncio.sleep(0.1)
+            if len(consequences.strip()) > 2:
+                self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
+                self.context.message_queue.put({'name':self.name, 'text':self.show})
+                self.context.transcript.append(f'{self.name}: {self.show}')
+                await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
             if len(world_updates) > 0:
                 self.add_perceptual_input(f"{world_updates}", mode='visual')
@@ -2539,13 +2541,6 @@ End your response with:
                 #self.driveSignalManager.recluster()
                 return
 
-        text, response_source = self.generate_dialog_turn(self, message, self.focus_task.peek()) # Generate response using existing prompt-based method
-        action = Act(mode='Think', action=text, actors=[self], reason=text, duration=1, source=response_source, target=self)
-        await self.act_on_action(action, response_source)
-        await asyncio.sleep(0.1)
-        if self.focus_action == action:
-            self.focus_action = None
-
 
     async def hear(self, from_actor: Character, message: str, source: Task=None, respond: bool=True):
         """ called from acts when a character says something to this character """
@@ -2665,7 +2660,9 @@ Your last action was:
 </statement>
 """
 
-        prompt_string += "" if self is from_actor else """Use how you think of speaker as a key determinant in composing your response. 
+        prompt_string += "" if self is from_actor else """Your first step in composing your response is to decide if you agree with the speaker. 
+Even if speaker is a close friend, you may disagree with them, and that is fine.
+Use how you think of speaker as a key determinant in composing your response. 
 Do you trust that speaker's drives and goals align with yours? Do you believe speaker's statement is sincere?
 What is speaker's emotional state? Would they enjoy humor at this point, or should your response be cautious and measured?
 """

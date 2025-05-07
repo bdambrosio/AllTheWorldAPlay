@@ -89,10 +89,26 @@ class NarrativeCharacter(Character):
         # Check required act fields
         if "act_number" not in act or not isinstance(act["act_number"], int):
             return False, "Missing or invalid 'act_number'"
-        if "act_title" not in act or not isinstance(act["act_title"], str):
-            return False, "Missing or invalid 'act_title'"
-                
-        # Only validate scenes for first act
+        if "act_description" not in act or not isinstance(act["act_description"], str):
+            return False, "Missing or invalid 'act_description'"
+        if "act_goals" not in act or not isinstance(act["act_goals"], dict):
+            return False, "Missing or invalid 'act_goals'"
+        if "act_pre_state" not in act or not isinstance(act["act_pre_state"], str):
+            return False, "Missing or invalid 'act_pre_state'"
+        if "act_post_state" not in act or not isinstance(act["act_post_state"], str):
+            return False, "Missing or invalid 'act_post_state'"
+        if "tension_points" not in act or not isinstance(act["tension_points"], list):
+            return False, "Missing or invalid 'tension_points'"
+        for tension_point in act["tension_points"]:
+            if not isinstance(tension_point, dict):
+                return False, "Tension point must be a JSON object"
+            if "characters" not in tension_point or not isinstance(tension_point["characters"], list):  
+                return False, "Tension point must have 'characters' array"
+            if "issue" not in tension_point or not isinstance(tension_point["issue"], str):
+                return False, "Tension point must have 'issue' string"
+            if "resolution_requirement" not in tension_point or not isinstance(tension_point["resolution_requirement"], str):
+                return False, "Tension point must have 'resolution_requirement' string"
+       # Only validate scenes for first act
         if act["act_number"] == 1:
             if "scenes" not in act or not isinstance(act["scenes"], list):
                 return False, "First act must have 'scenes' array"
@@ -157,9 +173,9 @@ class NarrativeCharacter(Character):
                     return False, f"Invalid task_budget in scene {scene['scene_number']}"
                 elif "task_budget" in scene and scene["task_budget"] > 2*len(scene["action_order"]):
                     logger.debug(f"task_budget in scene {scene['scene_number']} is too high")
-                    scene["task_budget"] = int(1.5*len(scene["action_order"])+1)
+                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
                 elif "task_budget" not in scene:
-                    scene["task_budget"] = int(1.5*len(scene["action_order"])+1)
+                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
 
                 # Validate narrative lengths
                 if len(scene["pre_narrative"].split()) > 120:
@@ -242,12 +258,19 @@ Given where you are in life, what you have achieved so far, and what you want to
 ### 2.1  Structure
 Return exactly one JSON object with these keys:
 
-* `"title"` – a short, evocative play title.  
-* `"acts"` – an array of act objects.  Each act object has  
-  - `act_number` (int, 1-based)  
-  - `act_title`   (string)  
-  - `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - `scenes`      (array) (only for the first act)
+* "title"    – a short, evocative play title.  
+* "acts" – an array of act objects.  Each act object has  
+  - "act_number" (int, 1-based)  
+  - "act_title"   (string)  
+  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "tension_points": [
+      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      ...
+    ],
+  - "scenes"      (array) (only for the first act)
 
 Each **scene** object must have:
 { "scene_number": int, // sequential within the play 
@@ -288,7 +311,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "map": self.map_file_content,
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat()}, 
-                                 max_tokens=6000, tag='narrative')
+                                 max_tokens=5000, tag='narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
         except Exception as e:
@@ -368,11 +391,14 @@ End your response with </end>
     def update_narrative_from_shared_info(self):
         """Update the narrative with the latest shared information"""
 
-        mission = """Based on prior conversations recorded below, do you see need to update your plans?"""
+        mission = """You are an imaginative, innovative, and creative planner. Based on prior conversations recorded below, do you see need to update an act in your plan?"""
         suffix = """
 
-Your plans at the moment are:
-{{$narrative}}
+Recent dialogs:
+{{$dialogs}}
+
+Your plan at the moment is:
+{{$plan}}
 
 Respond with the single word 'yes' or 'no', and, if yes, the act number of the first act you would like to update, and the updated act, using the following format:
 
@@ -390,14 +416,21 @@ An Act is a single JSON document that outlines a short-term plan for yourself
 Return exactly one JSON object with these keys:
 
  
-* `"acts"` – an array of act objects.  Each act object has  
-  - `act_number` (int, 1-based)  
-  - `act_title`   (string)  
-  - `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - `scenes`      (array) (only for the first act)
+* "acts" – an array of act objects.  Each act object has  
+  - "act_number" (int, 1-based)  
+  - "act_title"   (string)  
+  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "tension_points": [
+      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      ...
+    ],
+  - "scenes"      (array) (only for the first act)
 
 Each **scene** object must have:
-{ "scene_number": int, // sequential within the play 
+{"scene_number": int, // sequential within the play 
  "scene_title": string, // concise descriptor 
  "location": string, // pick from resource or terrain names in the map file
  "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
@@ -418,6 +451,14 @@ Each **scene** object must have:
 {
   "act_number": (int),
   "act_title": (string),
+  "act_description": (string),
+  "act_goals": {"primary": "primary goal", "secondary": "secondary goal"},
+  "act_pre_state": (string),
+  "act_post_state": (string),
+  "tension_points": [
+    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    ...
+  ],
   "scenes": [
     {
       "scene_number": 1,  
@@ -446,10 +487,13 @@ updated act
 ```
 End your response with </end>
 """
+        dialogs = self.actor_models.dialogs()
 
         response = default_ask(self, mission, suffix,
-                              {"name": self.name, "plan": json.dumps(self.reserialize_narrative_json(self.plan))},
-                              max_tokens=800, tag='update_narrative')
+                              {"name": self.name, 
+                               "dialogs": '\n'.join(dialogs),
+                               "plan": json.dumps(self.reserialize_narrative_json(self.plan))},
+                              max_tokens=1600, tag='update_narrative')
         try:
             updated_act = None
             act_id = -1
@@ -538,10 +582,17 @@ An Act is a single JSON document that outlines a short-term plan for yourself
 ###  Structure
 Return exactly one JSON object with these keys:
 
-- `act_number` (int, copied from the original act)  
-- `act_title`   (string, copied from the original act or rewritten as appropriate)  
-- `act_description` (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-- `scenes`      (array) 
+- "act_number" (int, copied from the original act)  
+- "act_title"   (string, copied from the original act or rewritten as appropriate)  
+- "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
+- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "tension_points": [
+    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    ...
+  ]
+- "scenes"      (array) 
 
 Each **scene** object must have:
 { "scene_number": int, // sequential within the play 
@@ -563,6 +614,13 @@ Each **scene** object must have:
   "act_number": {{$act_number}},
   "act_title": "rewritten act title",
   "act_description": "short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
+  "act_goals" {"primary": "primary goal", "secondary": "secondary goal"},
+  "act_pre_state": (string, description of the situation / goals / tensions before the act starts),
+  "act_post_state": (string, description of the situation / goals / tensions after the act ends),
+  "tension_points": [
+    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    ...
+  ],
   "scenes": [
     {
       "scene_number": 1,  
@@ -589,7 +647,7 @@ End your response with </end>
                                "act_number": act['act_number'],
                                "play": json.dumps(self.reserialize_narrative_json(self.plan)),
                                "previous_act": json.dumps(self.reserialize_act_to_string(previous_act)) if previous_act else ''},
-                              max_tokens=800, tag='replan_narrative_act')
+                              max_tokens=1400, tag='replan_narrative_act')
         try:
             updated_act = None
             act_id = act['act_number']
