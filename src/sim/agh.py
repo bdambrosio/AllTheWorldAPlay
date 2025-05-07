@@ -217,8 +217,8 @@ class Character:
 
     def get_character_description(self):
         description = self.character
-        if self.actor_models.get_known_actor_model(self.name):
-            description += '\n\n' + self.actor_models.get_known_actor_model(self.name)
+        if self.actor_models.get_known_actor_relationship(self.name):
+            description += '\n\n' + self.actor_models.get_known_actor_relationship(self.name)
         return description
     
     def validate_and_create_goal(self, goal_hash, signalCluster=None):

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import List, Optional
 from sim.cognitive.DialogManager import Dialog
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
@@ -15,10 +15,10 @@ class KnownActor:
         self.name = other_agh.name
         self.visible = False
         self.goal = ''
-        self.model = ''
         self.distance = 0
         self.dialog = Dialog(self.owner, self.actor_agh)
         self.relationship = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
+        self.tensions: List[str] = []
 
     def to_json(self):
         """Convert KnownActor state to JSON-serializable dict, excluding runtime references"""
@@ -30,7 +30,8 @@ class KnownActor:
             'model': self.model,
             'distance': self.distance,
             'relationship': self.relationship,
-            'dialog': self.dialog.to_json() if self.dialog else None
+            'dialog': self.dialog.to_json() if self.dialog else None,
+            'tensions': self.tensions
         }
     
     @classmethod
@@ -49,10 +50,9 @@ class KnownActor:
         known_actor.name = data['name']
         known_actor.visible = data['visible']
         known_actor.goal = data['goal']
-        known_actor.model = data['model']
         known_actor.distance = data['distance']
         known_actor.relationship = data['relationship']
-        
+        known_actor.tensions = data['tensions']
         # Restore dialog if it exists, passing the resolved characters
         if data['dialog']:
             known_actor.dialog = Dialog.from_json(data['dialog'], owner, actor_agh)
@@ -140,6 +140,8 @@ End with:
         new_relation = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=200, stops=["</end>"])
         if new_relation:
             self.relationship = new_relation.strip()
+            self.clear_tensions()
+        return self.relationship
 
     def short_update_relationship(self, all_texts, use_all_texts=False):      
         """self is An instance of a model of another actor 
@@ -201,9 +203,16 @@ End with:
         if relation_update:
             self.relationship +=relation_update.strip()
 
-    def add_relationship_item(self, item):
+    def add_tension(self, item):
         """add an item to the relationship"""
+        # tensions field is not used, but keep it for now
+        self.tensions.append(item)
         self.relationship += f'\n{item}'
+    def get_tensions(self):
+        return '\n'.join(self.tensions)
+    
+    def clear_tensions(self):
+        self.tensions = []
 
 class KnownActorManager:
     def __init__(self, owner, context):
@@ -317,10 +326,10 @@ class KnownActorManager:
         relationships = self.get_known_relationships(include_transcript)
         return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])
 
-    def get_known_actor_model(self, actor_name: str) -> str:
+    def get_known_actor_relationship(self, actor_name: str) -> str:
         """
-        Get the known actor model for the specified actor if it exists.
-        Returns an empty string if no model exists.
+        Get the known actor relationship for the specified actor if it exists.
+        Returns an empty string if no relationship exists.
         
         Args:
             actor_name: Name of the actor to get the model for
@@ -330,7 +339,7 @@ class KnownActorManager:
         """
         actor_name = actor_name.strip().capitalize()
         if actor_name in self.known_actors:
-            return self.known_actors[actor_name].model
+            return self.known_actors[actor_name].relationship
         return ''
 
     def resolve_or_create_character(self, reference_text):
