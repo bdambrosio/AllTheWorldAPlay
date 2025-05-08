@@ -1074,7 +1074,7 @@ End response with:
                 moved = self.move_toward(act_arg)
                 if moved:
                     percept = self.look()
-                    self.show += ' moves ' + act_arg + '.\n  and notices ' + percept
+                    self.show += ' moves to ' + act_arg + '.\n  and notices ' + percept
                     self.context.message_queue.put({'name':self.name, 'text':self.show})
                     self.context.transcript.append(f'{self.name}: {self.show}')
                     self.show = '' # has been added to message queue!
@@ -1892,13 +1892,13 @@ An act is:
 Prioritize actions that lead to meaningful progress in the narrative.
 IMPORTANT: When evaluating a potential Act, the primary consideration is whether it can directly result in achievment of the task goal. 
 
-Dialog guidance:
-- If speaking (mode is Say), then:
+Dialog guidance: If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
 - Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
-    Use contractions and casual language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
-- If intended recipient is known (e.g., in Memory) or has been spoken to before (e.g., in RecentHistory), 
-    then pronoun reference is preferred to explicit naming, or can even be omitted. Example dialog interactions follow
+    Use contractions and language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
+- If intended recipient is known  or has been spoken to before (e.g., in RecentHistory), 
+    then pronoun reference is preferred to explicit naming, or can even be omitted. 
+- In any case, when using pronouns, always match the pronoun gender (he, she, his, her, they, their,etc) to the sex of the referent, or use they/their if a group. 
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 - Avoid repeating stereotypical past dialog.
 
@@ -1907,12 +1907,12 @@ When describing an action:
 - Indicate progress toward goal (starting/continuing/nearly complete)
 - Note changes in context or action details
 - Describe progress toward goal
-
+- Use the appropriate pronoun gender and case(he, she, his, her, etc.) for any referent, or they / their if the referent is a group.
 Consider the previous act. E.G.:
 - If the previous act was a Move, are you now at your destination? If not, do you want to keep moving towards it?
     If you are at your destination, what do you want to Do there? 
     Gather or use a resource? Talk to someone there? Do something else at your new location?
-- If the previous act was a Look, what did you learn?
+- If the previous act was a Look, what did you learn and how does it affect this act?
                               
 Respond in hash-formatted text:
 
@@ -2731,7 +2731,7 @@ End your response with:
             "memories": memory_text,  # Updated from 'memory'
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
-            'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
+            'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
             "scene_post_narrative": scene_post_narrative
@@ -2949,6 +2949,7 @@ End your response with:
                         'name': task.name,
                         'description': task.description,
                         'reason': task.reason,
+                        'termination': task.termination,
                         'context': {
                             'signal_cluster': task.goal.signalCluster.to_string() if task.goal and task.goal.signalCluster else '',
                             'emotional_stance': {

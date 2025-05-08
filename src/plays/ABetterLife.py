@@ -36,7 +36,7 @@ H.set_drives([
 
 
 X = NarrativeCharacter("Xue", """You are Xue Xiaozhou, a 28 year old male insurance executive from a wealthy family. 
-You are a workaholic and love the competition.
+You speak with the condescension of a rich man. You are a workaholic and love the competition.
 You start out down on your luck, with a competitor named Hu is fighting for your clients.
 You are ambitious, competitive, and determined to outshine Hu.
 """,

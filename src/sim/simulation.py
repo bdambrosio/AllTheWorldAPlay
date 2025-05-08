@@ -215,10 +215,8 @@ class SimulationServer:
             if not os.path.exists(self.known_actors_dir):
                 os.makedirs(self.known_actors_dir)
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
-            self.sim_context.message_queue.put({'name':'self.sim_context.name', 'text':f'----- {play_name} loaded-----'})
-            if self.sim_context.narrative:
-                await self.sim_context.run_narrative()
-            elif hasattr(module, 'map_file_name'):
+            self.sim_context.message_queue.put({'name':self.sim_context.name, 'text':f'----- {play_name} loaded-----'})
+            if hasattr(module, 'map_file_name'):
                 await self.sim_context.create_character_narratives(play_name, module.map_file_name)
                 self.narrative_play = True
                 #await self.sim_context.run_character_narratives()
@@ -439,10 +437,6 @@ class SimulationServer:
                     return
             elif cmd_name == 'run':
                 await self.run_cmd()
-                await asyncio.sleep(0.1)
-                return
-            elif cmd_name == 'narrative':
-                await self.sim_context.run_narrative()
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'pause':

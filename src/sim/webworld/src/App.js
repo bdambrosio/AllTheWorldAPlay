@@ -303,9 +303,6 @@ function App() {
             onClick={handleRun} 
             disabled={isProcessing || simState.running}>Run</button>
           <button className="control-button" 
-            onClick={() => sendCommand('narrative')} 
-            disabled={isProcessing || simState.running}>Narrative</button>
-          <button className="control-button" 
             onClick={handleStep} 
             disabled={isProcessing || simState.running}>Step</button>
           <button className="control-button" onClick={handlePause}>Pause</button>
