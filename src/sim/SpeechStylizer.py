@@ -413,9 +413,12 @@ End your response with:
 Given a scene description, determine how it should affect the character's speech style.
 Focus on emotional tone and syntactic oddity.
 
-Provide your analysis as a hash-formatted text with these keys:
-#tone: list of emotional qualities
-#syntactic_oddity: float 0-1 (0 being very normal, 1 being very odd)
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+                        
+#tone list of emotional qualities
+#syntactic_oddity float 0-1 (0 being very normal, 1 being very odd)
 ##
 
 """),
@@ -424,9 +427,12 @@ Provide your analysis as a hash-formatted text with these keys:
 Character: {{$character_name}}
 Scene: {{$scene}}
 
-Provide your analysis as a hash-formatted text with these keys:
-#tone: list of emotional qualities
-#syntactic_oddity: float 0-1 (0 being very normal, 1 being very odd)
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+                        
+#tone list of emotional qualities
+#syntactic_oddity float 0-1 (0 being very normal, 1 being very odd)
 ##
 
 End your response with:

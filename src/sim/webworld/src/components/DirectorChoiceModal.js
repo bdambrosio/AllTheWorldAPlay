@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './DirectorChoiceModal.css';
 
 function DirectorChoiceModal({ request, onChoice, onClose }) {
@@ -30,6 +30,37 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
   });
 
   const [formError, setFormError] = useState('');
+
+  // Preload form fields with data from first alternative
+  useEffect(() => {
+    if (request?.options?.length > 0) {
+      const firstOption = request.options[0];
+      if (request.choice_type === 'goal') {
+        setNewGoal(prev => ({
+          ...prev,
+          name: firstOption.name || '',
+          description: firstOption.description || '',
+          termination: firstOption.termination || ''
+        }));
+      } else if (request.choice_type === 'task') {
+        setNewTask(prev => ({
+          ...prev,
+          name: firstOption.name || '',
+          description: firstOption.description || '',
+          reason: firstOption.reason || '',
+          termination: firstOption.termination || ''
+        }));
+      } else if (request.choice_type === 'act') {
+        setNewAct(prev => ({
+          ...prev,
+          mode: firstOption.mode || 'Do',
+          action: firstOption.action || '',
+          reason: firstOption.reason || '',
+          target: firstOption.target || ''
+        }));
+      }
+    }
+  }, [request]);
 
   if (!request || !['goal', 'task', 'act'].includes(request.choice_type)) return null;
 

@@ -229,10 +229,16 @@ def convert_sim_to_ws_message(sim_result):
     
     # Handle show_update messages from the simulation
     if sim_result.get('type') == 'show_update':
-        return {
-            'type': 'show_update',
-            'text': f"{sim_result['message']['name']}: {sim_result['message']['text']}"
-        }
+        if sim_result['message']['name'] is None or sim_result['message']['name'] == '':
+            return {
+                'type': 'show_update',
+                'text': sim_result['message']['text']
+            }
+        else:
+            return {
+                'type': 'show_update',
+                'text': f"{sim_result['message']['name']}: {sim_result['message']['text']}"
+            }
     # Handle world_update messages
     elif sim_result.get('type') == 'world_update':
         return {

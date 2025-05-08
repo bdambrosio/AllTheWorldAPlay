@@ -639,7 +639,7 @@ Ensure your response reflects this change.
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         if not local_only:
-            self.message_queue.put({'name':self.name, 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}\n'})
+            self.message_queue.put({'name':'', 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}\n'})
             self.transcript.append(f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n')
             await asyncio.sleep(0.1)
          
@@ -650,7 +650,7 @@ Ensure your response reflects this change.
             self.last_update_time = self.simulation_time
             return
         self.show = new_situation
-        self.message_queue.put({'name':self.name, 'text':self.show})
+        self.message_queue.put({'name':'', 'text':self.show})
         self.transcript.append(f'{self.show}')
         self.show = '' # has been added to message queue!
         self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_json()})
@@ -820,7 +820,14 @@ Ensure your response reflects this change.
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
-        self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]} - {scene["location"]} at {scene["time"]}'})
+        self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
+        if type(scene['time']) == str:
+            try:
+                self.simulation_time = datetime.fromisoformat(scene['time'])
+            except Exception as e:
+                print(f'Error parsing scene time: {e}')
+        else:
+            self.simulation_time = scene['time']
         await asyncio.sleep(0.1)
         self.current_scene = scene
         if scene.get('pre_narrative'):
@@ -875,8 +882,12 @@ Ensure your response reflects this change.
                     await character.cognitive_cycle(narrative=True)
         if self.current_scene.get('post_narrative'):
             self.current_state += '\n'+self.current_scene['post_narrative']
-            self.message_queue.put({'name':'\n', 'text':f'    {self.current_scene["post_narrative"]}\n'})
+            self.message_queue.put({'name':'\n', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
+
+        scene_duration = self.current_scene.get('duration', 0)
+        if scene_duration > 0:
+            self.simulation_time += timedelta(minutes=scene_duration)
         await self.update(local_only=True)
 
 
@@ -888,7 +899,7 @@ Ensure your response reflects this change.
             logger.error(f'No scenes in act: {act["act_title"]}')
             return
         print(f'Running act: {act["act_title"]}')
-        self.message_queue.put({'name':'\n', 'text':f'---ACT----- {act["act_title"]}'})
+        self.message_queue.put({'name':'', 'text':f'\n---ACT----- {act["act_title"]}'})
         await asyncio.sleep(0.1)
         for scene in act['scenes']:
             while self.step is False and  self.run is False:
@@ -1020,8 +1031,59 @@ End your response with </end>
         except Exception as e:
             print(f'Error parsing updated act: {e}')
             updated_narrative_plan = self.repair_json(response, e)
+        if updated_narrative_plan is not None:
+            self.validate_dates_in_plan(updated_narrative_plan)
         self.narrative = updated_narrative_plan
         return updated_narrative_plan
+
+    def validate_dates_in_plan(self, narrative_plan):
+        """Validate and adjust scene dates to ensure they are after simulation time and advance temporally.
+        
+        Args:
+            narrative_plan: The narrative plan containing acts and scenes
+        """
+        if narrative_plan and 'acts' in narrative_plan:
+            acts = narrative_plan['acts']
+        elif type(narrative_plan) == dict:
+            acts = [narrative_plan]
+        elif type(narrative_plan) == list:
+            acts = narrative_plan
+        else:
+            return
+            
+        prev_scene_time = self.simulation_time
+        prev_duration = 0
+        for act in acts:
+            if 'scenes' not in act:
+                continue
+            for scene in act['scenes']:
+                if 'time' not in scene:
+                    continue
+                # Parse scene time if it's a string
+                if isinstance(scene['time'], str):
+                    try:
+                        scene_time = datetime.fromisoformat(scene['time'])
+                    except Exception as e:
+                        print(f'Error parsing scene time: {e}')
+                        scene_time = self.simulation_time
+                else:
+                    scene_time = scene['time']
+                # If scene time is before simulation time or previous scene, advance it
+                while scene_time <= prev_scene_time:
+                    # Advance by one day while preserving time of day
+                    scene_time = scene_time + timedelta(days=1)
+                # Update scene time and previous scene time
+                scene['time'] = scene_time
+                if scene_time < prev_scene_time+timedelta(minutes=prev_duration):
+                    scene_time = prev_scene_time+timedelta(minutes=prev_duration)
+                    scene['time'] = scene_time
+                duration = scene.get('duration', 0)
+                if type(duration) == int and duration > 0:
+                    prev_duration = duration
+                else:
+                    prev_duration = 0
+                prev_scene_time = scene_time
+
 
     async def run_integrated_narrative(self):
         """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
