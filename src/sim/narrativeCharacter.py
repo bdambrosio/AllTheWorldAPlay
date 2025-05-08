@@ -57,7 +57,7 @@ class NarrativeCharacter(Character):
             # Handle invalid format or type
             return self.context.simulation_time
 
-    def validate_narrative_json(self, json_data: Dict[str, Any]) -> tuple[bool, str]:
+    def validate_narrative_json(self, json_data: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:
         """
         Validates the narrative JSON structure and returns (is_valid, error_message)
         """
@@ -76,13 +76,13 @@ class NarrativeCharacter(Character):
             if not isinstance(act, dict):
                 return False, f"Act {n} must be a JSON object"
             else:
-                valid, json_data["acts"][n] = self.validate_narrative_act(act)
+                valid, json_data["acts"][n] = self.validate_narrative_act(act, require_scenes=require_scenes)
                 if not valid:
                     return False, f"Act {n} is invalid: {json_data['acts'][n]}"
                 
         return True, "Valid narrative structure"
  
-    def validate_narrative_act(self, act: Dict[str, Any]) -> tuple[bool, str]:       # Validate each act
+    def validate_narrative_act(self, act: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:       # Validate each act
         if not isinstance(act, dict):
             return False, "Act must be a JSON object"
                 
@@ -108,11 +108,10 @@ class NarrativeCharacter(Character):
                 return False, "Tension point must have 'issue' string"
             if "resolution_requirement" not in tension_point or not isinstance(tension_point["resolution_requirement"], str):
                 return False, "Tension point must have 'resolution_requirement' string"
-       # Only validate scenes for first act
-        if act["act_number"] == 1:
-            if "scenes" not in act or not isinstance(act["scenes"], list):
-                return False, "First act must have 'scenes' array"
-                    
+        if require_scenes:
+            if act["act_number"] == 1:
+                if "scenes" not in act or not isinstance(act["scenes"], list):
+                    return False, "First act must have 'scenes' array"
         if "scenes" in act:
             # Validate each scene
             for scene in act["scenes"]:
@@ -270,37 +269,20 @@ Return exactly one JSON object with these keys:
       {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
     ],
-  - "scenes"      (array) (only for the first act)
 
-Each **scene** object must have:
-{ "scene_number": int, // sequential within the play 
- "scene_title": string, // concise descriptor 
- "location": string, // pick from resource or terrain names in the map file
- "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
- "duration": int, // in minutes
- "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
- "action_order": [ "<Name>", … ], // 2-4 beats max, list only characters present 
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
- "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
- // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
- }
-
-**Note:** It is neither necessary nor useful to include scenes after the first act.
 This is your plan, others may or may not agree with it. 
 You may later choose to share some or all of it with specific other characters, in hopes of getting them to cooperate.
 You will have the opportunity to revise your plan as you go along, observe the results, and as you learn more about the other characters.
 
 ### 2.2  Guidelines
 1. Base every character’s *stated goal* on their `.drives`, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3–8 acts, each 2–4 scenes (10–14 scenes total is ideal). Be careful to not repeat scenes across acts, keep the momentum going. By the end there should be some resolution of the dramatic tension and the character's primary drive.
+2. Craft 3–8 acts, keep the momentum going. By the end there should be some resolution of the dramatic tension and the character's primary drive.
 3. Escalate tension act-to-act; expect to be challenged, and to be forced to reconsider your goals and perhaps change them in future.  
 4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals.  
 6. Vary imagery and emotional tone; avoid repeating the same metaphor scene-to-scene.  
-7. You may assign a `"task_budget"` when you anticipate the engine’s tendency to ramble (e.g., reassurance loops); omit it elsewhere.  
-8. Do **NOT** invent new characters unless absolutely necessary, and never break JSON validity.  
-9. Keep the JSON human-readable (indent 2 spaces).
+7. Do **NOT** invent new characters unless absolutely necessary, and never break JSON validity.  
+8. Keep the JSON human-readable (indent 2 spaces).
 
 Return **only** the JSON.  No commentary, no code fences.
 
@@ -317,7 +299,7 @@ Return **only** the JSON.  No commentary, no code fences.
         except Exception as e:
             print(f'Error parsing narrative: {e}')
             self.plan = self.context.repair_json(narrative, e)
-        valid, reason = self.validate_narrative_json(self.plan)
+        valid, reason = self.validate_narrative_json(self.plan, require_scenes=False)
         if not valid:
             print(f'Invalid narrative: {reason}')
             return None
@@ -325,7 +307,7 @@ Return **only** the JSON.  No commentary, no code fences.
         self.current_act_index = 0
         self.current_scene_index = 0    
         self.current_act = self.plan["acts"][self.current_act_index]
-        self.current_scene = self.current_act["scenes"][self.current_scene_index]
+        self.current_scene = None
         return self.plan
 
     async def share_narrative(self):
@@ -333,6 +315,7 @@ Return **only** the JSON.  No commentary, no code fences.
         for character in self.context.actors:
             if character != self:
                 mission = """Decide what, if anything, about your plans you would like to share with {{$name}} to help coordinate your actions. 
+You may well decide to share nothing, especially with those you perceive as adversaries, in which case you should respond with </end>
 Note that the current time is {{$time}}, if you wish to share a future plan, phrase your message accordingly. (e.g. "I'll be in the park tomorrow" or "I'll be in the park on May 15th")
 Take note of any prior conversations you have already had with {{$name}}."""
                 suffix = """
@@ -373,7 +356,7 @@ End your response with </end>
         return None
 
     def update_act(self, new_act):
-        valid, reason = self.validate_narrative_act(new_act)
+        valid, reason = self.validate_narrative_act(new_act, require_scenes=True)
         if not valid:
             print(f'Invalid act: {reason}')
             return False

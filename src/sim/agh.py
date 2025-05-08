@@ -1116,7 +1116,7 @@ End response with:
             # Update displays
 
             if len(consequences.strip()) > 2:
-                self.show +=  act_arg+'\n Resulting in ' + consequences.strip()
+                self.show += 'Resulting in ' + consequences.strip()
                 self.context.message_queue.put({'name':self.name, 'text':self.show})
                 self.context.transcript.append(f'{self.name}: {self.show}')
                 await asyncio.sleep(0.1)
@@ -1823,7 +1823,7 @@ End response with:
 </end>
 """)]
 
-        relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).relationship
+        relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).get_relationship()
         response = self.llm.ask({
                             "act_arg": act.action,
                             "dialog": dialog,
@@ -2090,7 +2090,8 @@ End your response with:
             print(f' source is Viewer, no action updates')
             return
         
-        prompt=[UserMessage(content="""Your task is to analyze the following text.
+        prompt=[UserMessage(content="""Your task is to analyze the following text, and extract a single new task expressing an intension for {{$name}} to act, if any.
+Otherwise respond None.
 
 <text>
 {{$text}}
@@ -2213,12 +2214,14 @@ End your response with:
             if intension:
                 print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
+                self.focus_task.push(intension)
+        return
     
     def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=[]):
         """Update individual commitments after closing a dialog"""
         
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog.
-
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog between {{$name}} and {{$target_name}},
+and extract the single most important new commitment to act now made by {{$name}} individually, if any. Otherwise respond None.
 
 <transcript>
 {{$transcript}}
@@ -2334,18 +2337,21 @@ End your response with:
                       duration=0)    
         intension_hashes = hash_utils.findall('task', response)
         if len(intension_hashes) == 0:
-            print(f'no new tasks in say or think')
+            print(f'no new tasks in conversation')
             return
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
+                self.focus_task.push(intension)
+        return
   
     def update_joint_commitments_following_conversation(self, target, transcript):
         """Update individual commitments after closing a dialog"""
         
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}}.
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
+     and extract the single most important new commitment to act now made jointlyby {{$name}} and {{$target_name}}, if any. Otherwise respond None.
 
 <transcript>
 {{$transcript}}
@@ -2604,7 +2610,7 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt_string = """Ignore all previous instructions. The prime directive is to be honest to your character as presented in the following.
+        prompt_string = """Ignore all previous instructions. The prime directive is to be faithful to your character as presented in the following.
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
         prompt_string += """
@@ -2674,6 +2680,7 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 {{$duplicative_insert}}
 
 Guidance: 
+- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character.
 - The response can occasionally include occasional body language or facial expressions as well as speech
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
 - Do not respond to a question with a question.
@@ -2725,7 +2732,7 @@ End your response with:
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog(),
-            'relationship': self.actor_models.get_actor_model(from_actor.name).relationship,
+            'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
             "scene_post_narrative": scene_post_narrative
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=180)

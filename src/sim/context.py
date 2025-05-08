@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger('simulation_core')
 
 class Context():
-    def __init__(self, characters, description, scenario_module, server_name=None, model_name=None):
+    def __init__(self, characters, description, scenario_module, npcs=None, server_name=None, model_name=None):
         """Initialize a context with characters and world description
         
         Args:
@@ -52,7 +52,7 @@ class Context():
         self.initial_state = description
         self.current_state = description
         self.actors: List[Character] = characters
-        self.npcs = [] # created as needed
+        self.npcs = npcs if npcs else [] # created as needed
         self.map = map.WorldMap(60, 60, scenario_module)
         self.step = False  # Boolean step indicator from simulation server
         self.run = False # Boolean run indicator from simulation server
@@ -89,18 +89,20 @@ class Context():
         self.play_file = None
         self.map_file = None
 
-        for actor in self.actors:
-            #place all actors in the world
+        for actor in self.actors + self.npcs:
+            #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
             actor.set_context(self)
             if actor.mapAgent is None:
                 actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
             else:
                 actor.mapAgent.x = actor.init_x
                 actor.mapAgent.y = actor.init_y
-            # Initialize relationships with valid character names
+            # Initialize relationships with valid character names. This was for knownActor relationships, I think?
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors if a != actor]
-        for actor in self.actors:
+
+        self.reference_manager.discover_relationships()
+        for actor in self.actors + self.npcs:
             #actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
@@ -108,6 +110,7 @@ class Context():
             #actor.generate_goal_alternatives()
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
+
 
     
     def repair_json(self, response, error):
@@ -350,18 +353,19 @@ If absolutely no information is available for any field, use "unknown" for that 
         reference_text = reference_text.strip().capitalize()
         
         # Check active actors first
+        first_name = reference_text.strip().split(' ')[0]
         for actor in self.actors:
-            if actor.name == reference_text:
+            if actor.name == reference_text or actor.name == first_name:
                 return (actor, reference_text)
             
         # Then check NPCs
         for npc in self.npcs:
-            if npc.name == reference_text:
+            if npc.name == reference_text or npc.name == first_name:
                 return (npc, reference_text)
         
-        canonical_name = self.reference_manager.resolve_reference_with_llm(reference_text)
-        if canonical_name:
-            return (self.get_actor_or_npc_by_name(canonical_name), reference_text)
+        character_name = self.reference_manager.resolve_reference_with_llm(reference_text)
+        if character_name:
+            return (self.get_actor_or_npc_by_name(character_name), character_name)
         
         return (None, None)
 

@@ -104,7 +104,7 @@ def find(tag, text):
         stripped = line.strip().lower()
         if stripped.startswith(tag_marker + ' '):
             # Use original line for result to preserve case of content
-            return line.strip()[len(tag_marker)+1:]
+            return line.strip()[len(tag_marker)+1:].replace('#', '').strip()
     return ""
 
 def set(tag, form, value):
