@@ -1,4 +1,9 @@
-from sympy import re
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional
+if TYPE_CHECKING:
+    from sim.context import Context
+    from sim.agh import Character
+
 from utils.Messages import UserMessage
 from utils.llm_api import LLM
 from utils.hash_utils import find
@@ -8,9 +13,10 @@ import utils.xml_utils as xml
 class ReferenceManager:
     def __init__(self,context,llm):
         # Simple dict of lists, indexed by character name
-        self.context = context
+        self.context: Context = context
         self.relationships = {}
         self.llm = llm
+
     def declare_relationship(self, char1_name, relation, char2_name, reverse_relation):
         # Will add both:
         # char1 relation char2
@@ -25,18 +31,22 @@ class ReferenceManager:
     def get_relationships(self, char_name):
         return self.relationships.get(char_name, [])
 
-
-    def discover_relationships(self):
+    def get_all_relationships(self):
+        relationships = []
+        for char_name, relations in self.relationships.items():
+            for relation, other_char in relations:
+                relationships.append(f'{char_name} is {relation} {other_char}')
+        return relationships
+    
+    def discover_relationships(self, addl_context=None):
         """Use LLM to identify potential relationships between entities from context"""
         prompt = [
-            UserMessage(content=f"""
+            UserMessage(content="""
             Based on the current state and history, identify potential relationships between characters.
             
             Current state:
             {{$current_state}}
-            
-            History:
-            {{$history}}
+            {{$addl_context}}
             
             Characters:
             {{$characters}}
@@ -56,45 +66,35 @@ class ReferenceManager:
             """)
         ]
         
-        characters_text = "\n".join([f"{character.name}: {character.character}" 
-                                    for character in self.actors])
+        characters_text = "\n".join([f"{character.name}:\n{character.character}\n" 
+                                    for character in self.context.actors+self.context.npcs])
         
         response = self.llm.ask({
-            "current_state": self.current_state,
-            "history": self.history(),
+            "current_state": self.context.current_state,
+            "addl_context": addl_context if addl_context else '',
             "characters": characters_text
         }, prompt, stops=["</end>"])
         
         # Extract relationships
-        relationship_blocks = re.findall(r'<relationship>(.*?)</relationship>', 
-                                    response, re.DOTALL)
+        relationship_blocks = xml.findall('<relationship>', response)
         
         for block in relationship_blocks:
-            person1 = xml.find('<person1>', block)
-            person2 = xml.find('<person2>', block)
+            person1_name = xml.find('<person1>', block)
+            person2_name = xml.find('<person2>', block)
             relation1to2 = xml.find('<relation1to2>', block)
             relation2to1 = xml.find('<relation2to1>', block)
             
-            if person1 and person2 and relation1to2 and relation2to1:
+            if person1_name and person2_name and relation1to2 and relation2to1:
                 # Look up canonical IDs
-                person1_id = self._get_entity_id_by_name(person1)
-                person2_id = self._get_entity_id_by_name(person2)
+                person1_id = self.context.resolve_character(person1_name)
+                person2_id = self.context.resolve_character(person2_name)
                 
                 if person1_id and person2_id:
                     # Add relationship variations
-                    if relation1to2:
-                        self.entity_registry.add_variation(person2_id, person1.lower(), 
-                                                        f"my {relation1to2}")
-                        self.entity_registry.add_variation(person2_id, person1.lower(), 
-                                                        f"{relation1to2}")
+                    if relation1to2 and relation2to1:
+                        self.declare_relationship(person2_name, relation1to2, person1_name, relation2to1)
                     
-                    if relation2to1:
-                        self.entity_registry.add_variation(person1_id, person2.lower(), 
-                                                        f"my {relation2to1}")
-                        self.entity_registry.add_variation(person1_id, person2.lower(), 
-                                                        f"{relation2to1}")
-
-    def resolve_reference_with_llm(self, reference_text):
+    def resolve_reference_with_llm(self, reference_text:str) -> Optional[Character]:
         """
         Resolve a reference using known relationships and character descriptions
         
@@ -139,5 +139,8 @@ End your response with:
         # If response is a known character name, return it
         if response in self.relationships:
             return response
+        character = self.context.get_actor_or_npc_by_name(response)
+        if character:
+            return character.name
         
         return None

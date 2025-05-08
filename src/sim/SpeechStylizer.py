@@ -357,7 +357,10 @@ Format your response as valid JSON only, no other text.
 Given a relationship description between two characters, determine how it should affect their speech style.
 Focus on formality level and emotional tone.
 
-Provide your analysis as a hash-formatted text with these keys:
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
 #tone list of emotional qualities
 #formality float 0-1 (0 being very informal, 1 being very formal)
 ##
@@ -367,11 +370,13 @@ End your response with:
 """),
             UserMessage(content=f"""Analyze this relationship description to determine speech style:
 
-Character: {self.char.name}
-Target: {target.name}
-Relationship: {relationship}
+#Character {self.char.name}
+#Target {target.name}
+#Relationship {relationship.replace('\n', ' ')}
 
-Provide your analysis as a hash-formatted text with these keys:
+
+Again, provide your analysis as a hash-formatted text with these keys:
+
 #tone list of emotional qualities
 #formality float 0-1 (0 being very informal, 1 being very formal)
 ##
@@ -389,7 +394,7 @@ End your response with:
                 return style
             tone = hash_utils.find('tone', response)
             if tone is not None and len(tone) > 0:
-                style["tone"] = tone
+                style["tone"] = tone.strip().split()
             formality = hash_utils.find('formality', response)
             try:
                 style["formality"] = float(formality.strip())
@@ -555,8 +560,12 @@ Your job is to rewrite a text so that it:
 Rewrite the *ORIGINAL* line so it matches the style directives.  
 Return **only** the rewritten line—no extra commentary, no tags, no quotation marks.
 """)]
+        if target:
+            recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-10:]
+        else:
+            recent_history = self.char.transcript[-10:]
         response = self.char.llm.ask({"original_say": original_say, 
-                                      "recent_history": self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-10:],
+                                      "recent_history": recent_history,
                                       "style_block": style_block, 
                                       "character_description": self.char.character, 
                                       "emotional_stance": self.char.emotionalStance}, 

@@ -83,7 +83,7 @@ function App() {
               case 'show_update':
                 console.log('show_update:', data.text);
                 setLogText(prev => {
-                  const newEntry = data.text;
+                  const newEntry = (data.name && data.name.trim() !== '') ? `${data.name}: ${data.text}` : data.text;
                   return prev ? `${prev} \n${newEntry}` : newEntry;
                 });
                 break;

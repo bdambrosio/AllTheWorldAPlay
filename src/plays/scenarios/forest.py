@@ -17,7 +17,7 @@ class ForestResources(Enum):
     Berries = auto()
     Mushrooms = auto()
     Apple_Tree = auto()
-    Fallen_Log = auto()  # Potential shelter
+    Fallen_Branch = auto()  # Potential shelter
     Spring = auto()     # Water source
     Cave = auto()       # Potential shelter
     Thicket = auto()    # Dense vegetation, potential shelter
@@ -94,8 +94,8 @@ resource_rules = {
             }
         },
         {
-            'resource_type': resource_types.Fallen_Log,
-            'description': 'A large fallen tree',
+            'resource_type': resource_types.Fallen_Branch,
+            'description': 'A large fallen tree branch',
             'count': 24,
             'requires_property': False,
             'terrain_weights': {

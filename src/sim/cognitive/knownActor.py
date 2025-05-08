@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
+from venv import create
 from sim.cognitive.DialogManager import Dialog
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
@@ -9,15 +10,15 @@ if TYPE_CHECKING:
 class KnownActor:
     def __init__(self, owner:Character, other_agh:Character):
         """An instance of a 'character internal model' of another character"""
-        self.owner = owner
-        self.actor_agh = other_agh
-        self.canonical_name = other_agh.name
-        self.name = other_agh.name
-        self.visible = False
-        self.goal = ''
-        self.distance = 0
-        self.dialog = Dialog(self.owner, self.actor_agh)
-        self.relationship = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
+        self.owner: Character = owner
+        self.actor_agh: Character = other_agh
+        self.canonical_name: str = other_agh.name
+        self.name: str = other_agh.name
+        self.visible: bool = False
+        self.goal: str = ''
+        self.distance: int = 0
+        self.dialog: Dialog = Dialog(self.owner, self.actor_agh)
+        self.relationship: str = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
         self.tensions: List[str] = []
 
     def to_json(self):
@@ -214,15 +215,20 @@ End with:
     def clear_tensions(self):
         self.tensions = []
 
+    def get_relationship(self):
+        """return the relationship of the actor to the owner, including tensions and any relationships this actor has with other characters
+        """
+        return self.relationship + self.get_tensions() + '\n'+'\n'.join([f"{rel} {other}" for rel, other in self.owner.context.reference_manager.get_relationships(self.actor_agh.name)])
+
 class KnownActorManager:
     def __init__(self, owner, context):
         self.owner = owner
         self.context = context
-        self.known_actors = {}
-        self.resolution_cache = {}  # reference_text -> (character, canonical_name)
+        self.known_actors: Dict[str, KnownActor] = {}
+        self.resolution_cache: Dict[str, Tuple[Character, str]] = {}  # reference_text -> (character, canonical_name)
 
     def create_character(self, reference_text):
-        """Create a new character - used only after resolve_reference fails to find an existing character"""
+        """create a new character - used only after resolve_reference fails to find an existing character"""
         actor_name = reference_text.strip().capitalize()
         actor_agh = self.context.get_npc_by_name(actor_name, self.owner.mapAgent.x, self.owner.mapAgent.y, create_if_missing=True)
         self.known_actors[actor_name] = KnownActor(self.owner, actor_agh)
@@ -317,7 +323,7 @@ class KnownActorManager:
         for actor in self.known_actors.values():
             if actor == self:
                 continue
-            relationship = actor.relationship
+            relationship = actor.get_relationship()
             transcript = actor.format_transcript(include_transcript)
             relationships[actor.canonical_name] = relationship + '\n\n' + transcript
         return relationships
