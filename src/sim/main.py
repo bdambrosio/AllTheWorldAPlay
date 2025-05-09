@@ -22,6 +22,29 @@ import subprocess
 import websockets
 import matplotlib.pyplot as plt
 import logging
+import signal
+import copy
+
+# Create replay directory if it doesn't exist
+replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'logs'
+replay_dir.mkdir(parents=True, exist_ok=True)
+replay_file = None
+
+# Small grey image (1x1 pixel) in base64
+MINI_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+def cleanup():
+    global replay_file
+    if replay_file:
+        replay_file.close()
+        replay_file = None
+
+def signal_handler(signum, frame):
+    cleanup()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 app = FastAPI()
 
@@ -205,22 +228,37 @@ async def handle_websocket(websocket, sim_manager):  # Add sim_manager parameter
 # Add startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
-    global sim_manager, ws_manager
+    global sim_manager, ws_manager, replay_file
     await sim_manager.start()
+    
+    # Open replay file
+    replay_file = open(replay_dir / 'replay.json', 'w')
     
     async def handle_simulation_results():
         async for result in sim_manager.receive_results():
             ws_message = convert_sim_to_ws_message(result)
-            #print(f"Sending message to websocket: {ws_message}")
             ws_manager.queue_message(ws_message)
+            
+            # Create a deep copy for replay file
+            replay_result = copy.deepcopy(result)
+            
+            # Minimize images in the copy
+            if replay_result.get('type') == 'character_update' and 'image' in replay_result.get('character', {}):
+                replay_result['character']['image'] = MINI_IMAGE
+            elif replay_result.get('type') == 'world_update' and 'image' in replay_result.get('world', {}):
+                replay_result['world']['image'] = MINI_IMAGE
+            
+            replay_file.write(json.dumps(replay_result, indent=2)+"\n")
             await asyncio.sleep(0.1)
     
     app.state.result_task = asyncio.create_task(handle_simulation_results())
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global replay_file
     if hasattr(app.state, 'result_task'):
         app.state.result_task.cancel()
+    cleanup()
     await sim_manager.stop()
 
 def convert_sim_to_ws_message(sim_result):
