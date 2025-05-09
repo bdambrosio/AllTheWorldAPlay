@@ -46,7 +46,7 @@ function App() {
         const data = await response.json();
         setSessionId(data.session_id);
         
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsProtocol = window.location.hostname === 'localhost' ? 'ws' : 'wss';
         const wsHost = window.location.hostname === 'localhost'
             ? 'localhost:8000'
             : window.location.hostname.replace('-3000', '-8000');
