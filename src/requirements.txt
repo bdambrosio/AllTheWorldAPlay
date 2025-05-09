@@ -29,3 +29,4 @@ noise
 faiss-gpu-cu12[fix_cuda]
 diffusers
 peft
+fastapi[standard]
