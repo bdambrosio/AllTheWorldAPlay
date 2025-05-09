@@ -21,3 +21,5 @@ sentence-transformers>=2.2.0
 python-jose>=3.3.0
 python-multipart>=0.0.5
 aiofiles>=0.8.0
+cohere>=3.0.0
+google-generativeai>=0.6.0

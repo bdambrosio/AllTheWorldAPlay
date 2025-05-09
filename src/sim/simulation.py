@@ -7,7 +7,7 @@ from typing import Optional
 import os, json, math, time, requests, sys
 
 from src.sim.mapview import MapVisualizer
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
