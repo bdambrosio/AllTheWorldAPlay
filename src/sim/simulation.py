@@ -6,8 +6,8 @@ from typing import Optional
 
 import os, json, math, time, requests, sys
 
-from src.sim.mapview import MapVisualizer
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from src.sim.cognitive.knownActor import KnownActorManager
     from sim.context import Context
 
+from src.sim.mapview import MapVisualizer
 import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
 import base64
