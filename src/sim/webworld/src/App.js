@@ -47,7 +47,10 @@ function App() {
         setSessionId(data.session_id);
         
         const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        websocket.current = new WebSocket(`${wsProtocol}://${config.serverUrl.replace(/^https?:\/\//, '')}/ws/${data.session_id}`);
+        const wsHost = window.location.hostname === 'localhost'
+            ? 'localhost:8000'
+            : window.location.hostname.replace('-3000', '-8000');
+        websocket.current = new WebSocket(`${wsProtocol}://${wsHost}/ws/${data.session_id}`);
         
         websocket.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
