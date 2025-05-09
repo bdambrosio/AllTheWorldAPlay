@@ -34,56 +34,44 @@ So this is NOT at this time for those unprepared to dig into the software at all
 More info in wiki.
 
 ## Installation:
-
+The following install has been tested on Ubuntu 22.04 (Llambda instance with A10)
 ```code
-git clone https://github.com/bdambrosio/AllTheWorldAPlay
-cd AllTheWorldAPlay
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
-# you also need npm, React, etc installed. I just had cursor do it for me, can't help much there, I'm not a js guy.
+# first install python 3.12
+sudo apt update && sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:deadsnakes/ppa   # press ↵ if prompted
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev
+PY312=/usr/bin/python3.12
+
+#create venv$PY312 -m venv ~/venvs/myproj-312
+source ~/venvs/myproj-312/bin/activate#clone repo and install requirementsgit clone https://github.com/bdambrosio/AllTheWorldAPlay.git
+pip install faiss-gpu-cu12[fix_cuda]
+cd AllTheWorldAPlay/src
+python -m pip install -r requirements.txt
+cd sim
+export OPENAI_API_KEY="....." # add other api keys as needed, otherwise ignore errors on missing keys
+uvicorn main:app --port 8000
+# you should now see the python engine startup sequence, ending in: Converting message: show_update
+
+# startup UI
+cd webworld/src/
+sudo apt install npm
+npm install # ignore warnings
+npm start
+# you should now http://<host-ip>:3000 in your browser and see empty UI!
+
+# startup image-server
+cd ../../../utils # ie, to AllTheWorldAPlay/src/utils/
+fastapi run lcmLora-serve.py --port 5008 &
+# this should start the image server. First run will have to download the lcmLora model from huggingface
 ```
 
 ## Use
 
-```code
-cd AllTheWorldAPlay
-source venv/bin/activate
-cd src/utils
-# start model server, see following
-# start image server, see following
-cd ../sim/webworld/src
-npm start #did I say you need all that npm / React stuff installed? No? Oh - sorry, ask Claude or cursor or ...
-cd ../../
 ```
-I use this launch.json in Cursor to launch the main simulation engine:
-
-```code
-        {
-            "name": "webworld",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "main:app",
-                "--reload",
-                "--port",
-                "8000"
-            ],
-            "jinja": true,
-            "justMyCode": true,
-            "cwd": "${workspaceFolder}/src/sim/",
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}",
-                "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",
-                "QT_PLUGIN_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/plugins",
-                "CUDA_VISIBLE_DEVICES": "0"
-            }
-  
-# wait till you see "main__ - INFO - SimulationServer: ZMQ connections established and ready for commands"
-#     (don't believe 'Application startup complete', that's just the python UI handler
-# now go to localhost:3000 in your browser, click Initialize (or screen refresh first if nothing happens)
+See install script, just skip the install steps!
+#   don't believe 'Application startup complete', that's just the python UI handler
+# now go to *host*:3000 in your browser, click Initialize (or screen refresh first if nothing happens)
 # if all is well that will display a combo box of available plays. Pick one and click the load button. Wait.
 # Note: at the moment the Alex, Demo, laTerre, and lost plays should work, I'm still porting the others.
 ```
