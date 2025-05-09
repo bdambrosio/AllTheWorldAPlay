@@ -7,7 +7,6 @@ import faiss
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
-import utils.pyqt as pyqt_utils
 
 embedding_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 embedding_model = AutoModel.from_pretrained('nomic-ai/nomic-embed-text-v1', trust_remote_code=True)

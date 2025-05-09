@@ -11,6 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.sim.mapview import MapVisualizer
 from src.sim.character_dataclasses import Act, Goal, Task
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:

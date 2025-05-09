@@ -7,6 +7,7 @@ import DirectorChoiceModal from './components/DirectorChoiceModal';
 import DirectorChairModal from './components/DirectorChairModal';
 import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
+import config from './config';
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
@@ -41,11 +42,11 @@ function App() {
 
     async function initSession() {
       try {
-        const response = await fetch('http://localhost:8000/api/session/new');
+        const response = await fetch(`${config.serverUrl}/api/session/new`);
         const data = await response.json();
         setSessionId(data.session_id);
         
-        websocket.current = new WebSocket(`ws://localhost:8000/ws/${data.session_id}`);
+        websocket.current = new WebSocket(`ws://${config.serverUrl.replace('http://', '')}/ws/${data.session_id}`);
         
         websocket.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
