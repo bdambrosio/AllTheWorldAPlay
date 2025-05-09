@@ -42,18 +42,14 @@ function App() {
 
     async function initSession() {
       try {
-        const response = await fetch(`${config.serverUrl}/api/session/new`);
+        const response = await fetch(`${config.httpUrl}/api/session/new`);
         const data = await response.json();
         setSessionId(data.session_id);
         
-        const wsProtocol = window.location.hostname === 'localhost' ? 'ws' : 'wss';
-        const wsHost = window.location.hostname === 'localhost'
-            ? 'localhost:8000'
-            : window.location.hostname.replace('-3000', '-8000');
-        websocket.current = new WebSocket(`${wsProtocol}://${wsHost}/ws/${data.session_id}`);
+        websocket.current = new WebSocket(`${config.wsProtocol}://${config.wsHost}/ws/${data.session_id}`);
         
         websocket.current.onmessage = (event) => {
-          const data = JSON.parse(event.data);
+              const data = JSON.parse(event.data);
           console.log('Message received:', data);  // See full message
           if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice') {
             setChoiceRequest({
