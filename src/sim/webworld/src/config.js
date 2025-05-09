@@ -1,8 +1,14 @@
+const getBackendHost = () => {
+    // If running locally, use localhost
+    if (window.location.hostname === 'localhost') {
+        return 'http://localhost:8000';
+    }
+    // Otherwise, replace -3000 with -8000 in the hostname for RunPod proxy
+    return `https://${window.location.hostname.replace('-3000', '-8000')}`;
+};
+
 const config = {
-    // Use the current hostname for the server URL
-    serverUrl: window.location.protocol === 'https:' 
-        ? `https://${window.location.hostname}:8000`
-        : `http://${window.location.hostname}:8000`
+    serverUrl: getBackendHost()
 };
 
 export default config;
