@@ -3,6 +3,7 @@ uvicorn>=0.15.0
 websockets>=10.0
 python-multipart>=0.0.5
 pydantic>=1.8.0
+einops
 openai>=1.0.0
 anthropic>=0.3.0
 replicate>=0.8.0
@@ -26,3 +27,5 @@ google-generativeai>=0.6.0
 google-genai
 noise
 faiss-gpu-cu12[fix_cuda]
+diffusers
+peft
