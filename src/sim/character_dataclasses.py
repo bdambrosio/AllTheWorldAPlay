@@ -79,7 +79,7 @@ class Goal:
         return f'{self.name}: {self.description}; \n preconditions: {self.preconditions}; \n termination: {self.termination}'
     
     def to_string(self):
-        return f'Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions};  termination: {self.termination}'
+        return f"Goal {self.name}: {self.description}; actors: {', '.join([actor.name for actor in self.actors])}; preconditions: {self.preconditions};  termination: {self.termination}"
     
 from datetime import timedelta
 
