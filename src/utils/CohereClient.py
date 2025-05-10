@@ -11,7 +11,7 @@ api_key = None
 try:
     api_key = os.environ["COHERE_API_KEY"]
 except Exception as e:
-    print(f"Error getting Cohere API key: {e}")
+    print(f"No Cohere API key found")
 
 from cohere import ClientV2
 

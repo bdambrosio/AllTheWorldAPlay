@@ -11,7 +11,7 @@ api_key = None
 try:
     api_key = os.environ["XAI_API_KEY"]
 except Exception as e:
-    print(f"Error getting Grok API key: {e}")
+    print(f"No Grok API key found")
     client = None
 if api_key is not None and api_key != '':
     try:
@@ -23,7 +23,6 @@ if api_key is not None and api_key != '':
         print(f"Error creating Grok client: {e}")
 #quick test of Grok API
 """
-message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Claude"}])
 message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Grok}])
 print(f"\nClaude:\n{message.content}\n\n")
 """
