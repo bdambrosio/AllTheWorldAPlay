@@ -15,7 +15,7 @@ model = 'gemini-2.5-flash-preview-04-17'
 try:
     api_key = os.getenv("GOOGLE_KEY")
 except Exception as e:
-    print(f"Error getting Google API key: {e}")
+    print(f"No Google API key found")
 
 if api_key is not None and api_key != '':
     try:

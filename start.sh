@@ -1,14 +1,10 @@
 #!/bin/bash
 # Start the Python backend
-python src/sim/main.py &
-# Wait a moment for the backend to initialize
-sleep 5
-# Start the frontend development server if it exists
-if [ -d "/app/src/sim/webworld" ]; then
-  cd /app/src/sim/webworld
-  if [ -f "package.json" ]; then
-    npm start
-  fi
-fi
-# Keep container running
-wait
+cd /app/src/sim/
+uvicorn main:app --host 0.0.0.0 --port 8000 &      
+cd /app/src/utils/    # main engine
+fastapi run lcmLora-serve.py --host 0.0.0.0 --port 5008 &    # image thumbs
+#fastapi run blank_image_serve.py --host 0.0.0.0 --port 5008 &    # image thumbs
+cd /app/src/sim/webworld
+npm start &                                                    # UI
+wait -n                                     # exit if any child dies

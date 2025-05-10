@@ -11,7 +11,7 @@ api_key = None
 try:
     api_key = os.environ["CLAUDE_API_KEY"]
 except Exception as e:
-    print(f"Error getting Claude API key: {e}")
+    print(f"No Claude API key found")
 template = "haiku"
 if api_key is not None and api_key != '':
     try:
