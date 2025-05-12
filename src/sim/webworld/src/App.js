@@ -8,8 +8,10 @@ import DirectorChairModal from './components/DirectorChairModal';
 import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
 import config from './config';
+import { ReplayProvider, useReplay } from './contexts/ReplayContext';
 
 function App() {
+  const { recordEvent } = useReplay();
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -35,6 +37,7 @@ function App() {
   const sendingLock = useRef(false);
   const [choiceRequest, setChoiceRequest] = useState(null);
   const [showDirectorChair, setShowDirectorChair] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -148,6 +151,19 @@ function App() {
                   }
                 }));
                 break;
+              case 'replay_event':
+                console.log('Replay event:', data);
+                handleReplayEvent(data);
+                break;
+              case 'setActiveTab':
+                if (event.arg.panelId === 'characterTabs') {
+                  const characterIndex = Object.values(characters)
+                    .findIndex(char => char.name === event.arg.characterName);
+                  if (characterIndex !== -1) {
+                    setActiveTab(characterIndex);
+                  }
+                }
+                break;
               default:
                 console.log('Unknown message type:', data.type);
             }
@@ -178,18 +194,28 @@ function App() {
     setInputValue('');
   };
 
+  const handleInitialize = () => {
+    recordEvent('initialize', 'simulation');
+    sendReplayEvent('initialize', 'simulation', 'initialize');
+    sendCommand('initialize');
+  };
+
   const handleStep = async () => {
-    setIsProcessing(true); 
+    setIsProcessing(true);
+    recordEvent('step', 'simulation');
+    sendReplayEvent('step', 'simulation', 'step');
     sendCommand('step');
   };
 
   const handleRun = async () => {
     setIsProcessing(true);
+    recordEvent('run', 'simulation');
     sendCommand('run');
   };
 
   const handlePause = () => {
     setIsProcessing(false);
+    recordEvent('pause', 'simulation');
     sendCommand('pause');
   };
 
@@ -239,6 +265,16 @@ function App() {
     await sendMessageSafely(message);
   };
 
+  const sendReplayEvent = (action, arg, ui_action) => {
+    const message = JSON.stringify({
+      type: 'replay_event',
+      action: action,
+      arg: arg,
+      timestamp: Date.now()
+    });
+    sendMessageSafely(message);
+  };
+
   const handleChoice = (choiceId, customData = null) => {
     if (!choiceRequest) return;
     
@@ -265,115 +301,176 @@ function App() {
     setChoiceRequest(null);
   };
 
+  const handleSelectPlay = (playName) => {
+    setSelectedPlay(playName);
+    recordEvent('select_play', playName);
+    sendReplayEvent('select_play', playName, 'select_play');
+    // Optionally, you could trigger UI updates here if needed
+  };
+
+  const handleReplayEvent = (event) => {
+    console.log('Handling replay event:', event);  // Debug log
+    switch (event.action) {
+      case 'setShowPlayDialog':
+        setShowPlayDialog(event.arg.show);
+        break;
+      case 'setActiveTab':
+        console.log('setActiveTab event:', event.arg);  // Debug log
+        if (event.arg.panelId === 'characterTabs') {
+          const characterArray = Object.values(characters);
+          console.log('Available characters:', characterArray);  // Debug log
+          const characterIndex = characterArray
+            .findIndex(char => char.name === event.arg.characterName);
+          console.log('Found character index:', characterIndex);  // Debug log
+          if (characterIndex !== -1) {
+            console.log('Setting active tab to:', characterIndex);  // Debug log
+            setActiveTab(characterIndex);
+          }
+        }
+        break;
+      case 'setExplorerTab':
+        // The event will be handled by the correct ExplorerModal
+        // through the character-based routing
+        break;
+      case 'setShowExplorer':
+        // The event will be handled by the correct CharacterPanel
+        // through the character-based routing
+        break;
+      default:
+        // Handle other replay events
+        break;
+    }
+  };
+
+  const startReplay = () => {
+    sendCommand('start_replay');
+  };
+
   console.log('Current characters:', characters);  // See if state is updated
 
   return (
-    <div className="app-container">
-      <div className="character-panels">
-        <TabPanel characters={Object.values(characters)
-          .filter(character => character && character.name)
-          .map(character => (
-            <CharacterPanel 
-              key={character.name} 
-              character={character}
-              sessionId={sessionId}
-              sendCommand={sendCommand}
-            />
-          ))}
-        />
-      </div>
-      <div className="center-panel">
-        <div className="world-container">
-          <div className="world-header">
-            <div className="world-panel">
-              <WorldPanel worldState={worldState} />
+    <ReplayProvider>
+      <div className="app-container">
+        <div className="character-panels">
+          <TabPanel 
+            characters={Object.values(characters)
+              .filter(character => character && character.name)
+              .map(character => (
+                <CharacterPanel 
+                  key={character.name} 
+                  character={character}
+                  sessionId={sessionId}
+                  sendCommand={sendCommand}
+                  sendReplayEvent={sendReplayEvent}
+                />
+              ))}
+            sendReplayEvent={sendReplayEvent}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+        </div>
+        <div className="center-panel">
+          <div className="world-container">
+            <div className="world-header">
+              <div className="world-panel">
+                <WorldPanel worldState={worldState} />
+              </div>
+              <div className="world-description">
+                {worldState?.show || ''}
+              </div>
             </div>
-            <div className="world-description">
-              {worldState.show}
+            <div className="log-area" ref={logRef}>
+              {logText}
             </div>
-          </div>
-          <div className="log-area" ref={logRef}>
-            {logText}
           </div>
         </div>
-      </div>
-      <div className="control-panel">
-        <div className="control-buttons">
-          <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
-          <button className="control-button" 
-            onClick={handleRun} 
-            disabled={isProcessing || simState.running}>Run</button>
-          <button className="control-button" 
-            onClick={handleStep} 
-            disabled={isProcessing || simState.running}>Step</button>
-          <button className="control-button" onClick={handlePause}>Pause</button>
-          <button className="control-button" onClick={() => sendCommand('showMap')}>Show Map</button>
-          <button onClick={handleRefresh} className="control-button">
-            Refresh
+        <div className="control-panel">
+          <div className="control-buttons">
+            <button className="control-button" onClick={handleInitialize}>Initialize Play</button>
+            <button className="control-button" 
+              onClick={handleRun} 
+              disabled={isProcessing || simState.running}>Run</button>
+            <button className="control-button" 
+              onClick={handleStep} 
+              disabled={isProcessing || simState.running}>Step</button>
+            <button className="control-button" onClick={handlePause}>Pause</button>
+            <button className="control-button" onClick={() => sendCommand('showMap')}>Show Map</button>
+            <button onClick={handleRefresh} className="control-button">
+              Refresh
+            </button>
+            <button className="control-button" onClick={() => sendCommand('load_known_actors')}>Load</button>
+            <button className="control-button" onClick={() => sendCommand('save_known_actors')}>Save</button>
+            <button className="control-button" onClick={startReplay}>Replay</button>
+          </div>
+          <div className="status-area">
+            {currentPlay && <div>Play: {currentPlay}</div>}
+            <div>Status: {
+              simState.running ? 'Running' : 
+              isProcessing ? 'Processing...' : 
+              'Paused'
+            }</div>
+          </div>
+          <button 
+            className="director-chair-button"
+            onClick={() => setShowDirectorChair(true)}
+          >
+            Director's Chair
           </button>
-          <button className="control-button" onClick={() => sendCommand('load_known_actors')}>Load</button>
-          <button className="control-button" onClick={() => sendCommand('save_known_actors')}>Save</button>
         </div>
-        <div className="status-area">
-          {currentPlay && <div>Play: {currentPlay}</div>}
-          <div>Status: {
-            simState.running ? 'Running' : 
-            isProcessing ? 'Processing...' : 
-            'Paused'
-          }</div>
-        </div>
-        <button 
-          className="director-chair-button"
-          onClick={() => setShowDirectorChair(true)}
-        >
-          Director's Chair
-        </button>
+
+        {showPlayDialog && (
+          <div className="dialog">
+            <h3>Select Scenario</h3>
+            <select onChange={(e) => {
+              setSelectedPlay(e.target.value);
+              recordEvent('select_play', e.target.value);
+              sendReplayEvent('select_play', e.target.value);
+            }}>
+              {plays.map(play => (
+                <option key={play} value={play}>{play}</option>
+              ))}
+            </select>
+            <button onClick={() => {
+              setIsProcessing(true);
+              sendCommand('load_play', { play: selectedPlay });
+              setShowPlayDialog(false);
+              sendReplayEvent('setShowPlayDialog', { show: false });
+            }}>Load</button>
+            <button onClick={() => {
+              setShowPlayDialog(false);
+              sendReplayEvent('setShowPlayDialog', { show: false });
+            }}>Cancel</button>
+          </div>
+        )}
+
+        {showConfirmDialog && (
+          <div className="dialog">
+            <p>This will reset the current simulation. Continue?</p>
+            <button onClick={() => {
+              sendCommand('confirm_load_play', { play: selectedPlay });
+              setShowConfirmDialog(false);
+            }}>Yes</button>
+            <button onClick={() => setShowConfirmDialog(false)}>No</button>
+          </div>
+        )}
+
+        {choiceRequest && (
+          <DirectorChoiceModal
+            request={choiceRequest}
+            onChoice={handleChoice}
+            onClose={() => setChoiceRequest(null)}
+          />
+        )}
+
+        {showDirectorChair && (
+          <DirectorChairModal
+            characters={characters}
+            onClose={() => setShowDirectorChair(false)}
+            sendCommand={sendCommand}
+          />
+        )}
       </div>
-
-      {showPlayDialog && (
-        <div className="dialog">
-          <h3>Select Scenario</h3>
-          <select onChange={(e) => setSelectedPlay(e.target.value)}>
-            {plays.map(play => (
-              <option key={play} value={play}>{play}</option>
-            ))}
-          </select>
-          <button onClick={() => {
-            setIsProcessing(true);
-            sendCommand('load_play', { play: selectedPlay });
-            setShowPlayDialog(false);
-          }}>Load</button>
-          <button onClick={() => setShowPlayDialog(false)}>Cancel</button>
-        </div>
-      )}
-
-      {showConfirmDialog && (
-        <div className="dialog">
-          <p>This will reset the current simulation. Continue?</p>
-          <button onClick={() => {
-            sendCommand('confirm_load_play', { play: selectedPlay });
-            setShowConfirmDialog(false);
-          }}>Yes</button>
-          <button onClick={() => setShowConfirmDialog(false)}>No</button>
-        </div>
-      )}
-
-      {choiceRequest && (
-        <DirectorChoiceModal
-          request={choiceRequest}
-          onChoice={handleChoice}
-          onClose={() => setChoiceRequest(null)}
-        />
-      )}
-
-      {showDirectorChair && (
-        <DirectorChairModal
-          characters={characters}
-          onClose={() => setShowDirectorChair(false)}
-          sendCommand={sendCommand}
-        />
-      )}
-    </div>
+    </ReplayProvider>
   );
 }
 

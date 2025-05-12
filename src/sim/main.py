@@ -24,20 +24,39 @@ import matplotlib.pyplot as plt
 import logging
 import signal
 import copy
+from fastapi.responses import StreamingResponse
 
 # Create replay directory if it doesn't exist
 replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'logs'
 replay_dir.mkdir(parents=True, exist_ok=True)
 replay_file = None
-
+capture_file = None
 # Small grey image (1x1 pixel) in base64
 MINI_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
+# Add near the top with other globals
+replay_events = []
+current_replay_index = 0
+is_replay_mode = False
+
+# used to control the speed of the replay
+EVENT_DELAYS = {
+    'replay_event': 0.5,      # UI events
+    'show_update': 0.3,       # Text updates
+    'world_update': 0.5,      # World state changes
+    'character_update': 0.4,  # Character updates
+    'command_ack': 0.1,       # Command acknowledgments
+    'default': 0.2           # Any other event type
+}
+
 def cleanup():
-    global replay_file
+    global replay_file, capture_file
     if replay_file:
         replay_file.close()
         replay_file = None
+    if capture_file:
+        capture_file.close()
+        capture_file = None
 
 def signal_handler(signum, frame):
     cleanup()
@@ -172,6 +191,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         while True:
             data = json.loads(await websocket.receive_text())
             
+            # Add replay event handling
+            if data.get('type') == 'replay_event':
+                # Write to replay file
+                capture_file.write(json.dumps({
+                    'type': 'replay_event',
+                    'action': data['action'],
+                    'arg': data['arg'],
+                    'timestamp': data['timestamp']
+                }, indent=2) + "\n")
+                continue
+                
             # Add heartbeat handling
             if data.get('type') == 'heartbeat':
                 response = await handle_heartbeat()
@@ -179,7 +209,39 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 continue
                 
             if data.get('type') == 'command':
-                await sim_manager.send_command(data)
+                if data.get('action') == 'start_replay':
+                    # Load replay file and start replay mode
+                    global replay_events, current_replay_index, is_replay_mode
+                    replay_events = load_replay_file(replay_dir / 'replay.json')
+                    current_replay_index = 0
+                    is_replay_mode = True
+                    await send_command_ack('start_replay')
+                elif is_replay_mode:
+                    if data.get('action') == 'step':
+                        # Step: send next event
+                        if current_replay_index < len(replay_events):
+                            print(f"Sending step event: {replay_events[current_replay_index]}")
+                            await websocket.send_json(replay_events[current_replay_index])
+                            current_replay_index += 1
+                            await send_command_ack('step')
+                        else:
+                            print("No more replay events")
+                            await send_command_ack('step')
+                            is_replay_mode = False
+                    elif data.get('action') == 'run':
+                        # Run: send events with delays until paused or end
+                        while current_replay_index < len(replay_events):
+                            event = replay_events[current_replay_index]
+                            await websocket.send_json(event)
+                            current_replay_index += 1
+                            # Get delay for this event type, or use default
+                            delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
+                            await asyncio.sleep(delay)
+                    elif data.get('action') == 'pause':
+                        # Pause: just acknowledge
+                        await send_command_ack('pause')
+                else:
+                    await sim_manager.send_command(data)
                 
             elif data['action'] == 'load_known_actors':
                 await sim_manager.send_command(data)
@@ -228,34 +290,32 @@ async def handle_websocket(websocket, sim_manager):  # Add sim_manager parameter
 # Add startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
-    global sim_manager, ws_manager, replay_file
+    global sim_manager, ws_manager, capture_file
     await sim_manager.start()
     
-    # Open replay file
-    replay_file = open(replay_dir / 'replay.json', 'w')
+    # Open replay_capture file
+    capture_file = open(replay_dir / 'record.json', 'w')
     
     async def handle_simulation_results():
         async for result in sim_manager.receive_results():
             ws_message = convert_sim_to_ws_message(result)
             ws_manager.queue_message(ws_message)
-            
-            # Create a deep copy for replay file
-            replay_result = copy.deepcopy(result)
-            
-            # Minimize images in the copy
-            if replay_result.get('type') == 'character_update' and 'image' in replay_result.get('character', {}):
-                replay_result['character']['image'] = MINI_IMAGE
-            elif replay_result.get('type') == 'world_update' and 'image' in replay_result.get('world', {}):
-                replay_result['world']['image'] = MINI_IMAGE
-            
-            replay_file.write(json.dumps(replay_result, indent=2)+"\n")
+                        # Minimize images in the copy
+            capture_file_result = copy.deepcopy(ws_message)
+            if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
+                capture_file_result['data']['image'] = MINI_IMAGE
+            elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
+                capture_file_result['data']['image'] = MINI_IMAGE
+
+            # Record the ws_message instead of the raw result
+            capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")
             await asyncio.sleep(0.1)
     
     app.state.result_task = asyncio.create_task(handle_simulation_results())
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global replay_file
+    global capture_file
     if hasattr(app.state, 'result_task'):
         app.state.result_task.cancel()
     cleanup()
@@ -307,4 +367,25 @@ def convert_sim_to_ws_message(sim_result):
     # Pass through other message types as-is
     return sim_result
 
-               
+def load_replay_file(file_path: Path) -> list:
+    events = []
+    current_event = []
+    brace_count = 0
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                current_event.append(line)
+                # Count opening and closing braces
+                brace_count += line.count('{') - line.count('}')
+                if brace_count == 0 and current_event:  # We've found a complete JSON object
+                    try:
+                        event = json.loads(''.join(current_event))
+                        events.append(event)
+                    except json.JSONDecodeError as e:
+                        print(f"Error decoding JSON: {e}")
+                        print(f"Problematic JSON: {''.join(current_event)}")
+                    current_event = []
+    return events
+
+
