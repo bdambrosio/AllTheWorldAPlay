@@ -151,6 +151,7 @@ class SimulationManager:
 
 sim_manager = SimulationManager()
 ws_manager = WebSocketManager()
+image_cache = {}
 # Add a root endpoint for health check
 @app.get("/")
 async def root():
@@ -265,6 +266,7 @@ async def startup_event():
     capture_file = open(replay_dir / 'record.json', 'w')
     
     async def handle_simulation_results():
+        global image_cache
         async for result in sim_manager.receive_results():
             ws_message = convert_sim_to_ws_message(result)
             ws_manager.queue_message(ws_message)
@@ -273,15 +275,15 @@ async def startup_event():
             # let first image through for both world and characters
             if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
                 actor_name = capture_file_result['data']['name']
-                if actor_name in sim_manager.image_cache:
-                    capture_file_result['data']['image'] = MINI_IMAGE
+                if actor_name in image_cache:
+                    del capture_file_result['data']['image']
                 else:
-                    capture_file_result['data']['image'] = capture_file_result['data']['image']
+                    image_cache[actor_name] = capture_file_result['data']['image']
             elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
-                if 'world' in sim_manager.image_cache:
-                    capture_file_result['data']['image'] = MINI_IMAGE
+                if 'world' in image_cache:
+                    del capture_file_result['data']['image']
                 else:
-                    sim_manager.image_cache['world'] = capture_file_result['data']['image']
+                    image_cache['world'] = capture_file_result['data']['image']
 
             # Record the ws_message instead of the raw result
             capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")

@@ -569,7 +569,7 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         if target:
             recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-10:]
         else:
-            recent_history = self.char.transcript[-10:]
+            recent_history = self.char.actor_models.get_actor_model(char.name, create_if_missing=True).dialog.transcript[-10:]
         response = self.char.llm.ask({"original_say": original_say, 
                                       "recent_history": recent_history,
                                       "style_block": style_block, 

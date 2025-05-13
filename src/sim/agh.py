@@ -3111,7 +3111,7 @@ End your response with:
         await self.request_goal_choice(self.goals)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
+        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_goal:
             raise Exception(f'{self.name} cognitive_cycle: no focus goal')
@@ -3119,7 +3119,7 @@ End your response with:
         await self.request_task_choice(self.focus_goal.task_plan)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
+        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_task.peek():
             return # no admissible task at this time
