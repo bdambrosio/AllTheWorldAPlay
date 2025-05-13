@@ -3,11 +3,27 @@ import CharacterNarrative from './CharacterNarrative';
 import ExplorerModal from './ExplorerModal';
 import './CharacterPanel.css';
 
-function CharacterPanel({ character, sessionId, sendCommand, sendReplayEvent }) {
+function CharacterPanel({ 
+  character, 
+  sessionId, 
+  sendCommand, 
+  sendReplayEvent,
+  showExplorer: propShowExplorer,
+  onExplorerShown
+}) {
   const [showNarrative, setShowNarrative] = useState(false);
   const [showExplorer, setShowExplorer] = useState(false);
   const [lastExplorerState, setLastExplorerState] = useState(null);
   const [explorerStatus, setExplorerStatus] = useState('idle');
+
+  useEffect(() => {
+    if (propShowExplorer !== undefined) {
+      setShowExplorer(propShowExplorer);
+      if (propShowExplorer && onExplorerShown) {
+        onExplorerShown();
+      }
+    }
+  }, [propShowExplorer, onExplorerShown]);
 
   // Cache explorer state from character updates
   useEffect(() => {

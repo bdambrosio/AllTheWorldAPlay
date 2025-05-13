@@ -104,8 +104,9 @@ class SimulationServer:
     
     async def send_character_update(self, actor, new_image=True):
         actor_data = actor.to_json()
+
         try:
-            if new_image:
+            if actor.name not in self.image_cache or new_image:
                 description = actor.generate_image_description()
                 if description:
                     image_path = generate_image(self.sim_context.llm, description, filepath=actor.name+'.png')
@@ -113,7 +114,7 @@ class SimulationServer:
                         image_data = base64.b64encode(f.read()).decode()
                         actor_data['image'] = image_data
                         self.image_cache[actor.name] = image_data
-            else:
+            elif 'image' not in actor_data:
                 actor_data['image'] = self.image_cache[actor.name]
             
             await self.send_result({
@@ -124,6 +125,17 @@ class SimulationServer:
         except Exception as e:
             print(f"Error generating image for {actor.name}: {e}")
     
+    async def send_character_detail(self, actor):
+        actor_data = actor.get_explorer_state()
+        try:
+            await self.send_result({
+                'type': 'character_detail',
+                'character': actor_data
+            })
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"Error generating image for {actor.name}: {e}")
+
     async def send_world_update(self):
         """send world update to UI"""
         update = self.sim_context.to_json()
@@ -158,6 +170,7 @@ class SimulationServer:
             })
 
     async def load_play(self, command):
+        self.image_cache = {}   
         play_name = command.get('play')
         main_dir = Path(__file__).parent
         config_path = (main_dir / '../plays/config.py').resolve()
@@ -210,7 +223,7 @@ class SimulationServer:
             await asyncio.sleep(0.1)
             
             self.next_actor_index = 0
-            self.image_cache = {}
+
             self.steps_since_last_update = 0
             home = str(Path.home())
             self.known_actors_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'known_actors', play_name.replace('.py', '/'))
@@ -247,6 +260,7 @@ class SimulationServer:
                 await char.cognitive_cycle()
                 #char.actor_models.save_to_file(os.path.join(self.known_actors_dir, f'{char.name}_known_actors.json'))
                 await self.send_character_update(char)
+                await self.send_character_detail(char)
                 await asyncio.sleep(0.1)
                 self.next_actor_index += 1
                 if self.next_actor_index >= len(self.sim_context.actors):
@@ -535,14 +549,15 @@ class SimulationServer:
                     if message['text'] == 'character_update':
                         # async character update messages include the actor data in the message
                         actor_data = message['data']
-                        if message['name'] in self.image_cache: 
-                            if self.image_cache[message['name']]:
-                                actor_data['image'] = self.image_cache[message['name']]
-                
-                        await self.send_result({
-                            'type': 'character_update',
-                            'character': actor_data
-                        })
+                        actor_name = message['name']
+                        actor = self.sim_context.get_actor_by_name(actor_name)
+                        if actor and 'image' not in actor_data and actor_name not in self.image_cache:
+                            await self.send_character_update(actor)
+                        else:
+                            await self.send_result({
+                                'type': 'character_update',
+                                'character': actor_data
+                            })
                     elif message['text'] == 'world_update':
                         # async character update messages include the actor data in the message
                         world_data = message['data']
@@ -570,7 +585,15 @@ class SimulationServer:
                         })
                     elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice']:
                         await self.send_result(message)
+
+                    elif message.get('text') == 'character_detail':
+                        await self.send_result({
+                            'type': 'character_details',
+                            'name': message['name'],
+                            'details': message['data']
+                        })
                     else:
+
                         await self.send_result({
                             'type': 'show_update',
                             'message': {'name': message['name'], 'text': message['text']}  # Send the text directly instead of wrapping in message

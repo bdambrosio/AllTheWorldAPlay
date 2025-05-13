@@ -365,7 +365,7 @@ class Character:
             print(f"Invalid actionable Hash: {hash_string}")
             return None
         
-    def format_history(self, n=2):
+    def format_history(self, n=16):
         """Get memory context including both concrete and abstract memories"""
         # Get recent concrete memories
         recent_memories = self.structured_memory.get_recent(n)
@@ -381,7 +381,7 @@ class Character:
             memory_text.append("Current Activity:\n" + current.summary)
         
         # Get recent completed activities
-        recent_abstracts = self.structured_memory.get_recent_abstractions(2)
+        recent_abstracts = self.structured_memory.get_recent_abstractions(4)
         if recent_abstracts:
             # Filter out current activity and format others
             completed = [mem for mem in recent_abstracts if not mem.is_active]
@@ -890,7 +890,7 @@ End your response with:
     def repetitive(self, new_response, last_response, source):
         """Check if response is repetitive considering wider context"""
         # Get more historical context from structured memory
-        recent_memories = self.structured_memory.get_recent(3)  # Increased window
+        recent_memories = self.structured_memory.get_recent(8)  # Increased window
         history = '\n'.join(mem.text for mem in recent_memories)
         
         prompt = [UserMessage(content="""Given recent history and a new proposed action, 
@@ -1327,7 +1327,7 @@ End response with:
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
@@ -1481,7 +1481,7 @@ End response with:
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  "achievments": '\n'.join(self.achievments[:6]),
                                  # get scored clusters returns a list of tuples (cluster, score)
@@ -1722,7 +1722,7 @@ End your response with:
 
 
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(5)
+        recent_memories = self.structured_memory.get_recent(8)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
         if consequences == '':
@@ -2708,7 +2708,7 @@ End your response with:
         elif self.focus_task.peek() != None and self.focus_task.peek().name.startswith('internal dialog'):
             activity = f'You are currently actively engaged in an internal dialog'
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(6)
+        recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
         
         #print("Hear",end=' ')
@@ -2824,7 +2824,7 @@ End your response with:
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
                                          'achievments': '\n'.join(self.achievments[:5]),
-                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(5)]), 
+                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
                                          prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
@@ -3111,6 +3111,7 @@ End your response with:
         await self.request_goal_choice(self.goals)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_goal:
             raise Exception(f'{self.name} cognitive_cycle: no focus goal')
@@ -3118,6 +3119,7 @@ End your response with:
         await self.request_task_choice(self.focus_goal.task_plan)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_task.peek():
             return # no admissible task at this time
@@ -3179,6 +3181,8 @@ End your response with:
 
         delay = 0.0
         #delay = await self.context.choose_delay()
+        self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         try:
             old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
@@ -3471,7 +3475,7 @@ end your response with:
                     'text': memory.text or '',
                     'timestamp': memory.timestamp.isoformat() if memory.timestamp else self.context.simulation_time.isoformat()
                 } 
-                for memory in (self.structured_memory.get_recent(5) or [])
+                for memory in (self.structured_memory.get_recent(8) or [])
             ],
             'narrative': {
                 'recent_events': self.narrative.recent_events if self.narrative else '',
