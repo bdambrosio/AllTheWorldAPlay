@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 import logging
 import signal
 import copy
-from fastapi.responses import StreamingResponse
 
 # Create replay directory if it doesn't exist
 replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'logs'
@@ -168,6 +167,12 @@ async def create_session():
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     sessions[session_id] = None
+    
+    # Send initial mode information
+    await websocket.send_json({
+        "type": "mode_update",
+        "mode": "simulation"
+    })
     
     # Start the message queue processing task
     queue_task = asyncio.create_task(ws_manager.process_queue(websocket))

@@ -117,18 +117,49 @@ ws_manager = WebSocketManager()
 async def root():
     return {"status": "ok"}
 
+image_cache = {}
+
+def handle_event_image(session_id, event):
+    if event.get('type') == 'character_update' and event.get('data') and event['data'].get('name'):
+        char_name = event['data']['name']
+        if event['data'].get('image'):
+            image_cache[session_id][char_name] = event['data']['image']
+        elif char_name in image_cache[session_id]:
+            event['data']['image'] = image_cache[session_id][char_name]
+        return event
+
+    elif event.get('type') == 'world_update':
+        if event.get('data'):
+            world_name = 'world' #event['data']['name']
+            if event['data'].get('image'):
+                image_cache[session_id][world_name] = event['data']['image']
+            elif world_name in image_cache[session_id]:
+                event['data']['image'] = image_cache[session_id][world_name]
+        return event
+    return event
+
 # Add session creation endpoint
 @app.get("/api/session/new")
 async def create_session():
+    global image_cache
     session_id = str(uuid.uuid4())
     sessions[session_id] = None
+    image_cache[session_id] = {}
     return {"session_id": session_id}
+
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    global replay_events, current_replay_index, is_replay_mode, is_replay_running
+    global image_cache, replay_events, current_replay_index, is_replay_mode, is_replay_running
     await websocket.accept()
     sessions[session_id] = None
+
+    
+    # Send initial mode information
+    await websocket.send_json({
+        "type": "mode_update",
+        "mode": "replay"
+    })
     
     # Start the message queue processing task
     queue_task = asyncio.create_task(ws_manager.process_queue(websocket))
@@ -161,7 +192,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 if command == 'initialize':
                     json_files = [f.name for f in replay_dir.glob('*.json')]
                     await websocket.send_json({
-                        "type": "initialize",
+                        "type": "play_list",
                         "plays": json_files
                     })
                     continue
@@ -186,10 +217,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     if data.get('action') == 'step':
                         # Step: send next event
                         if current_replay_index < len(replay_events):
-                            print(f"Sending step event: {replay_events[current_replay_index]}")
-                            await websocket.send_json(replay_events[current_replay_index])
+                            print(f"Sending step event: {replay_events[current_replay_index].get('type')}")
+                            event = handle_event_image(session_id, replay_events[current_replay_index])
+                            await websocket.send_json(event)
                             # Cache character details for later use
-                            cache_character_details(replay_events[current_replay_index])
+                            cache_character_details(event)
                             current_replay_index += 1
                             await send_command_ack('step')
                         else:
@@ -208,7 +240,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             is_replay_running = True
                             try:
                                 while current_replay_index < len(replay_events) and is_replay_running:
-                                    event = replay_events[current_replay_index]
+                                    event = handle_event_image(session_id, replay_events[current_replay_index])
                                     await websocket.send_json(event)
                                     # Cache character details for later use
                                     cache_character_details(event)
