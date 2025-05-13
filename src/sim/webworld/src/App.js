@@ -10,6 +10,7 @@ import './components/TabPanel.css';
 import config from './config';
 import { ReplayProvider, useReplay } from './contexts/ReplayContext';
 import ExplorerModal from './components/ExplorerModal';
+import voiceService from './components/VoiceService';
 
 function App() {
   const { recordEvent } = useReplay();
@@ -42,6 +43,8 @@ function App() {
   const [pendingTabEvent, setPendingTabEvent] = useState(null);
   const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
   const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
+  const [appMode, setAppMode] = useState('simulation');
+  const pendingPlayLoadRef = useRef(null);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -138,12 +141,18 @@ function App() {
                 }
                 break;
               case 'command_ack':
+                console.log('Debug - command_ack received:', data);
                 setIsProcessing(false);
                 setSimState(prev => ({
                   ...prev,
                   running: false,
                   paused: true
                 }));
+                if (data.command === 'load_play' && pendingPlayLoadRef.current) {
+                  console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
+                  setCurrentPlay(pendingPlayLoadRef.current);
+                  pendingPlayLoadRef.current = null;
+                }
                 break;
               case 'chat_response':
                 console.log('chat_response:', data.text);
@@ -181,6 +190,9 @@ function App() {
                   setPendingExplorerTabEvent(event);
                 }
                 break;
+              case 'mode_update':
+                setAppMode(data.mode);
+                break;
               default:
                 console.log('Unknown message type:', data.type);
             }
@@ -215,6 +227,32 @@ function App() {
     recordEvent('initialize', 'simulation');
     sendReplayEvent('initialize', 'simulation', 'initialize');
     sendCommand('initialize');
+    if (appMode === 'replay') {
+      (async () => {
+        try {
+          // Set the API key first, then set the provider
+          await voiceService.setApiKey('elevenlabs', 'sk_885985259253218eb41fce905121e7ed4411293a4d37e013');
+          await voiceService.setProvider('elevenlabs');
+          await voiceService.getVoices();
+          console.log('voices loaded:', voiceService.getVoices().length);
+          voiceService.mapCharacterToVoice('Narrator', {
+            voiceId: "lxYfHSkYm1EzQzGhdbfc",
+            stability: 0.1,
+            similarityBoost: 0.1,
+            style: 0.5,
+            speakerBoost: false
+          });
+          console.log('speaking…');
+          await voiceService.speak(
+          'Select a play to load and press the load button',
+          { character: 'Narrator', rate: 1 }
+        );
+        } catch (err) {
+          console.log('Speech synthesis failed:', err);
+        }
+        console.log('speaking complete');
+      })();
+    }
   };
 
   const handleStep = async () => {
@@ -366,10 +404,6 @@ function App() {
     }
   };
 
-  const startReplay = () => {
-    sendCommand('start_replay');
-  };
-
   console.log('Current characters:', characters);  // See if state is updated
   console.log('RENDER - characters state:', characters);
 
@@ -394,6 +428,13 @@ function App() {
       }
     }
   }, [characters, pendingExplorerEvent]);
+
+  useEffect(() => {
+    console.log('Debug - appMode:', appMode);
+    console.log('Debug - currentPlay:', currentPlay);
+    console.log('Debug - isProcessing:', isProcessing);
+    console.log('Debug - simState:', simState);
+  }, [appMode, currentPlay, isProcessing, simState]);
 
   return (
     <ReplayProvider>
@@ -440,21 +481,20 @@ function App() {
         </div>
         <div className="control-panel">
           <div className="control-buttons">
-            <button className="control-button" onClick={handleInitialize}>Initialize Play</button>
+            <button className="control-button" onClick={handleInitialize}>Start</button>
             <button className="control-button" 
               onClick={handleRun} 
-              disabled={isProcessing || simState.running}>Run</button>
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Run</button>
             <button className="control-button" 
               onClick={handleStep} 
-              disabled={isProcessing || simState.running}>Step</button>
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Step</button>
             <button className="control-button" onClick={handlePause}>Pause</button>
-            <button className="control-button" onClick={() => sendCommand('showMap')}>Show Map</button>
-            <button onClick={handleRefresh} className="control-button">
+            <button className="control-button" onClick={() => sendCommand('showMap')} disabled={appMode === 'replay'}>Show Map</button>
+            <button onClick={handleRefresh} className="control-button" disabled={appMode === 'replay'}>
               Refresh
             </button>
-            <button className="control-button" onClick={() => sendCommand('load_known_actors')}>Load</button>
-            <button className="control-button" onClick={() => sendCommand('save_known_actors')}>Save</button>
-            <button className="control-button" onClick={startReplay}>Replay</button>
+            <button className="control-button" onClick={() => sendCommand('load_known_actors')} disabled={appMode === 'replay'}>Load</button>
+            <button className="control-button" onClick={() => sendCommand('save_known_actors')} disabled={appMode === 'replay'}>Save</button>
           </div>
           <div className="status-area">
             {currentPlay && <div>Play: {currentPlay}</div>}
@@ -477,6 +517,7 @@ function App() {
             <h3>Select Scenario</h3>
             <select onChange={(e) => {
               setSelectedPlay(e.target.value);
+              console.log('Select changed, new selectedPlay:', e.target.value);
               recordEvent('select_play', e.target.value);
               sendReplayEvent('select_play', e.target.value);
             }}>
@@ -486,6 +527,7 @@ function App() {
             </select>
             <button onClick={() => {
               setIsProcessing(true);
+              pendingPlayLoadRef.current = selectedPlay;
               sendCommand('load_play', { play: selectedPlay });
               setShowPlayDialog(false);
               sendReplayEvent('setShowPlayDialog', { show: false });
