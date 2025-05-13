@@ -30,11 +30,12 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
     }
   };
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    sendReplayEvent('setExplorerTab', { 
+  const handleTabClick = (tabName) => {
+    setActiveTab(tabName);
+    
+    sendReplayEvent('setExplorerTab', {
       characterName: character.name,
-      tab: tab 
+      tabName: tabName
     });
   };
 
@@ -62,43 +63,43 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
       <div className="tab-bar">
         <button 
           className={activeTab === 'core' ? 'active' : ''} 
-          onClick={() => handleTabChange('core')}
+          onClick={() => handleTabClick('core')}
         >
           Core State
         </button>
         <button 
           className={activeTab === 'memory' ? 'active' : ''} 
-          onClick={() => handleTabChange('memory')}
+          onClick={() => handleTabClick('memory')}
         >
           Memory
         </button>
         <button 
           className={activeTab === 'debug' ? 'active' : ''} 
-          onClick={() => handleTabChange('debug')}
+          onClick={() => handleTabClick('debug')}
         >
           Debug
         </button>
         <button 
           className={activeTab === 'social' ? 'active' : ''} 
-          onClick={() => handleTabChange('social')}
+          onClick={() => handleTabClick('social')}
         >
           Social
         </button>
         <button 
           className={activeTab === 'cognitive' ? 'active' : ''} 
-          onClick={() => handleTabChange('cognitive')}
+          onClick={() => handleTabClick('cognitive')}
         >
           Cognitive
         </button>
         <button 
           className={activeTab === 'signals' ? 'active' : ''} 
-          onClick={() => handleTabChange('signals')}
+          onClick={() => handleTabClick('signals')}
         >
           Signals
         </button>
         <button 
           className={activeTab === 'chat' ? 'active' : ''} 
-          onClick={() => handleTabChange('chat')}
+          onClick={() => handleTabClick('chat')}
         >
           Chat
         </button>

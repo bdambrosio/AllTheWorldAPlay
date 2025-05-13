@@ -9,6 +9,7 @@ import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
 import config from './config';
 import { ReplayProvider, useReplay } from './contexts/ReplayContext';
+import ExplorerModal from './components/ExplorerModal';
 
 function App() {
   const { recordEvent } = useReplay();
@@ -38,6 +39,9 @@ function App() {
   const [choiceRequest, setChoiceRequest] = useState(null);
   const [showDirectorChair, setShowDirectorChair] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
+  const [pendingTabEvent, setPendingTabEvent] = useState(null);
+  const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
+  const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -157,11 +161,24 @@ function App() {
                 break;
               case 'setActiveTab':
                 if (event.arg.panelId === 'characterTabs') {
-                  const characterIndex = Object.values(characters)
-                    .findIndex(char => char.name === event.arg.characterName);
-                  if (characterIndex !== -1) {
-                    setActiveTab(characterIndex);
+                  const characterArray = Object.values(characters);
+                  if (characterArray.length > 0) {
+                    const characterIndex = characterArray.findIndex(char => char.name === event.arg.characterName);
+                    if (characterIndex !== -1) {
+                      setActiveTab(characterIndex);
+                    } else {
+                      setPendingTabEvent(event);
+                    }
+                  } else {
+                    setPendingTabEvent(event);
                   }
+                }
+                break;
+              case 'setExplorerTab':
+                if (characters[event.arg.characterName]) {
+                  setPendingExplorerTabEvent(event);
+                } else {
+                  setPendingExplorerTabEvent(event);
                 }
                 break;
               default:
@@ -309,32 +326,39 @@ function App() {
   };
 
   const handleReplayEvent = (event) => {
-    console.log('Handling replay event:', event);  // Debug log
+    console.log('Handling replay event:', event);
     switch (event.action) {
       case 'setShowPlayDialog':
         setShowPlayDialog(event.arg.show);
         break;
       case 'setActiveTab':
-        console.log('setActiveTab event:', event.arg);  // Debug log
         if (event.arg.panelId === 'characterTabs') {
           const characterArray = Object.values(characters);
-          console.log('Available characters:', characterArray);  // Debug log
-          const characterIndex = characterArray
-            .findIndex(char => char.name === event.arg.characterName);
-          console.log('Found character index:', characterIndex);  // Debug log
-          if (characterIndex !== -1) {
-            console.log('Setting active tab to:', characterIndex);  // Debug log
-            setActiveTab(characterIndex);
+          if (characterArray.length > 0) {
+            const characterIndex = characterArray.findIndex(char => char.name === event.arg.characterName);
+            if (characterIndex !== -1) {
+              setActiveTab(characterIndex);
+            } else {
+              setPendingTabEvent(event);
+            }
+          } else {
+            setPendingTabEvent(event);
           }
         }
         break;
-      case 'setExplorerTab':
-        // The event will be handled by the correct ExplorerModal
-        // through the character-based routing
-        break;
       case 'setShowExplorer':
-        // The event will be handled by the correct CharacterPanel
-        // through the character-based routing
+        if (characters[event.arg.characterName]) {
+          setPendingExplorerEvent(event);
+        } else {
+          setPendingExplorerEvent(event);
+        }
+        break;
+      case 'setExplorerTab':
+        if (characters[event.arg.characterName]) {
+          setPendingExplorerTabEvent(event);
+        } else {
+          setPendingExplorerTabEvent(event);
+        }
         break;
       default:
         // Handle other replay events
@@ -347,6 +371,29 @@ function App() {
   };
 
   console.log('Current characters:', characters);  // See if state is updated
+  console.log('RENDER - characters state:', characters);
+
+  useEffect(() => {
+    if (pendingTabEvent && pendingTabEvent.action === 'setActiveTab') {
+      const characterArray = Object.values(characters);
+      if (characterArray.length > 0) {
+        const characterIndex = characterArray.findIndex(char => char.name === pendingTabEvent.arg.characterName);
+        if (characterIndex !== -1) {
+          setActiveTab(characterIndex);
+          setPendingTabEvent(null);
+        }
+      }
+    }
+  }, [characters, pendingTabEvent]);
+
+  useEffect(() => {
+    if (pendingExplorerEvent && pendingExplorerEvent.action === 'setShowExplorer') {
+      const characterName = pendingExplorerEvent.arg.characterName;
+      if (characters[characterName]) {
+        setPendingExplorerEvent(null);
+      }
+    }
+  }, [characters, pendingExplorerEvent]);
 
   return (
     <ReplayProvider>
@@ -362,6 +409,13 @@ function App() {
                   sessionId={sessionId}
                   sendCommand={sendCommand}
                   sendReplayEvent={sendReplayEvent}
+                  showExplorer={pendingExplorerEvent?.arg?.characterName === character.name ? 
+                                pendingExplorerEvent.arg.show : undefined}
+                  onExplorerShown={() => {
+                    if (pendingExplorerEvent?.arg?.characterName === character.name) {
+                      setPendingExplorerEvent(null);
+                    }
+                  }}
                 />
               ))}
             sendReplayEvent={sendReplayEvent}
@@ -467,6 +521,25 @@ function App() {
             characters={characters}
             onClose={() => setShowDirectorChair(false)}
             sendCommand={sendCommand}
+          />
+        )}
+
+        {pendingExplorerEvent && pendingExplorerEvent.action === 'setShowExplorer' && (
+          <ExplorerModal
+            character={characters[pendingExplorerEvent.arg.characterName]}
+            sessionId={sessionId}
+            lastState={pendingExplorerEvent.arg.lastState}
+            status={pendingExplorerEvent.arg.status}
+            onClose={() => setPendingExplorerEvent(null)}
+            activeTab={pendingExplorerTabEvent?.arg?.characterName === pendingExplorerEvent.arg.characterName ? 
+                       pendingExplorerTabEvent.arg.tabName : undefined}
+            onTabChanged={() => {
+              if (pendingExplorerTabEvent?.arg?.characterName === pendingExplorerEvent.arg.characterName) {
+                setPendingExplorerTabEvent(null);
+              }
+            }}
+            sendCommand={sendCommand}
+            sendReplayEvent={sendReplayEvent}
           />
         )}
       </div>

@@ -209,38 +209,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 continue
                 
             if data.get('type') == 'command':
-                if data.get('action') == 'start_replay':
-                    # Load replay file and start replay mode
-                    global replay_events, current_replay_index, is_replay_mode
-                    replay_events = load_replay_file(replay_dir / 'replay.json')
-                    current_replay_index = 0
-                    is_replay_mode = True
-                    await send_command_ack('start_replay')
-                elif is_replay_mode:
-                    if data.get('action') == 'step':
-                        # Step: send next event
-                        if current_replay_index < len(replay_events):
-                            print(f"Sending step event: {replay_events[current_replay_index]}")
-                            await websocket.send_json(replay_events[current_replay_index])
-                            current_replay_index += 1
-                            await send_command_ack('step')
-                        else:
-                            print("No more replay events")
-                            await send_command_ack('step')
-                            is_replay_mode = False
-                    elif data.get('action') == 'run':
-                        # Run: send events with delays until paused or end
-                        while current_replay_index < len(replay_events):
-                            event = replay_events[current_replay_index]
-                            await websocket.send_json(event)
-                            current_replay_index += 1
-                            # Get delay for this event type, or use default
-                            delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
-                            await asyncio.sleep(delay)
-                    elif data.get('action') == 'pause':
-                        # Pause: just acknowledge
-                        await send_command_ack('pause')
-                else:
                     await sim_manager.send_command(data)
                 
             elif data['action'] == 'load_known_actors':
@@ -302,10 +270,18 @@ async def startup_event():
             ws_manager.queue_message(ws_message)
                         # Minimize images in the copy
             capture_file_result = copy.deepcopy(ws_message)
+            # let first image through for both world and characters
             if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
-                capture_file_result['data']['image'] = MINI_IMAGE
+                actor_name = capture_file_result['data']['name']
+                if actor_name in sim_manager.image_cache:
+                    capture_file_result['data']['image'] = MINI_IMAGE
+                else:
+                    capture_file_result['data']['image'] = capture_file_result['data']['image']
             elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
-                capture_file_result['data']['image'] = MINI_IMAGE
+                if 'world' in sim_manager.image_cache:
+                    capture_file_result['data']['image'] = MINI_IMAGE
+                else:
+                    sim_manager.image_cache['world'] = capture_file_result['data']['image']
 
             # Record the ws_message instead of the raw result
             capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")
