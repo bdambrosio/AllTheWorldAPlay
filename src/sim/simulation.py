@@ -260,7 +260,7 @@ class SimulationServer:
                 await char.cognitive_cycle()
                 #char.actor_models.save_to_file(os.path.join(self.known_actors_dir, f'{char.name}_known_actors.json'))
                 await self.send_character_update(char)
-                await self.send_character_detail(char)
+                #await self.send_character_detail(char)
                 await asyncio.sleep(0.1)
                 self.next_actor_index += 1
                 if self.next_actor_index >= len(self.sim_context.actors):
