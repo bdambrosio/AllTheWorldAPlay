@@ -1142,7 +1142,8 @@ End response with:
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
-            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}..."})
+            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
+            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0.1)
 
@@ -1164,10 +1165,10 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             self.show += f"{act_arg}'"
-            style_block = self.speech_stylizer.get_style_directive(target)
+            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(target)
             act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
+            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)

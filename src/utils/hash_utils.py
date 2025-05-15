@@ -1,4 +1,5 @@
 import re
+import string
 from typing import List
 
 def _validate_tag(tag):
@@ -130,6 +131,28 @@ def set(tag, form, value):
             
     raise ValueError(f'Tag {tag} not found in form')
 
+def findList(tag, text):
+    """Find list of items in tag in text.
+    Args:
+        tag: Tag name (letters a-zA-Z only)
+        text: String containing hash-formatted text
+    Returns:
+        List of items in tag
+    """
+    list = find(tag, text)
+    if list is None:
+        return []
+    items = []
+    if len(list) > 0:
+        candidates = list.strip().split()
+        items = []
+        for candidate in candidates:
+            candidate = candidate.strip(string.punctuation)
+            if candidate and len(candidate) > 1:
+                items.append(candidate.lower())
+    return items
+
+        
 def format_hash(text, indent=0):
     """Format hash-marked text with proper indentation.
     Args:

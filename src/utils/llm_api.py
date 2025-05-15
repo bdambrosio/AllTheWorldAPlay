@@ -269,6 +269,8 @@ class LLM():
             response = self.run_request(input, prompt_msgs, options, log=log)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
+            if not tag or tag == '':
+                tag = 'default'
             if tag != '':
                 if tag not in elapsed_times.keys():
                     elapsed_times[tag] = 0
@@ -279,6 +281,7 @@ class LLM():
                     for k,v in elapsed_times.items():
                         print(f'{k}: {v:.2f}')
                     print(f'total: {sum(elapsed_times.values()):.2f}')
+                    print()
             if elapsed > 4.0:
                 print(f'llm excessive time: {elapsed:.2f}')
             if stops is not None and type(response) is str: # claude returns eos

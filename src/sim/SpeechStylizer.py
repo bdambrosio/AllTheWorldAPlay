@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import importlib
 import logging
 from typing import TYPE_CHECKING
@@ -14,123 +15,6 @@ if TYPE_CHECKING:
     from sim.narrativeCharacter import NarrativeCharacter
     from sim.cognitive.knownActor import KnownActor
 logger = logging.getLogger('simulation_core')
-
-class ThemeManager:
-    """Manages thematic analysis using LLM for narrative understanding."""
-    
-    def __init__(self, llm):
-        self.llm = llm
-
-    def analyze_scene_theme(self, act_title: str, scene_data: Dict, character_goals: Dict[str, str], pre_narrative: str, post_narrative: str) -> Dict[str, any]:
-        """
-        Uses LLM to analyze scene components and determine dominant theme.
-        Returns theme analysis as a structured dictionary.
-        """
-        
-        # Construct context for LLM
-        context = f"""Act: {act_title}
-Scene: {scene_data['scene_title']}
-
-Character Goals:
-{self._format_character_goals(character_goals)}
-
-Opening State:
-{pre_narrative}
-
-Expected Resolution:
-{post_narrative}
-"""
-
-        prompt = [
-            SystemMessage(content="""You are a literary theme analyzer. 
-Analyze the provided scene context and extract the dominant theme and its characteristics.
-Focus on the emotional and narrative undercurrents that should influence character speech and behavior.
-
-Provide your analysis as valid JSON with these exact keys:
-{
-    "dominant_theme": "one or two word core theme",
-    "theme_intensity": float 0-1 indicating how strongly this theme manifests,
-    "emotional_tone": ["list", "of", "emotional", "qualities"],
-    "narrative_trajectory": "rising" or "falling" or "stable",
-    "speech_style_guidance": "brief guidance on how this theme should influence speech"
-}"""),
-            UserMessage(content=f"""Analyze this scene context and provide theme analysis:
-
-{context}
-
-Respond with only valid JSON.""")
-        ]
-
-        try:
-            response = self.llm.ask(prompt, tag='theme_analysis', max_tokens=200)
-            theme_data = json.loads(response)
-            
-            # Ensure we have all required keys with defaults
-            theme_data.setdefault("dominant_theme", "neutral")
-            theme_data.setdefault("theme_intensity", 0.5)
-            theme_data.setdefault("emotional_tone", ["neutral"])
-            theme_data.setdefault("narrative_trajectory", "stable")
-            theme_data.setdefault("speech_style_guidance", "speak naturally")
-            
-            return theme_data
-            
-        except Exception as e:
-            # Fallback theme data if LLM call fails
-            return {
-                "dominant_theme": "neutral",
-                "theme_intensity": 0.5,
-                "emotional_tone": ["neutral"],
-                "narrative_trajectory": "stable",
-                "speech_style_guidance": "speak naturally"
-            }
-
-    def analyze_character_theme_alignment(self, 
-                                       character_name: str,
-                                       character_desc: str,
-                                       theme_data: Dict) -> Dict[str, any]:
-        """
-        Analyzes how a specific character should interpret/express the current theme.
-        """
-        prompt = [
-            SystemMessage(content="""You are a character analyst.
-Given a character description and current scene theme, analyze how this specific character
-would interpret and express the theme based on their personality and role.
-
-Provide your analysis as valid JSON with these exact keys:
-{
-    "theme_interpretation": "how this character views/relates to the theme",
-    "expression_style": ["key", "style", "elements"],
-    "formality_adjustment": float -1 to 1 (negative means more casual),
-    "characteristic_phrases": ["example", "phrases", "or", "words"]
-}"""),
-            UserMessage(content=f"""Analyze theme interpretation for:
-
-Character: {character_name}
-{character_desc}
-
-Current Theme: {theme_data['dominant_theme']}
-Theme Intensity: {theme_data['theme_intensity']}
-Emotional Tone: {', '.join(theme_data['emotional_tone'])}
-
-Respond with only valid JSON.""")
-        ]
-
-        try:
-            response = self.llm.ask(prompt, tag='character_theme', max_tokens=200)
-            return json.loads(response)
-        except:
-            return {
-                "theme_interpretation": "neutral",
-                "expression_style": ["natural"],
-                "formality_adjustment": 0.0,
-                "characteristic_phrases": []
-            }
-
-    @staticmethod
-    def _format_character_goals(goals: Dict[str, str]) -> str:
-        """Formats character goals for prompt context."""
-        return "\n".join(f"{char}: {goal}" for char, goal in goals.items())
-
 
 class SpeechStylizer:
     """Context‑aware style generator for character dialogue.
@@ -165,13 +49,15 @@ class SpeechStylizer:
     """
 
     # ---------------------------------------------------------------------
-    def __init__(self, character, global_variability: float = 0.5, style_rotation_period: int = 3, rng: Optional[random.Random] = None) -> None:
+    def __init__(self, character:NarrativeCharacter, global_variability: float = 0.5, style_rotation_period: int = 3, rng: Optional[random.Random] = None) -> None:
         self.char: NarrativeCharacter = character
         self.global_var = max(0.0, min(1.0, global_variability))
         self.rotation_period = max(1, style_rotation_period)
         self.rng = rng or random.Random()
 
         self._base_style = self._extract_personality_style()
+        voices = self.char.context.voice_service.get_voices()
+        self.voice_id = self.pick_best_voice(voices)
         self._call_counter = 0
 
     # =====================================================================
@@ -181,7 +67,7 @@ class SpeechStylizer:
         """Return a `<STYLE>` block tailored for the next utterance."""
 
         style = self._compose_style_dict(target_character=target_character, scene_context=scene_context, dominant_theme=dominant_theme)
-        return self._format_style_block(style)
+        return self._format_style_block(style), self.to_elevenlabs_params(style)
 
     # ------------------------------------------------------------------
     def get_style_dict(self, target_character=None, scene_context: Optional[dict] = None, dominant_theme: Optional[str] = None,) -> Dict:
@@ -392,9 +278,9 @@ End your response with:
             response = self.char.llm.ask({}, prompt, tag='relationship_style', max_tokens=150)
             if response is None:
                 return style
-            tone = hash_utils.find('tone', response)
+            tone = hash_utils.findList('tone', response)
             if tone is not None and len(tone) > 0:
-                style["tone"] = tone.strip().split()
+                style["tone"] = tone
             formality = hash_utils.find('formality', response)
             try:
                 style["formality"] = float(formality.strip())
@@ -444,7 +330,7 @@ End your response with:
         response = self.char.llm.ask({"character_name": self.char.name, "scene": scene_str}, prompt, tag='scene_style', max_tokens=150)
         if response is None:
             return style
-        tone = hash_utils.find('tone', response)
+        tone = hash_utils.findList('tone', response)
         if tone is not None and len(tone) > 0:
             style["tone"] = tone
         syntactic_oddity = hash_utils.find('syntactic_oddity', response)
@@ -569,7 +455,7 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         if target:
             recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-10:]
         else:
-            recent_history = self.char.actor_models.get_actor_model(char.name, create_if_missing=True).dialog.transcript[-10:]
+            recent_history = self.char.actor_models.get_actor_model(self.char.name, create_if_missing=True).dialog.transcript[-10:]
         response = self.char.llm.ask({"original_say": original_say, 
                                       "recent_history": recent_history,
                                       "style_block": style_block, 
@@ -579,4 +465,84 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         if response is None:
             return original_say
         return response.strip()
+
+    def to_elevenlabs_params(self, style: Dict) -> Dict:
+        """Convert SpeechStylizer style to ElevenLabs speech parameters."""
+        params = {
+            'stability': 1.0 - (style['syntactic_oddity'] * 0.5),  # Reduce stability for odd syntax
+            'similarity_boost': 1.0 - (style['lexical_quirks']['slang'] * 0.3),  # Reduce similarity for slang
+            'style': 0.75,
+            'use_speaker_boost': False,  # Always enable for character consistency
+            'voice_id': self.voice_id
+        }
+        
+        # Map formality to stability
+        params['stability'] = max(0.1, min(1.0, params['stability'] + (style['formality'] * 0.3)))
+        #params['style'] =0.5
+         
+        # Adjust for metaphor usage
+        if style['lexical_quirks'].get('metaphor', 0.0) > 0.01:
+            params['similarity_boost'] = max(0.1, params['similarity_boost'] - 0.2)
+        
+        return params
+
+    def pick_best_voice(self, voices: list) -> dict:
+        """
+        Select the best ElevenLabs voice record for self.char using LLM-extracted traits.
+        """
+        # 1. Construct prompt for LLM
+        prompt = [SystemMessage(content="""Given the following character description, extract the character's likely gender, age group, accent, and personality keywords as a hash-formatted block.
+
+Character Name: {{$name}}
+Description: {{$description}}
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#gender female / male
+#age middle_aged / young / old
+#accent american / british / australian / etc.
+#personality expressive, confident / shy, introverted / etc.
+##
+
+End your response with:
+</end>
+""")]
+
+        # 2. Call LLM and parse response
+        llm_response = self.char.llm.ask({'name': self.char.name, 'description': self.char.character}, prompt, tag='voice_traits', max_tokens=100)
+        if llm_response is None:
+            return None
+        gender = hash_utils.find('gender', llm_response)
+        age = hash_utils.find('age', llm_response)
+        accent = hash_utils.find('accent', llm_response)
+        personality = hash_utils.findList('personality', llm_response)
+
+        # 3. Score each voice
+        def score_voice(voice):
+            score = 0
+            labels = voice.get('labels', {})
+            # Gender match
+            label_gender = labels.get('gender', '').lower()
+            if gender and label_gender == gender.lower():
+                score += 5
+            # Age match
+            label_age = labels.get('age', '').lower()
+            if age and label_age and label_age == age.lower():
+                score += 1
+            # Accent match
+            label_accent = labels.get('accent', '').lower()
+            if accent and label_accent and accent.lower() == label_accent:
+                score += 1
+            # Personality/description match (partial, case-insensitive)
+            if personality and 'description' in labels:
+                for word in personality:
+                    if word.strip().lower() in labels['description'].lower():
+                        score += .1
+            return score
+
+        # 4. Pick the best voice
+        best_voice = max(voices, key=score_voice)
+        return best_voice['voice_id']
 

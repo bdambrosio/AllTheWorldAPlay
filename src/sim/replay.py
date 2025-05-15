@@ -23,12 +23,13 @@ import websockets
 import logging
 import signal
 import copy
+from utils.VoiceService import VoiceService
 
 # Create replay directory if it doesn't exist
-replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'replays'
-replay_dir.mkdir(parents=True, exist_ok=True)
+main_dir = Path(__file__).parent
+replays_dir = (main_dir / '../plays/replays/').resolve()
+replays_dir.mkdir(parents=True, exist_ok=True)
 replay_file = None
-capture_file = None
 # Small grey image (1x1 pixel) in base64
 MINI_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
@@ -37,6 +38,18 @@ replay_events = []
 current_replay_index = 0
 is_replay_mode = False
 is_replay_running = False
+speech_enabled = False
+voice_service = VoiceService()
+voice_service.set_provider('elevenlabs')
+api_key = os.getenv('ELEVENLABS_API_KEY')
+if not api_key:
+    print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
+voice_service.set_api_key('elevenlabs', api_key)
+
+
+
+speech_complete_event = asyncio.Event()
+SPEECH_TIMEOUT = 20  # seconds
 
 # used to control the speed of the replay
 EVENT_DELAYS = {
@@ -52,7 +65,7 @@ EVENT_DELAYS = {
 character_details_cache = {}
 
 # Add this function to store character details as they're encountered
-def cache_character_details(event):
+async def post_process_event(event):
     if event.get('type') == 'character_details' and 'name' in event and 'details' in event:
         character_details_cache[event['name']] = event
 
@@ -119,7 +132,7 @@ async def root():
 
 image_cache = {}
 
-def handle_event_image(session_id, event):
+async def handle_event_image(session_id, event):
     if event.get('type') == 'character_update' and event.get('data') and event['data'].get('name'):
         char_name = event['data']['name']
         if event['data'].get('image'):
@@ -136,6 +149,29 @@ def handle_event_image(session_id, event):
             elif world_name in image_cache[session_id]:
                 event['data']['image'] = image_cache[session_id][world_name]
         return event
+
+    elif event.get('type') == 'speak':
+        if not speech_enabled:
+            return event
+        try:
+            message = event.get('message')
+            text = message.get('text')
+            audio_data = event.get('audio')
+            speak_event = {
+                'type': 'speak',
+                'message': {
+                    'name': message['name'],
+                    'text': message['text'],
+                },
+                'audio': audio_data,
+                'audio_format': 'mp3',
+                'needs_speech_complete': True
+            }
+            event = speak_event
+        except Exception as e:
+            print(f"Error processing speech: {e}")
+        return event
+
     return event
 
 # Add session creation endpoint
@@ -190,7 +226,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             if data.get('type') == 'command':
                 command = data.get('command') or data.get('action', '')
                 if command == 'initialize':
-                    json_files = [f.name for f in replay_dir.glob('*.json')]
+     
+                    json_files = [f.name for f in replays_dir.glob('*.json')]
                     await websocket.send_json({
                         "type": "play_list",
                         "plays": json_files
@@ -200,7 +237,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 # Handle load: load selected replay file for playback
                 elif command == 'load_play' and data.get('play'):
                     selected_file = data['play']
-                    replay_events = load_replay_file(replay_dir / selected_file)
+                    replay_events = load_replay_file(replays_dir / selected_file)
                     current_replay_index = 0
                     is_replay_mode = True
                     await send_command_ack('load_play')
@@ -208,20 +245,24 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
                 elif data.get('action') == 'start_replay':
                     # Load replay file and start replay mode
-                    replay_events = load_replay_file(replay_dir / 'replay.json')
+                    replay_events = load_replay_file(replays_dir / 'replay.json')
                     current_replay_index = 0
                     is_replay_mode = True
                     await send_command_ack('start_replay')
 
                 elif is_replay_mode:
-                    if data.get('action') == 'step':
+                    if data.get('action', '') == 'speech_complete':
+                        speech_complete_event.set()
+                        continue
+
+                    elif data.get('action') == 'step':
                         # Step: send next event
                         if current_replay_index < len(replay_events):
                             print(f"Sending step event: {replay_events[current_replay_index].get('type')}")
-                            event = handle_event_image(session_id, replay_events[current_replay_index])
+                            event = await handle_event_image(session_id, replay_events[current_replay_index])
                             await websocket.send_json(event)
                             # Cache character details for later use
-                            cache_character_details(event)
+                            await post_process_event(event)
                             current_replay_index += 1
                             await send_command_ack('step')
                         else:
@@ -240,13 +281,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                             is_replay_running = True
                             try:
                                 while current_replay_index < len(replay_events) and is_replay_running:
-                                    event = handle_event_image(session_id, replay_events[current_replay_index])
+                                    event = await handle_event_image(session_id, replay_events[current_replay_index])
                                     await websocket.send_json(event)
+                                    
+                                    # If this event needs speech completion, wait for it
+                                    if event.get('needs_speech_complete'):
+                                        speech_complete_event.clear()  # Reset the event
+                                        try:
+                                            await asyncio.wait_for(speech_complete_event.wait(), timeout=SPEECH_TIMEOUT)
+                                        except asyncio.TimeoutError:
+                                            print("Speech completion timeout")
+                                    
                                     # Cache character details for later use
-                                    cache_character_details(event)
+                                    await post_process_event(event)
                                     current_replay_index += 1
                                     delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
                                     await asyncio.sleep(delay)
+                                print("Reached end of replay")
                             except asyncio.CancelledError:
                                 pass
                             finally:
@@ -263,25 +314,39 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         if 'replay_task' in globals() and replay_task and not replay_task.done():
                             replay_task.cancel()
                             
+                elif data.get('action') == 'toggle_speech':
+                    global speech_enabled
+                    speech_enabled = not speech_enabled
+                    await websocket.send_json({
+                        'type': 'speech_toggle',
+                        'enabled': speech_enabled
+                    })
+                    # Add command acknowledgment
+                    await send_command_ack('toggle_speech')
+                    continue
 
-                    # Next, add a handler for get_character_details commands during replay
+                # Next, add a handler for get_character_details commands during replay
            
-                    # Handle get_character_details specifically during replay
-                    elif command == 'get_character_details' and data.get('name'):
-                        character_name = data['name']
-                        if character_name in character_details_cache:
-                        # Return cached character details
-                            await websocket.send_json(character_details_cache[character_name])
-                            continue
-                        else:
-                            # No cached details, send an empty response
-                            await websocket.send_json({
-                                "type": "character_details",
-                                "name": character_name,
-                                "details": {}
-                            })
+                # Handle get_character_details specifically during replay
+                elif command == 'get_character_details' and data.get('name'):
+                    character_name = data['name']
+                    if character_name in character_details_cache:
+                    # Return cached character details
+                        await websocket.send_json(character_details_cache[character_name])
                         continue
+                    else:
+                        # No cached details, send an empty response
+                        await websocket.send_json({
+                            "type": "character_details",
+                            "name": character_name,
+                            "details": {}
+                        })
+                    continue
                  
+                elif data.get('type') == 'speech_complete':
+                    speech_complete_event.set()
+                    continue
+
     except WebSocketDisconnect:
         queue_task.cancel()
         print(f"Client disconnected: {session_id}")
@@ -291,6 +356,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             
     except Exception as e:
         queue_task.cancel()
+        print(f"Traceback:\n{traceback.format_exc()}")
         print(f"Error in websocket handler: {e}")
         # Clean up on other errors too
         if session_id in sessions:
