@@ -228,30 +228,30 @@ function App() {
     sendReplayEvent('initialize', 'simulation', 'initialize');
     sendCommand('initialize');
     if (appMode === 'replay') {
-      (async () => {
-        try {
-          // Set the API key first, then set the provider
-          await voiceService.setApiKey('elevenlabs', 'sk_885985259253218eb41fce905121e7ed4411293a4d37e013');
-          await voiceService.setProvider('elevenlabs');
-          await voiceService.getVoices();
-          console.log('voices loaded:', voiceService.getVoices().length);
-          voiceService.mapCharacterToVoice('Narrator', {
-            voiceId: "lxYfHSkYm1EzQzGhdbfc",
-            stability: 0.1,
-            similarityBoost: 0.1,
-            style: 0.5,
-            speakerBoost: false
-          });
-          console.log('speaking…');
-          await voiceService.speak(
-          'Select a play to load and press the load button',
-          { character: 'Narrator', rate: 1 }
-        );
-        } catch (err) {
-          console.log('Speech synthesis failed:', err);
-        }
-        console.log('speaking complete');
-      })();
+      //(async () => {
+      //  try {
+      //    // Set the API key first, then set the provider
+      //    await voiceService.setApiKey('elevenlabs', 'api-key here');
+      //    await voiceService.setProvider('elevenlabs');
+      //    await voiceService.getVoices();
+      //    console.log('voices loaded:', voiceService.getVoices().length);
+      //    voiceService.mapCharacterToVoice('Narrator', {
+      //      voiceId: "lxYfHSkYm1EzQzGhdbfc",
+      //      stability: 0.1,
+      //      similarityBoost: 0.1,
+      //      style: 0.5,
+      //      speakerBoost: false
+      //      });
+      //    console.log('speaking…');
+      //    await voiceService.speak(
+      //    'Select a play to load and press the load button',
+      //    { character: 'Narrator', rate: 1 }
+      //  );
+      //  } catch (err) {
+      //    console.log('Speech synthesis failed:', err);
+      //  }
+      //  console.log('speaking complete');
+      //})();
     }
   };
 
