@@ -10,7 +10,6 @@ import './components/TabPanel.css';
 import config from './config';
 import { ReplayProvider, useReplay } from './contexts/ReplayContext';
 import ExplorerModal from './components/ExplorerModal';
-import voiceService from './components/VoiceService';
 
 function App() {
   const { recordEvent } = useReplay();
@@ -45,6 +44,8 @@ function App() {
   const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
   const [appMode, setAppMode] = useState('simulation');
   const pendingPlayLoadRef = useRef(null);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const speechEnabledRef = useRef(speechEnabled);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -193,6 +194,28 @@ function App() {
               case 'mode_update':
                 setAppMode(data.mode);
                 break;
+              case 'speak':
+                console.log('Speak message received:', data);
+                if (speechEnabledRef.current && data.audio) {
+                  const mime = data.audio_format === 'mp3' || !data.audio_format ? 'audio/mp3' : `audio/${data.audio_format}`;
+                  const audio = new Audio(`data:${mime};base64,${data.audio}`);
+                  audio.onended = () => {
+                    sendCommand('speech_complete');
+                  };
+                  audio.onerror = (error) => {
+                    console.error('Audio playback error:', error);
+                    sendCommand('speech_complete');
+                  };
+                  audio.play().catch(error => {
+                    console.error('Audio play failed:', error);
+                    sendCommand('speech_complete');
+                  });
+                }
+                break;
+              case 'speech_toggle':
+                speechEnabledRef.current = data.enabled;  // sync ref right away
+                setSpeechEnabled(data.enabled);
+                break;
               default:
                 console.log('Unknown message type:', data.type);
             }
@@ -227,32 +250,6 @@ function App() {
     recordEvent('initialize', 'simulation');
     sendReplayEvent('initialize', 'simulation', 'initialize');
     sendCommand('initialize');
-    if (appMode === 'replay') {
-      //(async () => {
-      //  try {
-      //    // Set the API key first, then set the provider
-      //    await voiceService.setApiKey('elevenlabs', 'api-key here');
-      //    await voiceService.setProvider('elevenlabs');
-      //    await voiceService.getVoices();
-      //    console.log('voices loaded:', voiceService.getVoices().length);
-      //    voiceService.mapCharacterToVoice('Narrator', {
-      //      voiceId: "lxYfHSkYm1EzQzGhdbfc",
-      //      stability: 0.1,
-      //      similarityBoost: 0.1,
-      //      style: 0.5,
-      //      speakerBoost: false
-      //      });
-      //    console.log('speaking…');
-      //    await voiceService.speak(
-      //    'Select a play to load and press the load button',
-      //    { character: 'Narrator', rate: 1 }
-      //  );
-      //  } catch (err) {
-      //    console.log('Speech synthesis failed:', err);
-      //  }
-      //  console.log('speaking complete');
-      //})();
-    }
   };
 
   const handleStep = async () => {
@@ -436,6 +433,19 @@ function App() {
     console.log('Debug - simState:', simState);
   }, [appMode, currentPlay, isProcessing, simState]);
 
+  useEffect(() => {
+    speechEnabledRef.current = speechEnabled;
+  }, [speechEnabled]);
+
+  const handleToggleSpeech = () => {
+    setSpeechEnabled(prev => {
+      const next = !prev;                // optimistic flip
+      speechEnabledRef.current = next;   // keep ref in-sync right now
+      return next;
+    });
+    sendCommand('toggle_speech');        // tell the server
+  };
+
   return (
     <ReplayProvider>
       <div className="app-container">
@@ -495,6 +505,12 @@ function App() {
             </button>
             <button className="control-button" onClick={() => sendCommand('load_known_actors')} disabled={appMode === 'replay'}>Load</button>
             <button className="control-button" onClick={() => sendCommand('save_known_actors')} disabled={appMode === 'replay'}>Save</button>
+            <button 
+              className="control-button" 
+              onClick={handleToggleSpeech}
+            >
+              {speechEnabled ? 'Voice On' : 'Voice Off'}
+            </button>
           </div>
           <div className="status-area">
             {currentPlay && <div>Play: {currentPlay}</div>}
@@ -515,23 +531,32 @@ function App() {
         {showPlayDialog && (
           <div className="dialog">
             <h3>Select Scenario</h3>
-            <select onChange={(e) => {
-              setSelectedPlay(e.target.value);
-              console.log('Select changed, new selectedPlay:', e.target.value);
-              recordEvent('select_play', e.target.value);
-              sendReplayEvent('select_play', e.target.value);
-            }}>
+            <select
+              value={selectedPlay ?? ""}
+              onChange={(e) => {
+                setSelectedPlay(e.target.value);
+                console.log('Select changed, new selectedPlay:', e.target.value);
+                recordEvent('select_play', e.target.value);
+                sendReplayEvent('select_play', e.target.value);
+              }}
+            >
+              <option value="" disabled>Select a scenario...</option>
               {plays.map(play => (
                 <option key={play} value={play}>{play}</option>
               ))}
             </select>
-            <button onClick={() => {
-              setIsProcessing(true);
-              pendingPlayLoadRef.current = selectedPlay;
-              sendCommand('load_play', { play: selectedPlay });
-              setShowPlayDialog(false);
-              sendReplayEvent('setShowPlayDialog', { show: false });
-            }}>Load</button>
+            <button
+              onClick={() => {
+                setIsProcessing(true);
+                pendingPlayLoadRef.current = selectedPlay;
+                sendCommand('load_play', { play: selectedPlay });
+                setShowPlayDialog(false);
+                sendReplayEvent('setShowPlayDialog', { show: false });
+              }}
+              disabled={!selectedPlay}
+            >
+              Load
+            </button>
             <button onClick={() => {
               setShowPlayDialog(false);
               sendReplayEvent('setShowPlayDialog', { show: false });

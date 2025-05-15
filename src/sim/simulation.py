@@ -6,6 +6,9 @@ from typing import Optional
 
 import os, json, math, time, requests, sys
 
+from src.sim.replay import SPEECH_TIMEOUT
+from src.utils.VoiceService import VoiceService
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 # Add parent directory to path to access existing simulation
@@ -79,10 +82,15 @@ class SimulationServer:
         self.next_actor_index = 0
         self.known_actors_dir = None
         self.narrative_play = False # if True, run integrated narrative, otherwise run step from here
+        self.speech_complete_event = asyncio.Event()  # Add speech completion event
+        self.speech_enabled = False  # Add speech enabled flag
+        self.voice_service = VoiceService()
+        self.voice_service.set_provider('elevenlabs')
 
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
         self.result_socket.connect("tcp://127.0.0.1:5556")
+
         await self.send_result({'type': 'show_update',
                             'message': {'name':'SimulationServer', 'text':f'----- SimulationServer started-----'}})
                 
@@ -215,6 +223,9 @@ class SimulationServer:
             if hasattr(module, 'narrative'):
                 self.sim_context.load_narrative(narrative_path / module.narrative)
             self.initialized = True
+
+            #sim_context loaded and initialized, now set up voice service
+            await self.sim_context.start()
 
             await self.send_world_update()
             await asyncio.sleep(0.1)
@@ -528,6 +539,20 @@ class SimulationServer:
                     plt.close('all')  # Ensure cleanup even on error
                     plt.ioff()
                 await asyncio.sleep(0.1)
+            elif cmd_name == 'toggle_speech':
+                self.speech_enabled = not self.speech_enabled
+                await self.send_result({
+                    'type': 'speech_toggle',
+                    'enabled': self.speech_enabled
+                })
+                await self.send_command_ack('toggle_speech')
+                await asyncio.sleep(0.1)
+                return
+            elif cmd_name == 'speech_complete':
+                self.speech_complete_event.set()
+                await self.send_command_ack('speech_complete')
+                await asyncio.sleep(0.1)
+                return
             else:
                 await self.send_result({
                     'type': 'error',
@@ -551,13 +576,18 @@ class SimulationServer:
                         actor_data = message['data']
                         actor_name = message['name']
                         actor = self.sim_context.get_actor_by_name(actor_name)
+                        if actor and 'image' in actor_data:
+                            self.image_cache[actor_name] = actor_data['image']
                         if actor and 'image' not in actor_data and actor_name not in self.image_cache:
                             await self.send_character_update(actor)
-                        else:
-                            await self.send_result({
+                            continue
+                        elif actor and 'image' not in actor_data and actor_name in self.image_cache:
+                            actor_data['image'] = self.image_cache[actor_name]
+                        await self.send_result({
                                 'type': 'character_update',
                                 'character': actor_data
                             })
+                        continue
                     elif message['text'] == 'world_update':
                         # async character update messages include the actor data in the message
                         world_data = message['data']
@@ -577,6 +607,7 @@ class SimulationServer:
                             'type': 'world_update',
                             'world': world_data
                         })
+                        continue
                     elif 'chat_response' in message.keys():
                         await self.send_result({
                             'type': 'chat_response',
@@ -598,9 +629,60 @@ class SimulationServer:
                             'type': 'show_update',
                             'message': {'name': message['name'], 'text': message['text']}  # Send the text directly instead of wrapping in message
                         })
+                        if message.get('elevenlabs_params') and self.speech_enabled:  # Check self.speech_enabled
+                            # generate a speak event
+                            try:
+                                name = message.get('name')
+                                text = message.get('text')
+                                if text.startswith("..."):
+                                    text = text[3:-3]
+                                    to_speak = f"<prosody volume='x-soft' rate='90%'>{text}</prosody>"
+                                else:
+                                    to_speak = text
+                                speech_params = message.get('elevenlabs_params', {})
+                                try:
+                                    speech_paramsj = json.loads(speech_params)
+                                    print(f"Synthesizing speech: {to_speak} with params: {speech_params}")
+                                    audio_path = await self.sim_context.voice_service.synthesize(to_speak, speech_paramsj)
+                                except Exception as e:
+                                    print(f"Error synthesizing speech: {e}")
+                                    print(f"Traceback:\n{traceback.format_exc()}")
+                                    audio_path = None
+                                
+                                # Read the generated audio file and add it to the event
+                                if audio_path and os.path.exists(audio_path):
+                                    with open(audio_path, 'rb') as f:
+                                        audio_data = base64.b64encode(f.read()).decode()
+                                    speak_event = {
+                                        'type': 'speak',
+                                        'message': {
+                                            'name': name,
+                                            'text': text,
+                                            'elevenlabs_params': speech_params
+                                        },
+                                        'audio': audio_data,
+                                        'audio_format': 'mp3'
+                                    }
+                                    os.unlink(audio_path)  # Clean up the temporary file
+                                
+                                    # Clear event before sending speech
+                                    self.speech_complete_event.clear()
+                                    
+                                    # Send the speak event
+                                    await self.send_result(speak_event)
+                                    print(f"Speaking: {name} {text}")
+                                    
+                                    # Wait for speech completion or timeout
+                                    try:
+                                        await asyncio.wait_for(self.speech_complete_event.wait(), 20.0)
+                                    except asyncio.TimeoutError:
+                                        print(f"Speech timeout for: {name} - {text[:50]}...")
+                            except Exception as e:
+                                print(f"Error processing speech: {e}")
+
             except Exception as e:
-                logger.error(f"Error in message queue: {e}")
-                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                print(f"Error in message queue: {e}")
+                print(f"Traceback:\n{traceback.format_exc()}")
             await asyncio.sleep(0.1)
         
     async def run(self):

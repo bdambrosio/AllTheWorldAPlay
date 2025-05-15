@@ -13,6 +13,7 @@ import sim.map as map
 from sim.referenceManager import ReferenceManager
 from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
+from src.utils.VoiceService import VoiceService
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -26,6 +27,20 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('simulation_core')
+
+def run_sync(coro):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        # If already in an event loop, use create_task and wait
+        import nest_asyncio
+        nest_asyncio.apply()
+        return loop.run_until_complete(coro)
+    else:
+        return asyncio.run(coro)
+        
 
 class Context():
     def __init__(self, characters, description, scenario_module, npcs=None, server_name=None, model_name=None):
@@ -72,6 +87,14 @@ class Context():
         self.show = ''
         self.simulation_time = self.extract_simulation_time(description)
         self.reference_manager = ReferenceManager(self, self.llm)
+        self.voice_service = VoiceService()
+        self.voice_service.set_provider('elevenlabs')
+        api_key = os.getenv('ELEVENLABS_API_KEY')
+        if not api_key:
+            print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
+        self.voice_service.set_api_key('elevenlabs', api_key)
+        voices = self.voice_service.get_voices()
+ 
         for resource_id, resource in self.map.resource_registry.items():
             has_owner = self.check_resource_has_npc(resource)
             if has_owner:
@@ -91,7 +114,9 @@ class Context():
 
         for actor in self.actors + self.npcs:
             #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
+            print(f"Context initializing{actor.name}")
             actor.set_context(self)
+            print(f"Context initialized{actor.name} speech_stylizer: {actor.speech_stylizer}")
             if actor.mapAgent is None:
                 actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
             else:
@@ -103,6 +128,7 @@ class Context():
 
         self.reference_manager.discover_relationships()
         for actor in self.actors + self.npcs:
+            print(f"Context checking{actor.name} speech_stylizer: {actor.speech_stylizer}")
             #actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
@@ -111,8 +137,21 @@ class Context():
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
 
+        self.voice_service = VoiceService()
+        self.voice_service.set_provider('elevenlabs')
+        api_key = os.getenv('ELEVENLABS_API_KEY')
+        if not api_key:
+            print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
+        self.voice_service.set_api_key('elevenlabs', api_key)
 
-    
+        
+    async def start(self):
+        voices = self.voice_service.get_voices()
+        print(f"Available voices: {voices}")
+        self.message_queue.put({'name':'', 'text':"play context initialized, warming up characters...", 
+                                'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5})})
+        await asyncio.sleep(0.1)
+
     def repair_json(self, response, error):
         """Repair JSON if it is invalid"""
         prompt = [UserMessage(content="""You are a JSON repair tool.

@@ -30,7 +30,8 @@
             "jinja": true,
             "justMyCode": true,
             "cwd": "${workspaceFolder}/src/sim/",
-            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python",
+            "python": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/bin/python", 
+            "pythonArgs": ["-X", "frozen_modules=off"],            
             "env": {
                 "PYTHONPATH": "${workspaceFolder}",
                 "LD_LIBRARY_PATH": "/home/bruce/Downloads/AllTheWorldAPlay/src/owl/lib/python3.12/site-packages/PyQt5/Qt5/lib",

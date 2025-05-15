@@ -261,12 +261,12 @@ Return exactly one JSON object with these keys:
 * "acts" – an array of act objects.  Each act object has  
   - "act_number" (int, 1-based)  
   - "act_title"   (string)  
-  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "act_description" (string, concise description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
   - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
     ],
 
@@ -402,12 +402,12 @@ Return exactly one JSON object with these keys:
 * "acts" – an array of act objects.  Each act object has  
   - "act_number" (int, 1-based)  
   - "act_title"   (string)  
-  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
   - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
     ],
   - "scenes"      (array) (only for the first act)
@@ -569,12 +569,12 @@ Return exactly one JSON object with these keys:
 
 - "act_number" (int, copied from the original act)  
 - "act_title"   (string, copied from the original act or rewritten as appropriate)  
-- "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
-- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+- "act_post_state": (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
 - "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
     ...
   ]
 - "scenes"      (array) 
@@ -598,12 +598,12 @@ Each **scene** object must have:
 {
   "act_number": {{$act_number}},
   "act_title": "rewritten act title",
-  "act_description": "short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
+  "act_description": "concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
   "act_goals" {"primary": "primary goal", "secondary": "secondary goal"},
-  "act_pre_state": (string, description of the situation / goals / tensions before the act starts),
-  "act_post_state": (string, description of the situation / goals / tensions after the act ends),
+  "act_pre_state": "description of the situation / goals / tensions before the act starts. concise, about 10 words",
+  "act_post_state": "description of the situation / goals / tensions after the act ends. concise, about 10 words",
   "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
     ...
   ],
   "scenes": [

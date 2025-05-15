@@ -235,7 +235,10 @@ class DriveSignal:
     def get_age_factor(self, current_time: datetime, min_age: int, age_range: int) -> float:
         """Get age factor for signal"""
         if age_range > 0:
-            return math.pow(0.5, ((current_time - self.timestamp).total_seconds()-min_age)/ (age_range * 3600))
+            try:
+                return math.pow(0.5, min(0.0, max(10.0, ((current_time - self.timestamp).total_seconds()-min_age)/ (age_range * 3600))))
+            except:
+                return 0.5
         else:
             return 1.0  
 
