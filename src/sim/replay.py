@@ -1,29 +1,18 @@
-import os, json, math, time, requests, sys
+import os, json, time, requests, sys
 import traceback
-
-import zmq
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict
 import uuid
-import os, json, math, time, requests, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 import base64
 from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.llm_api import generate_image
 from pathlib import Path
-from utils.llm_api import LLM
-from utils.llm_api import IMAGE_PATH
 import asyncio
 from contextlib import asynccontextmanager
-import subprocess
-import websockets
-import logging
 import signal
-import copy
-from utils.VoiceService import VoiceService
 
 # Create replay directory if it doesn't exist
 main_dir = Path(__file__).parent
@@ -39,13 +28,6 @@ current_replay_index = 0
 is_replay_mode = False
 is_replay_running = False
 speech_enabled = False
-voice_service = VoiceService()
-voice_service.set_provider('elevenlabs')
-api_key = os.getenv('ELEVENLABS_API_KEY')
-if not api_key:
-    print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
-voice_service.set_api_key('elevenlabs', api_key)
-
 
 
 speech_complete_event = asyncio.Event()
@@ -183,6 +165,17 @@ async def create_session():
     image_cache[session_id] = {}
     return {"session_id": session_id}
 
+# Add this function near the top, after your global variables
+def reset_global_state():
+    global replay_events, current_replay_index, is_replay_mode, is_replay_running
+    replay_events = []
+    current_replay_index = 0
+    is_replay_mode = False
+    is_replay_running = False
+    speech_complete_event.clear()
+    # Optionally clear other caches if needed
+    # character_details_cache.clear()
+    # image_cache.clear()
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
@@ -216,7 +209,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     try:
         while True:
-            data = json.loads(await websocket.receive_text())                
+            try:
+                data = json.loads(await websocket.receive_text())
+            except Exception as e:
+                print(f"Error receiving or parsing websocket data: {e}")
+                reset_global_state()  # <--- ADD THIS
+                break  # Exit the loop to trigger cleanup
+                
             # Add heartbeat handling
             if data.get('type') == 'heartbeat':
                 response = await handle_heartbeat()
@@ -226,21 +225,30 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             if data.get('type') == 'command':
                 command = data.get('command') or data.get('action', '')
                 if command == 'initialize':
-     
-                    json_files = [f.name for f in replays_dir.glob('*.json')]
-                    await websocket.send_json({
-                        "type": "play_list",
-                        "plays": json_files
-                    })
+                    try:
+                        json_files = [f.name for f in replays_dir.glob('*.json')]
+                        await websocket.send_json({
+                            "type": "play_list",
+                            "plays": json_files
+                        })
+                    except Exception as e:
+                        print(f"Error listing replay files: {e}")
+                        reset_global_state()  # <--- ADD THIS
+                        break
                     continue
 
                 # Handle load: load selected replay file for playback
                 elif command == 'load_play' and data.get('play'):
-                    selected_file = data['play']
-                    replay_events = load_replay_file(replays_dir / selected_file)
-                    current_replay_index = 0
-                    is_replay_mode = True
-                    await send_command_ack('load_play')
+                    try:
+                        selected_file = data['play']
+                        replay_events = load_replay_file(replays_dir / selected_file)
+                        current_replay_index = 0
+                        is_replay_mode = True
+                        await send_command_ack('load_play')
+                    except Exception as e:
+                        print(f"Error loading replay file: {e}")
+                        reset_global_state()  # <--- ADD THIS
+                        break
                     continue
                 
                 elif data.get('action') == 'start_replay':
@@ -350,7 +358,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         queue_task.cancel()
         print(f"Client disconnected: {session_id}")
-        # Just clean up session
+        reset_global_state()  # <--- ADD THIS
         if session_id in sessions:
             del sessions[session_id]
             
@@ -358,9 +366,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         queue_task.cancel()
         print(f"Traceback:\n{traceback.format_exc()}")
         print(f"Error in websocket handler: {e}")
-        # Clean up on other errors too
+        reset_global_state()  # <--- ADD THIS
         if session_id in sessions:
             del sessions[session_id]
+    finally:
+        # Always ensure state is reset on exit
+        reset_global_state()  # <--- ADD THIS
 
  
 
@@ -392,21 +403,25 @@ def load_replay_file(file_path: Path) -> list:
     events = []
     current_event = []
     brace_count = 0
-    with open(file_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                current_event.append(line)
-                # Count opening and closing braces
-                brace_count += line.count('{') - line.count('}')
-                if brace_count == 0 and current_event:  # We've found a complete JSON object
-                    try:
-                        event = json.loads(''.join(current_event))
-                        events.append(event)
-                    except json.JSONDecodeError as e:
-                        print(f"Error decoding JSON: {e}")
-                        print(f"Problematic JSON: {''.join(current_event)}")
-                    current_event = []
+    try:
+        with open(file_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    current_event.append(line)
+                    brace_count += line.count('{') - line.count('}')
+                    if brace_count == 0 and current_event:
+                        try:
+                            event = json.loads(''.join(current_event))
+                            events.append(event)
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding JSON: {e}")
+                            print(f"Problematic JSON: {''.join(current_event)}")
+                        current_event = []
+    except Exception as e:
+        print(f"Error opening or reading replay file: {e}")
+        # Optionally: raise or return empty list
+        return []
     return events
 
 

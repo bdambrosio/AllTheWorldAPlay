@@ -28,7 +28,7 @@ const TabPanel = ({ characters, sendReplayEvent, activeTab, onTabChange }) => {
                 setPendingTabEvent(null); // Clear the pending event
             }
         }
-    }, [characters, pendingTabEvent]);
+    }, [characters, pendingTabEvent, onTabChange]);
 
     return (
         <div className="tab-panel">
