@@ -536,7 +536,7 @@ End your response with:
 """
             
         try:
-            response = self.ask(self.owner, mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=120)
+            response = self.ask(self.owner, prefix=mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=120)
         except Exception as e:
             traceback.print_exc()
             print(f"Error checking drive signal: {e}")

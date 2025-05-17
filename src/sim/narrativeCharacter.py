@@ -213,6 +213,15 @@ class NarrativeCharacter(Character):
         self.play_file_content = open(Path('../plays/') / play, 'r').read()
         self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
 
+        system_prompt = """You are a seasoned dramatist designing medium-term arcs for stage.
+Every act must push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a buried secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Write dialogue-forward scenes: let conflict emerge through spoken intention and subtext, not narration or logistics.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+
         mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
 The overall cast of characters and setting are given below in Play.py and Map.py.
 
@@ -296,8 +305,8 @@ Return **only** the JSON.  No commentary, no code fences.
 
 """
 
-        narrative = default_ask(self, mission, suffix, 
-                                {"play": self.play_file_content, 
+        narrative = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix, 
+                                addl_bindings={"play": self.play_file_content, 
                                  "map": self.map_file_content,
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat(),
@@ -348,8 +357,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 End your response with </end>
 """
 
-                response = default_ask(self, mission, suffix, 
-                                {"name": character.name, 
+                response = default_ask(self, prefix=mission, suffix=suffix, 
+                                addl_bindings={"name": character.name, 
                                  "plan": json.dumps(self.reserialize_narrative_json(self.plan))}, 
                                  max_tokens=240, tag='share_narrative')
                 try:
@@ -491,8 +500,8 @@ End your response with </end>
 """
         dialogs = self.actor_models.dialogs()
 
-        response = default_ask(self, mission, suffix,
-                              {"name": self.name, 
+        response = default_ask(self, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
                                "plan": json.dumps(self.reserialize_narrative_json(self.plan)),
                                "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
@@ -648,8 +657,8 @@ End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.reserialize_narrative_json(acts)
-        response = default_ask(self, mission, suffix,
-                              {"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
+        response = default_ask(self, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
                                "act_number": act['act_number'],
                                "play": json.dumps(self.reserialize_narrative_json(self.plan)),
                                "previous_act": json.dumps(self.reserialize_act_to_string(previous_act)) if previous_act else ''},
