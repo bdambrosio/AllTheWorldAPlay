@@ -248,12 +248,20 @@ You have been provided two Python source files above.
 
         suffix = """
 
-Imagine you are {{$name}}.
+Imagine you are {{$name}} and your drives include:
+
+Primary 
+{{$primary_drive}}
+
+Secondary
+{{$secondary_drive}}
 
 ## 2.  TASK
-Generate a single JSON document named **narrative.json** that outlines a medium-term narrative arc for yourself.
+Generate a single JSON document named **narrative.json** that outlines a medium-term narrative arc for yourself focused primarily on your first and primary drive.
 The narrative should start at the current time: {{$start_time}}
 Given where you are in life, what you have achieved so far, and what you want to achieve, this should be a plan for the next few months.
+Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.
+By the end of the narrative, the primary drive should be resolved.
 ### 2.1  Structure
 Return exactly one JSON object with these keys:
 
@@ -292,7 +300,9 @@ Return **only** the JSON.  No commentary, no code fences.
                                 {"play": self.play_file_content, 
                                  "map": self.map_file_content,
                                  "name": self.name,
-                                 "start_time": self.context.simulation_time.isoformat()}, 
+                                 "start_time": self.context.simulation_time.isoformat(),
+                                 "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                                 "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
                                  max_tokens=5000, tag='narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
@@ -459,6 +469,15 @@ Each **scene** object must have:
 }
 ```
 === End of Example ===
+
+Remember that your primary and secondary drives are:
+
+Primary
+{{$primary_drive}}
+
+Secondary
+{{$secondary_drive}}
+
 Respond with your decision, and if yes, the act number of the first act you would like to update and the updated act, using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
@@ -475,7 +494,9 @@ End your response with </end>
         response = default_ask(self, mission, suffix,
                               {"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
-                               "plan": json.dumps(self.reserialize_narrative_json(self.plan))},
+                               "plan": json.dumps(self.reserialize_narrative_json(self.plan)),
+                               "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                               "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
                               max_tokens=1600, tag='update_narrative')
         try:
             updated_act = None

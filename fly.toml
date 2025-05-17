@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for replay-atwap-wispy-dust-6819 on 2025-05-16T10:56:08-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'replay-atwap-wispy-dust-6819'
+primary_region = 'sjc'
+
+[build]
+  image = 'registry.fly.io/replay-atwap:latest'
+
+[[services]]
+  internal_port = 3000
+  protocol      = "tcp"          # Fly’s proxy adds HTTP/TLS
+  processes     = ["app"]
+
+  [[services.ports]]
+    port = 3000
+
+# ------- raw/HTTP on 8000 → container:8000 --------
+[[services]]
+  internal_port = 8000           # the port your code listens on
+  protocol      = "tcp"
+  processes     = ["app"]
+
+  [[services.ports]]
+    port = 8000                  # expose the same port externally
+
+
+[[vm]]
+  memory = '4gb'
+  cpu_kind = 'shared'
+  cpus = 2

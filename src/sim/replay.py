@@ -31,7 +31,7 @@ speech_enabled = False
 
 
 speech_complete_event = asyncio.Event()
-SPEECH_TIMEOUT = 20  # seconds
+SPEECH_TIMEOUT = 30  # seconds
 
 # used to control the speed of the replay
 EVENT_DELAYS = {
