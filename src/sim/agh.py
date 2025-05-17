@@ -517,13 +517,13 @@ End your response with:
             return ''  
         obs = self.mapAgent.look()
         view = {}
-        for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
+        for dir in ['North', 'Northeast', 'East', 'Southeast', 
                    'South', 'Southwest', 'West', 'Northwest']:
-            dir_obs = map.extract_direction_info(obs, dir)
+            dir_obs = map.extract_direction_info(self.context.map, obs, dir)
             view[dir] = dir_obs
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
-        view_text, resources, characters, percept_summary = map.hash_direction_info(view)
+        view_text, resources, characters, percept_summary = map.hash_direction_info(view, world=self.context.map)
         view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL)
  
         visible_actors = []
@@ -1597,9 +1597,9 @@ End response with:
             scene_narrative = ''
         logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
         response = default_ask(self, 
-                               mission, 
-                               suffix, 
-                               {"focus_goal":goal.to_string(),
+                               prefix=mission, 
+                               suffix=suffix, 
+                               addl_bindings={"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
