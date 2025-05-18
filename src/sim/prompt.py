@@ -15,9 +15,15 @@ import utils.hash_utils as hash_utils
 import utils.choice as choice   
 #from sim.cognitive.DialogManager import Dialog
 
-def ask (character:Character, mission:str, suffix:str='', addl_bindings:dict={}, max_tokens:int=100, log:bool=False, tag:str=''):
+def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:str=None, addl_bindings:dict={}, max_tokens:int=100, log:bool=False, tag:str=''):
 
-    prompt = [UserMessage(content=mission+"""\nYou are {{$name}}.
+    prompt = []
+    if system_prompt:
+        prompt.append(SystemMessage(content=system_prompt))
+    if prefix:
+        prompt.append(UserMessage(content=prefix+"""\nYou are {{$name}}."""))
+    
+    prompt.append(UserMessage(content="""    
 
 #Character
 {{$character}}
@@ -73,13 +79,14 @@ Your current situation is:
 {{$emotional_stance}}
 ##
 
-""")]
-    full_prompt = prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
+"""))
+    if suffix:
+        prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     
     ranked_signalClusters = character.driveSignalManager.get_scored_clusters()
     focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
 
-    recent_memories = character.structured_memory.get_recent(8)
+    recent_memories = character.structured_memory.get_recent(16)
     memory_text = '\n'.join(memory.text for memory in recent_memories)
     
     emotionalState = character.emotionalStance        
@@ -99,7 +106,6 @@ Your current situation is:
             lastActResult = ''
 
     bindings = {"name":character.name,
-                "mission":mission,
                 "character":character.get_character_description(),
                 "drives":'\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives]),
                 "narrative":character.narrative.get_summary('medium'),

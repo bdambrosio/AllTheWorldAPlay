@@ -365,7 +365,7 @@ class Character:
             print(f"Invalid actionable Hash: {hash_string}")
             return None
         
-    def format_history(self, n=2):
+    def format_history(self, n=16):
         """Get memory context including both concrete and abstract memories"""
         # Get recent concrete memories
         recent_memories = self.structured_memory.get_recent(n)
@@ -381,7 +381,7 @@ class Character:
             memory_text.append("Current Activity:\n" + current.summary)
         
         # Get recent completed activities
-        recent_abstracts = self.structured_memory.get_recent_abstractions(2)
+        recent_abstracts = self.structured_memory.get_recent_abstractions(4)
         if recent_abstracts:
             # Filter out current activity and format others
             completed = [mem for mem in recent_abstracts if not mem.is_active]
@@ -517,13 +517,13 @@ End your response with:
             return ''  
         obs = self.mapAgent.look()
         view = {}
-        for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
+        for dir in ['North', 'Northeast', 'East', 'Southeast', 
                    'South', 'Southwest', 'West', 'Northwest']:
-            dir_obs = map.extract_direction_info(obs, dir)
+            dir_obs = map.extract_direction_info(self.context.map, obs, dir)
             view[dir] = dir_obs
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
-        view_text, resources, characters, percept_summary = map.hash_direction_info(view)
+        view_text, resources, characters, paths, percept_summary = map.hash_direction_info(view, world=self.context.map)
         view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL)
  
         visible_actors = []
@@ -890,7 +890,7 @@ End your response with:
     def repetitive(self, new_response, last_response, source):
         """Check if response is repetitive considering wider context"""
         # Get more historical context from structured memory
-        recent_memories = self.structured_memory.get_recent(3)  # Increased window
+        recent_memories = self.structured_memory.get_recent(8)  # Increased window
         history = '\n'.join(mem.text for mem in recent_memories)
         
         prompt = [UserMessage(content="""Given recent history and a new proposed action, 
@@ -1142,7 +1142,8 @@ End response with:
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
-            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}..."})
+            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
+            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0.1)
 
@@ -1164,10 +1165,10 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             self.show += f"{act_arg}'"
-            style_block = self.speech_stylizer.get_style_directive(target)
+            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(target)
             act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'"})
+            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
@@ -1327,7 +1328,7 @@ End response with:
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
@@ -1481,7 +1482,7 @@ End response with:
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(8)]),
+                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  "achievments": '\n'.join(self.achievments[:6]),
                                  # get scored clusters returns a list of tuples (cluster, score)
@@ -1596,9 +1597,9 @@ End response with:
             scene_narrative = ''
         logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
         response = default_ask(self, 
-                               mission, 
-                               suffix, 
-                               {"focus_goal":goal.to_string(),
+                               prefix=mission, 
+                               suffix=suffix, 
+                               addl_bindings={"focus_goal":goal.to_string(),
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
@@ -1722,7 +1723,7 @@ End your response with:
 
 
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(5)
+        recent_memories = self.structured_memory.get_recent(8)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
 
         if consequences == '':
@@ -2032,7 +2033,7 @@ End your response with:
         else:
             scene_post_narrative = ''
 
-        response = default_ask(character=self, mission=mission, suffix=suffix, 
+        response = default_ask(character=self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative}, 
@@ -2610,7 +2611,14 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt_string = """Ignore all previous instructions. The prime directive is to be faithful to your character as presented in the following.
+        system_prompt = """You are a seasoned writer writing dialog for a movie.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Write dialogue-forward: let conflict emerge through spoken intention and subtext, not narration or logistics.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+        """
+        prompt_string = """The prime directive is to be faithful to your character as presented in the following.
+Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
         prompt_string += """
@@ -2708,7 +2716,7 @@ End your response with:
         elif self.focus_task.peek() != None and self.focus_task.peek().name.startswith('internal dialog'):
             activity = f'You are currently actively engaged in an internal dialog'
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(6)
+        recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.text for memory in recent_memories)
         
         #print("Hear",end=' ')
@@ -2824,7 +2832,7 @@ End your response with:
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
                                          'achievments': '\n'.join(self.achievments[:5]),
-                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(5)]), 
+                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
                                          prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
@@ -3111,6 +3119,7 @@ End your response with:
         await self.request_goal_choice(self.goals)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_goal:
             raise Exception(f'{self.name} cognitive_cycle: no focus goal')
@@ -3118,6 +3127,7 @@ End your response with:
         await self.request_task_choice(self.focus_goal.task_plan)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_task.peek():
             return # no admissible task at this time
@@ -3179,6 +3189,8 @@ End your response with:
 
         delay = 0.0
         #delay = await self.context.choose_delay()
+        self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         try:
             old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
@@ -3471,7 +3483,7 @@ end your response with:
                     'text': memory.text or '',
                     'timestamp': memory.timestamp.isoformat() if memory.timestamp else self.context.simulation_time.isoformat()
                 } 
-                for memory in (self.structured_memory.get_recent(5) or [])
+                for memory in (self.structured_memory.get_recent(8) or [])
             ],
             'narrative': {
                 'recent_events': self.narrative.recent_events if self.narrative else '',

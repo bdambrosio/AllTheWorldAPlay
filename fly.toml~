@@ -1,0 +1,23 @@
+# fly.toml app configuration file generated for replay-atwap-wispy-dust-6819 on 2025-05-16T10:56:08-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'replay-atwap-wispy-dust-6819'
+primary_region = 'sjc'
+
+[build]
+  image = 'registry.fly.io/replay-atwap:latest'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '4gb'
+  cpu_kind = 'shared'
+  cpus = 2

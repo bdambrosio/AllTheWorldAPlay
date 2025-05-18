@@ -100,42 +100,45 @@ Character:
 There are three dimensions to your response:
 
 1. Arousal: The arousal of the character. This takes values from the following list:
-    Vigilant = "vigilant, ready, focused"
-    Anticipatory = "expectant, preparing"
-    Agitated = "restless, unsettled"
-    Relaxed = "calm, at ease"
-    Exhausted = "depleted, drained"
-    Compelled = "biologically / unconsciously motivated - includes sexual arousal, hunger, etc."
+    Vigilant
+    Anticipatory
+    Agitated
+    Relaxed
+    Exhausted
+    Compelled
+    Neutral
 
 2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
-    Angry = "hostile, enraged"
-    Fearful = "threatened, scared"
-    Anxious = "worried, uneasy"
-    Sad = "sorrowful, grieving"
-    Disgusted = "revolted, repulsed, contemptuous"
-    Surprised = "astonished, startled"
-    Curious = "curious, engaged"
-    Joyful = "happy, elated"
-    Content = "satisfied, peaceful"
+    Angry
+    Fearful
+    Anxious
+    Sad
+    Disgusted
+    Surprised
+    Curious
+    Joyful
+    Content
+    Neutral
 
 3. Orientation: The orientation of the character resulting from the signal cluster and the character's awareness of it.
-    Controlling = "directing, managing others"
-    Challenging = "testing, confronting others"
-    Appeasing = "placating, avoiding conflict"
-    Avoiding = "minimizing interaction"
-    Supportive = "assisting others' goals"
-    Seekingsupport = "requesting assistance"
-    Connecting = "building/strengthening relationships"
-    Performing = "seeking attention/approval"
-    Observing = "gathering social information"
-    Defending = "protecting position/resources"
+    Controlling
+    Challenging
+    Appeasing
+    Avoiding
+    Supportive
+    Seekingsupport
+    Connecting
+    Performing
+    Observing
+    Defending
+    Neutral
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#arousal Vigilant / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
-#tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
-#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / Seekingsupport / Connecting / Performing / Observing / Defending
+#arousal arousal
+#tone tone
+#orientation orientation
 ##
 
 Respond only with the hash-formatted text, nothing else.
@@ -148,27 +151,28 @@ End your response with the:
                                       }, prompt, tag='EmotionalStance.from_signalCluster', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
-        if hash_utils.find('arousal', response):
-            try:
-                arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())
-            except Exception as e:
-                arousal = Arousal.Relaxed
+        tone = Tone.Neutral
+        orientation = Orientation.Neutral
+        response_arousal = hash_utils.find('arousal', response)
+        response_arousal = response_arousal.strip().capitalize()
+        if response_arousal in Arousal.__members__:
+            arousal = Arousal(response_arousal)
         else:
-            arousal = Arousal.Relaxed
-        if hash_utils.find('tone', response):
-            try:
-                tone = Tone(hash_utils.find('tone', response).strip().capitalize())   
-            except Exception as e:
-                tone = Tone.Content
+            arousal = Arousal.Neutral
+        response_tone = hash_utils.find('tone', response)
+        response_tone = response_tone.strip().capitalize()
+        if response_tone in Tone.__members__:
+            tone = Tone(response_tone)
         else:
-            tone = Tone.Content
-        if hash_utils.find('orientation', response):
-            try:
-                orientation = Orientation(hash_utils.find('orientation', response).replace('##','').strip().capitalize())
-            except Exception as e:
-                orientation = Orientation.Connecting
+            tone = Tone.Neutral
+
+        response_orientation = hash_utils.find('orientation', response)
+        response_orientation = response_orientation.strip().capitalize()
+        response_orientation = response_orientation.replace(' ', '') # Seeking support -> Seekingsupport
+        if response_orientation in Orientation.__members__:
+            orientation = Orientation(response_orientation)
         else:
-            orientation = Orientation.Connecting
+            orientation = Orientation.Neutral
         return EmotionalStance(arousal, tone, orientation)
 
     def to_string(self):
@@ -191,42 +195,42 @@ Character:
 There are three dimensions to your response:
 
 1. Arousal: The arousal of the character. This takes values from the following list:
-    Vigilant = "vigilant, ready, focused"
-    Anticipatory = "expectant, preparing"
-    Agitated = "restless, unsettled"
-    Relaxed = "calm, at ease"
-    Exhausted = "depleted, drained"
-    Compelled = "biologically / unconsciously motivated - includes sexual arousal, hunger, etc."
+    Vigilant
+    Anticipatory
+    Agitated
+    Relaxed
+    Exhausted
+    Compelled
 
 2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
-    Angry = "hostile, enraged"
-    Fearful = "threatened, scared"
-    Anxious = "worried, uneasy"
-    Sad = "sorrowful, grieving"
-    Disgusted = "revolted, repulsed, contemptuous"
-    Surprised = "astonished, startled"
-    Curious = "curious, engaged"
-    Joyful = "happy, elated"
-    Content = "satisfied, peaceful"
+    Angry
+    Fearful
+    Anxious
+    Sad
+    Disgusted
+    Surprised
+    Curious
+    Joyful
+    Content
 
 3. Orientation: The orientation of the character resulting from the signal cluster and the character's awareness of it.
-    Controlling = "directing, managing others"
-    Challenging = "testing, confronting others"
-    Appeasing = "placating, avoiding conflict"
-    Avoiding = "minimizing interaction"
-    Supportive = "assisting others' goals"
-    Seekingsupport = "requesting assistance"
-    Connecting = "building/strengthening relationships"
-    Performing = "seeking attention/approval"
-    Observing = "gathering social information"
-    Defending = "protecting position/resources"
+    Controlling
+    Challenging
+    Appeasing
+    Avoiding
+    Supportive
+    Seekingsupport
+    Connecting
+    Performing
+    Observing
+    Defending
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#arousal Vigilant / Anticipatory / Agitated / Relaxed / Exhausted / Compelled
-#tone Angry / Fearful / Anxious / Sad / Disgusted / Surprised / Curious / Joyful / Content
-#orientation Controlling / Challenging / Appeasing / Avoiding / Supportive / Seekingsupport / Connecting / Performing / Observing / Defending
+#arousal arousal
+#tone tone
+#orientation orientation
 ##
 
 Respond only with the hash-formatted text, nothing else.
@@ -239,22 +243,23 @@ End your response with the:
                                       }, prompt, tag='EmotionalStance.from_signalClusters', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
-        arousal = Arousal.Relaxed
-        tone = Tone.Content
-        orientation = Orientation.Connecting
-        if hash_utils.find('arousal', response):
-            try:
-                arousal = Arousal(hash_utils.find('arousal', response).strip().capitalize())
-            except Exception as e:
-                arousal = Arousal.Relaxed
-        if hash_utils.find('tone', response):
-            try:
-                tone = Tone(hash_utils.find('tone', response).strip().capitalize())   
-            except Exception as e:
-                tone = Tone.Content
-        if hash_utils.find('orientation', response):
-            try:
-                orientation = Orientation(hash_utils.find('orientation', response).replace('##','').strip().capitalize())
-            except Exception as e:
-                orientation = Orientation.Connecting
+        response_arousal = hash_utils.find('arousal', response)
+        response_arousal = response_arousal.strip().capitalize()
+        if response_arousal in Arousal.__members__:
+            arousal = Arousal(response_arousal)
+        else:
+            arousal = Arousal.Neutral
+        response_tone = hash_utils.find('tone', response)
+        response_tone = response_tone.strip().capitalize()
+        if response_tone in Tone.__members__:
+            tone = Tone(response_tone)
+        else:
+            tone = Tone.Neutral
+        response_orientation = hash_utils.find('orientation', response)
+        response_orientation = response_orientation.strip().capitalize()
+        response_orientation = response_orientation.replace(' ', '') # Seeking support -> Seekingsupport
+        if response_orientation in Orientation.__members__:
+            orientation = Orientation(response_orientation)
+        else:
+            orientation = Orientation.Neutral
         return EmotionalStance(arousal, tone, orientation)

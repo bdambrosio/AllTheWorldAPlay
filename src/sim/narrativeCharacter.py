@@ -213,6 +213,15 @@ class NarrativeCharacter(Character):
         self.play_file_content = open(Path('../plays/') / play, 'r').read()
         self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
 
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+
         mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
 The overall cast of characters and setting are given below in Play.py and Map.py.
 
@@ -248,12 +257,20 @@ You have been provided two Python source files above.
 
         suffix = """
 
-Imagine you are {{$name}}.
+Imagine you are {{$name}} and your drives include:
+
+Primary 
+{{$primary_drive}}
+
+Secondary
+{{$secondary_drive}}
 
 ## 2.  TASK
-Generate a single JSON document named **narrative.json** that outlines a medium-term narrative arc for yourself.
+Generate a single JSON document named **narrative.json** that outlines a medium-term narrative arc for yourself focused primarily on your first and primary drive.
 The narrative should start at the current time: {{$start_time}}
 Given where you are in life, what you have achieved so far, and what you want to achieve, this should be a plan for the next few months.
+Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.
+By the end of the narrative, the primary drive should be resolved.
 ### 2.1  Structure
 Return exactly one JSON object with these keys:
 
@@ -261,12 +278,12 @@ Return exactly one JSON object with these keys:
 * "acts" – an array of act objects.  Each act object has  
   - "act_number" (int, 1-based)  
   - "act_title"   (string)  
-  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "act_description" (string, concise description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
   - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
     ],
 
@@ -288,11 +305,13 @@ Return **only** the JSON.  No commentary, no code fences.
 
 """
 
-        narrative = default_ask(self, mission, suffix, 
-                                {"play": self.play_file_content, 
+        narrative = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix, 
+                                addl_bindings={"play": self.play_file_content, 
                                  "map": self.map_file_content,
                                  "name": self.name,
-                                 "start_time": self.context.simulation_time.isoformat()}, 
+                                 "start_time": self.context.simulation_time.isoformat(),
+                                 "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                                 "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
                                  max_tokens=5000, tag='narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
@@ -338,8 +357,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 End your response with </end>
 """
 
-                response = default_ask(self, mission, suffix, 
-                                {"name": character.name, 
+                response = default_ask(self, prefix=mission, suffix=suffix, 
+                                addl_bindings={"name": character.name, 
                                  "plan": json.dumps(self.reserialize_narrative_json(self.plan))}, 
                                  max_tokens=240, tag='share_narrative')
                 try:
@@ -374,7 +393,15 @@ End your response with </end>
     def update_narrative_from_shared_info(self):
         """Update the narrative with the latest shared information"""
 
-        mission = """You are an imaginative, innovative, and creative planner. Based on prior conversations recorded below, do you see need to update an act in your plan?"""
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+        mission = """Based on prior conversations recorded below, do you see need to update an act in your plan?"""
         suffix = """
 
 Recent dialogs:
@@ -402,12 +429,12 @@ Return exactly one JSON object with these keys:
 * "acts" – an array of act objects.  Each act object has  
   - "act_number" (int, 1-based)  
   - "act_title"   (string)  
-  - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts)
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends)
+  - "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
   - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
     ],
   - "scenes"      (array) (only for the first act)
@@ -459,6 +486,15 @@ Each **scene** object must have:
 }
 ```
 === End of Example ===
+
+Remember that your primary and secondary drives are:
+
+Primary
+{{$primary_drive}}
+
+Secondary
+{{$secondary_drive}}
+
 Respond with your decision, and if yes, the act number of the first act you would like to update and the updated act, using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
@@ -472,10 +508,12 @@ End your response with </end>
 """
         dialogs = self.actor_models.dialogs()
 
-        response = default_ask(self, mission, suffix,
-                              {"name": self.name, 
+        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
-                               "plan": json.dumps(self.reserialize_narrative_json(self.plan))},
+                               "plan": json.dumps(self.reserialize_narrative_json(self.plan)),
+                               "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                               "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
                               max_tokens=1600, tag='update_narrative')
         try:
             updated_act = None
@@ -524,8 +562,15 @@ End your response with </end>
     def replan_narrative_act(self, act, previous_act):
         """Rewrite the act with the latest shared information"""
 
-        mission = """You are a skilled playwright working interactively to create a dynamic performance. 
-You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+        mission = """ You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
 Note the tensions and relationships with other characters, as these may have changed.
 Note also the post-narrative of the previous act, and check consistency with the assumptions made in this act, including it's title, pre-narrative, goals, description, and character goals in the initial scene.
 Based on prior conversations and events recorded below, update your plan for the following act. 
@@ -569,12 +614,12 @@ Return exactly one JSON object with these keys:
 
 - "act_number" (int, copied from the original act)  
 - "act_title"   (string, copied from the original act or rewritten as appropriate)  
-- "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
-- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+- "act_post_state": (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
 - "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
     ...
   ]
 - "scenes"      (array) 
@@ -598,12 +643,12 @@ Each **scene** object must have:
 {
   "act_number": {{$act_number}},
   "act_title": "rewritten act title",
-  "act_description": "short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
+  "act_description": "concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
   "act_goals" {"primary": "primary goal", "secondary": "secondary goal"},
-  "act_pre_state": (string, description of the situation / goals / tensions before the act starts),
-  "act_post_state": (string, description of the situation / goals / tensions after the act ends),
+  "act_pre_state": "description of the situation / goals / tensions before the act starts. concise, about 10 words",
+  "act_post_state": "description of the situation / goals / tensions after the act ends. concise, about 10 words",
   "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
     ...
   ],
   "scenes": [
@@ -627,8 +672,8 @@ End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.reserialize_narrative_json(acts)
-        response = default_ask(self, mission, suffix,
-                              {"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
+        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
                                "act_number": act['act_number'],
                                "play": json.dumps(self.reserialize_narrative_json(self.plan)),
                                "previous_act": json.dumps(self.reserialize_act_to_string(previous_act)) if previous_act else ''},
