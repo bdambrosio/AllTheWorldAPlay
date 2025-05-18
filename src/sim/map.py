@@ -536,7 +536,7 @@ class WorldMap:
         # Default to TYPE#N
         if resource_type not in self._resource_counters:
             self._resource_counters[resource_type] = 1
-        resource_id = f"{resource_type.name}#{self._resource_counters[resource_type]}"
+        resource_id = f"{resource_type.name}{self._resource_counters[resource_type]}"
         self._resource_counters[resource_type] += 1
         return resource_id
 
@@ -594,13 +594,14 @@ class WorldMap:
                             owner = self.get_property_owner(property_id)
                         
                         # Register resource with location, name, and owner
-                        self.resource_registry[resource_id] = {
+                        resource_record = { 
                             'type': resource_type,
                             'name': resource_id,  # Store the ID (which might be a name) with the resource
                             'description': allocation['description'],
                             'location': (x, y),
                             'properties': {'owner': owner} if owner else {}
                         }
+                        self.resource_registry[resource_id] = resource_record
                         
                         # Add to patch
                         self.patches[x][y].resources[resource_id] = 1
@@ -859,8 +860,12 @@ class WorldMap:
         if resource_id == path_name:
             return "path"
         if resource_id not in self.resource_registry:
-            print(f"ERROR: Resource {resource_id} not found")
-            return None
+            resource_id_no_hash = resource_id.replace('#', '')
+            if resource_id_no_hash in self.resource_registry:
+                return self.resource_registry[resource_id_no_hash]
+            else:
+                print(f"ERROR: Resource {resource_id} not found")
+                return None
         return self.resource_registry[resource_id]
 
     def generate_market_resource(self):
@@ -1374,6 +1379,7 @@ def hash_direction_info(direction_info, distance_threshold=10, world=None):
     percept_summary = ""
     resources = []
     characters = []
+    paths = []
     for dir in direction_info.keys():
         if dir == 'Current':
             percept_summary = f'You are in {direction_info[dir]['terrain']} terrain. '
@@ -1397,9 +1403,9 @@ def hash_direction_info(direction_info, distance_threshold=10, world=None):
             percept = percept[:-2] + '; '
         path_name = world._infrastructure_rules.get('path_type', 'road')
         if path_name in direction_info[dir] and len(direction_info[dir][path_name]) > 0:
-            path_added = False
             path_distances = direction_info[dir][path_name]['distances']
             percept += f"{path_name}: distances {path_distances}"
+            paths.append(path_name)
 
         if 'characters' in direction_info[dir] and len(direction_info[dir]['characters']) > 0:  
             character_added = False
@@ -1412,7 +1418,7 @@ def hash_direction_info(direction_info, distance_threshold=10, world=None):
                     characters.append(character['name'])
             percept = percept[:-2]
         percept += "\n"
-    percept_summary += f"You see {', '.join(characters)} and {', '.join(resources)} resources"
+    percept_summary += f"You see {', '.join(characters)} and {', '.join(resources)} resources{f' and {path_name}(s)' if len(paths) > 0 else ''}"
     print(percept_summary)
-    return percept, resources, characters, percept_summary
+    return percept, resources, characters, paths, percept_summary
                 

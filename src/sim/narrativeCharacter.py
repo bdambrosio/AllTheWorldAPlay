@@ -213,10 +213,10 @@ class NarrativeCharacter(Character):
         self.play_file_content = open(Path('../plays/') / play, 'r').read()
         self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
 
-        system_prompt = """You are a seasoned dramatist designing medium-term arcs for stage.
-Every act must push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a buried secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
-Write dialogue-forward scenes: let conflict emerge through spoken intention and subtext, not narration or logistics.
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
 By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
@@ -393,7 +393,15 @@ End your response with </end>
     def update_narrative_from_shared_info(self):
         """Update the narrative with the latest shared information"""
 
-        mission = """You are an imaginative, innovative, and creative planner. Based on prior conversations recorded below, do you see need to update an act in your plan?"""
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+        mission = """Based on prior conversations recorded below, do you see need to update an act in your plan?"""
         suffix = """
 
 Recent dialogs:
@@ -500,7 +508,7 @@ End your response with </end>
 """
         dialogs = self.actor_models.dialogs()
 
-        response = default_ask(self, prefix=mission, suffix=suffix,
+        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
                                "plan": json.dumps(self.reserialize_narrative_json(self.plan)),
@@ -554,8 +562,15 @@ End your response with </end>
     def replan_narrative_act(self, act, previous_act):
         """Rewrite the act with the latest shared information"""
 
-        mission = """You are a skilled playwright working interactively to create a dynamic performance. 
-You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
+        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
+        """
+        mission = """ You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
 Note the tensions and relationships with other characters, as these may have changed.
 Note also the post-narrative of the previous act, and check consistency with the assumptions made in this act, including it's title, pre-narrative, goals, description, and character goals in the initial scene.
 Based on prior conversations and events recorded below, update your plan for the following act. 
@@ -657,7 +672,7 @@ End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.reserialize_narrative_json(acts)
-        response = default_ask(self, prefix=mission, suffix=suffix,
+        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
                                "act_number": act['act_number'],
                                "play": json.dumps(self.reserialize_narrative_json(self.plan)),

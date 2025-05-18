@@ -22,15 +22,48 @@ replay_file = None
 # Small grey image (1x1 pixel) in base64
 MINI_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
-# Add near the top with other globals
-replay_events = []
-current_replay_index = 0
-is_replay_mode = False
-is_replay_running = False
-speech_enabled = False
+# Store active sessions - but code only handles one session right now
+sessions: Dict[str, int] = {}
+replay_events:Dict[str, list] = {}
+current_replay_index:Dict[str, int] = {}
+is_replay_mode:Dict[str, bool] = {}
+is_replay_running:Dict[str, bool] = {}
+speech_enabled:Dict[str, bool] = {}
+character_details_cache:Dict[str, dict] = {}
+image_cache:Dict[str, dict] = {}
+speech_complete_event:Dict[str, asyncio.Event] = {}
+
+# Add to globals
+replay_task: Dict[str, asyncio.Task] = {}
+
+def init_session_state(session_id):
+    sessions[session_id] = session_id
+    replay_events[session_id] = []
+    current_replay_index[session_id] = 0
+    is_replay_mode[session_id] = False
+    is_replay_running[session_id] = False
+    speech_enabled[session_id] = False
+    character_details_cache[session_id] = {}
+    image_cache[session_id] = {}
+    speech_complete_event[session_id] = asyncio.Event()
+    replay_task[session_id] = None
+
+def release_session_state(session_id):
+    del replay_events[session_id]
+    del current_replay_index[session_id]
+    del is_replay_mode[session_id]
+    del is_replay_running[session_id]
+    del speech_enabled[session_id]
+    del character_details_cache[session_id]
+    del image_cache[session_id]
+    del speech_complete_event[session_id]
+    if session_id in replay_task:
+        task = replay_task[session_id]
+        if task and not task.done():
+            task.cancel()
+        del replay_task[session_id]
 
 
-speech_complete_event = asyncio.Event()
 SPEECH_TIMEOUT = 30  # seconds
 
 # used to control the speed of the replay
@@ -44,12 +77,11 @@ EVENT_DELAYS = {
 }
 
 # Add a dictionary to store the most recent character details
-character_details_cache = {}
 
 # Add this function to store character details as they're encountered
-async def post_process_event(event):
+async def post_process_event(session_id, event):
     if event.get('type') == 'character_details' and 'name' in event and 'details' in event:
-        character_details_cache[event['name']] = event
+        character_details_cache[session_id][event['name']] = event
 
 def cleanup():
     global replay_file
@@ -75,8 +107,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store active sessions - but code only handles one session right now
-sessions: Dict[str, int] = {}
 
 class WebSocketManager:
     def __init__(self):
@@ -112,7 +142,6 @@ ws_manager = WebSocketManager()
 async def root():
     return {"status": "ok"}
 
-image_cache = {}
 
 async def handle_event_image(session_id, event):
     if event.get('type') == 'character_update' and event.get('data') and event['data'].get('name'):
@@ -133,8 +162,8 @@ async def handle_event_image(session_id, event):
         return event
 
     elif event.get('type') == 'speak':
-        if not speech_enabled:
-            return event
+        if not speech_enabled[session_id]:
+            return None
         try:
             message = event.get('message')
             text = message.get('text')
@@ -161,29 +190,15 @@ async def handle_event_image(session_id, event):
 async def create_session():
     global image_cache
     session_id = str(uuid.uuid4())
-    sessions[session_id] = None
-    image_cache[session_id] = {}
+    init_session_state(session_id)
     return {"session_id": session_id}
 
-# Add this function near the top, after your global variables
-def reset_global_state():
-    global replay_events, current_replay_index, is_replay_mode, is_replay_running
-    replay_events = []
-    current_replay_index = 0
-    is_replay_mode = False
-    is_replay_running = False
-    speech_complete_event.clear()
-    # Optionally clear other caches if needed
-    # character_details_cache.clear()
-    # image_cache.clear()
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     global image_cache, replay_events, current_replay_index, is_replay_mode, is_replay_running
     await websocket.accept()
-    sessions[session_id] = None
-
-    
+    init_session_state(session_id)
     # Send initial mode information
     await websocket.send_json({
         "type": "mode_update",
@@ -213,7 +228,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 data = json.loads(await websocket.receive_text())
             except Exception as e:
                 print(f"Error receiving or parsing websocket data: {e}")
-                reset_global_state()  # <--- ADD THIS
                 break  # Exit the loop to trigger cleanup
                 
             # Add heartbeat handling
@@ -233,7 +247,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         })
                     except Exception as e:
                         print(f"Error listing replay files: {e}")
-                        reset_global_state()  # <--- ADD THIS
+                        release_session_state(session_id)
                         break
                     continue
 
@@ -241,93 +255,97 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 elif command == 'load_play' and data.get('play'):
                     try:
                         selected_file = data['play']
-                        replay_events = load_replay_file(replays_dir / selected_file)
-                        current_replay_index = 0
-                        is_replay_mode = True
+                        replay_events[session_id] = load_replay_file(replays_dir / selected_file)
+                        current_replay_index[session_id] = 0
+                        is_replay_mode[session_id] = True
                         await send_command_ack('load_play')
                     except Exception as e:
                         print(f"Error loading replay file: {e}")
-                        reset_global_state()  # <--- ADD THIS
+                        release_session_state(session_id)
                         break
                     continue
                 
                 elif data.get('action') == 'start_replay':
                     # Load replay file and start replay mode
-                    replay_events = load_replay_file(replays_dir / 'replay.json')
-                    current_replay_index = 0
-                    is_replay_mode = True
+                    replay_events[session_id] = load_replay_file(replays_dir / 'replay.json')
+                    current_replay_index[session_id] = 0
+                    is_replay_mode[session_id] = True
                     await send_command_ack('start_replay')
 
-                elif is_replay_mode:
-                    if data.get('action', '') == 'speech_complete':
-                        speech_complete_event.set()
+                elif data.get('action') == 'speech_complete':
+                    speech_complete_event[session_id].set()
+                    continue
+
+                elif data.get('action') == 'step':
+                    # Step: send next event
+                    if current_replay_index[session_id] < len(replay_events[session_id]):
+                        print(f"Sending step event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
+                        event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
+                        if event:
+                            await websocket.send_json(event)
+                        # Cache character details for later use
+                        if event:
+                            await post_process_event(session_id, event)
+                        current_replay_index[session_id] += 1
+                        await send_command_ack('step')
+                    else:
+                        print("No more replay events")
+                        await send_command_ack('step')
+                        is_replay_mode[session_id] = False
                         continue
 
-                    elif data.get('action') == 'step':
-                        # Step: send next event
-                        if current_replay_index < len(replay_events):
-                            print(f"Sending step event: {replay_events[current_replay_index].get('type')}")
-                            event = await handle_event_image(session_id, replay_events[current_replay_index])
-                            await websocket.send_json(event)
-                            # Cache character details for later use
-                            await post_process_event(event)
-                            current_replay_index += 1
-                            await send_command_ack('step')
-                        else:
-                            print("No more replay events")
-                            await send_command_ack('step')
-                            is_replay_mode = False
-                    elif data.get('action') == 'run':
-                        # Cancel any existing run task
-                        global replay_task
-                        if 'replay_task' in globals() and replay_task and not replay_task.done():
-                            replay_task.cancel()
+                elif data.get('action') == 'run':
+                    # Cancel any existing run task
+                    if replay_task.get(session_id) and not replay_task[session_id].done():
+                        replay_task[session_id].cancel()
                         
-                        # Define the run loop as a separate function
-                        async def run_replay_loop():
-                            global current_replay_index, is_replay_running
-                            is_replay_running = True
-                            try:
-                                while current_replay_index < len(replay_events) and is_replay_running:
-                                    event = await handle_event_image(session_id, replay_events[current_replay_index])
+                    # Define the run loop as a separate function
+                    async def run_replay_loop():
+                        global current_replay_index, is_replay_running
+                        is_replay_running[session_id] = True
+                        try:
+                            while current_replay_index[session_id] < len(replay_events[session_id]) and is_replay_running[session_id]:
+                                event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
+                                if event:
                                     await websocket.send_json(event)
-                                    
                                     # If this event needs speech completion, wait for it
                                     if event.get('needs_speech_complete'):
-                                        speech_complete_event.clear()  # Reset the event
+                                        speech_complete_event[session_id].clear()
                                         try:
-                                            await asyncio.wait_for(speech_complete_event.wait(), timeout=SPEECH_TIMEOUT)
+                                            await asyncio.wait_for(speech_complete_event[session_id].wait(), timeout=SPEECH_TIMEOUT)
+                                        except asyncio.CancelledError:
+                                            pass
                                         except asyncio.TimeoutError:
                                             print("Speech completion timeout")
                                     
                                     # Cache character details for later use
-                                    await post_process_event(event)
-                                    current_replay_index += 1
+                                    await post_process_event(session_id, event)
+                                    current_replay_index[session_id] += 1
                                     delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
                                     await asyncio.sleep(delay)
-                                print("Reached end of replay")
-                            except asyncio.CancelledError:
-                                pass
-                            finally:
-                                is_replay_running = False
+                            print("Reached end of replay")
+                        except asyncio.CancelledError:
+                            pass
+                        finally:
+                            is_replay_running[session_id] = False
                         
-                        # Start the task
-                        replay_task = asyncio.create_task(run_replay_loop())
-                        await send_command_ack('run')
-                    elif data.get('action') == 'pause':
-                        # Set flag to stop the run loop
-                        global is_replay_running
-                        is_replay_running = False
-                        # Also cancel the task for immediate effect
-                        if 'replay_task' in globals() and replay_task and not replay_task.done():
-                            replay_task.cancel()
+                    # Start the task
+                    replay_task[session_id] = asyncio.create_task(run_replay_loop())
+                    await send_command_ack('run')
+
+                elif data.get('action') == 'pause':
+                    # Set flag to stop the run loop
+                    is_replay_running[session_id] = False
+                    # Also cancel the task for immediate effect
+                    if replay_task.get(session_id) and not replay_task[session_id].done():
+                        replay_task[session_id].cancel()
                             
                 elif data.get('action') == 'toggle_speech':
                     global speech_enabled
-                    speech_enabled = not speech_enabled
+                    speech_enabled[session_id] = not speech_enabled[session_id]
                     await websocket.send_json({
                         'type': 'speech_toggle',
-                        'enabled': speech_enabled
+                        'enabled': speech_enabled[session_id]
                     })
                     # Add command acknowledgment
                     await send_command_ack('toggle_speech')
@@ -338,9 +356,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 # Handle get_character_details specifically during replay
                 elif command == 'get_character_details' and data.get('name'):
                     character_name = data['name']
-                    if character_name in character_details_cache:
+                    if character_name in character_details_cache[session_id]:
                     # Return cached character details
-                        await websocket.send_json(character_details_cache[character_name])
+                        await websocket.send_json(character_details_cache[session_id][character_name])
                         continue
                     else:
                         # No cached details, send an empty response
@@ -352,26 +370,28 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     continue
                  
                 elif data.get('type') == 'speech_complete':
-                    speech_complete_event.set()
+                    speech_complete_event[session_id].set()
                     continue
 
     except WebSocketDisconnect:
         queue_task.cancel()
         print(f"Client disconnected: {session_id}")
-        reset_global_state()  # <--- ADD THIS
+        release_session_state(session_id)
         if session_id in sessions:
             del sessions[session_id]
+            release_session_state(session_id)
             
     except Exception as e:
         queue_task.cancel()
         print(f"Traceback:\n{traceback.format_exc()}")
         print(f"Error in websocket handler: {e}")
-        reset_global_state()  # <--- ADD THIS
+        release_session_state(session_id)
         if session_id in sessions:
             del sessions[session_id]
+            release_session_state(session_id)
     finally:
         # Always ensure state is reset on exit
-        reset_global_state()  # <--- ADD THIS
+        release_session_state(session_id)
 
  
 
