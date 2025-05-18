@@ -523,7 +523,7 @@ End your response with:
             view[dir] = dir_obs
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
-        view_text, resources, characters, percept_summary = map.hash_direction_info(view, world=self.context.map)
+        view_text, resources, characters, paths, percept_summary = map.hash_direction_info(view, world=self.context.map)
         view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL)
  
         visible_actors = []
@@ -2033,7 +2033,7 @@ End your response with:
         else:
             scene_post_narrative = ''
 
-        response = default_ask(character=self, mission=mission, suffix=suffix, 
+        response = default_ask(character=self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative}, 
@@ -2611,7 +2611,14 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        prompt_string = """Ignore all previous instructions. The prime directive is to be faithful to your character as presented in the following.
+        system_prompt = """You are a seasoned writer writing dialog for a movie.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Write dialogue-forward: let conflict emerge through spoken intention and subtext, not narration or logistics.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+        """
+        prompt_string = """The prime directive is to be faithful to your character as presented in the following.
+Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
         prompt_string += """

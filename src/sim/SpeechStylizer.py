@@ -4,6 +4,8 @@ import importlib
 import logging
 from typing import TYPE_CHECKING
 import os, sys, re, traceback, requests, json
+import numpy as np
+from sentence_transformers import SentenceTransformer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
 from typing import Dict, List, Optional
@@ -15,6 +17,22 @@ if TYPE_CHECKING:
     from sim.narrativeCharacter import NarrativeCharacter
     from sim.cognitive.knownActor import KnownActor
 logger = logging.getLogger('simulation_core')
+_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  
+_embedding_model.max_seq_length = 384
+_voice_embeddings = None
+_voices = None
+
+def get_voice_embedding(voice):
+    try:
+        description = voice.get('description', '')
+        if description is None:
+            description = ' '
+        labels = voice.get('labels', {})
+        description = description + ' ' + labels.get('description', '')
+        return _embedding_model.encode(description.strip().lower())
+    except Exception as e:
+        logger.error(f"Error getting voice embedding for {voice}: {e}")
+        return _embedding_model.encode(' none ')
 
 class SpeechStylizer:
     """Context‑aware style generator for character dialogue.
@@ -50,14 +68,19 @@ class SpeechStylizer:
 
     # ---------------------------------------------------------------------
     def __init__(self, character:NarrativeCharacter, global_variability: float = 0.5, style_rotation_period: int = 3, rng: Optional[random.Random] = None) -> None:
+        global _voice_embeddings, _voices
         self.char: NarrativeCharacter = character
         self.global_var = max(0.0, min(1.0, global_variability))
         self.rotation_period = max(1, style_rotation_period)
         self.rng = rng or random.Random()
 
         self._base_style = self._extract_personality_style()
-        voices = self.char.context.voice_service.get_voices()
-        self.voice_id = self.pick_best_voice(voices)
+        if _voice_embeddings is None:
+            _voices = self.char.context.voice_service.get_voices()
+            _voice_embeddings = [get_voice_embedding(voice) for voice in _voices if get_voice_embedding(voice) is not None]
+        self.voices = _voices
+        self.voice_embeddings = _voice_embeddings
+        self.voice_id = self.pick_best_voice(_voices)
         self._call_counter = 0
 
     # =====================================================================
@@ -490,6 +513,7 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         """
         Select the best ElevenLabs voice record for self.char using LLM-extracted traits.
         """
+        global _voice_embeddings, _voices
         # 1. Construct prompt for LLM
         prompt = [SystemMessage(content="""Given the following character description, extract the character's likely gender, age group, accent, and personality keywords as a hash-formatted block.
 
@@ -518,6 +542,7 @@ End your response with:
         age = hash_utils.find('age', llm_response)
         accent = hash_utils.find('accent', llm_response)
         personality = hash_utils.findList('personality', llm_response)
+        personality_embedding = _embedding_model.encode(' '.join(personality))
 
         # 3. Score each voice
         def score_voice(voice):
@@ -540,9 +565,15 @@ End your response with:
                 for word in personality:
                     if word.strip().lower() in labels['description'].lower():
                         score += .1
+                dot_result = np.dot(personality_embedding, _voice_embeddings[voices.index(voice)])
+                if isinstance(dot_result, np.ndarray):
+                    dot_result = float(dot_result)  # fallback to scalar for now
+                score += dot_result
             return score
 
         # 4. Pick the best voice
-        best_voice = max(voices, key=score_voice)
+        scores = [score_voice(voice) for voice in voices]
+        max_score = max(scores)
+        best_voice = voices[scores.index(max_score)]
         return best_voice['voice_id']
 

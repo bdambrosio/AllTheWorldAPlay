@@ -17,7 +17,7 @@ try:
 except Exception as e:
     print(f"No Google API key found")
 
-if api_key is not None and api_key != '':
+if api_key and api_key != '':
     try:
         client = genai.Client(api_key=api_key)
     except Exception as e:
