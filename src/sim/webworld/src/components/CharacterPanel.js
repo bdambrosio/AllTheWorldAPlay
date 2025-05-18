@@ -3,11 +3,27 @@ import CharacterNarrative from './CharacterNarrative';
 import ExplorerModal from './ExplorerModal';
 import './CharacterPanel.css';
 
-function CharacterPanel({ character, sessionId, sendCommand }) {
+function CharacterPanel({ 
+  character, 
+  sessionId, 
+  sendCommand, 
+  sendReplayEvent,
+  showExplorer: propShowExplorer,
+  onExplorerShown
+}) {
   const [showNarrative, setShowNarrative] = useState(false);
   const [showExplorer, setShowExplorer] = useState(false);
   const [lastExplorerState, setLastExplorerState] = useState(null);
   const [explorerStatus, setExplorerStatus] = useState('idle');
+
+  useEffect(() => {
+    if (propShowExplorer !== undefined) {
+      setShowExplorer(propShowExplorer);
+      if (propShowExplorer && onExplorerShown) {
+        onExplorerShown();
+      }
+    }
+  }, [propShowExplorer, onExplorerShown]);
 
   // Cache explorer state from character updates
   useEffect(() => {
@@ -20,6 +36,10 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
   // Handle explorer modal open
   const handleExplorerOpen = async () => {
     setShowExplorer(true);
+    sendReplayEvent('setShowExplorer', { 
+      characterName: character.name,
+      show: true 
+    });
     
     // Use cached state if running or processing
     if (character.status === 'processing' || character.status === 'running') {
@@ -29,7 +49,6 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
 
     setExplorerStatus('loading');
     try {
-      // Use sendCommand instead of dispatching event
       await sendCommand('get_character_details', { name: character.name });
     } catch (err) {
       console.error('Error requesting explorer state:', err);
@@ -103,6 +122,7 @@ function CharacterPanel({ character, sessionId, sendCommand }) {
           status={explorerStatus}
           onClose={() => setShowExplorer(false)}
           sendCommand={sendCommand}
+          sendReplayEvent={sendReplayEvent}
         />
       )}
     </div>

@@ -8,8 +8,11 @@ import DirectorChairModal from './components/DirectorChairModal';
 import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
 import config from './config';
+import { ReplayProvider, useReplay } from './contexts/ReplayContext';
+import ExplorerModal from './components/ExplorerModal';
 
 function App() {
+  const { recordEvent } = useReplay();
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -35,6 +38,14 @@ function App() {
   const sendingLock = useRef(false);
   const [choiceRequest, setChoiceRequest] = useState(null);
   const [showDirectorChair, setShowDirectorChair] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  const [pendingTabEvent, setPendingTabEvent] = useState(null);
+  const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
+  const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
+  const [appMode, setAppMode] = useState('simulation');
+  const pendingPlayLoadRef = useRef(null);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const speechEnabledRef = useRef(speechEnabled);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -131,12 +142,18 @@ function App() {
                 }
                 break;
               case 'command_ack':
+                console.log('Debug - command_ack received:', data);
                 setIsProcessing(false);
                 setSimState(prev => ({
                   ...prev,
                   running: false,
                   paused: true
                 }));
+                if (data.command === 'load_play' && pendingPlayLoadRef.current) {
+                  console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
+                  setCurrentPlay(pendingPlayLoadRef.current);
+                  pendingPlayLoadRef.current = null;
+                }
                 break;
               case 'chat_response':
                 console.log('chat_response:', data.text);
@@ -147,6 +164,57 @@ function App() {
                     chatOutput: data.text
                   }
                 }));
+                break;
+              case 'replay_event':
+                console.log('Replay event:', data);
+                handleReplayEvent(data);
+                break;
+              case 'setActiveTab':
+                if (event.arg.panelId === 'characterTabs') {
+                  const characterArray = Object.values(characters);
+                  if (characterArray.length > 0) {
+                    const characterIndex = characterArray.findIndex(char => char.name === event.arg.characterName);
+                    if (characterIndex !== -1) {
+                      setActiveTab(characterIndex);
+                    } else {
+                      setPendingTabEvent(event);
+                    }
+                  } else {
+                    setPendingTabEvent(event);
+                  }
+                }
+                break;
+              case 'setExplorerTab':
+                if (characters[event.arg.characterName]) {
+                  setPendingExplorerTabEvent(event);
+                } else {
+                  setPendingExplorerTabEvent(event);
+                }
+                break;
+              case 'mode_update':
+                setAppMode(data.mode);
+                break;
+              case 'speak':
+                console.log('Speak message received:', data);
+                if (speechEnabledRef.current && data.audio) {
+                  const mime = data.audio_format === 'mp3' || !data.audio_format ? 'audio/mp3' : `audio/${data.audio_format}`;
+                  const audio = new Audio(`data:${mime};base64,${data.audio}`);
+                  audio.onended = () => {
+                    sendCommand('speech_complete');
+                  };
+                  audio.onerror = (error) => {
+                    console.error('Audio playback error:', error);
+                    sendCommand('speech_complete');
+                  };
+                  audio.play().catch(error => {
+                    console.error('Audio play failed:', error);
+                    sendCommand('speech_complete');
+                  });
+                }
+                break;
+              case 'speech_toggle':
+                speechEnabledRef.current = data.enabled;  // sync ref right away
+                setSpeechEnabled(data.enabled);
                 break;
               default:
                 console.log('Unknown message type:', data.type);
@@ -178,18 +246,28 @@ function App() {
     setInputValue('');
   };
 
+  const handleInitialize = () => {
+    recordEvent('initialize', 'simulation');
+    sendReplayEvent('initialize', 'simulation', 'initialize');
+    sendCommand('initialize');
+  };
+
   const handleStep = async () => {
-    setIsProcessing(true); 
+    setIsProcessing(true);
+    recordEvent('step', 'simulation');
+    sendReplayEvent('step', 'simulation', 'step');
     sendCommand('step');
   };
 
   const handleRun = async () => {
     setIsProcessing(true);
+    recordEvent('run', 'simulation');
     sendCommand('run');
   };
 
   const handlePause = () => {
     setIsProcessing(false);
+    recordEvent('pause', 'simulation');
     sendCommand('pause');
   };
 
@@ -239,6 +317,16 @@ function App() {
     await sendMessageSafely(message);
   };
 
+  const sendReplayEvent = (action, arg, ui_action) => {
+    const message = JSON.stringify({
+      type: 'replay_event',
+      action: action,
+      arg: arg,
+      timestamp: Date.now()
+    });
+    sendMessageSafely(message);
+  };
+
   const handleChoice = (choiceId, customData = null) => {
     if (!choiceRequest) return;
     
@@ -265,115 +353,264 @@ function App() {
     setChoiceRequest(null);
   };
 
+  const handleSelectPlay = (playName) => {
+    setSelectedPlay(playName);
+    recordEvent('select_play', playName);
+    sendReplayEvent('select_play', playName, 'select_play');
+    // Optionally, you could trigger UI updates here if needed
+  };
+
+  const handleReplayEvent = (event) => {
+    console.log('Handling replay event:', event);
+    switch (event.action) {
+      case 'setShowPlayDialog':
+        setShowPlayDialog(event.arg.show);
+        break;
+      case 'setActiveTab':
+        if (event.arg.panelId === 'characterTabs') {
+          const characterArray = Object.values(characters);
+          if (characterArray.length > 0) {
+            const characterIndex = characterArray.findIndex(char => char.name === event.arg.characterName);
+            if (characterIndex !== -1) {
+              setActiveTab(characterIndex);
+            } else {
+              setPendingTabEvent(event);
+            }
+          } else {
+            setPendingTabEvent(event);
+          }
+        }
+        break;
+      case 'setShowExplorer':
+        if (characters[event.arg.characterName]) {
+          setPendingExplorerEvent(event);
+        } else {
+          setPendingExplorerEvent(event);
+        }
+        break;
+      case 'setExplorerTab':
+        if (characters[event.arg.characterName]) {
+          setPendingExplorerTabEvent(event);
+        } else {
+          setPendingExplorerTabEvent(event);
+        }
+        break;
+      default:
+        // Handle other replay events
+        break;
+    }
+  };
+
   console.log('Current characters:', characters);  // See if state is updated
+  console.log('RENDER - characters state:', characters);
+
+  useEffect(() => {
+    if (pendingTabEvent && pendingTabEvent.action === 'setActiveTab') {
+      const characterArray = Object.values(characters);
+      if (characterArray.length > 0) {
+        const characterIndex = characterArray.findIndex(char => char.name === pendingTabEvent.arg.characterName);
+        if (characterIndex !== -1) {
+          setActiveTab(characterIndex);
+          setPendingTabEvent(null);
+        }
+      }
+    }
+  }, [characters, pendingTabEvent]);
+
+  useEffect(() => {
+    if (pendingExplorerEvent && pendingExplorerEvent.action === 'setShowExplorer') {
+      const characterName = pendingExplorerEvent.arg.characterName;
+      if (characters[characterName]) {
+        setPendingExplorerEvent(null);
+      }
+    }
+  }, [characters, pendingExplorerEvent]);
+
+  useEffect(() => {
+    console.log('Debug - appMode:', appMode);
+    console.log('Debug - currentPlay:', currentPlay);
+    console.log('Debug - isProcessing:', isProcessing);
+    console.log('Debug - simState:', simState);
+  }, [appMode, currentPlay, isProcessing, simState]);
+
+  useEffect(() => {
+    speechEnabledRef.current = speechEnabled;
+  }, [speechEnabled]);
+
+  const handleToggleSpeech = () => {
+    setSpeechEnabled(prev => {
+      const next = !prev;                // optimistic flip
+      speechEnabledRef.current = next;   // keep ref in-sync right now
+      return next;
+    });
+    sendCommand('toggle_speech');        // tell the server
+  };
 
   return (
-    <div className="app-container">
-      <div className="character-panels">
-        <TabPanel characters={Object.values(characters)
-          .filter(character => character && character.name)
-          .map(character => (
-            <CharacterPanel 
-              key={character.name} 
-              character={character}
-              sessionId={sessionId}
-              sendCommand={sendCommand}
-            />
-          ))}
-        />
-      </div>
-      <div className="center-panel">
-        <div className="world-container">
-          <div className="world-header">
-            <div className="world-panel">
-              <WorldPanel worldState={worldState} />
+    <ReplayProvider>
+      <div className="app-container">
+        <div className="character-panels">
+          <TabPanel 
+            characters={Object.values(characters)
+              .filter(character => character && character.name)
+              .map(character => (
+                <CharacterPanel 
+                  key={character.name} 
+                  character={character}
+                  sessionId={sessionId}
+                  sendCommand={sendCommand}
+                  sendReplayEvent={sendReplayEvent}
+                  showExplorer={pendingExplorerEvent?.arg?.characterName === character.name ? 
+                                pendingExplorerEvent.arg.show : undefined}
+                  onExplorerShown={() => {
+                    if (pendingExplorerEvent?.arg?.characterName === character.name) {
+                      setPendingExplorerEvent(null);
+                    }
+                  }}
+                />
+              ))}
+            sendReplayEvent={sendReplayEvent}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+        </div>
+        <div className="center-panel">
+          <div className="world-container">
+            <div className="world-header">
+              <div className="world-panel">
+                <WorldPanel worldState={worldState} />
+              </div>
+              <div className="world-description">
+                {worldState?.show || ''}
+              </div>
             </div>
-            <div className="world-description">
-              {worldState.show}
+            <div className="log-area" ref={logRef}>
+              {logText}
             </div>
-          </div>
-          <div className="log-area" ref={logRef}>
-            {logText}
           </div>
         </div>
-      </div>
-      <div className="control-panel">
-        <div className="control-buttons">
-          <button className="control-button" onClick={() => sendCommand('initialize')}>Initialize Play</button>
-          <button className="control-button" 
-            onClick={handleRun} 
-            disabled={isProcessing || simState.running}>Run</button>
-          <button className="control-button" 
-            onClick={handleStep} 
-            disabled={isProcessing || simState.running}>Step</button>
-          <button className="control-button" onClick={handlePause}>Pause</button>
-          <button className="control-button" onClick={() => sendCommand('showMap')}>Show Map</button>
-          <button onClick={handleRefresh} className="control-button">
-            Refresh
+        <div className="control-panel">
+          <div className="control-buttons">
+            <button className="control-button" onClick={handleInitialize}>Start</button>
+            <button className="control-button" 
+              onClick={handleRun} 
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Run</button>
+            <button className="control-button" 
+              onClick={handleStep} 
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Step</button>
+            <button className="control-button" onClick={handlePause}>Pause</button>
+            <button className="control-button" onClick={() => sendCommand('showMap')} disabled={appMode === 'replay'}>Show Map</button>
+            <button onClick={handleRefresh} className="control-button" disabled={appMode === 'replay'}>
+              Refresh
+            </button>
+            <button className="control-button" onClick={() => sendCommand('load_known_actors')} disabled={appMode === 'replay'}>Load</button>
+            <button className="control-button" onClick={() => sendCommand('save_known_actors')} disabled={appMode === 'replay'}>Save</button>
+            <button 
+              className="control-button" 
+              onClick={handleToggleSpeech}
+            >
+              {speechEnabled ? 'Voice On' : 'Voice Off'}
+            </button>
+          </div>
+          <div className="status-area">
+            {currentPlay && <div>Play: {currentPlay}</div>}
+            <div>Status: {
+              simState.running ? 'Running' : 
+              isProcessing ? 'Processing...' : 
+              'Paused'
+            }</div>
+          </div>
+          <button 
+            className="director-chair-button"
+            onClick={() => setShowDirectorChair(true)}
+          >
+            Director's Chair
           </button>
-          <button className="control-button" onClick={() => sendCommand('load_known_actors')}>Load</button>
-          <button className="control-button" onClick={() => sendCommand('save_known_actors')}>Save</button>
         </div>
-        <div className="status-area">
-          {currentPlay && <div>Play: {currentPlay}</div>}
-          <div>Status: {
-            simState.running ? 'Running' : 
-            isProcessing ? 'Processing...' : 
-            'Paused'
-          }</div>
-        </div>
-        <button 
-          className="director-chair-button"
-          onClick={() => setShowDirectorChair(true)}
-        >
-          Director's Chair
-        </button>
+
+        {showPlayDialog && (
+          <div className="dialog">
+            <h3>Select Scenario</h3>
+            <select
+              value={selectedPlay ?? ""}
+              onChange={(e) => {
+                setSelectedPlay(e.target.value);
+                console.log('Select changed, new selectedPlay:', e.target.value);
+                recordEvent('select_play', e.target.value);
+                sendReplayEvent('select_play', e.target.value);
+              }}
+            >
+              <option value="" disabled>Select a scenario...</option>
+              {plays.map(play => (
+                <option key={play} value={play}>{play}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                setIsProcessing(true);
+                pendingPlayLoadRef.current = selectedPlay;
+                sendCommand('load_play', { play: selectedPlay });
+                setShowPlayDialog(false);
+                sendReplayEvent('setShowPlayDialog', { show: false });
+              }}
+              disabled={!selectedPlay}
+            >
+              Load
+            </button>
+            <button onClick={() => {
+              setShowPlayDialog(false);
+              sendReplayEvent('setShowPlayDialog', { show: false });
+            }}>Cancel</button>
+          </div>
+        )}
+
+        {showConfirmDialog && (
+          <div className="dialog">
+            <p>This will reset the current simulation. Continue?</p>
+            <button onClick={() => {
+              sendCommand('confirm_load_play', { play: selectedPlay });
+              setShowConfirmDialog(false);
+            }}>Yes</button>
+            <button onClick={() => setShowConfirmDialog(false)}>No</button>
+          </div>
+        )}
+
+        {choiceRequest && (
+          <DirectorChoiceModal
+            request={choiceRequest}
+            onChoice={handleChoice}
+            onClose={() => setChoiceRequest(null)}
+          />
+        )}
+
+        {showDirectorChair && (
+          <DirectorChairModal
+            characters={characters}
+            onClose={() => setShowDirectorChair(false)}
+            sendCommand={sendCommand}
+          />
+        )}
+
+        {pendingExplorerEvent && pendingExplorerEvent.action === 'setShowExplorer' && (
+          <ExplorerModal
+            character={characters[pendingExplorerEvent.arg.characterName]}
+            sessionId={sessionId}
+            lastState={pendingExplorerEvent.arg.lastState}
+            status={pendingExplorerEvent.arg.status}
+            onClose={() => setPendingExplorerEvent(null)}
+            activeTab={pendingExplorerTabEvent?.arg?.characterName === pendingExplorerEvent.arg.characterName ? 
+                       pendingExplorerTabEvent.arg.tabName : undefined}
+            onTabChanged={() => {
+              if (pendingExplorerTabEvent?.arg?.characterName === pendingExplorerEvent.arg.characterName) {
+                setPendingExplorerTabEvent(null);
+              }
+            }}
+            sendCommand={sendCommand}
+            sendReplayEvent={sendReplayEvent}
+          />
+        )}
       </div>
-
-      {showPlayDialog && (
-        <div className="dialog">
-          <h3>Select Scenario</h3>
-          <select onChange={(e) => setSelectedPlay(e.target.value)}>
-            {plays.map(play => (
-              <option key={play} value={play}>{play}</option>
-            ))}
-          </select>
-          <button onClick={() => {
-            setIsProcessing(true);
-            sendCommand('load_play', { play: selectedPlay });
-            setShowPlayDialog(false);
-          }}>Load</button>
-          <button onClick={() => setShowPlayDialog(false)}>Cancel</button>
-        </div>
-      )}
-
-      {showConfirmDialog && (
-        <div className="dialog">
-          <p>This will reset the current simulation. Continue?</p>
-          <button onClick={() => {
-            sendCommand('confirm_load_play', { play: selectedPlay });
-            setShowConfirmDialog(false);
-          }}>Yes</button>
-          <button onClick={() => setShowConfirmDialog(false)}>No</button>
-        </div>
-      )}
-
-      {choiceRequest && (
-        <DirectorChoiceModal
-          request={choiceRequest}
-          onChoice={handleChoice}
-          onClose={() => setChoiceRequest(null)}
-        />
-      )}
-
-      {showDirectorChair && (
-        <DirectorChairModal
-          characters={characters}
-          onClose={() => setShowDirectorChair(false)}
-          sendCommand={sendCommand}
-        />
-      )}
-    </div>
+    </ReplayProvider>
   );
 }
 

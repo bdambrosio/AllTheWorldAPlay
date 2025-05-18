@@ -536,7 +536,7 @@ class WorldMap:
         # Default to TYPE#N
         if resource_type not in self._resource_counters:
             self._resource_counters[resource_type] = 1
-        resource_id = f"{resource_type.name}#{self._resource_counters[resource_type]}"
+        resource_id = f"{resource_type.name}{self._resource_counters[resource_type]}"
         self._resource_counters[resource_type] += 1
         return resource_id
 
@@ -594,13 +594,14 @@ class WorldMap:
                             owner = self.get_property_owner(property_id)
                         
                         # Register resource with location, name, and owner
-                        self.resource_registry[resource_id] = {
+                        resource_record = { 
                             'type': resource_type,
                             'name': resource_id,  # Store the ID (which might be a name) with the resource
                             'description': allocation['description'],
                             'location': (x, y),
                             'properties': {'owner': owner} if owner else {}
                         }
+                        self.resource_registry[resource_id] = resource_record
                         
                         # Add to patch
                         self.patches[x][y].resources[resource_id] = 1
@@ -854,9 +855,17 @@ class WorldMap:
 
     def get_resource_by_id(self, resource_id):
         """Get resource data by ID"""
+        path_name = self._infrastructure_rules.get('path_type', 'road')
+        resource_id = resource_id.strip().capitalize()
+        if resource_id == path_name:
+            return "path"
         if resource_id not in self.resource_registry:
-            print(f"ERROR: Resource {resource_id} not found")
-            return None
+            resource_id_no_hash = resource_id.replace('#', '')
+            if resource_id_no_hash in self.resource_registry:
+                return self.resource_registry[resource_id_no_hash]
+            else:
+                print(f"ERROR: Resource {resource_id} not found")
+                return None
         return self.resource_registry[resource_id]
 
     def generate_market_resource(self):
@@ -983,6 +992,7 @@ class WorldMap:
         path_type = getattr(self.infrastructure_types, path_type_name)
         
         current = (start_x, start_y)
+        self.patches[start_x][start_y].has_path = True
         while current != (end_x, end_y):
             next_x = current[0]
             next_y = current[1]
@@ -995,6 +1005,7 @@ class WorldMap:
             next_pos = (next_x, next_y)
             self.road_graph.add_edge(current, next_pos)
             self.patches[next_x][next_y].infrastructure_type = path_type
+            self.patches[next_x][next_y].has_path = True
             current = next_pos
 
     def get_movement_cost(self, x, y):
@@ -1242,6 +1253,13 @@ def get_detailed_visibility_description(world, camera_x, camera_y, observer, obs
                 water_distances = [manhattan_distance(camera_x, camera_y, p.x, p.y) for p in water_patches]
                 water_element.set("distances", ",".join(map(str, sorted(water_distances))))
 
+        path_patches = [p for p in direction_patches if p.has_path]
+        path_name = world._infrastructure_rules.get('path_type', 'road')
+        if path_patches:
+            path_element = ET.SubElement(direction_element, path_name)
+            path_distances = [manhattan_distance(camera_x, camera_y, p.x, p.y) for p in path_patches]
+            path_element.set("distances", ",".join(map(str, sorted(path_distances))))
+
         visible_agents = [agent for agent in world.agents if
                             world.patches[agent.x][agent.y] in direction_patches and agent != observer]
         if visible_agents:
@@ -1273,7 +1291,7 @@ def print_formatted_xml(xml_string, indent=2):
     print(formatted_xml)
 
 
-def extract_direction_info(xml_string, direction_name):
+def extract_direction_info(world, xml_string, direction_name):
     """
     Extract information about a specific direction from the visibility description XML.
 
@@ -1330,6 +1348,14 @@ def extract_direction_info(xml_string, direction_name):
         except:
             pass
 
+    # Extract path information if available
+    path_name = world._infrastructure_rules.get('path_type', 'road')
+    path_elem = direction_elem.find(path_name)
+    if path_elem is not None:
+        info[path_name] = {
+            'distances': path_elem.get('distances')
+        } 
+
     # Extract agent information if available
     agents_elem = direction_elem.find('characters')
     if agents_elem is not None:
@@ -1347,12 +1373,13 @@ def extract_direction_info(xml_string, direction_name):
     return info
 
 
-def hash_direction_info(direction_info, distance_threshold=10):
+def hash_direction_info(direction_info, distance_threshold=10, world=None):
     text_view = ""
     percept = ""
     percept_summary = ""
     resources = []
     characters = []
+    paths = []
     for dir in direction_info.keys():
         if dir == 'Current':
             percept_summary = f'You are in {direction_info[dir]['terrain']} terrain. '
@@ -1374,6 +1401,12 @@ def hash_direction_info(direction_info, distance_threshold=10):
                     percept += f"{resource['id']} distance {resource['distance']}, "
                     resources.append(resource['id'])
             percept = percept[:-2] + '; '
+        path_name = world._infrastructure_rules.get('path_type', 'road')
+        if path_name in direction_info[dir] and len(direction_info[dir][path_name]) > 0:
+            path_distances = direction_info[dir][path_name]['distances']
+            percept += f"{path_name}: distances {path_distances}"
+            paths.append(path_name)
+
         if 'characters' in direction_info[dir] and len(direction_info[dir]['characters']) > 0:  
             character_added = False
             for character in direction_info[dir]['characters']:
@@ -1385,25 +1418,7 @@ def hash_direction_info(direction_info, distance_threshold=10):
                     characters.append(character['name'])
             percept = percept[:-2]
         percept += "\n"
-    percept_summary += f"You see {', '.join(characters)} and {', '.join(resources)} resources"
+    percept_summary += f"You see {', '.join(characters)} and {', '.join(resources)} resources{f' and {path_name}(s)' if len(paths) > 0 else ''}"
     print(percept_summary)
-    return percept, resources, characters, percept_summary
+    return percept, resources, characters, paths, percept_summary
                 
-
-if __name__ == "__main__":
-    import importlib
-    import sys, os
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    import plays.config as configuration
-    from plays.scenarios import forest  # Import the forest scenario
-    from sim.mapview import MapVisualizer
-
-    world = WorldMap(50, 50, forest)
-    agent = Agent(20, 20, world, 'Cave#1_owner')
-    view = {}
-    for dir in ['Current', 'North', 'Northeast', 'East', 'Southeast', 
-                   'South', 'Southwest', 'West', 'Northwest']:
-        dir_obs = extract_direction_info(get_detailed_visibility_description(world, 20, 20, agent, 5), dir)
-        view[dir] = dir_obs    
-    hash_direction_info(view)
- 

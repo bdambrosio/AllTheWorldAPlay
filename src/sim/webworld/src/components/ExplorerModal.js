@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './ExplorerModal.css';
 
-function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }) {
+function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, sendReplayEvent }) {
   const [explorerState, setExplorerState] = useState(lastState);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('core');
@@ -30,6 +30,23 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
     }
   };
 
+  const handleTabClick = (tabName) => {
+    setActiveTab(tabName);
+    
+    sendReplayEvent('setExplorerTab', {
+      characterName: character.name,
+      tabName: tabName
+    });
+  };
+
+  const handleClose = () => {
+    onClose();
+    sendReplayEvent('setShowExplorer', { 
+      characterName: character.name,
+      show: false 
+    });
+  };
+
   if (error) return <div className="error">{error}</div>;
   if (!explorerState) return <div>Loading...</div>;
 
@@ -39,50 +56,50 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand }
         <h2>{character.name} State Explorer</h2>
         <div>
           <button onClick={refreshData}>Refresh</button>
-          <button onClick={onClose}>Close</button>
+          <button onClick={handleClose}>Close</button>
         </div>
       </div>
 
       <div className="tab-bar">
         <button 
           className={activeTab === 'core' ? 'active' : ''} 
-          onClick={() => setActiveTab('core')}
+          onClick={() => handleTabClick('core')}
         >
           Core State
         </button>
         <button 
           className={activeTab === 'memory' ? 'active' : ''} 
-          onClick={() => setActiveTab('memory')}
+          onClick={() => handleTabClick('memory')}
         >
           Memory
         </button>
         <button 
           className={activeTab === 'debug' ? 'active' : ''} 
-          onClick={() => setActiveTab('debug')}
+          onClick={() => handleTabClick('debug')}
         >
           Debug
         </button>
         <button 
           className={activeTab === 'social' ? 'active' : ''} 
-          onClick={() => setActiveTab('social')}
+          onClick={() => handleTabClick('social')}
         >
           Social
         </button>
         <button 
           className={activeTab === 'cognitive' ? 'active' : ''} 
-          onClick={() => setActiveTab('cognitive')}
+          onClick={() => handleTabClick('cognitive')}
         >
           Cognitive
         </button>
         <button 
           className={activeTab === 'signals' ? 'active' : ''} 
-          onClick={() => setActiveTab('signals')}
+          onClick={() => handleTabClick('signals')}
         >
           Signals
         </button>
         <button 
           className={activeTab === 'chat' ? 'active' : ''} 
-          onClick={() => setActiveTab('chat')}
+          onClick={() => handleTabClick('chat')}
         >
           Chat
         </button>

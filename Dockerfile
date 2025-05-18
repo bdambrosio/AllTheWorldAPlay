@@ -1,6 +1,6 @@
 ### UI build stage
-LABEL org.opencontainers.image.source=https://github.com/bdambrosio/AllTheWorldAPlay
 FROM node:20 AS ui
+LABEL org.opencontainers.image.source=https://github.com/bdambrosio/AllTheWorldAPlay
 WORKDIR /build
 
 # 1.  copy only the manifests first (better cache)
