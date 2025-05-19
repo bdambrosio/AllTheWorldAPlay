@@ -49,19 +49,36 @@ def init_session_state(session_id):
     replay_task[session_id] = None
 
 def release_session_state(session_id):
-    del replay_events[session_id]
-    del current_replay_index[session_id]
-    del is_replay_mode[session_id]
-    del is_replay_running[session_id]
-    del speech_enabled[session_id]
-    del character_details_cache[session_id]
-    del image_cache[session_id]
-    del speech_complete_event[session_id]
+    if session_id in replay_events:
+        del replay_events[session_id]
+    if session_id in current_replay_index:
+        del current_replay_index[session_id]
+    if session_id in is_replay_mode:
+        del is_replay_mode[session_id]
+    if session_id in is_replay_running:
+        del is_replay_running[session_id]
+    if session_id in speech_enabled:
+        del speech_enabled[session_id]
+    if session_id in character_details_cache:
+        del character_details_cache[session_id]
+    if session_id in image_cache:
+        del image_cache[session_id]
+    if session_id in speech_complete_event:
+        del speech_complete_event[session_id]
+    if session_id in replay_task:
+        del replay_task[session_id]
+
+    if session_id in character_details_cache:
+        del character_details_cache[session_id]
+    if session_id in image_cache:
+        del image_cache[session_id]
+    if session_id in speech_complete_event:
+        del speech_complete_event[session_id]
     if session_id in replay_task:
         task = replay_task[session_id]
         if task and not task.done():
             task.cancel()
-        del replay_task[session_id]
+            del replay_task[session_id]
 
 
 SPEECH_TIMEOUT = 30  # seconds
@@ -182,6 +199,8 @@ async def handle_event_image(session_id, event):
         except Exception as e:
             print(f"Error processing speech: {e}")
         return event
+    elif event.get('type') == 'play_list':
+        return None
 
     return event
 
@@ -222,6 +241,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             'timestamp': time.time()
         }
 
+    async def send_prologue(session_id, websocket):
+        await websocket.send_json({
+            'type': 'show_update',
+            'text': """Welcome to replay mode.
+Select a replay file to load and start playing.
+Voiced files may take a moment to load.
+---------------------------------------------------------------------------
+Replays are recordings of previous real-time performances, and differ from them in several ways
+1. Since these are pre-recorded, you cannot interact through character chat or Director's Chair.
+2. Images are low quality and rarely updated, to reduce file space.
+3. A recording may not include voice, the Voice button only affects sound output if the replay includes audio.
+
+However, most UI elements are present and fully functional, such as character tab selection and the explore character feature.
+---------------------------------------------------------------------------
+
+"""})
+
     try:
         while True:
             try:
@@ -240,6 +276,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 command = data.get('command') or data.get('action', '')
                 if command == 'initialize':
                     try:
+                        await send_prologue(session_id, websocket)
                         json_files = [f.name for f in replays_dir.glob('*.json')]
                         await websocket.send_json({
                             "type": "play_list",

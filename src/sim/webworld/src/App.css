@@ -44,8 +44,8 @@ body {
 }
 
 .world-panel {
-  width: 508px;
-  height: 508px;
+  width: 408px;
+  height: 408px;
   background-color: #333333;
   border-radius: 0px;
   padding: 10px;
@@ -58,7 +58,7 @@ body {
   border-radius: 2px;
   padding: 10px;
   color: #FFFFFF;
-  min-height: 512px;
+  min-height: 408px;
 }
 
 .character-info {

@@ -1,32 +1,17 @@
-// src/sim/webworld/src/contexts/ReplayContext.tsx
+// src/sim/webworld/src/contexts/ReplayContext.js
 import React, { createContext, useContext, useState } from 'react';
-
-interface ReplayEvent {
-  timestamp: number;
-  type: string;
-  target: string;
-  ui_action?: string;  // The UI action to take when replaying this event
-}
-
-interface ReplayContextType {
-  isRecording: boolean;
-  events: ReplayEvent[];
-  startRecording: () => void;
-  stopRecording: () => void;
-  recordEvent: (type: string, target: string) => void;
-}
 
 const ReplayContext = createContext({
   isRecording: false,
-  events: [] as ReplayEvent[],
+  events: [],
   startRecording: () => {},
   stopRecording: () => {},
-  recordEvent: (type: string, target: string) => {}
+  recordEvent: (type, target) => {}
 });
 
-export const ReplayProvider = ({ children }: { children: any }) => {
+export const ReplayProvider = ({ children }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [events, setEvents] = useState([] as ReplayEvent[]);
+  const [events, setEvents] = useState([]);
 
   const startRecording = () => {
     setIsRecording(true);
@@ -37,7 +22,7 @@ export const ReplayProvider = ({ children }: { children: any }) => {
     setIsRecording(false);
   };
 
-  const recordEvent = (type: string, target: string) => {
+  const recordEvent = (type, target) => {
     if (isRecording) {
       setEvents(prev => [...prev, {
         timestamp: Date.now(),
