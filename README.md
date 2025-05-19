@@ -1,7 +1,8 @@
 ## AllTheWorldAPlay[^1] (ATWAP)
 ### A playground for cognitive software and other beings.
 
-- Container! x86 / Cuda 12
+- Second Container for Replay - wholly self-contained replay capability, no LLM, no TTS, just click and go.
+- Container! x86 / Cuda 12. 
 - MAJOR upgrade - full automatic narrative generation. stick with release for older version, this one is incompatible. Still Alpha, needs more testing and documentation. 'Narrative' button probably doesn't work. See the wiki narrative page for more. See existing plays. declaration of map_file is what triggers the new narrative level.
 - Multi-act plays! Fully self-generated. For now only an early draft release of narrative-following, with narratives in src/plays/narratives. These are auto-generated from play and scenario files, I'll release the auto-gen code after a few more tweaks/tests. See wiki for more.
 - Major debug cycle on the overall character cognitive cycle. Longer term action stays on task better, imho. 
