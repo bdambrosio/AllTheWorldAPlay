@@ -32,4 +32,5 @@ peft
 fastapi[standard]
 playsound3
 coqui-tts
+hf_xet
 
