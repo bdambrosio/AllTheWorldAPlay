@@ -52,14 +52,14 @@ Alex.add_perceptual_input("Your alarm just went off. It's 7:15 AM.",'internal')
 Alex.add_perceptual_input("You have a job interview is at 9:00 AM downtown, at the Office. It's about 30 minutes away by car.", 'internal')
 Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", 'internal')
 receptionist =W.get_npc_by_name('Receptionist', description="A young man with a kind face", x=20, y=20, create_if_missing=True)
-receptionist.mapAgent.move_to_resource('Office#1')
-W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office#1', 'works_at')
+receptionist.mapAgent.move_to_resource('Office1')
+W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office1', 'works_at')
 
 # If simulation_time is None, use today's date
 base_datetime = W.simulation_time if W.simulation_time else datetime.now()
 W.simulation_time = base_datetime.replace(hour=7, minute=15, second=0, microsecond=0)
 
 interviewer = W.get_npc_by_name('Interviewer', description="A skilled antagonistic interviewer looking for flaws or weaknesses in your skills and or personality", x=20, y=20, create_if_missing=True)
-interviewer.mapAgent.move_to_resource('Office#1')
-W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office#1', 'works_at')
+interviewer.mapAgent.move_to_resource('Office1')
+W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office1', 'works_at')
 

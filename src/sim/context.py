@@ -98,7 +98,7 @@ class Context():
         for resource_id, resource in self.map.resource_registry.items():
             has_owner = self.check_resource_has_npc(resource)
             if has_owner:
-                owner:Character = self.get_npc_by_name(resource['name']+'_owner', description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
+                owner:Character = self.get_npc_by_name(resource['name']+'_owner'.captialize(), description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
                 resource['properties']['owner'] = owner.mapAgent
                 self.reference_manager.declare_relationship(resource['name'], 'owned by', owner.name, 'owner of')
 
@@ -352,7 +352,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         # create a new NPC
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
-            npc = NarrativeCharacter(name, character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
+            npc = NarrativeCharacter(name.capitalize(), character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
             npc.set_context(self)
             npc.llm = self.llm
             map_agent = self.map.get_agent(name)
@@ -880,6 +880,7 @@ Ensure your response reflects this change.
         #construct a list of characters in the scene in the order in which they appear
         characters_in_scene: List[Character] = []
         for character_name in scene['action_order']:
+            character_name = character_name.capitalize().strip()
             character = self.get_actor_by_name(character_name)
             if character is None:
                 print(f'Character {character_name} not found in scene {scene["scene_title"]}')
@@ -904,7 +905,11 @@ Ensure your response reflects this change.
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
             character.look() # important to do this after everyone is in place.
-            goal_text = scene['characters'][character.name]['goal']
+            try: # can fail if invented character name mismatch for some reason
+                goal_text = scene['characters'][character.name.capitalize()]['goal']
+            except Exception as e:
+                print(f'Error getting goal for {character.name}: {e}')
+                goal_text = ''
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
 
