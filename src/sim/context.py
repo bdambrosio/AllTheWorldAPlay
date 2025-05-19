@@ -89,16 +89,21 @@ class Context():
         self.reference_manager = ReferenceManager(self, self.llm)
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
-        api_key = os.getenv('ELEVENLABS_API_KEY')
-        if not api_key:
-            print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
-        self.voice_service.set_api_key('elevenlabs', api_key)
+        try:
+            api_key = os.getenv('ELEVENLABS_API_KEY')
+            if not api_key:
+                print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
+            self.voice_service.set_api_key('elevenlabs', api_key)
+        except Exception as e:
+            print(f"Error setting up voice service: {e}")
+            self.voice_service.set_provider('coqui')
+
         voices = self.voice_service.get_voices()
  
         for resource_id, resource in self.map.resource_registry.items():
             has_owner = self.check_resource_has_npc(resource)
             if has_owner:
-                owner:Character = self.get_npc_by_name(resource['name']+'_owner'.captialize(), description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
+                owner:Character = self.get_npc_by_name(resource['name']+'_owner'.capitalize(), description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
                 resource['properties']['owner'] = owner.mapAgent
                 self.reference_manager.declare_relationship(resource['name'], 'owned by', owner.name, 'owner of')
 
@@ -139,10 +144,14 @@ class Context():
 
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
-        api_key = os.getenv('ELEVENLABS_API_KEY')
-        if not api_key:
-            print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
-        self.voice_service.set_api_key('elevenlabs', api_key)
+        try:
+            api_key = os.getenv('ELEVENLABS_API_KEY')
+            if not api_key:
+                print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
+            self.voice_service.set_api_key('elevenlabs', api_key)
+        except Exception as e:
+            print(f"Error setting up voice service: {e}")
+            self.voice_service.set_provider('coqui')
 
         
     async def start(self):

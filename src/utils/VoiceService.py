@@ -4,7 +4,7 @@ import requests
 import json
 from typing import Dict, Optional, List, Any
 import os
-from playsound import playsound
+from playsound3 import playsound
 import tempfile
 import asyncio
 import soundfile as sf

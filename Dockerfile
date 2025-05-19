@@ -4,8 +4,19 @@ LABEL org.opencontainers.image.source=https://github.com/bdambrosio/AllTheWorldA
 WORKDIR /build
 
 # 1.  copy only the manifests first (better cache)
-COPY src/sim/webworld/package*.json ./
-RUN npm ci --omit=dev          # or `npm ci` if you want dev deps for the build
+COPY src/sim/webworld/package.json ./
+COPY src/sim/webworld/package-lock.json ./
+
+# ──--------------------------------------
+# DEBUG – drop after things work
+RUN echo "===== build dir contents =====" \
+ && ls -al \
+ && echo "===== package-lock head =====" \
+ && head -10 package-lock.json
+# ──--------------------------------------
+
+
+RUN npm ci --legacy-peer-deps        # or `npm ci` if you want dev deps for the build
 
 # 2.  copy the rest of the UI source
 COPY src/sim/webworld/ .
@@ -69,7 +80,8 @@ RUN npm install
 COPY src/sim/webworld/ .
 
 # Add src to PYTHONPATH
-ENV PYTHONPATH=/app/src:$PYTHONPATH
+#ENV PYTHONPATH=/app/src:$PYTHONPATH
+ENV PYTHONPATH=/app/src
 
 # Expose the port your app runs on
 EXPOSE 8000

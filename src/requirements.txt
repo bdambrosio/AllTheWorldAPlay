@@ -30,6 +30,6 @@ faiss-gpu-cu12[fix_cuda]
 diffusers
 peft
 fastapi[standard]
-playsound
+playsound3
 coqui-tts
 
