@@ -6,13 +6,13 @@ from typing import Optional
 
 import os, json, math, time, requests, sys
 
-from src.sim.replay import SPEECH_TIMEOUT
-from src.utils.VoiceService import VoiceService
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.sim.replay import SPEECH_TIMEOUT
+from src.utils.VoiceService import VoiceService
 
 from src.sim.mapview import MapVisualizer
 from src.sim.character_dataclasses import Act, Goal, Task
