@@ -36,7 +36,7 @@ So this is NOT at this time for those unprepared to dig into the software at all
 More info in wiki.
 
 ## Installation:
-The following install has been tested on Ubuntu 22.04 (Llambda instance with A10)
+The following install has been tested on Ubuntu 22.04 (Llambda instance with A10) or try containers!
 ```code
 # first install python 3.12
 sudo apt update && sudo apt install -y software-properties-common
