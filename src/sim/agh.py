@@ -219,6 +219,8 @@ class Character:
         description = self.character
         if self.actor_models.get_known_actor_relationship(self.name):
             description += '\n\n' + self.actor_models.get_known_actor_relationship(self.name)
+        if type(description) != str:
+            description = ''
         return description
     
     def validate_and_create_goal(self, goal_hash, signalCluster=None):

@@ -305,6 +305,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         is_replay_running[session_id] = True
                         try:
                             while current_replay_index[session_id] < len(replay_events[session_id]) and is_replay_running[session_id]:
+                                print(f"Sending step event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
                                 event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
                                 if event:
                                     await websocket.send_json(event)
@@ -320,9 +321,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                     
                                     # Cache character details for later use
                                     await post_process_event(session_id, event)
-                                    current_replay_index[session_id] += 1
                                     delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
                                     await asyncio.sleep(delay)
+                                else:
+                                    print(f"Skipping event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
+                                current_replay_index[session_id] += 1
                             print("Reached end of replay")
                         except asyncio.CancelledError:
                             pass

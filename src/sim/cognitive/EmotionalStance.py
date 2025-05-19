@@ -20,7 +20,7 @@ class Arousal(Enum):
     Relaxed = "Relaxed" #calm, at ease"
     Exhausted = "Exhausted" #depleted, drained"
     Compelled = "Compelled" #biologically / unconsciously motivated - includes sexual arousal, hunger, etc."
-    
+    Neutral = "Neutral" #neutral, indifferent"
     
 class Tone(Enum):
     Angry = "Angry" #hostile, enraged"
@@ -28,10 +28,12 @@ class Tone(Enum):
     Anxious = "Anxious" #worried, uneasy"
     Sad = "Sad" #sorrowful, grieving"
     Disgusted = "Disgusted" #revolted, repulsed, contemptuous"
+    Confident = "Confident" #confident, assured"
     Surprised = "Surprised" #astonished, startled"
     Curious = "Curious" #curious, engaged"
     Joyful = "Joyful" #happy, elated"
     Content = "Content" #satisfied, peaceful"
+    Neutral = "Neutral" #neutral, indifferent"
 
 class Orientation(Enum):
     Controlling = "Controlling" #directing, managing others"
@@ -44,6 +46,7 @@ class Orientation(Enum):
     Performing = "Performing" #seeking attention/approval"
     Observing = "Observing" #gathering social information"
     Defending = "Defending" #protecting position/resources"
+    Neutral = "Neutral" #neutral, indifferent"
 
 stance_definitions = {
     "Vigilant": "vigilant, ready, focused",
@@ -57,6 +60,7 @@ stance_definitions = {
     "Anxious": "worried, uneasy",
     "Sad": "sorrowful, grieving",
     "Disgusted": "revolted, repulsed, contemptuous",
+    "Confident": "confident, assured",
     "Surprised": "astonished, startled",
     "Curious": "curious, engaged",
     "Joyful": "happy, elated",
@@ -71,6 +75,7 @@ stance_definitions = {
     "Performing": "seeking attention/approval",
     "Observing": "gathering social information",
     "Defending": "protecting position/resources",
+    "Neutral": "neutral, indifferent",
 }
 class EmotionalStance:
     """Represents an emotional stance of a character"""
@@ -201,7 +206,8 @@ There are three dimensions to your response:
     Relaxed
     Exhausted
     Compelled
-
+    Neutral
+                              
 2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
     Angry
     Fearful
