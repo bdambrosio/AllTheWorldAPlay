@@ -152,7 +152,7 @@ sim_manager = SimulationManager()
 ws_manager = WebSocketManager()
 image_cache = {}
 # Add a root endpoint for health check
-@app.get("/")
+@app.get("/health")
 async def root():
     return {"status": "ok"}
 
