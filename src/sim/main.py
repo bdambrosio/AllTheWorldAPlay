@@ -120,7 +120,8 @@ class SimulationManager:
         
         # Start simulation process
         sim_path = Path(__file__).parent / "simulation.py"
-        self.process = subprocess.Popen(["python", "-Xfrozen_modules=off", str(sim_path)])
+        self.process = subprocess.Popen(["python", "-Xfrozen_modules=off", str(sim_path)],
+                                        stdout=None, stderr=None)
         
         # Wait briefly for process to start
         await asyncio.sleep(10)
