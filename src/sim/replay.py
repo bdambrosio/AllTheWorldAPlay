@@ -42,7 +42,7 @@ def init_session_state(session_id):
     current_replay_index[session_id] = 0
     is_replay_mode[session_id] = False
     is_replay_running[session_id] = False
-    speech_enabled[session_id] = False
+    speech_enabled[session_id] = True
     character_details_cache[session_id] = {}
     image_cache[session_id] = {}
     speech_complete_event[session_id] = asyncio.Event()
@@ -244,20 +244,21 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     async def send_prologue(session_id, websocket):
         await websocket.send_json({
             'type': 'show_update',
-            'text': """Welcome to replay mode.
-Select a replay file to load and start playing.
+            'text': """Welcome to replay mode. Select a replay file to load and start playing.
 Voiced files may take a moment to load.
 ---------------------------------------------------------------------------
 Replays are recordings of previous real-time performances, and differ from them in several ways
-1. Since these are pre-recorded, you cannot interact through character chat or Director's Chair.
-2. Images are low quality and rarely updated, to reduce file space.
-3. A recording may not include voice, the Voice button only affects sound output if the replay includes audio.
+Since these are pre-recorded, you cannot interact through character chat or Director's Chair.
+Images are low quality and rarely updated, to reduce file space.
+The Voice button is only effective if the replay includes audio (you may need to toggle it to hear the audio).
 
 However, most UI elements are present and fully functional, such as character tab selection and the explore character feature.
+
+Contact bruce@tuuyi.com for more info.
 ---------------------------------------------------------------------------
 
 """})
-
+    await asyncio.sleep(5)
     try:
         while True:
             try:

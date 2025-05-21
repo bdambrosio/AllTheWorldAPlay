@@ -82,8 +82,8 @@ class SimulationServer:
         self.next_actor_index = 0
         self.known_actors_dir = None
         self.narrative_play = False # if True, run integrated narrative, otherwise run step from here
-        self.speech_complete_event = asyncio.Event()  # Add speech completion event
-        self.speech_enabled = False  # Add speech enabled flag
+        self.speech_complete_event = asyncio.Event()  #  speech completion event 
+        self.speech_enabled = True  # speech enabled flag
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
 

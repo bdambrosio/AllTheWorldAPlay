@@ -44,7 +44,7 @@ function App() {
   const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
   const [appMode, setAppMode] = useState('simulation');
   const pendingPlayLoadRef = useRef(null);
-  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(true);
   const speechEnabledRef = useRef(speechEnabled);
 
   useEffect(() => {

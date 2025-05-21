@@ -156,7 +156,7 @@ class Context():
         
     async def start(self):
         voices = self.voice_service.get_voices()
-        print(f"Available voices: {voices}")
+        #print(f"Available voices: {voices}")
         self.message_queue.put({'name':'', 'text':"play context initialized, warming up characters...", 
                                 'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5})})
         await asyncio.sleep(0.1)
