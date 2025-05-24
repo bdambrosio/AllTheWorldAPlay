@@ -39,6 +39,7 @@ def format_text():
 
 def clear_text():
     text_edit.clear()
+    text_edit.setFont(textFont)
 
 def submit_to_llm():
     prompt = text_edit.toPlainText().strip()

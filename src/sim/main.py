@@ -287,7 +287,8 @@ async def startup_event():
                     image_cache[actor_name] = capture_file_result['data']['image']
             elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
                 if 'world' in image_cache:
-                    del capture_file_result['data']['image']
+                    #del capture_file_result['data']['image']
+                    pass
                 else:
                     image_cache['world'] = capture_file_result['data']['image']
 

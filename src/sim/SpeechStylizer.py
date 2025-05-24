@@ -515,37 +515,10 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         """
         global _voice_embeddings, _voices
         # 1. Construct prompt for LLM
-        prompt = [SystemMessage(content="""Given the following character description, extract the character's likely gender, age group, accent, and personality keywords as a hash-formatted block.
-
-Character Name: {{$name}}
-Description: {{$description}}
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-Close the hash-formatted text with ##  on a separate line, as shown below.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#gender female / male
-#age middle_aged / young / old
-#accent american / british / australian / etc.
-#personality expressive, confident / shy, introverted / etc.
-##
-
-End your response with:
-</end>
-""")]
-
-        # 2. Call LLM and parse response
-        llm_response = self.char.llm.ask({'name': self.char.name, 'description': self.char.character}, prompt, tag='voice_traits', max_tokens=100)
-        if llm_response is None:
-            return None
-        gender = hash_utils.find('gender', llm_response)
-        age = hash_utils.find('age', llm_response)
-        accent = hash_utils.find('accent', llm_response)
-        personality = hash_utils.findList('personality', llm_response)
-        personality_embedding = _embedding_model.encode(' '.join(personality))
+        personality_embedding = _embedding_model.encode(' '.join(self.char.personality))
 
         # 3. Score each voice
-        def score_voice(voice):
+        def score_voice(voice, gender, age, accent, personality, personality_embedding):
             score = 0
             labels = voice.get('labels', {})
             # Gender match
@@ -572,7 +545,11 @@ End your response with:
             return score
 
         # 4. Pick the best voice
-        scores = [score_voice(voice) for voice in voices]
+        gender = self.char.gender
+        age = self.char.age
+        accent = self.char.accent
+        personality = self.char.personality
+        scores = [score_voice(voice, gender, age, accent, personality, personality_embedding) for voice in voices]
         max_score = max(scores)
         best_voice = voices[scores.index(max_score)]
         return best_voice['voice_id']

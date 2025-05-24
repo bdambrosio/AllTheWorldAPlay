@@ -16,7 +16,7 @@ importlib.reload(garden)
 
 map_file_name = 'garden.py' # needed to trigger narrative creation
 
-lemon = Character("Lemonade", """I am a pale grey kitten. 
+lemon = Character("Lemonade", """I am a pale grey tabbykitten. 
 I love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 I are intelligent and very curious about everything.
 My name is Lemonade, others often call me Lemon""", server_name=server_name)

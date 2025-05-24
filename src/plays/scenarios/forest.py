@@ -133,6 +133,16 @@ resource_rules = {
             }
         },
         {
+            'resource_type': resource_types.Hut,
+            'description': 'A small hut for shelter',
+            'has_npc': True,
+            'count': 1,
+            'requires_property': False,
+            'terrain_weights': {
+                terrain_types.Mountain: 2.0
+            }
+        },
+        {
             'resource_type': resource_types.Thicket,
             'description': 'A dense thicket of vegetation',
             'count': 12,

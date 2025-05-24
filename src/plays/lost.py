@@ -20,7 +20,7 @@ importlib.reload(forest)
 map_file_name='forest.py' # needed to trigger narrative creation
 
 # Character definitions
-S = NarrativeCharacter("Samantha", """You are Samantha, a healthy, attractive young woman. 
+S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical and a bit of a romantic. 
 You have a uncomfortable history, maybe it is just as well you don't remember it.
@@ -36,7 +36,8 @@ S.set_drives([
 ])
 
 
-J = NarrativeCharacter("Joe", """You are Joe, a healthy young man, intelligent and self-sufficient. 
+J = NarrativeCharacter("Joe", """Joe, a healthy young man, short beard  and dark hair, in grey chinos and a red t-shirt. 
+You are intelligent and self-sufficient. 
 You are informal and somewhat impulsive. 
 You are strong, and think you love the outdoors, but are basically a nerd.
 You yearn for something more, but don't know what it is.

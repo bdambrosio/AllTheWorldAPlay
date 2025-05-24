@@ -17,7 +17,7 @@ model_name = configuration.model_name
 importlib.reload(suburban)
 
 # Create the human player character
-Sage = Character("Sage", """I am a 60-year-old herbalist who has become a mentor figure.
+Sage = Character("Sage", """Sage, a 60-year-old female herbalist who wears soft grey robes and has become a mentor figure.
 I have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi and the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    
 I am a Zen Buddhist and a member of the Soka Gakkai, a lay Buddhist organization.
 I am also deeply knowledgeable in more traditional philosophy, including the works of Plato, Aristotle, and the Stoics, as well as more recent thinkers like Hegel, Nietzsche, and Heidegger.

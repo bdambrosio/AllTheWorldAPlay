@@ -84,6 +84,7 @@ class SimulationServer:
         self.narrative_play = False # if True, run integrated narrative, otherwise run step from here
         self.speech_complete_event = asyncio.Event()  #  speech completion event 
         self.speech_enabled = True  # speech enabled flag
+        self.waiting_speech_complete = False # flag to prevent speech overrun
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
 
@@ -674,7 +675,9 @@ class SimulationServer:
                                     
                                     # Wait for speech completion or timeout
                                     try:
-                                        await asyncio.wait_for(self.speech_complete_event.wait(), 20.0)
+                                        self.waiting_speech_complete = True
+                                        await asyncio.wait_for(self.speech_complete_event.wait(), 40.0)
+                                        self.waiting_speech_complete = False # reset so we know not to set for next speech if overrun
                                     except asyncio.TimeoutError:
                                         print(f"Speech timeout for: {name} - {text[:50]}...")
                             except Exception as e:
