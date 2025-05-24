@@ -17,7 +17,7 @@ importlib.reload(coastal)
 map_file_name = 'coastal.py'
 
 # Main character - a talented artist who finds inspiration in the coastal town
-Maya = NarrativeCharacter("Maya", """You are Maya, a talented 32-year-old female watercolor artist.
+Maya = NarrativeCharacter("Maya", """Maya, a 32-year-old female watercolor artist, wearing a paint-splatteredwhite t-shirt and jeans.
 You live in a small coastal town where you have your studio near the harbor.
 You're warm, thoughtful, and value deep connections with others.
 Your morning ritual includes a visit to Harbor Light Cafe for coffee before heading to your studio.
@@ -35,7 +35,7 @@ Maya.drives = [
 Maya.add_perceptual_input("""The morning light through your studio window is perfect for painting today, but first, you need your morning coffee ritual at Harbor Light Cafe.""", 'internal')
 
 # Supporting character with his own craft and routines
-Elijah = NarrativeCharacter("Elijah", """You are Elijah, a 35-year-old male boat builder.
+Elijah = NarrativeCharacter("Elijah", """Elijah, a 35-year-old male boat builder, wearing a t-shirt and jeans.
 You have deep roots in this small coastal town.
 You're steady, reliable, and deeply connected to the natural rhythms of this place.
 You have a workshop at the harbor where you build and repair wooden boats.
@@ -55,7 +55,7 @@ Elijah.drives = [
 Elijah.add_perceptual_input("""It's almost noon, and you're getting hungry after a morning of sanding a hull. Time to head to Harbor Light Cafe for lunch, where they know exactly how you like your sandwich.""", 'internal')
 
 # Cafe owner with her own goals and place in the community
-Chrys = NarrativeCharacter("Chrys", """You are Chrys, a 38-year-old female owner of Harbor Light Cafe.
+Chrys = NarrativeCharacter("Chrys", """Chrys, a 38-year-old female owner of Harbor Light Cafe, wearing informal but stylish clothes.
 You spend most of your time at the cafe in your role as owner and primary cook and bottle-washer, but you also have a small apartment above the cafe.
 Your cafe is a central gathering place in this small coastal town.
 You are warm, observant, and have a talent for remembering everyone's preferences.

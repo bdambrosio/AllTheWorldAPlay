@@ -19,7 +19,7 @@ importlib.reload(coastal)
 map_file_name = 'coastal.py' # needed to trigger narrative creation
 
 # Main character - a person facing a difficult decision with competing drives
-Maya = Character("Maya", """You are Maya, a talented 32-year-old female artist,
+Maya = Character("Maya", """Maya, a talented 32-year-old female artist, wearing a paint-splattered white t-shirt and jeans.
 You are living in a small coastal town.
 You're warm, thoughtful, and value deep connections with others.
 You express yourself with careful consideration.
@@ -37,7 +37,7 @@ Maya.add_perceptual_input("""It's everything I've worked for, but accepting mean
 
 
 # Supporting character with their own goals that create natural tension
-Elijah = Character("Elijah", """You are Elijah, a 35-year-old male boat builder.
+Elijah = Character("Elijah", """Elijah, a 35-year-old male boat builder, wearing a t-shirt and jeans.
 You wave deep roots in this small coastal town.
 You're steady, reliable, and deeply connected to the natural rhythms of this place.
 You've been building a life here, including a deepening relationship with Maya.
@@ -56,7 +56,7 @@ Elijah.drives = [
 Elijah.add_perceptual_input("Maya has been quiet since yesterday. You suspect something is troubling her, perhaps related to her art career. You've been planning to show her the workshop expansion plans today.", 'internal')
 
 # Supporting character with their own goals that create natural tension
-Chrys = Character("Chrys", """You are Chrys, a 35-year-old female artist and gallery owner in the city.
+Chrys = Character("Chrys", """Chrys, a 35-year-old female artist and gallery owner in the city, wearing informal but stylish clothes.
 You are ambitious and driven, and you've been working to build your career in the art world.
 You think the 'rugged coastal' mystique might be the next big thing, and are trying to attract Maya to your gallery.
 In the interview with Maya you met Elijah, whom you find intriguing.

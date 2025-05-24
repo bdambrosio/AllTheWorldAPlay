@@ -24,6 +24,7 @@ import asyncio
 from prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
+    from sim.character_dataclasses import Act, Task, Goal
 
 
 logger = logging.getLogger('simulation_core')
@@ -341,6 +342,35 @@ If absolutely no information is available for any field, use "unknown" for that 
             traceback.print_exc()
         return filepath
 
+    def act_image(self, actor: Character, act: Act, consequences:str = '', filepath='worldsim.png', image_generator='tti_serve'):
+        try:
+            state = '. '.join(self.current_state.split('.')[:4])
+            characters = '\n' + '.\n'.join(
+                [entity.name + ' is ' + entity.character.split('.')[0][8:] for entity in self.actors])
+            actor_dscp_str = actor.character.strip().split('.')[0].strip()
+            actor_dscp_str.replace(actor.name, '')
+            act_str=f'. {actor.name}. {actor_dscp_str}'
+            if act:
+                act_str += f', {act.mode}: {act.action}'
+            else:
+                act_str += '. '
+            prompt = act_str + consequences + state + characters
+            # print(f'calling generate_dalle_image\n{prompt}')
+            if image_generator == 'tti_serve':
+                filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
+            else:
+                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
+        except Exception as e:
+            traceback.print_exc()
+        return filepath
+    
+    def to_act_image_json(self, actor:Character, act:Act, consequences:str):
+        """Return JSON-serializable dict of context state"""
+        return {
+            'show': ' \n\n'+self.current_state,
+            'image': self.act_image(actor, act, consequences, 'worldsim.png')
+        }
+
     def get_actor_by_name(self, name):
         """Helper to find actor by name"""
         for actor in self.actors:
@@ -525,8 +555,14 @@ End your response with:
             updates = ''
         return updates
     
-    def do(self, actor, action):
+    async def do(self, actor, act):
         """ This is the world determining the effects of an actor action"""
+        action = act.action
+        target = act.target
+        duration = act.duration
+        mode = act.mode
+        source = act.source
+        target = act.target
         prompt = [UserMessage(content="""You are simulating a dynamic world. 
 Your task is to determine the result of {{$name}} performing the following action:
 
@@ -592,6 +628,8 @@ End your response with:
         self.last_updates = character_updates
         print(f'\nContext Do consequences:\n {consequences}')
         print(f' Context Do world_update:\n {world_updates}\n')
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_act_image_json(actor, act, consequences)})
+        await asyncio.sleep(0.1)
         return consequences, world_updates, character_updates
 
 

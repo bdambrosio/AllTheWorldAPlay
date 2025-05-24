@@ -202,6 +202,7 @@ class Character:
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         self.emotionalStance = EmotionalStance.from_signalClusters(focus_signalClusters, self)
+        self.set_character_traits()
         self.speech_stylizer = SpeechStylizer(self) 
  
 
@@ -214,6 +215,36 @@ class Character:
             self.autonomy.task = autonomy_json['task']
         if 'action' in autonomy_json:
             self.autonomy.action = autonomy_json['action']
+
+    def set_character_traits(self):
+        prompt = [SystemMessage(content="""Given the following character description, extract the character's likely gender, age group, accent, and personality keywords as a hash-formatted block.
+
+Character Name: {{$name}}
+Description: {{$description}}
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#gender female / male
+#age middle_aged / young / old
+#accent american / british / australian / etc.
+#personality expressive, confident / shy, introverted / etc.
+##
+
+End your response with:
+</end>
+""")]
+
+        # 2. Call LLM and parse response
+        llm_response = self.llm.ask({'name': self.name, 'description': self.character}, prompt, tag='voice_traits', max_tokens=100)
+        if llm_response is None:
+            return None
+        self.gender = hash_utils.find('gender', llm_response)
+        self.age = hash_utils.find('age', llm_response)
+        self.accent = hash_utils.find('accent', llm_response)
+        self.personality = hash_utils.findList('personality', llm_response)
+
 
     def get_character_description(self):
         description = self.character
@@ -1107,7 +1138,8 @@ End response with:
             # Get action consequences from world
             self.context.message_queue.put({'name':self.name, 'text':f'does {act_arg}'})
             await asyncio.sleep(0.1)
-            consequences, world_updates, character_updates = self.context.do(self, act_arg)
+            consequences, world_updates, character_updates = await self.context.do(self, act)
+            await asyncio.sleep(0.1)
             if len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
             self.lastActResult = character_updates
@@ -1932,7 +1964,7 @@ Situation: increased security measures; State: fear of losing Annie
 
 Response:
 #mode Do
-#action Call a meeting with the building management to discuss increased security measures for Annie and the household.
+#action Call the building management to discuss increased security measures for Annie and the household.
 #target building management
 #duration 10 minutes
 
@@ -1963,7 +1995,6 @@ Response:
 
 Task:
 Find food.
-
 
 Response:
 #mode Move
@@ -2208,7 +2239,7 @@ End your response with:
                                  "intensions":'\n'.join(task.to_string() for task in self.intensions[-5:]),
                                  "name":self.name}, 
                                  prompt, tag='update_actions_wrt_say_think', temp=0.1, stops=['</end>'], max_tokens=150)
-        intension_hashes = hash_utils.findall('task', response)
+        intension_hashes = hash_utils.findall_forms(response)
         if len(intension_hashes) == 0:
             print(f'no new tasks in say or think')
             return
@@ -2220,7 +2251,7 @@ End your response with:
                 self.focus_task.push(intension)
         return
     
-    def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=[]):
+    async def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=[]):
         """Update individual commitments after closing a dialog"""
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog between {{$name}} and {{$target_name}},
@@ -2338,7 +2369,7 @@ End your response with:
                       actors=[self, target],
                       start_time=self.context.simulation_time,
                       duration=0)    
-        intension_hashes = hash_utils.findall('task', response)
+        intension_hashes = hash_utils.findall_forms(response)
         if len(intension_hashes) == 0:
             print(f'no new tasks in conversation')
             return
@@ -2347,10 +2378,20 @@ End your response with:
             if intension:
                 print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
                 self.intensions.append(intension)
-                self.focus_task.push(intension)
+                if self.task_plan:
+                    self.task_plan.push(0, intension)
+                else:
+                    self.focus_task.push(intension)
+                    await asyncio.sleep(0.1)
+                    await self.step_task('')
+                return
+            if joint_tasks and len(joint_tasks) > 0:
+                print(f'  {self.name} new individual task w joint tasks: {intension_hash.replace('\n', '; ')}')
+                if self.task_plan:
+                    self.task_plan.push(0, intension)
         return
   
-    def update_joint_commitments_following_conversation(self, target, transcript):
+    async def update_joint_commitments_following_conversation(self, target, transcript):
         """Update individual commitments after closing a dialog"""
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
@@ -2448,7 +2489,7 @@ End your response with:
                       duration=0,
                       goal=None,
                       actors=[self, target])    
-        intension_hashes = hash_utils.findall('task', response)
+        intension_hashes = hash_utils.findall_forms(response)
         intensions = []
         if len(intension_hashes) == 0:
             print(f'no new joint intensions in turn')
@@ -2457,8 +2498,13 @@ End your response with:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
-                self.intensions.append(intension)
-                self.focus_task.push(intension)
+                if target.task_plan: # target will execute next!
+                    target.task_plan.push(0, intension)
+                elif self.task_plan:
+                    self.task_plan.push(0, intension)
+                else:
+                    self.focus_task.push(intension)
+                    await self.step_task('')
         return intensions
 
     def random_string(self, length=8):
@@ -2615,17 +2661,19 @@ End your response with:
         duplicative_insert = ''
         system_prompt = """You are a seasoned writer writing dialog for a movie.
 Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
-Write dialogue-forward: let conflict emerge through spoken intention and subtext, not narration or logistics.
+Let conflict emerge through action, thought, spoken intention, and subtext, not narration.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
         """
         prompt_string = """The prime directive is to be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
-        prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below."""
+        prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below, based on your goals in the dialog."""
         prompt_string += """
 
-{{$character}}.
+<your_character>
+{{$character}}
+</your_character>
 
 <emotional_state>
 {{$emotionalState}}
@@ -2690,13 +2738,13 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 {{$duplicative_insert}}
 
 Guidance: 
-- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character.
+- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}}, your gender is {{$your_gender}}
 - The response can occasionally include occasional body language or facial expressions as well as speech
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
 - Do not respond to a question with a question.
 - If the intent is to agree, state agreement without repeating the statement.
 - Above all, speak in your own voice. Do not echo the speech style of the statement. 
-- Character emotional state should have maximum impact on the tone, phrasing, and content of the response.
+- Your emotional state should have maximum impact on the tone, phrasing, and content of the response.
 - Respond in the style of natural spoken dialog. Use short sentences and casual language, but avoid repeating stereotypical phrases in the dialog to this point.
 {{$scene_post_narrative}}
  
@@ -2742,6 +2790,9 @@ End your response with:
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
+            'target': 'self' if self is from_actor else 'speaker',
+            'target_gender': from_actor.gender,
+            'your_gender': self.gender,
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
             "scene_post_narrative": scene_post_narrative
@@ -3018,7 +3069,7 @@ End your response with:
         base = 0.75  # Controls how quickly weights decay
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
-            return raw * 0.2
+            return raw * 0.4
         return raw
 
 

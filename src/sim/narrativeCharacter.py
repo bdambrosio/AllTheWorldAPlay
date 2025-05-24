@@ -634,7 +634,7 @@ Each **scene** object must have:
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
+ "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
  }
 
  === Example ===

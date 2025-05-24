@@ -73,7 +73,7 @@ def set_model(model):
 
 def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
 
-    prompt = [UserMessage(content="""You are a specialized image prompt compressor. 
+    prompt = [UserMessage(content="""You are a specialized image prompt generator. 
 Your task is to compress detailed scene descriptions into optimal prompts for Stable Diffusion 3.5-large-turbo, which has a 128 token limit.
 <scene>
 {{$input}}
