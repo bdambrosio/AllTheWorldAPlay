@@ -7,7 +7,7 @@ server_name='local'
 server_name='openai'; model_name='gpt-4.1-mini'
 #server_name='gemini'
 #server_name='gemini-pro'
-#erver_name='Grok' ; 
+#server_name='Grok' 
 #server_name='Cohere'
 #server_name='openrouter'; model_name='google/gemini-2.0-flash-preview'
 #server_name='openrouter'; model_name='qwen/qwen3-32b'

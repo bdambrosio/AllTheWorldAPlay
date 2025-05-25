@@ -53,12 +53,12 @@ class GeminiClient():
                 model=model,
                 contents=text_prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=100,#options.max_tokens,
+                    max_output_tokens=options.max_tokens,
                     #temperature=0.0,
                     stopSequences=stops
                 )
             )
-            print(response.text)
+            #print(response.text)
             return response.text
             #return {"status":'success', "message":{"role":'assistant', "content":item.content}}
         except Exception as e:

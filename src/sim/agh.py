@@ -367,7 +367,11 @@ End your response with:
         mode = hash_utils.find('mode', hash_string)
         action = hash_utils.find('action', hash_string)
         duration = hash_utils.find('duration', hash_string)
-        targets = self.characters_from_hash(hash_string)
+        target_names = hash_utils.findList('target', hash_string)
+        targets = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in target_names]
+        actor_names = hash_utils.findList('actors', hash_string)
+        actors = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in actor_names]
+
         # Clean up mode string and validate against Mode enum
         if mode:
             mode = mode.strip().capitalize()
@@ -378,7 +382,7 @@ End your response with:
                 return None
         
         actors = [self]
-        if targets:
+        if targets and (not actors or len(actors) == 0):
             if self in targets:
                 actors = targets
             else:
@@ -1027,7 +1031,9 @@ End response with:
         """Check if goal is complete and update state"""
         termination_check = goal.termination if goal != None else None
         if termination_check is None or termination_check == '':
-            return True
+            if goal.name == 'preconditions':
+                return True
+            termination_check = 'natural end of goal'
 
         # Test completion through cognitive processor's state system
         satisfied, progress = await self.test_termination(
@@ -1107,7 +1113,7 @@ End response with:
                 moved = self.move_toward(act_arg)
                 if moved:
                     percept = self.look()
-                    self.show += ' moves to ' + act_arg + '.\n  and notices ' + percept
+                    self.show += ' moves to ' + act_arg + '.\n'#  and notices ' + percept
                     self.context.message_queue.put({'name':self.name, 'text':self.show})
                     self.context.transcript.append(f'{self.name}: {self.show}')
                     self.show = '' # has been added to message queue!
@@ -1150,8 +1156,8 @@ End response with:
             # Update displays
 
             if len(consequences.strip()) > 2:
-                self.show += 'Resulting in ' + consequences.strip()
-                self.context.message_queue.put({'name':self.name, 'text':self.show})
+                #self.show += 'Resulting in ' + consequences.strip()
+                #self.context.message_queue.put({'name':self.name, 'text':self.show})
                 self.context.transcript.append(f'{self.name}: {self.show}')
                 await asyncio.sleep(0.1)
             self.show = '' # has been added to message queue!
@@ -1165,7 +1171,7 @@ End response with:
 
         elif act_mode == 'Look':
             percept = self.look(interest=act_arg)
-            self.show += act_arg + '.\n  sees ' + percept + '. '
+            self.show += act_arg + '.\n'# sees ' + percept + '. '
             self.context.message_queue.put({'name':self.name, 'text':self.show})
             self.context.transcript.append(f'{self.name}: {self.show}')
             self.show = '' # has been added to message queue!
@@ -1206,8 +1212,17 @@ End response with:
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0.1)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
-            if not target and act.target:
+            if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]
+            elif target and isinstance(target, list):
+                for candidate in target:
+                    if candidate and isinstance(candidate, Character) and candidate != self:
+                        target = candidate
+                        break
+                if target and isinstance(target, list) and len(target) > 0:
+                    target = target[0]
+            elif not target and act.target and isinstance(act.target, Character):
+                target = act.target
             # open dialog
             if target:
                 if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
@@ -1384,7 +1399,7 @@ End response with:
 
         if len(goals) > 0:
             self.focus_goal = goals[0]
-            self.goals.extend(goals)
+            self.goals = goals
         if len(goals) > 1:
             print(f'{self.name} generated {len(goals)} goals for scene!')
         return goals
@@ -1542,12 +1557,16 @@ End response with:
 
 
 
-    def generate_task_plan(self, goal=None):
+    def generate_task_plan(self, goal=None, replan=False):
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
         if not goal:
             goal = self.focus_goal
+        if replan and self.clear_goal_if_satisfied(goal):
+            goal.task_plan = []
+            return []
+
         suffix = """
 
 Create up to {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
@@ -1625,6 +1644,8 @@ End response with:
             logger.info(f'{self.name} generate_task_plan: no current scene, using default ntasks: {ntasks}')
         elif self.context.current_scene:
             ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
+        if goal.task_plan and replan:
+            ntasks = min(ntasks, max(1, len(goal.task_plan)-1))
         if self.context.scene_post_narrative:
             scene_narrative = f"\n\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
@@ -1961,46 +1982,54 @@ Respond in hash-formatted text:
 
 Task:
 Situation: increased security measures; State: fear of losing Annie
+Actors: Annie, Madam
 
 Response:
 #mode Do
 #action Call the building management to discuss increased security measures for Annie and the household.
 #target building management
+#actors Annie, Madam
 #duration 10 minutes
 
 ----
 
 Task:
 Establish connection with Joe given RecentHistory element: "Who is this guy?"
+Actors: Samantha
 
 Response:
 #mode Say
 #action Hi, who are you?
 #duration 1 minute
 #target Joe
+#actors Samantha
 ##
 
 ----
 
 Task:
 Find out where I am given Situation element: "This is very very strange. Where am I?"
+Actors: Samantha
 
 Response:
 #mode Look
 #action look around for landmarks or signs of civilization
 #duration 1 minute
+#actors Samantha
 ##
 
 ----
 
 Task:
 Find food.
+Actors: Joe, Samantha
 
 Response:
 #mode Move
 #action berries#2
 #duration 15 minute
-#target Samantha
+#target None
+#actors Joe, Samantha
 ##
 
 ----
@@ -2012,6 +2041,7 @@ Response:
 #action Hey, Elijah, Chrys - how about we meet at Chrys's café this afternoon to sketch out some joint project ideas? What time works best for you both?
 #duration 1 minute
 #target Elijah, Chrys
+#actors Maya
 ##
 
 
@@ -2025,6 +2055,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #action thoughts, words to say, direction to move, or physical action
 #duration expected duration of the action in minutes
 #target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.
+#actors name(s) of the actor(s) of this act, comma separated.
 ##
 
 Respond ONLY with the above hash-formatted text for each alternative act.
@@ -2100,7 +2131,7 @@ End your response with:
 
     def update_actions_wrt_say_think(self, source, act_mode, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
-        if source.name.startswith('dialog'):
+        if not self.focus_goal or source.name.startswith('dialog'):
             # print(f' in dialog, no action updates')
             return
         if target is None:
@@ -2245,15 +2276,21 @@ End your response with:
             return
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash, goal)
-            if intension:
+            if intension and self.focus_goal:
                 print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
-                self.intensions.append(intension)
                 self.focus_task.push(intension)
+                self.step_task('')
+                if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                    self.generate_task_plan(self.focus_goal)
+
+            elif intension:
+                print('No focus goal, no new task from say or think')
         return
     
-    async def update_individual_commitments_following_conversation(self, target, transcript, joint_tasks=[]):
+    async def update_individual_commitments_following_conversation(self, target:Character, transcript:str, joint_tasks=[]):
         """Update individual commitments after closing a dialog"""
-        
+        if not self.focus_goal or self.check_if_in_dialog_subtask():
+            return []
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog between {{$name}} and {{$target_name}},
 and extract the single most important new commitment to act now made by {{$name}} individually, if any. Otherwise respond None.
 
@@ -2339,7 +2376,7 @@ Response:
 #description bring ropes to meeting with Jean
 #reason in case the well handle breaks
 #termination Met Jean by the well
-#start_time 30 minutes
+#start_time 0 minutes
 #duration 10 minutes
 #actors Francoise
 #committed True
@@ -2365,7 +2402,7 @@ End your response with:
                       description='dialog with '+target.name, 
                       reason='dialog with '+target.name, 
                       termination='natural end of dialog', 
-                      goal=None,
+                      goal=self.focus_goal if self.focus_goal else None,
                       actors=[self, target],
                       start_time=self.context.simulation_time,
                       duration=0)    
@@ -2377,21 +2414,19 @@ End your response with:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
-                self.intensions.append(intension)
-                if self.task_plan:
-                    self.task_plan.push(0, intension)
-                else:
+                if self.focus_goal:
                     self.focus_task.push(intension)
                     await asyncio.sleep(0.1)
                     await self.step_task('')
-                return
-            if joint_tasks and len(joint_tasks) > 0:
-                print(f'  {self.name} new individual task w joint tasks: {intension_hash.replace('\n', '; ')}')
-                if self.task_plan:
-                    self.task_plan.push(0, intension)
+                    if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                        self.generate_task_plan(self.focus_goal, replan=True)
+                else:
+                    print('No focus goal, no new task from conversation')
         return
   
-    async def update_joint_commitments_following_conversation(self, target, transcript):
+    async def update_joint_commitments_following_conversation(self, target:Character, transcript:str):
+        if not self.focus_goal or self.check_if_in_dialog_subtask():
+            return []
         """Update individual commitments after closing a dialog"""
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
@@ -2498,13 +2533,15 @@ End your response with:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
-                if target.task_plan: # target will execute next!
-                    target.task_plan.push(0, intension)
-                elif self.task_plan:
-                    self.task_plan.push(0, intension)
-                else:
+                #if target.focus_goal and target.focus_goal.task_plan: # target will execute next!
+                #    target.focus_goal.task_plan.push(0, intension)
+                if self.focus_goal:
                     self.focus_task.push(intension)
                     await self.step_task('')
+                    if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
+                        self.generate_task_plan(self.focus_goal, replan=True)
+                else:
+                    print('No focus goal, no new task from conversation')
         return intensions
 
     def random_string(self, length=8):
@@ -2620,21 +2657,27 @@ End your response with:
             dialog_as_list = dialog.split('\n') 
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
+            if self.name != 'Viewer' and from_actor.name != 'Viewer':
+                joint_tasks = await self.update_joint_commitments_following_conversation(from_actor, dialog)
+                await asyncio.sleep(0.1)
+                await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
+                await asyncio.sleep(0.1)
+
             self.last_task = self.focus_task.peek()
             self.focus_task.pop()
-            if self.name != 'Viewer' and from_actor.name != 'Viewer':
-                joint_tasks = self.update_joint_commitments_following_conversation(from_actor, dialog)
-                self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
             # it would probably be better to have the other actor deactivate the dialog itself
             dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
             from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
             dialog_as_list = dialog.split('\n') 
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
+
+            if from_actor.name != 'Viewer' and self.name != 'Viewer':
+                await from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
+                await asyncio.sleep(0.1)
+
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor.focus_task.pop()
-            if from_actor.name != 'Viewer' and self.name != 'Viewer':
-                from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
             #self.driveSignalManager.recluster()
             #from_actor.driveSignalManager.recluster()
             return
@@ -3070,6 +3113,8 @@ End your response with:
         raw = pow(base, n)  # Exponential decay
         if act.mode == 'Think':
             return raw * 0.4
+        if act.mode == 'Say' and self.check_if_in_dialog_subtask():
+            return raw * 0.1
         return raw
 
 
@@ -3185,7 +3230,14 @@ End your response with:
         if not self.focus_task.peek():
             return # no admissible task at this time
 
-
+    def check_if_in_dialog_subtask(self):
+        if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog with '):
+            # current task is not a dialog
+            for task in self.focus_task.stack:
+                if task.name.startswith('dialog with '):
+                    # but there IS a dialog on the stack
+                    return True
+        return False
 
     async def cognitive_cycle(self, sense_data='', narrative=False, ui_queue=None):
         """Perform a complete cognitive cycle"""
@@ -3372,7 +3424,8 @@ End your response with:
                 if self.focus_task.peek() != task: # task completed
                     return True
             else:
-                raise Exception(f'{self.name} step_task: task {task.name} not found in focus_task.stack')
+                print(f'{self.name} step_task: task {task.name} not found in focus_task.stack')
+            return True
             
 
         if self.focus_task.peek() is task:
@@ -3405,8 +3458,9 @@ End your response with:
         target_name = None
         #responses, at least, explicitly name target of speech.
         if action.target and (action.target[0] != self or (self.focus_task.peek() and self.focus_task.peek().name.startswith('dialog with '+self.name))):
-            target_name = action.target[0].name
-            target = action.target[0]
+            if action.target[0] and isinstance(action.target[0], Character):
+                target_name = action.target[0].name
+                target = action.target[0]
         elif self.focus_task.peek() and self.focus_task.peek().name.startswith('internal dialog'):
             target_name = self.name
             target = self

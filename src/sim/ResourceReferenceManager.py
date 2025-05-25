@@ -22,7 +22,7 @@ class ResourceReferenceManager:
 
     def resolve_reference_with_llm(self, reference_text:str):
         """ resolve a reference to a resource in the context of the world map """
-        mission = f"""Your task is to resolve a reference to a resource in the world map.
+        prefix = f"""Your task is to resolve a reference to a resource in the world map.
 Given information about the character referencing the resource, the reference text, the map of resources in the world,
 the character's current location, and the character's stated intention to move the the reference text, determine the most likely resource that the character is referencing.
 Return the name of the resource that the character is referencing. Return None if you cannot determine the resource. Do not include any introductory, explanatory, or formatting text in your response.
@@ -48,7 +48,7 @@ Return None if you cannot determine the resource. Do not include any introductor
 End your response with:
 <end/>
 """
-        response = ask(self.character, mission, suffix, {}, 15, tag = 'ResourceReferenceManager.resolve_reference_with_llm')
+        response = ask(self.character, prefix=prefix, suffix=suffix, addl_bindings={}, max_tokens=15, tag = 'ResourceReferenceManager.resolve_reference_with_llm')
         resource = self.context.map.get_resource_by_name(response.strip())
         if resource:
             return resource, response.strip()

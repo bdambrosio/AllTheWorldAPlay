@@ -438,11 +438,6 @@ function App() {
   }, [speechEnabled]);
 
   const handleToggleSpeech = () => {
-    setSpeechEnabled(prev => {
-      const next = !prev;                // optimistic flip
-      speechEnabledRef.current = next;   // keep ref in-sync right now
-      return next;
-    });
     sendCommand('toggle_speech');        // tell the server
   };
 

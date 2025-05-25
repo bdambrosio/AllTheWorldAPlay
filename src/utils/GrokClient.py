@@ -23,7 +23,7 @@ if api_key is not None and api_key != '':
         print(f"Error creating Grok client: {e}")
 #quick test of Grok API
 """
-message = client.messages.create(model="grok-2-latest",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Grok}])
+message = client.messages.create(model="grok-3",max_tokens=1024,messages=[{"role": "user", "content": "Hello, Grok}])
 print(f"\nClaude:\n{message.content}\n\n")
 """
 

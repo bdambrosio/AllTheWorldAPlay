@@ -158,7 +158,7 @@ class Context():
     async def start(self):
         voices = self.voice_service.get_voices()
         #print(f"Available voices: {voices}")
-        self.message_queue.put({'name':'', 'text':"play context initialized, warming up characters...", 
+        self.message_queue.put({'name':'', 'text':"play context initialized, creating characters...", 
                                 'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5})})
         await asyncio.sleep(0.1)
 
@@ -970,9 +970,12 @@ Ensure your response reflects this change.
                     characters_finished_tasks.append(character)
                     continue
                 else:
+                    self.message_queue.put({'name':'', 'text':f''})
                     await character.cognitive_cycle(narrative=True)
         if self.current_scene.get('post_narrative'):
             self.current_state += '\n'+self.current_scene['post_narrative']
+            for character in characters_in_scene:
+                character.add_perceptual_input(self.current_scene['post_narrative'], mode = 'internal')
             self.message_queue.put({'name':'\n', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
 
@@ -1006,13 +1009,13 @@ Ensure your response reflects this change.
         self.map_file = map_file
         """Create narratives for all characters,
             then share them with each other (selectively),
-            then update them with the latest sharedinformation"""
+            then update them with the latest shared information"""
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             character.write_narrative(play_file, map_file)
             await asyncio.sleep(0.1)
         for character in cast(List[NarrativeCharacter], self.actors):
-            self.message_queue.put({'name':character.name, 'text':f'---- sharing narrative -----'})
+            self.message_queue.put({'name':character.name, 'text':f'---- initial coordination -----'})
             await character.share_narrative()
             await asyncio.sleep(0.1)
         for character in cast(List[NarrativeCharacter], self.actors):
@@ -1109,6 +1112,8 @@ Keep the JSON human-readable (indent 2 spaces).
 Return **only** the JSON.  No commentary, no code fences.
 End your response with </end>
 """)]
+        self.message_queue.put({'name':self.name, 'text':f'------ integrating narratives -----'})
+        await asyncio.sleep(0.1)
         response = self.llm.ask(
                               {"time": self.simulation_time.isoformat(), "plans": character_plans, "backgrounds": character_backgrounds},
                               prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
@@ -1125,6 +1130,8 @@ End your response with </end>
         if updated_narrative_plan is not None:
             self.validate_dates_in_plan(updated_narrative_plan)
         self.narrative = updated_narrative_plan
+        self.message_queue.put({'name':self.name, 'text':f'------ integrated narratives -----'})
+        await asyncio.sleep(0.1)
         return updated_narrative_plan
 
     def validate_dates_in_plan(self, narrative_plan):
