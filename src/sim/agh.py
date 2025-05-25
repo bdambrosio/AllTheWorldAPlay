@@ -1031,9 +1031,9 @@ End response with:
         """Check if goal is complete and update state"""
         termination_check = goal.termination if goal != None else None
         if termination_check is None or termination_check == '':
-            if goal.name == 'preconditions':
+            if goal.name == 'preconditions' or goal.name == 'postconditions':
                 return True
-            termination_check = 'natural end of goal'
+            termination_check = goal.description+', at least partially satisfied'
 
         # Test completion through cognitive processor's state system
         satisfied, progress = await self.test_termination(
