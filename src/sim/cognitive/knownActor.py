@@ -209,6 +209,7 @@ End with:
         # tensions field is not used, but keep it for now
         self.tensions.append(item)
         self.relationship += f'\n{item}'
+        
     def get_tensions(self):
         return '\n'.join(self.tensions)
     

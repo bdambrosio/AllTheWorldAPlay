@@ -58,7 +58,7 @@ J.add_perceptual_input("You think Whoever she is, she is pretty!", 'internal')
 
 # Create context with forest scenario
 W = context.Context([S, J],
-    """A temperate, mixed forest-open landscape with no buildings, roads, or other signs of humanity. 
+    """A temperate, mixed forest-open landscape with no buildings, no roads, no other signs of humanity. 
     It is a early morning on what seems like it will be a warm, sunny day.
     Two people are standing in the middle of the forest, looking around in confusion.""",
     scenario_module=forest,  # Pass the forest scenario module

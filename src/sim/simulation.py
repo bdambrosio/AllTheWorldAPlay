@@ -221,8 +221,6 @@ class SimulationServer:
             
             self.sim_context = module.W
             await self.send_command_ack('load_play')
-            if hasattr(module, 'narrative'):
-                self.sim_context.load_narrative(narrative_path / module.narrative)
             self.initialized = True
 
             #sim_context loaded and initialized, now set up voice service
