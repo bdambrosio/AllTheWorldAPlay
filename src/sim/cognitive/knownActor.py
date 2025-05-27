@@ -231,9 +231,13 @@ class KnownActorManager:
     def create_character(self, reference_text):
         """create a new character - used only after resolve_reference fails to find an existing character"""
         actor_name = reference_text.strip().capitalize()
-        actor_agh = self.context.get_npc_by_name(actor_name, self.owner.mapAgent.x, self.owner.mapAgent.y, create_if_missing=True)
+        actor_agh = self.context.get_npc_by_name(actor_name, description=reference_text, x=self.owner.mapAgent.x, y=self.owner.mapAgent.y, create_if_missing=True)
         self.known_actors[actor_name] = KnownActor(self.owner, actor_agh)
         self.resolution_cache[actor_name] = (actor_agh, actor_name)
+        if self.context.current_scene:
+            # we are in a scene, so char should have a goal
+            actor_agh.instantiate_narrative_goal(self.context.current_scene['post_narrative'])
+            actor_agh.focus_goal = actor_agh.goals[0]
         return actor_agh, actor_name
         
     def resolve_character(self, reference_text):
