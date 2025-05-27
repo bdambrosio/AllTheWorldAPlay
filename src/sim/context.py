@@ -916,6 +916,7 @@ Ensure your response reflects this change.
             self.simulation_time = scene['time']
         await asyncio.sleep(0.1)
         self.current_scene = scene
+        self.scene_pre_narrative = ''
         if scene.get('pre_narrative'):
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
@@ -951,9 +952,13 @@ Ensure your response reflects this change.
 
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
-            character.look() # important to do this after everyone is in place.
+            character.look('Look', act_arg='', reason=f'{scene["pre_narrative"]}') # important to do this after everyone is in place.
             try: # can fail if invented character name mismatch for some reason
                 goal_text = scene['characters'][character.name.capitalize()]['goal']
+                if self.scene_pre_narrative and character.name in self.scene_pre_narrative:
+                    character.add_perceptual_input(f'{self.scene_pre_narrative}', mode = 'internal')
+                if goal_text:
+                    character.add_perceptual_input(f'{goal_text}', mode = 'internal')
             except Exception as e:
                 print(f'Error getting goal for {character.name}: {e}')
                 goal_text = ''
@@ -983,6 +988,7 @@ Ensure your response reflects this change.
         if scene_duration > 0:
             self.simulation_time += timedelta(minutes=scene_duration)
         await self.update(local_only=True)
+        self.current_scene = None
 
 
     async def run_narrative_act(self, act):

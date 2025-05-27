@@ -294,7 +294,7 @@ Contact bruce@tuuyi.com for more info.
                 command = data.get('command') or data.get('action', '')
                 if command == 'initialize':
                     try:
-                        await send_prologue(session_id, websocket)
+                        #await send_prologue(session_id, websocket)
                         json_files = [f.name for f in replays_dir.glob('*.json')]
                         await websocket.send_json({
                             "type": "play_list",
