@@ -1140,7 +1140,7 @@ End response with:
                     self.context.message_queue.put({'name':self.name, 'text':self.show})
                     self.context.transcript.append(f'{self.name}: {self.show}')
                     self.show = '' # has been added to message queue!
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0)
                     self.show = '' # has been added to message queue!
                 else: 
                     resource, canonical_name = self.resourceRefManager.resolve_reference_with_llm(act_arg)
@@ -1154,7 +1154,7 @@ End response with:
                         self.context.message_queue.put({'name':self.name, 'text':self.show})
                         self.context.transcript.append(f'{self.name}: {self.show}')
                         self.show = '' # has been added to message queue!
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(0)
                     else:
                         act_mode = 'Do'
                         act_arg = 'move to ' + act_arg
@@ -1165,12 +1165,12 @@ End response with:
         # Handle world interaction
         if act_mode == 'Do':
             # Get action consequences from world
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
             consequences, world_updates, character_updates = await self.context.do(self, act)
             if character_updates and len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
             notices = self.process_consequences(act_arg, reason, consequences)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
             if notices and len(notices) > 0:
                 self.add_perceptual_input(f'{notices}', mode='internal')           
                 self.context.message_queue.put({'name':self.name, 'text':f'does {act_arg} {notices}'})
@@ -1187,7 +1187,7 @@ End response with:
                 #self.show += 'Resulting in ' + consequences.strip()
                 #self.context.message_queue.put({'name':self.name, 'text':self.show})
                 self.context.transcript.append(f'{self.name}: {self.show}')
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
             self.show = '' # has been added to message queue!
             if len(world_updates) > 0:
                 self.add_perceptual_input(f"{world_updates}", mode='visual')
@@ -1204,7 +1204,7 @@ End response with:
             self.context.transcript.append(f'{self.name}: {self.show}')
             self.show = '' # has been added to message queue!
             self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
         elif act_mode == 'Think': # Say is handled below
             self.thought = act_arg
@@ -1213,7 +1213,7 @@ End response with:
             style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
             self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
             if self.focus_task.peek() and not self.focus_task.peek().name.startswith('internal dialog with '+self.name): # no nested inner dialogs for now
                     # initiating an internal dialog
@@ -1229,7 +1229,7 @@ End response with:
                 self.focus_task.push(dialog_task)
                 self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate()
             await self.think(act_arg, source)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
         elif act_mode == 'Say':# must be a say
             self.show += f"{act_arg}'"
@@ -1238,7 +1238,7 @@ End response with:
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]
@@ -1585,7 +1585,7 @@ End response with:
 
 
 
-    def generate_task_plan(self, goal=None, new_task=None, replan=False):
+    def generate_task_plan(self, goal:Goal=None, new_task:Task=None, replan=False):
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
@@ -1597,7 +1597,13 @@ End response with:
                 return []
             else:
                 goal.task_plan = [new_task]
+                self.focus_goal = goal
+                new_task.goal = goal
                 return [new_task]
+        elif goal.task_plan and len(goal.task_plan) ==0:
+            goal.task_plan = [new_task]
+            new_task.goal = goal
+            return [new_task]
         
         suffix = """
 
@@ -1847,7 +1853,7 @@ End your response with:
             self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             if self.context.current_state.count('Following update may invalidate') > 3:
                 await self.context.update(local_only=True)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
             if type == 'task': threshold = 0.0
@@ -1859,7 +1865,7 @@ End your response with:
                 self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
                 if self.context.current_state.count('Following update may invalidate') > 3:
                     await self.context.update(local_only=True)
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0)
                 return True, progress
         #elif satisfied != None and 'insufficient' in satisfied.lower():
         #    if progress/100.0 > random.random() + 0.5:
@@ -2472,7 +2478,7 @@ End your response with:
                 print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
                 if self.focus_goal:
                     #self.focus_task.push(intension)
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0)
                     #await self.step_task('')
                     if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
                         self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
@@ -2737,9 +2743,9 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
     
             if self.name != 'Viewer' and from_actor.name != 'Viewer':
                 joint_tasks = await self.update_joint_commitments_following_conversation(from_actor, dialog)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
                 await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
 
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
             self.last_task = self.focus_task.peek()
@@ -2752,7 +2758,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
 
             if from_actor.name != 'Viewer' and self.name != 'Viewer':
                 await from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
 
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
@@ -2766,7 +2772,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
 
     def generate_dialog_turn(self, from_actor, message, source=None):
         #self.memory_consolidator.update_cognitive_model(
@@ -3075,13 +3081,13 @@ End your response with:
                 
                 # Send choice request to UI
                 self.context.message_queue.put(choice_request)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
             
                 # Wait for response with timeout                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
 
                 waited = 0
                 while waited < 999.0:
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0)
                     waited += 0.1
                     if not self.context.choice_response.empty():
                         try:
@@ -3153,7 +3159,7 @@ End your response with:
             # Wait for response with timeout
             waited = 0
             while waited < 999.0:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
                 waited += 0.1
                 if not self.context.choice_response.empty():
                     try:
@@ -3246,7 +3252,7 @@ End your response with:
             # Wait for response with timeout
             waited = 0
             while waited < 999.0:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
                 waited += 0.1
                 if not self.context.choice_response.empty():
                     try:
@@ -3325,7 +3331,7 @@ End your response with:
         if not narrative:
             self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
         self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
         self.thought = ''
         if self.focus_goal: 
             self.reason_over(self.focus_goal.name+'. '+self.focus_goal.description)
@@ -3386,7 +3392,7 @@ End your response with:
             if delay > 1.0:
                 self.context.update()
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
         except Exception as e:
             print(f'{self.name} cognitive_cycle error: {e}')
 
@@ -3475,7 +3481,7 @@ End your response with:
             await self.request_act_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
 
             await self.act_on_action(self.focus_action, self.focus_task.peek())
             act_count += 1
@@ -3489,7 +3495,7 @@ End your response with:
                 await self.request_act_choice(action_alternatives) # sets self.focus_action
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
                 await self.act_on_action(self.focus_action, task)
                 subtask_count += 1
                 while task in self.focus_task.stack and subtask in self.focus_task.stack: 
@@ -3502,7 +3508,7 @@ End your response with:
 
             if self.focus_task.peek() is task: #are we on main task?
                 await self.clear_task_if_satisfied(task) # will pop focus_task if task is done
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0)
                 if self.focus_task.peek() != task: # task completed
                     return True
             else:

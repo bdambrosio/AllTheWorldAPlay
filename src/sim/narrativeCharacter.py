@@ -207,20 +207,21 @@ class NarrativeCharacter(Character):
         serialized_str = self.reserialize_narrative_json({"acts":[act]})
         return json.dumps(serialized_str['acts'][0], indent=2)
 
-    def write_narrative(self, play, map):
+    async def write_narrative(self, play, map):
+        # await self.cognitive_cycle()
         self.play_file = play
         self.map_file = map
         self.play_file_content = open(Path('../plays/') / play, 'r').read()
         self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
-
-        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
-Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
-Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
-        """
+        system_prompt = """Imagine you are addressing the audience of a play. 
+Create a short introduction (no more than 60 tokens) to your character, including your name, terse description, role in the play, drives, and most important relationships with other characters. 
+Leave some mystery. This should be in the first person, you will speak to the audience.
+For example:
+#####
+Hi, I'm Maya, a brilliant artist. I live in a small coastal town with my partner Elijah.
+But things may be changing....
+#####
+"""
 
         mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
 The overall cast of characters and setting are given below in Play.py and Map.py.
@@ -254,6 +255,33 @@ You have been provided two Python source files above.
 
 """
                             
+        suffix="""
+Respond only with your introduction.
+Do not include any other explanatory, discursive, or formatting text.
+End your response with </end>
+"""
+
+        introduction = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix,
+                                addl_bindings={"play": self.play_file_content, 
+                                 "map": self.map_file_content,
+                                 "name": self.name,
+                                 "start_time": self.context.simulation_time.isoformat(),
+                                 "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                                 "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
+                                 max_tokens=200, tag='narrative')
+        if introduction:
+            self.context.message_queue.put({'name':self.name, 'text':introduction+'\n'})
+            await asyncio.sleep(0)
+
+
+        system_prompt = """You are a seasoned writer designing a 3 act narrative arc for a 30 minutemovie.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive. A very short final act can be added as a coda.
+        """
 
         suffix = """
 
@@ -293,10 +321,10 @@ You will have the opportunity to revise your plan as you go along, observe the r
 
 ### 2.2  Guidelines
 1. Base every character’s *stated goal* on their `.drives`, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3–8 acts, keep the momentum going. By the end there should be some resolution of the dramatic tension and the character's primary drive.
-3. Escalate tension act-to-act; expect to be challenged, and to be forced to reconsider your goals and perhaps change them in future.  
+2. Craft 3 acts - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives. An additional final act can be used as a coda.
+3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
 4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
-5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals.  
+5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
 6. Vary imagery and emotional tone; avoid repeating the same metaphor scene-to-scene.  
 7. Do **NOT** invent new characters unless absolutely necessary, and never break JSON validity.  
 8. Keep the JSON human-readable (indent 2 spaces).
@@ -711,7 +739,7 @@ End your response with </end>
         print(f'Running scene: {scene["scene_title"]} for {self.name}')
         self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]} at {scene["time"]}'})
         logger.info(f'Running scene: {scene["scene_title"]} for {self.name} at {scene["time"]}')
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
         self.current_scene = scene
         if scene.get('pre_narrative'):
             self.context.current_state += '\n\n'+scene['pre_narrative']

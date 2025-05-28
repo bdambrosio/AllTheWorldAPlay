@@ -2,7 +2,7 @@ import React from 'react';
 import './DirectorChairModal.css';
 
 function DirectorChairModal({ characters, onClose, sendCommand }) {
-  const controlTypes = ['Signal', 'Goal', 'Task', 'Action'];
+  const controlTypes = ['Goal', 'Task', 'Action'];
 
   return (
     <div className="director-chair-modal">
@@ -14,7 +14,6 @@ function DirectorChairModal({ characters, onClose, sendCommand }) {
               const autonomySettings = {};
               Object.values(characters).forEach(character => {
                 autonomySettings[character.name] = {
-                  signal: document.querySelector(`[data-character="${character.name}"][data-control="Signal"]`).classList.contains('automatic'),
                   goal: document.querySelector(`[data-character="${character.name}"][data-control="Goal"]`).classList.contains('automatic'),
                   task: document.querySelector(`[data-character="${character.name}"][data-control="Task"]`).classList.contains('automatic'),
                   action: document.querySelector(`[data-character="${character.name}"][data-control="Action"]`).classList.contains('automatic')
