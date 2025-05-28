@@ -1,17 +1,13 @@
-## AllTheWorldAPlay[^1] (ATWAP)
+## ImprovAI[^1]
+*rename will migrate to all other appearances of label, and reflects slight project refocus.*
 ### A playground for cognitive software and other beings.
-
-- Second Container for Replay - wholly self-contained replay capability, no LLM, no TTS, just click and go.
-- Container! x86 / Cuda 12. 
-- MAJOR upgrade - full automatic narrative generation. stick with release for older version, this one is incompatible. Still Alpha, needs more testing and documentation. 'Narrative' button probably doesn't work. See the wiki narrative page for more. See existing plays. declaration of map_file is what triggers the new narrative level.
-- Multi-act plays! Fully self-generated. For now only an early draft release of narrative-following, with narratives in src/plays/narratives. These are auto-generated from play and scenario files, I'll release the auto-gen code after a few more tweaks/tests. See wiki for more.
-- Major debug cycle on the overall character cognitive cycle. Longer term action stays on task better, imho. 
-- Custom Goals, Tasks, Acts! - Director's Chair now allows you to take over Goal, Task, Act creation for any actor. See wiki
-- LLM api support for OpenRouter.ai and for llama.cpp local
-  - see config.py in plays. for OpenRouter.ai an extra parameter - the model to use. If running llama.cpp server, specify --port=5000, choose server_name='local' in config.py (must be on same machine as AllTheWorld is running)
-- Reference resolution! - both characters (e.g., Jean's father) and resources (e.g. move to the thicket) now go through reference resolution. A bit crude, but significantly reduces frequency of missed references.
-- Map! very crude placeholder, but maybe fun. As with most other stuff, only try while paused. If it hangs, close the window. It takes up to a minute or so to generate the map, be patient
-
+### Vision update
+ImprovAI provides a stage for mixed human / AI improv performances.
+Given a short scenario, it:
+- generates a cast of cognitively-deep AI actors (my primary research interest)
+- Allows each character to choose how to act at the Act, Scene, Goal, Task, and individual Action levels.
+- Under the overall guidance of a Director whose job it is to coordinate the actors into a coherent narrative.
+- The role of Director can be flexibly assigned to the system or a human at any decision level, separately for each character.
 
 ![Play screenshot](docs/images/WebworldMain.png)
 
