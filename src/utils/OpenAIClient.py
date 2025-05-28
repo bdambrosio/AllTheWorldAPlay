@@ -19,7 +19,12 @@ except Exception as e:
 
 if api_key is not None and api_key != '':
     try:
-        client = OpenAI(api_key=api_key)
+        # Configure client with timeout and retry settings
+        client = OpenAI(
+            api_key=api_key,
+            timeout=30.0,  # 60 second timeout
+            max_retries=2   # Retry up to 3 times
+        )
     except Exception as e:
         print(f"Error opening OpenAI client: {e}")
 model = 'gpt-4.1-mini'
@@ -44,15 +49,29 @@ class OpenAIClient():
             model = options.model
         else:
             model = 'gpt-4.1-mini'
-        try:
-            response = client.chat.completions.create(
-                model=model, messages=prompt,
-                max_tokens=options.max_tokens, temperature=options.temperature, top_p=options.top_p,
-                stop=options.stops, stream=False)#, response_format = { "type": "json_object" })
-            item = response.choices[0].message
-            return item.content
-            #return {"status":'success', "message":{"role":'assistant', "content":item.content}}
-        except Exception as e:
-            return {"status":'error', "message":str(e)}
+        
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=model, 
+                    messages=prompt,
+                    max_tokens=options.max_tokens, 
+                    temperature=options.temperature, 
+                    top_p=options.top_p,
+                    stop=options.stops, 
+                    stream=False,
+                    timeout=60.0  # Per-request timeout override
+                )
+                item = response.choices[0].message
+                return item.content
+            except Exception as e:
+                print(f"OpenAI request error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    return {"status":'error', "message":str(e)}
+                # Exponential backoff: 1s, 2s, 4s
+                time.sleep(2 ** attempt)
+        
+        return {"status":'error', "message":"Request failed after all retries"}
             
 

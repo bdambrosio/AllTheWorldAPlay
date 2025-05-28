@@ -274,7 +274,7 @@ End your response with </end>
             await asyncio.sleep(0)
 
 
-        system_prompt = """You are a seasoned writer designing a 3 act narrative arc for a 30 minutemovie.
+        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minutemovie.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
@@ -294,9 +294,9 @@ Secondary
 {{$secondary_drive}}
 
 ## 2.  TASK
-Generate a single JSON document named **narrative.json** that outlines a medium-term narrative arc for yourself focused primarily on your first and primary drive.
+Generate a single JSON document named **narrative.json** that outlines the narrative arc for yourself focused on your primary and secondary drives.
 The narrative should start at the current time: {{$start_time}}
-Given where you are in life, what you have achieved so far, and what you want to achieve, this should be a plan for the next few months.
+Given where you are in life, what you have achieved so far, and what you want to achieve, this should be a plan for a long enough elapse time to make interesting dramatic progress wrt a primary issue in the scenario.
 Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.
 By the end of the narrative, the primary drive should be resolved.
 ### 2.1  Structure

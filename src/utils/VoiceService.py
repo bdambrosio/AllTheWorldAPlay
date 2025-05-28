@@ -8,6 +8,28 @@ from playsound3 import playsound
 import tempfile
 import asyncio
 import soundfile as sf
+import time
+
+try:
+    from TTS.api import TTS
+    COQUI_AVAILABLE = True
+except ImportError:
+    COQUI_AVAILABLE = False
+    print("Coqui-TTS not available. Install with: pip install TTS")
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("Requests not available. Install with: pip install requests")
+
+try:
+    from playsound import playsound
+    PLAYSOUND_AVAILABLE = True
+except ImportError:
+    PLAYSOUND_AVAILABLE = False
+    print("Playsound not available. Install with: pip install playsound")
 
 class CoquiTTSProvider:
     def __init__(self):
@@ -118,15 +140,42 @@ class CoquiTTSProvider:
 class ElevenLabsProvider:
     def __init__(self):
         self.api_key = None
-        self.base_url = 'https://api.elevenlabs.io/v1'
-        self.voices = None  # Change from [] to None to indicate "not loaded"
-        self.voice_map = {}
-        self.current_audio_file = None
+        self.base_url = "https://api.elevenlabs.io/v1"
+        self.voices = None
         self._voices_loaded = False
+        self.voice_map = {}  # character -> voice_id mapping
+        self.current_audio_file = None
 
     def set_api_key(self, api_key: str) -> None:
         self.api_key = api_key
-        self.fetch_voices()
+
+    def _make_request_with_retry(self, url: str, headers: Dict, json_data: Dict, max_retries: int = 3, timeout: int = 30) -> requests.Response:
+        """Make HTTP request with timeout and retry logic."""
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    json=json_data,
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                return response
+            except requests.exceptions.Timeout:
+                print(f"ElevenLabs request timeout (attempt {attempt + 1}/{max_retries})")
+                if attempt == max_retries - 1:
+                    raise Exception(f"Request timed out after {max_retries} attempts")
+                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+            except requests.exceptions.RequestException as e:
+                print(f"ElevenLabs request error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    raise Exception(f"Request failed after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt)  # Exponential backoff
+            except Exception as e:
+                print(f"Unexpected error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    raise Exception(f"Unexpected error after {max_retries} attempts: {e}")
+                time.sleep(2 ** attempt)
 
     def fetch_voices(self) -> None:
         if self.voices is not None:
@@ -138,7 +187,8 @@ class ElevenLabsProvider:
                 headers={
                     'xi-api-key': self.api_key,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout=10  # Add timeout to voices fetch too
             )
             response.raise_for_status()
             data = response.json()
@@ -184,15 +234,16 @@ class ElevenLabsProvider:
             request_data['voice_settings']['use_speaker_boost'] = options['speakerBoost']
 
         try:
-            response = requests.post(
+            response = self._make_request_with_retry(
                 f"{self.base_url}/text-to-speech/{voice_id}",
                 headers={
                     'xi-api-key': self.api_key,
                     'Content-Type': 'application/json'
                 },
-                json=request_data
+                json_data=request_data,
+                max_retries=2,
+                timeout=30
             )
-            response.raise_for_status()
 
             # Save to temporary file and play
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
@@ -239,15 +290,16 @@ class ElevenLabsProvider:
             request_data['voice_settings']['use_speaker_boost'] = options['speakerBoost']
 
         try:
-            response = requests.post(
+            response = self._make_request_with_retry(
                 f"{self.base_url}/text-to-speech/{voice_id}",
                 headers={
                     'xi-api-key': self.api_key,
                     'Content-Type': 'application/json'
                 },
-                json=request_data
+                json_data=request_data,
+                max_retries=3,
+                timeout=30
             )
-            response.raise_for_status()
 
             # Save to temporary file but don't play
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
