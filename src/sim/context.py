@@ -907,6 +907,8 @@ Ensure your response reflects this change.
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
+        await asyncio.sleep(0.1)
+        self.current_state += f'\n{scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'
         if type(scene['time']) == str:
             try:
                 self.simulation_time = datetime.fromisoformat(scene['time'])
@@ -921,7 +923,8 @@ Ensure your response reflects this change.
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
-            await asyncio.sleep(0.1)
+            await self.update()
+            await asyncio.sleep(0)
         if scene.get('post_narrative'):
             self.scene_post_narrative = scene['post_narrative']
 
@@ -981,17 +984,18 @@ Ensure your response reflects this change.
             self.current_state += '\n'+self.current_scene['post_narrative']
             for character in characters_in_scene:
                 character.add_perceptual_input(self.current_scene['post_narrative'], mode = 'internal')
-            self.message_queue.put({'name':'\n', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
+            self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
 
         scene_duration = self.current_scene.get('duration', 0)
         if scene_duration > 0:
             self.simulation_time += timedelta(minutes=scene_duration)
         await self.update(local_only=True)
+        await asyncio.sleep(0.1)
         self.current_scene = None
 
 
-    async def run_narrative_act(self, act):
+    async def run_narrative_act(self, act, act_number):
         """Run a narrative"""
         self.establish_tension_points(act)
         scenes = act.get('scenes', [])
@@ -999,7 +1003,7 @@ Ensure your response reflects this change.
             logger.error(f'No scenes in act: {act["act_title"]}')
             return
         print(f'Running act: {act["act_title"]}')
-        self.message_queue.put({'name':'', 'text':f'\n---ACT----- {act["act_title"]}'})
+        self.message_queue.put({'name':'', 'text':f'\n----- ACT {act_number} ----- {act["act_title"]}'})
         await asyncio.sleep(0.1)
         for scene in act['scenes']:
             while self.step is False and  self.run is False:
@@ -1007,7 +1011,7 @@ Ensure your response reflects this change.
             print(f'Running scene: {scene["scene_title"]}')
             await self.run_scene(scene)
             self.step = False
-        await self.update()
+        #await self.update()
                 
     async def create_character_narratives(self, play_file, map_file):
         """called from the simulation server to create narratives for all characters"""
@@ -1018,7 +1022,7 @@ Ensure your response reflects this change.
             then update them with the latest shared information"""
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
-            character.write_narrative(play_file, map_file)
+            await character.write_narrative(play_file, map_file)
             await asyncio.sleep(0.1)
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- initial coordination -----'})
@@ -1211,7 +1215,7 @@ End your response with </end>
                 if next_act is None:
                     logger.error('No act to run')
                     return
-                await self.run_narrative_act(next_act)
+                await self.run_narrative_act(next_act, i+1)
                 previous_act = next_act
         except Exception as e:
             logger.error(f'Error running integrated narrative: {e}')
