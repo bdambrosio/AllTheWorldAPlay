@@ -13,6 +13,9 @@ Sample replays at [demo](https://demo.tuuyi.com)
 
 ![Play screenshot](docs/images/WebworldMain.png)
 
+more at [Slide Show](http://www.tuuyi.com)
+or [Devin] ([https://app.devin.ai/wiki/bdambrosio/AllTheWorldAPlay])
+
 example scenario:
 ```
 map_file_name='forest.py' # needed to trigger narrative creation
@@ -62,9 +65,6 @@ W = context.Context([S, J],
     scenario_module=forest,  # Pass the forest scenario module
     server_name=server_name)
 ```
-
-more at [Slide Show](http://www.tuuyi.com)
-or [Devin] ([https://app.devin.ai/wiki/bdambrosio/AllTheWorldAPlay])
 
 ## A stage on which plays are presented, with AI cognitive agents as actors.
 
