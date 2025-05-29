@@ -2,7 +2,7 @@
 *rename will migrate to all other appearances of label, and reflects slight project refocus.*
 ### A playground for cognitive software and other beings.
 ### Vision update
-ImprovAI provides a stage for mixed human / AI improv performances.
+ImprovAI provides a stage for mixed human / AI-improv performances.
 Given a short scenario, it:
 - generates a cast of cognitively-deep AI actors (my primary research interest)
 - Allows each character to choose how to act at the Act, Scene, Goal, Task, and individual Action levels.
