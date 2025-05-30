@@ -20,25 +20,23 @@ importlib.reload(suburban)
 map_file_name='suburban.py' # needed to trigger narrative creation
 
 # Character definitions
-Hu = NarrativeCharacter("Hu", """You are Hu Manli, a healthy, professioinally dressed 39 year old chinese female insurance executive. 
-You are a workaholic, but you also love to travel and have a passion for adventure.
-Life has suddently thrown you a curveball. A competitor named Xue is stealing your clients and your job.
-You are determined to get your job back and outshine Xue.
-You are ambitious, competitive, and determined.
+Hu = NarrativeCharacter("Hu", """I am Hu Manli, a healthy, professioinally dressed 39 year old chinese female insurance executive. 
+I am a workaholic, but also love to travel and have a passion for adventure.
+Life has suddently thrown a curveball. A competitor named Xue is stealing my clients and threatening my success.
+I am ambitious, competitive, and determined to outshine Xue.
 """, 
 server_name=server_name)
 
 Hu.set_drives([
     "succeed at work, outshine Xue",
-    "find adventure, excitement, the thrill of the unknown, and maybe some romance, exploring new ideas and tactics",
     "stable marraige as background to a prosperous life"
 ])
 
 
-Xue = NarrativeCharacter("Xue", """You are Xue Xiaozhou, a 28 year old professionally dressed male chinese insurance executive from a wealthy family. 
-You speak with the condescension of a rich man. You are a workaholic and love the competition.
-You start out down on your luck, with a competitor named Hu is fighting for your clients.
-You are ambitious, competitive, and determined to outshine Hu.
+Xue = NarrativeCharacter("Xue", """I am Xue Xiaozhou, a 28 year old professionally dressed male chinese insurance executive from a wealthy family. 
+I speak with the condescension of a rich man. I am a workaholic and love the competition.
+I start out down on my luck, with a competitor named Hu is fighting for my clients.
+I am ambitious, competitive, and determined to outshine Hu.
 """,
 server_name=server_name)
 
@@ -47,41 +45,57 @@ Xue.set_drives([
         "find adventure, excitement, the thrill of the unknown, and maybe some romance, exploring new ideas and tactics."
 ])
 
-Ding = NarrativeCharacter("Ding", """Ding Zhiyuan, a middle-aged chinese Philosophy professor, wearing a dark suit and tie. 
-                          You are the husband of Hu. You are mild-mannered, but restless in middle age and resentful of Hu's success.""", 
+Ding = NarrativeCharacter("Ding", """I am Ding Zhiyuan, a middle-aged chinese Philosophy professor, wearing a dark suit and tie. 
+                          I am the husband of Hu. I am mild-mannered, but restless in middle age and resentful of Hu's success.""", 
                        server_name=server_name)
 Ding.set_drives([
     "succeed at work, outshine Hu",
     "midlife crisis - find adventure, excitement, romance"
 ])
 
-Wang = NarrativeCharacter("Wang", """Wang Xue, a 23 year old female student who dresses provocatively. You are a student of Ding""", server_name=server_name)
+Wang = NarrativeCharacter("Wang", """I am Wang Xue, a 23 year old female student who dresses provocatively. I am a student of Ding""", server_name=server_name)
 Wang.set_drives([
     "make a name for yourself, be a good student",
     "find adventure, excitement, romance, maybe a boyfriend"
 ])
 
-
 Qiu = NarrativeCharacter("Qiu", """Qiu Ying, a 32 year old chinese female wealthy widow and mistress of Ding.
-You envy and hate Hu, and are very jealous of her relationship with Ding.
+I envy and hate Hu, and am very jealous of her relationship with Ding. I am also very jealous of Xue.
                          """, server_name=server_name)
 Qiu.set_drives([
-    "find a new man to love and be loved by",
-    "security in a new stable relationship."
+    "Get Ding to leave Hu and marry you.",
+    "Destroy Hu's career and reputation."
 ])
+
+Xiaoyu = NarrativeCharacter("Xiaoyu", """I am Xiaoyu, a 40 year old chinese malecompany executive. I am a client of Hu""", server_name=server_name)
+Xiaoyu.set_drives([
+    "Get a promotion by sealing a deal on insurance for my company",
+    "Flirt with Hu, she is a good looking woman"
+])
+
+Yangho = NarrativeCharacter("Yangho", """I am Yangho, a 40 year old chinese male company executive. I am a client of Xue""", server_name=server_name)
+Yangho.set_drives([
+    "Get a promotion by not rocking the boat. stability is key.",
+    "Keep my job, grow with the company."
+])
+
 
 # Create context with forest scenario
 W = context.Context([Hu, Xue, Ding, Qiu],
     """A modern chinese urban  setting with a mix of buildings, roads, and other signs of humanity.""",
     scenario_module=suburban,  # Pass the forest scenario module
-    npcs=[Wang],
+    extras=[Wang, Xiaoyu, Yangho],
     server_name=server_name,
    )
 Hu.add_perceptual_input("You suspect your husband Ding is having an affair with Wang Xue, his student", 'internal')
+Hu.add_perceptual_input("Xiaoyu is my best and biggest client. I want to keep him happy.", 'internal')
+Hu.add_perceptual_input("Yangho, is a client of Xue and a prime poaching target", 'internal')
+Xue.add_perceptual_input("Xiaoyu, is a client of Hu and a prime poaching target", 'internal')
 
 
 Hu.mapAgent.move_to_resource('Office1')
 Xue.mapAgent.move_to_resource('Office2')
 W.reference_manager.declare_relationship('Hu', 'wife of', 'Ding', 'husband of')
 W.reference_manager.declare_relationship('Wang', 'student of', 'Ding', 'teacher of')
-#narrative='lost.json' # comment this out for normal unscripted play.
+W.reference_manager.declare_relationship('Xiaoyu', 'client of', 'Hu', 'insurance agent of')
+W.reference_manager.declare_relationship('Yangho', 'client of', 'Xue', 'insurance agent of')

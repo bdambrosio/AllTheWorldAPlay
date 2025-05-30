@@ -44,7 +44,7 @@ def run_sync(coro):
         
 
 class Context():
-    def __init__(self, characters, description, scenario_module, npcs=None, server_name=None, model_name=None):
+    def __init__(self, characters, description, scenario_module, extras=[], server_name=None, model_name=None):
         """Initialize a context with characters and world description
         
         Args:
@@ -55,20 +55,21 @@ class Context():
         """
         # Initialize logging
         
-        self.characters = characters
+        #self.characters = characters
         self.description = description
         self.scenario_module = scenario_module
         self.server_name = server_name
         self.model_name = model_name
         # Initialize characters in world
-        for character in characters:
+        for character in characters+extras:
             character.context = self
             # Additional character initialization as needed
 
         self.initial_state = description
         self.current_state = description
         self.actors: List[Character] = characters
-        self.npcs = npcs if npcs else [] # created as needed
+        self.npcs = []
+        self.extras = extras # created as needed
         self.map = map.WorldMap(60, 60, scenario_module)
         self.step = False  # Boolean step indicator from simulation server
         self.run = False # Boolean run indicator from simulation server
@@ -118,11 +119,11 @@ class Context():
         self.play_file = None
         self.map_file = None
 
-        for actor in self.actors + self.npcs:
+        for actor in self.actors + self.extras + self.npcs:
             #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
-            print(f"Context initializing{actor.name}")
+            print(f"Context initializing {actor.name}")
             actor.set_context(self)
-            print(f"Context initialized{actor.name} speech_stylizer: {actor.speech_stylizer}")
+            print(f"Context initialized {actor.name} speech_stylizer: {actor.speech_stylizer}")
             if actor.mapAgent is None:
                 actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
             else:
@@ -130,10 +131,10 @@ class Context():
                 actor.mapAgent.y = actor.init_y
             # Initialize relationships with valid character names. This was for knownActor relationships, I think?
             if hasattr(actor, 'narrative'):
-                valid_names = [a.name for a in self.actors if a != actor]
+                valid_names = [a.name for a in self.actors+self.extras if a != actor]
 
         self.reference_manager.discover_relationships()
-        for actor in self.actors + self.npcs:
+        for actor in self.actors + self.extras + self.npcs:
             print(f"Context checking{actor.name} speech_stylizer: {actor.speech_stylizer}")
             #actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
@@ -267,6 +268,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             'current_state': self.current_state,
             'current_state': self.current_state,
             'actors': [actor.to_shallow_json() for actor in self.actors],
+            'extras': [extra.to_shallow_json() for extra in self.extras],
             'npcs': [npc.to_shallow_json() for npc in self.npcs],
             #'map': self.map.to_json(),
             'server_name': self.server_name,
@@ -278,7 +280,7 @@ If absolutely no information is available for any field, use "unknown" for that 
 
     def set_llm(self, llm):
         self.llm = llm
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             actor.set_llm(llm)
             actor.last_sense_time = self.simulation_time
 
@@ -314,7 +316,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         """Get combined history from all actors using structured memory"""
         history = []
         
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             # Get recent memories from structured memory
             recent_memories = actor.structured_memory.get_recent(5)
             for memory in recent_memories:
@@ -373,7 +375,7 @@ If absolutely no information is available for any field, use "unknown" for that 
 
     def get_actor_by_name(self, name):
         """Helper to find actor by name"""
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             if actor.name == name:
                 return actor
         return None
@@ -408,7 +410,7 @@ If absolutely no information is available for any field, use "unknown" for that 
 
     def get_actor_or_npc_by_name(self, name):
         """Helper to find actor or NPC by name"""
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             if actor.name == name:
                 return actor
         for npc in self.npcs:
@@ -432,7 +434,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         
         # Check active actors first
         first_name = reference_text.strip().split(' ')[0]
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             if actor.name == reference_text or actor.name == first_name:
                 return (actor, reference_text)
             
@@ -725,7 +727,7 @@ Ensure your response reflects this change.
         new_situation = xml.find('<situation>', response)       
         # Debug prints
         if not local_only:
-            self.message_queue.put({'name':'', 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}\n'})
+            self.message_queue.put({'name':'', 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}'})
             self.transcript.append(f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n')
             await asyncio.sleep(0.1)
          
@@ -747,7 +749,7 @@ Ensure your response reflects this change.
         updates = self.world_updates_from_act_consequences(new_situation)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
-        for actor in self.actors:
+        for actor in self.actors+self.extras:
             actor.add_to_history(f"you notice {updates}\n")
             actor.update()  # update history, etc
         return response
@@ -772,16 +774,6 @@ Ensure your response reflects this change.
         """Notify all listeners of state changes"""
         for listener in self.state_listeners:
             listener(update_type, data)
-
-    def update_display(self):
-        """UI-independent state update"""
-        state = {
-            'characters': self.characters,
-            'simulation_time': self.simulation_time,
-            'running': self.running,
-            'paused': self.paused
-        }
-        self._notify_listeners('state_update', state)
 
     def set_widget(self, entity, widget):
         """Maintain widget references for PyQt UI"""
@@ -845,10 +837,6 @@ Ensure your response reflects this change.
 </actor>"""
         return mapped_actor
 
-    def map_actors(self):
-        mapped_actors = '\n'.join([self.map_actor(actor) for actor in self.actors])
-        return mapped_actors
-
 
     def check_resource_has_npc(self, resource):
         """Check if a resource type should have an NPC"""
@@ -870,13 +858,13 @@ Ensure your response reflects this change.
         
     def compute_task_plan_limits(self, scene):
         """Compute the task plan limits for an actor for a scene"""
-        characters_in_scene = scene.get('characters', ['a','b'])
+        beats_in_scene = scene.get('action_order', ['a','b'])
         try:
-            character_task_limit = scene.get('task_budget', int(1.3*len(characters_in_scene)))/len(characters_in_scene)
+            character_task_limit = scene.get('task_budget', int(1.5*len(beats_in_scene)))/len(beats_in_scene)
         except Exception as e:
             print(f'Error computing task plan limits: {e}')
             character_task_limit = 1
-        return int(character_task_limit)
+        return int(min(3, character_task_limit))
 
 
     def establish_tension_points(self, act):
@@ -925,6 +913,7 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
             await self.update()
             await asyncio.sleep(0)
+
         if scene.get('post_narrative'):
             self.scene_post_narrative = scene['post_narrative']
 
@@ -967,6 +956,9 @@ Ensure your response reflects this change.
                 goal_text = ''
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
+            # now generate initial task plan
+            await character.generate_task_plan(character.focus_goal)
+            await asyncio.sleep(0.2)
 
         # ok, actors - live!
         characters_finished_tasks = []
@@ -974,12 +966,14 @@ Ensure your response reflects this change.
             for character in characters_in_scene:
                 if character in characters_finished_tasks:
                     continue
-                elif character.focus_goal is None and (not character.goals  or len(character.goals) == 0):
+                elif character.focus_goal is None:
                     characters_finished_tasks.append(character)
                     continue
                 else:
                     self.message_queue.put({'name':'', 'text':f''})
+                    await asyncio.sleep(0.2)
                     await character.cognitive_cycle(narrative=True)
+                    await asyncio.sleep(1.0)
         if self.current_scene.get('post_narrative'):
             self.current_state += '\n'+self.current_scene['post_narrative']
             for character in characters_in_scene:
@@ -1020,6 +1014,9 @@ Ensure your response reflects this change.
         """Create narratives for all characters,
             then share them with each other (selectively),
             then update them with the latest shared information"""
+        for character in cast(List[NarrativeCharacter], self.actors+self.extras):
+            #self.message_queue.put({'name':character.name, 'text':f'---- introducing myself -----'})
+            await character.introduce_myself(play_file, map_file)
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             await character.write_narrative(play_file, map_file)

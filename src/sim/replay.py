@@ -235,6 +235,9 @@ The Voice button is only effective if the replay includes audio (you may need to
 
 However, most UI elements are present and fully functional, such as character tab selection and the explore character feature.
 
+For more information, see https://github.com/bdambrosio/AllTheWorldAPlay.git
+* this will updated soon to https://github.com/bdambrosio/ImprovAi.git
+
 Contact bruce@tuuyi.com for more info.
 ---------------------------------------------------------------------------
 

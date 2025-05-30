@@ -198,8 +198,11 @@ class NarrativeCharacter(Character):
             for scene in act["scenes"]:
                 if isinstance(scene["time"], datetime):
                     scene["time"] = scene["time"].isoformat()
+                elif isinstance(scene["time"], str):
+                    scene["time"] = datetime.fromisoformat(scene["time"])
                 else:
                     print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
+                    scene["time"] = self.context.simulation_time
         return reserialized
     
     def reserialize_act_to_string(self, act: Dict[str, Any]) -> str:
@@ -207,12 +210,12 @@ class NarrativeCharacter(Character):
         serialized_str = self.reserialize_narrative_json({"acts":[act]})
         return json.dumps(serialized_str['acts'][0], indent=2)
 
-    async def write_narrative(self, play, map):
-        # await self.cognitive_cycle()
-        self.play_file = play
-        self.map_file = map
-        self.play_file_content = open(Path('../plays/') / play, 'r').read()
-        self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
+    async def introduce_myself(self, play_file, map_file):
+        self.play_file = play_file
+        self.map_file = map_file
+        self.play_file_content = open(Path('../plays/') / play_file, 'r').read()
+        self.map_file_content = open(Path('../plays/scenarios/') / map_file, 'r').read()
+
         system_prompt = """Imagine you are addressing the audience of a play. 
 Create a short introduction (no more than 60 tokens) to your character, including your name, terse description, role in the play, drives, and most important relationships with other characters. 
 Leave some mystery. This should be in the first person, you will speak to the audience.
@@ -223,8 +226,7 @@ But things may be changing....
 #####
 """
 
-        mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
-The overall cast of characters and setting are given below in Play.py and Map.py.
+        mission = """The overall cast of characters and setting are given below in Play.py and Map.py.
 
 <Play.py>
 {{$play}}
@@ -272,7 +274,54 @@ End your response with </end>
         if introduction:
             self.context.message_queue.put({'name':self.name, 'text':introduction+'\n'})
             await asyncio.sleep(0)
+    
 
+
+    async def write_narrative(self, play, map):
+        # await self.cognitive_cycle()
+        self.play_file = play
+        self.map_file = map
+        self.play_file_content = open(Path('../plays/') / play, 'r').read()
+        self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
+
+
+        mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
+The overall cast of characters and setting are given below in Play.py and Map.py.
+
+<Play.py>
+{{$play}}
+</Play.py>
+
+<Map.py>
+{{$map}}
+</Map.py>
+
+
+## 1.  INPUT FILES
+
+You have been provided two Python source files above.
+
+▶ play.py  
+    • Contains Character declarations in the pattern  
+      `CharName = agh.Character("CharName", "...description...", ...)`  
+    • After each character there is a list → `<Char>.drives = [Drive("..."), ...]`  
+    • Percepts or initial internal lines appear via `<Char>.add_perceptual_input(...)`.  
+    • At the end, a Context is created:  
+      `context.Context([CharA, CharB, ...], "world-blurb", scenario_module=<map>)`  
+
+▶ map.py  
+    • Defines Enum classes for terrain, infrastructure, resource, and property types.  
+    • Contains `resource_rules`, `terrain_rules`, etc.  (You may cite these names when choosing locations.)
+
+    After processing the above files and in light of the following information, generate a medium-term narrative arc for yourself.
+
+"""
+                            
+        suffix="""
+Respond only with your introduction.
+Do not include any other explanatory, discursive, or formatting text.
+End your response with </end>
+"""
 
         system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minutemovie.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
@@ -359,7 +408,7 @@ Return **only** the JSON.  No commentary, no code fences.
 
     async def share_narrative(self):
         """Share the narrative with other characters"""
-        for character in self.context.actors:
+        for character in self.context.actors+self.context.extras:
             if character != self:
                 mission = """Decide what, if anything, about your plans you would like to share with {{$name}} to help coordinate your actions. 
 You may well decide to share nothing, especially with those you perceive as adversaries, in which case you should respond with </end>
@@ -732,61 +781,4 @@ End your response with </end>
         else:
             self.current_scene = None
             return None
-
-    async def run_scene(self, scene):
-        """Run a scene
-        invariant: return when all characters have satisfied (or given up on) their scene goal"""
-        print(f'Running scene: {scene["scene_title"]} for {self.name}')
-        self.context.message_queue.put({'name':self.name, 'text':f'\n\n-----scene----- {scene["scene_title"]} at {scene["time"]}'})
-        logger.info(f'Running scene: {scene["scene_title"]} for {self.name} at {scene["time"]}')
-        await asyncio.sleep(0)
-        self.current_scene = scene
-        if scene.get('pre_narrative'):
-            self.context.current_state += '\n\n'+scene['pre_narrative']
-            self.context.scene_pre_narrative = scene['pre_narrative']
-        if scene.get('post_narrative'):
-            self.context.current_state += '\n'+scene['post_narrative']
-            self.context.scene_post_narrative = scene['post_narrative']
-
-        #construct a list of characters in the scene in the order in which they appear
-        characters_in_scene: List[Character] = []
-        for character_name in scene['action_order']:
-            character = self.context.get_actor_by_name(character_name)
-            if character_name == 'Context':
-                continue
-            if character not in characters_in_scene:
-                characters_in_scene.append(character)
-
-        # establish character locations and goals for scene
-        location = scene['location']
-        x,y = self.context.map.random_location_by_terrain(location)
-        characters_at_location = []
-        scene_goals = {}
-        #set characters in scene at scene location
-        for character in characters_in_scene:
-            character.mapAgent.x = x
-            character.mapAgent.y = y
-            characters_at_location.append(character)
-
-        #now that all characters are in place, establish their goals
-        for character in characters_in_scene:
-            character.look() # important to do this after everyone is in place.
-            goal_text = scene['characters'][character.name]['goal']
-            task_budget = scene.get('task_budget', int(1.67*len(scene['action_order'])))
-            # instatiate narrative goal sets goals and focus goal as side effects
-            scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
-
-        # ok, actors - live!
-        characters_finished_tasks = []
-        while len(characters_in_scene) > len(characters_finished_tasks):
-            for character in characters_in_scene:
-                if character in characters_finished_tasks:
-                    continue
-                elif character.focus_goal is None and (not character.goals  or len(character.goals) == 0):
-                    characters_finished_tasks.append(character)
-                    continue
-                else:
-                    await character.cognitive_cycle(narrative=True)
-
-        return None
 

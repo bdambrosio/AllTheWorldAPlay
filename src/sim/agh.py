@@ -634,7 +634,7 @@ water: the water resources visible
     # Utility methods
     def other(self):
         """Get the other actor in the context"""
-        for actor in self.context.actors:
+        for actor in self.context.actors+self.context.npcs:
             if actor != self:
                 return actor
         return None
@@ -678,7 +678,7 @@ water: the water resources visible
 
     def see(self):
         """Add initial visual memories of other actors"""
-        for actor in self.context.actors:
+        for actor in self.context.actors+self.context.npcs:
             if actor != self:
                 self.add_perceptual_input(f'You see {actor.name}', mode='visual')
 
@@ -1291,7 +1291,7 @@ End response with:
          # After action completes, update record with results
         # Notify other actors of action
         if act_mode != 'Say' and act_mode != 'Look' and act_mode != 'Think':  # everyone you do or move or look if they are visible
-            for actor in self.context.actors:
+            for actor in self.context.actors+self.context.extras:
                 if actor != self:
                     if actor != target:
                         actor_model = self.actor_models.get_actor_model(actor.name)
@@ -1585,25 +1585,19 @@ End response with:
 
 
 
-    def generate_task_plan(self, goal:Goal=None, new_task:Task=None, replan=False):
+    async def generate_task_plan(self, goal:Goal=None, new_task:Task=None, replan=False, ntasks=None):
         if not self.focus_goal:
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
         if not goal:
             goal = self.focus_goal
-        if replan and self.clear_goal_if_satisfied(goal):
-            if not new_task:
-                goal.task_plan = []
-                return []
-            else:
+        if not goal:
+            return []
+        if replan:
+            if new_task and (goal.task_plan and len(goal.task_plan) == 0):
                 goal.task_plan = [new_task]
-                self.focus_goal = goal
                 new_task.goal = goal
                 return [new_task]
-        elif goal.task_plan and len(goal.task_plan) ==0:
-            goal.task_plan = [new_task]
-            new_task.goal = goal
-            return [new_task]
         
         suffix = """
 
@@ -1618,7 +1612,6 @@ The new task(s) should be distinct from one another, and each should advance the
 Use known actor names in the task description unless deliberately introducing a new actor. Characters known to this character include:
 {{$known_actors}}
 
-Where possible, include one or more of your intensions in generating task alternatives.
 Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
 
 A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
@@ -1644,18 +1637,28 @@ and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
 Order tasks in the assumed order of execution.
 
+###Scene
 {{$scene_narrative}}
 
 End response with:
 </end>
 """
         mission = """create a sequence of up to {{$ntasks}} tasks to achieve the focus goal: 
+###Focus Goal
 {{$focus_goal}}
 """
+        if goal and goal.task_plan and len(goal.task_plan) > 0:
+            mission += """\n you already have a task_plan for this goal, which should be used as a basis for your new plan, but may need to be revised due to new information.
+
+###Existing plan
+{{$task_plan}}
+"""
         if new_task:
-            mission += f"""\nYou have been given this new task which should be integrated early into your plan:
+            mission += """\nYou have been given this new task which should be integrated early into your plan. 
+Do not simply prepend this task, but rather integrate it into your plan in a way that is consistent with the focus goal:
             
-{new_task.to_string()}
+###New Task
+{{$new_task}}
 
 """
 
@@ -1678,19 +1681,20 @@ End response with:
             goal = self.focus_goal
         if not goal:
             raise ValueError(f'No focus goal for {self.name}')
-        ntasks = 2
-        if goal.name == 'preconditions' or goal.name == 'postconditions':
-            ntasks = 1
-        elif self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
-            ntasks = self.context.compute_task_plan_limits(self.current_scene)
-        elif self.__class__.__name__ == 'NarrativeCharacter':
-            logger.info(f'{self.name} generate_task_plan: no current scene, using default ntasks: {ntasks}')
-        elif self.context.current_scene:
-            ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
-        if goal.task_plan and replan:
-            ntasks = min(ntasks, max(1, len(goal.task_plan)-1))
+        if not ntasks:
+            ntasks = 2
+            if goal.name == 'preconditions' or goal.name == 'postconditions':
+                ntasks = 1
+            elif self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
+                ntasks = self.context.compute_task_plan_limits(self.current_scene)
+            elif self.__class__.__name__ == 'NarrativeCharacter':
+                logger.info(f'{self.name} generate_task_plan: no current scene, using default ntasks: {ntasks}')
+            elif self.context.current_scene:
+                ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
+            if goal.task_plan and replan:
+                ntasks = min(ntasks, max(1, len(goal.task_plan)))
         if self.context.scene_post_narrative:
-            scene_narrative = f"\n\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
+            scene_narrative = f"\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
             scene_narrative = ''
         logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
@@ -1702,7 +1706,9 @@ End response with:
                                 "ntasks": ntasks,
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[:5]),
-                                "scene_narrative": scene_narrative}, 
+                                "scene_narrative": scene_narrative,
+                                "task_plan": "\n".join([t.to_string() for t in goal.task_plan]) if goal.task_plan else '', 
+                                "new_task": new_task.to_string() if new_task else ''},
                                tag = 'Character.generate_task_plan',
                                max_tokens=350, log=True)
 
@@ -1882,7 +1888,7 @@ End your response with:
             target = act.target[0]
             target_name = act.target[0].name
         elif task.actors:
-            for actor in task.actors:
+            for actor in task.actors+self.context.npcs:
                 if actor is not self:
                     target = actor
                     target_name = actor.name
@@ -2010,6 +2016,8 @@ When describing an action:
 - Note changes in context or action details
 - Describe progress toward goal
 - Use the appropriate pronoun gender and case(he, she, his, her, etc.) for any referent, or they / their if the referent is a group.
+    Use the following gender information:
+    {{$actor_genders}}
 Consider the previous act. E.G.:
 - If the previous act was a Move, are you now at your destination? If not, do you want to keep moving towards it?
     If you are at your destination, what do you want to Do there? 
@@ -2130,6 +2138,9 @@ End your response with:
         if not goal:
             raise ValueError(f'No goal for {self.name}')
         goal_memories = []
+        actor_genders = ''
+        for actor in self.context.actors+self.context.extras:
+            actor_genders += f'\t{actor.name}: {actor.gender}\n'
         #generate emotional state for this task
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
         focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
@@ -2150,7 +2161,8 @@ End your response with:
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
-                                              "modes": modes}, 
+                                              "modes": modes,
+                                              "actor_genders": actor_genders}, 
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
         response = response.strip()
@@ -2179,7 +2191,7 @@ End your response with:
         return act_alternatives
 
 
-    def update_actions_wrt_say_think(self, source, act_mode, act_arg, reason, target=None):
+    async def update_actions_wrt_say_think(self, source, act_mode, act_arg, reason, target=None):
         """Update actions based on speech or thought"""
         if not self.focus_goal or source.name.startswith('dialog'):
             # print(f' in dialog, no action updates')
@@ -2332,7 +2344,7 @@ End your response with:
                 self.focus_task.push(intension)
                 self.step_task('')
                 if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
-                    self.generate_task_plan(self.focus_goal)
+                    await self.generate_task_plan(self.focus_goal)
 
             elif intension:
                 print('No focus goal, no new task from say or think')
@@ -2480,8 +2492,7 @@ End your response with:
                     #self.focus_task.push(intension)
                     await asyncio.sleep(0)
                     #await self.step_task('')
-                    if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
-                        self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
+                    await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
                 else:
                     print('No focus goal, no new task from conversation')
         return
@@ -2601,8 +2612,7 @@ End your response with:
                 if self.focus_goal:
                     #self.focus_task.push(intension)
                     #await self.step_task('')
-                    if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
-                        self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
+                    await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
                 else:
                     print('No focus goal, no new task from conversation')
         return intensions
@@ -2744,7 +2754,8 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             if self.name != 'Viewer' and from_actor.name != 'Viewer':
                 joint_tasks = await self.update_joint_commitments_following_conversation(from_actor, dialog)
                 await asyncio.sleep(0)
-                await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
+                if (not joint_tasks or len(joint_tasks) == 0):
+                    await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
                 await asyncio.sleep(0)
 
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -2756,7 +2767,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             dialog_as_list = dialog.split('\n') 
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
 
-            if from_actor.name != 'Viewer' and self.name != 'Viewer':
+            if from_actor.name != 'Viewer' and self.name != 'Viewer' and (not joint_tasks or len(joint_tasks) == 0):
                 await from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
                 await asyncio.sleep(0)
 
@@ -2793,7 +2804,7 @@ Let conflict emerge through action, thought, spoken intention, and subtext, not 
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
         """
-        prompt_string = """The prime directive is to be faithful to your character as presented in the following.
+        prompt_string = """Be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below, based on your goals in the dialog."""
@@ -2866,7 +2877,9 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 {{$duplicative_insert}}
 
 Guidance: 
-- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}}, your gender is {{$your_gender}}
+- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}).
+    Actor genders:
+    {{$actor_genders}}
 - The response can occasionally include occasional body language or facial expressions as well as speech
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
 - Do not respond to a question with a question.
@@ -2882,7 +2895,7 @@ End your response with:
 </end>
 """
 
-        prompt = [UserMessage(content=prompt_string)]
+        prompt = [SystemMessage(content=system_prompt), UserMessage(content=prompt_string)]
 
         if self.focus_goal:
             mapped_goals = self.map_goals(self.focus_goal)
@@ -2907,6 +2920,10 @@ End your response with:
         else:
             scene_post_narrative = ''
 
+        actor_genders = ''
+        for actor in self.context.actors+self.context.extras:
+            actor_genders += f'\t{actor.name}: {actor.gender}\n'
+
         answer_xml = self.llm.ask({
             'character': self.get_character_description(),
             'emotionalState': emotionalState.to_definition(),
@@ -2918,9 +2935,10 @@ End your response with:
             "activity": activity,
             'history': self.narrative.get_summary('medium'),
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
-            'target': 'self' if self is from_actor else 'speaker',
+            'target': 'Your' if self is from_actor else "The person you are speaking to's ",
             'target_gender': from_actor.gender,
             'your_gender': self.gender,
+            'actor_genders': actor_genders,
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
             "scene_post_narrative": scene_post_narrative
@@ -3306,7 +3324,7 @@ End your response with:
         await asyncio.sleep(0.1)
         if not self.focus_goal:
             raise Exception(f'{self.name} cognitive_cycle: no focus goal')
-        self.generate_task_plan()
+        await self.generate_task_plan(self.focus_goal)
         await self.request_task_choice(self.focus_goal.task_plan)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
@@ -3330,7 +3348,6 @@ End your response with:
         logger.info(f'{self.name} cognitive_cycle')
         if not narrative:
             self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
-        self.context.transcript.append(f'\n{self.name}-----cognitive cycle----- {self.context.simulation_time.isoformat()}\n')
         await asyncio.sleep(0)
         self.thought = ''
         if self.focus_goal: 
@@ -3344,36 +3361,41 @@ End your response with:
                                                   relationsOnly=self.step % self.update_interval != 0 )
         self.step += 1
 
-        if self.focus_goal and not narrative:
-            satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+        if not narrative:
+            if self.focus_goal:
+                satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
             if satisfied:
                 self.focus_goal = None
 
-        if not self.focus_goal and (not self.goals or len(self.goals) == 0):
-            if narrative:
-                return
-            self.update()
-            self.generate_goal_alternatives()
-            await self.request_goal_choice(self.goals)
-            for goal in self.goals.copy():
-                if goal is self.focus_goal:
-                    pass
-                else:
-                    self.goals.remove(goal) # once we've selected a goal, remove all other goals
+            if not self.focus_goal and (not self.goals or len(self.goals) == 0):
+                self.update()
+                self.generate_goal_alternatives()
+                await self.request_goal_choice(self.goals)
+                for goal in self.goals.copy():
+                    if goal is self.focus_goal:
+                        pass
+                    else:
+                        self.goals.remove(goal) # once we've selected a goal, remove all other goals -why?
         
-        if not self.focus_goal:
-            await self.request_goal_choice(self.goals)
-            if not self.focus_goal and narrative: # if we don't have a goal, and we're in narrative mode, we're done
+            if not self.focus_goal and self.goals and len(self.goals) > 0:
+                await self.request_goal_choice(self.goals)
+                if not self.focus_goal: # if we don't have a goal
+                    return
+
+            if self.focus_goal and (not self.focus_goal.task_plan or (len(self.focus_goal.task_plan) == 0)):
+                await self.generate_task_plan(self.focus_goal)
+
+        else: #narrative  
+            if not self.focus_goal:
                 return
 
-        if self.focus_goal and (not self.focus_goal.task_plan or (len(self.focus_goal.task_plan) == 0 and not self.clear_goal_if_satisfied(self.focus_goal))):
-            self.generate_task_plan(self.focus_goal)
-        
         logger.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
 
         await self.request_task_choice(self.focus_goal.task_plan)
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
-            print(f'{self.name} cognitive_cycle: no focus task')
+            print(f'{self.name} narrative cognitive_cycle: no focus task')
+            if self.focus_goal:
+                self.focus_goal = None
             return
             
         # input - a task on top of self.focus_task, the next task to run for self.focus_goal
@@ -3388,13 +3410,17 @@ End your response with:
             old_time = self.context.simulation_time
             self.context.simulation_time += timedelta(hours=delay)
             if old_time.day!= self.context.simulation_time.day:
-                pass # need to figure out out to force UI to no show old image
+                pass # need to figure out out to force UI to no sho old image
             if delay > 1.0:
                 self.context.update()
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
                 await asyncio.sleep(0)
         except Exception as e:
             print(f'{self.name} cognitive_cycle error: {e}')
+
+        if not narrative:
+            await self.clear_goal_if_satisfied(self.focus_goal)
+        return
 
        
     async def step_tasks(self, n: int=1):
@@ -3441,6 +3467,7 @@ End your response with:
                         logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
                         logger.info(f'{self.name} step_tasks: termination fail focus goal {self.focus_goal.name} instantiating termination goal {self.focus_goal.termination}')
                         self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
+                        self.generate_task_plan(self.focus_goal, ntasks=1)
                         if old_goal in self.goals:
                             self.goals.remove(old_goal) # don't try this goal again
                     return False

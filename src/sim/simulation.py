@@ -228,7 +228,9 @@ class SimulationServer:
 
             await self.send_world_update()
             await asyncio.sleep(0.1)
-            for char in self.sim_context.actors:
+            for char in self.sim_context.actors+self.sim_context.extras:
+                if not char.actor_models:
+                    print(f'{char.name} has no actor models')
                 await self.send_character_update(char)
             await asyncio.sleep(0.1)
             
@@ -239,7 +241,7 @@ class SimulationServer:
             self.known_actors_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'known_actors', play_name.replace('.py', '/'))
             if not os.path.exists(self.known_actors_dir):
                 os.makedirs(self.known_actors_dir)
-            logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)} actors")
+            logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)+len(self.sim_context.extras)} actors")
             self.sim_context.message_queue.put({'name':self.sim_context.name, 'text':f'----- {play_name} loaded-----'})
             if hasattr(module, 'map_file_name'):
                 await self.sim_context.create_character_narratives(play_name, module.map_file_name)
@@ -415,7 +417,7 @@ class SimulationServer:
 
     def get_character_details_cmd(self, char_name):
         """Get detailed character state"""
-        char = self.sim_context.get_actor_by_name(char_name)
+        char = self.sim_context.get_actor_or_npc_by_name(char_name)
         return char.get_explorer_state()
 
     def get_character_states_cmd(self):
@@ -430,7 +432,7 @@ class SimulationServer:
     async def set_autonomy_cmd(self, command):
         """Set autonomy for all characters"""
         for char_name in command.get('autonomy'):
-            char = self.sim_context.get_actor_by_name(char_name)
+            char = self.sim_context.get_actor_or_npc_by_name(char_name)
             if char:
                 char.set_autonomy(command.get('autonomy')[char_name])
 
@@ -574,7 +576,7 @@ class SimulationServer:
                         # async character update messages include the actor data in the message
                         actor_data = message['data']
                         actor_name = message['name']
-                        actor = self.sim_context.get_actor_by_name(actor_name)
+                        actor = self.sim_context.get_actor_or_npc_by_name(actor_name)
                         if actor and 'image' in actor_data:
                             self.image_cache[actor_name] = actor_data['image']
                         if actor and 'image' not in actor_data and actor_name not in self.image_cache:
