@@ -69,4 +69,4 @@ dmypy.json
 images/*.png
 
 sim/simulation.log
-src/sim/plays/replays/*.json
+src/plays/replays/*.json
