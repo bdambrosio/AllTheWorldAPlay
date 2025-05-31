@@ -3466,8 +3466,8 @@ End your response with:
                     if not satisfied:
                         logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
                         logger.info(f'{self.name} step_tasks: termination fail focus goal {self.focus_goal.name} instantiating termination goal {self.focus_goal.termination}')
-                        self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
-                        self.generate_task_plan(self.focus_goal, ntasks=1)
+                        #self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
+                        #self.generate_task_plan(self.focus_goal, ntasks=1)
                         if old_goal in self.goals:
                             self.goals.remove(old_goal) # don't try this goal again
                     return False
