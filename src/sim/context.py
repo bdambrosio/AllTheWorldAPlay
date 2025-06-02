@@ -7,12 +7,14 @@ from pathlib import Path
 import traceback
 import random
 import logging
+import re
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, cast
 import sim.map as map
 from sim.referenceManager import ReferenceManager
 from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
+from src.sim.memory.core import NarrativeSummary
 from src.utils.VoiceService import VoiceService
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage, SystemMessage
@@ -24,7 +26,7 @@ import asyncio
 from prompt import ask as default_ask
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
-    from sim.character_dataclasses import Act, Task, Goal
+    from sim.character_dataclasses import Act, Task, Goal, CentralNarrative
 
 
 logger = logging.getLogger('simulation_core')
@@ -118,6 +120,11 @@ class Context():
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
         self.map_file = None
+        self.previous_acts = []
+        self.previous_scenes = []
+        self.central_narrative: str = ''
+        self.act_central_narrative: str = ''
+        self.current_act = None
 
         for actor in self.actors + self.extras + self.npcs:
             #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
@@ -156,6 +163,102 @@ class Context():
             self.voice_service.set_provider('coqui')
 
         
+    def parse_scenario(self, scenario_lines: List[str]) -> dict:
+        """
+        Parse a scenario file and extract setting, characters, and drives.
+        
+        Args:
+            scenario_lines: List of lines from the scenario file
+            
+        Returns:
+            Dictionary with setting, characters list containing name, description, drives
+        """
+        if isinstance(scenario_lines, list):
+            content = '\n'.join(scenario_lines)
+        else:
+            content = scenario_lines
+        
+        # Extract setting from Context creation
+        context_pattern = r'W = context\.Context\(\[[^\]]+\],\s*"""(.*?)"""\s*,'
+        context_match = re.search(context_pattern, content, re.DOTALL)
+        setting = context_match.group(1).strip() if context_match else ""
+        
+        characters = []
+        
+        # Find all NarrativeCharacter definitions - improved pattern to handle line boundaries
+        char_pattern = r'(\w+)\s*=\s*NarrativeCharacter\(\s*"([^"]+)"\s*,\s*"""([^"]+?)"""\s*,'
+        char_matches = re.finditer(char_pattern, content, re.DOTALL)
+        
+        for char_match in char_matches:
+            var_name = char_match.group(1)
+            char_name = char_match.group(2)
+            char_description = char_match.group(3).strip()
+            
+            # Find drives for this character - ensure we match the exact variable name
+            drives_pattern = rf'\b{re.escape(var_name)}\.set_drives\(\[\s*((?:"[^"]*",?\s*)+)\]\)'
+            drives_match = re.search(drives_pattern, content, re.DOTALL)
+            
+            drives = ""
+            if drives_match:
+                drives_text = drives_match.group(1)
+                # Extract individual drive strings
+                drive_strings = re.findall(r'"([^"]*)"', drives_text)
+                drives = '. '.join(drive_strings)
+            
+            characters.append({
+                "name": char_name,
+                "description": char_description,
+                "drives": drives
+            })
+        
+        return {
+            "setting": setting,
+            "characters": characters
+        }
+
+    def summarize_scenario(self) -> dict:
+        """
+        Extract setting, characters, and drives from the already-parsed Context data.
+        
+        Returns:
+            Dictionary with setting, characters list containing name, description, drives
+        """
+        # Setting is stored in current_state
+        setting = self.current_state if hasattr(self, 'current_state') else ""
+        
+        characters = []
+        
+        # Extract characters from actors and extras
+        all_characters = []
+        if hasattr(self, 'actors'):
+            all_characters.extend(self.actors)
+        if hasattr(self, 'extras'):
+            all_characters.extend(self.extras)
+        
+        for character in all_characters:
+            # Get character drives as text strings
+            if hasattr(character, 'drives') and character.drives:
+                # Each drive has a .text attribute
+                drive_texts = [drive.text for drive in character.drives]
+                drives = '. '.join(drive_texts)
+            else:
+                drives = ""
+            
+            characters.append({
+                "name": character.name,
+                "description": character.character,  # Character description is stored in .character
+                "drives": drives
+            })
+        
+        return {
+            "setting": setting,
+            "characters": characters
+        }
+
+    def summarize_map(self) -> str:
+        return self.map.get_map_summary()
+
+
     async def start(self):
         voices = self.voice_service.get_voices()
         #print(f"Available voices: {voices}")
@@ -184,7 +287,21 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
             print(f'Error parsing JSON: {e}')
             return None
 
-    def reserialize_narrative_json(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
+    def reserialize_scene_time(self, scene: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validates the narrative JSON structure and returns (is_valid, error_message)
+        """
+        # Check top-level structure
+        if not isinstance(scene, dict):
+            return False, "Root must be a JSON object"
+        reserialized = copy.deepcopy(scene)
+        if isinstance(scene["time"], datetime):
+            reserialized["time"] = reserialized["time"].isoformat()
+        else:
+            print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
+        return reserialized
+    
+    def reserialize_acts_times(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validates the narrative JSON structure and returns (is_valid, error_message)
         """
@@ -202,9 +319,9 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
                     print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
         return reserialized
 
-    def reserialize_act_to_string(self, act: Dict[str, Any]) -> str:
+    def reserialize_act_times(self, act: Dict[str, Any]) -> str:
         """Reserialize the act to a string"""
-        serialized_str = self.reserialize_narrative_json({"acts":[act]})
+        serialized_str = self.reserialize_acts_times({"acts":[act]})
         return json.dumps(serialized_str['acts'][0], indent=2)
 
     def extract_simulation_time(self, situation):
@@ -499,7 +616,7 @@ Use the following XML format:
 concise statement(s) of significant changes to Environment, if any, one per line.
 </updates>
 
-Include ONLY the concise updated state description in your response. 
+Include ONLY the concise updated state description in your response. Be concise, limit your response to about 20 words.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
 </end>""")
@@ -542,7 +659,7 @@ Use the following XML format:
 concise statement(s) of significant changes to Environment, if any, one per line.
 </updates>
 
-Include ONLY the concise updated state description in your response. 
+Include ONLY the concise updated state description in your response. Limit your response to about 20 words.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
 </end>""")
@@ -609,7 +726,7 @@ Include in your response:
 - changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 - specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
-Be  terse when reporting character emotional state, only report the most significant emotional state changes.
+Be  terse, only report the most significant  state changes. Limit your response to about 80 words.
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -956,9 +1073,12 @@ Ensure your response reflects this change.
                 goal_text = ''
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
+            self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
+            await asyncio.sleep(0.4)
             # now generate initial task plan
             await character.generate_task_plan(character.focus_goal)
-            await asyncio.sleep(0.2)
+            self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
+            await asyncio.sleep(0.4)
 
         # ok, actors - live!
         characters_finished_tasks = []
@@ -992,6 +1112,7 @@ Ensure your response reflects this change.
     async def run_narrative_act(self, act, act_number):
         """Run a narrative"""
         self.establish_tension_points(act)
+        self.current_act = act
         scenes = act.get('scenes', [])
         if len(scenes) == 0:
             logger.error(f'No scenes in act: {act["act_title"]}')
@@ -1005,22 +1126,29 @@ Ensure your response reflects this change.
             print(f'Running scene: {scene["scene_title"]}')
             await self.run_scene(scene)
             self.step = False
+        self.previous_acts.append(act)
+        self.previous_scenes.append(scenes)
+        self.current_act = None
         #await self.update()
                 
     async def create_character_narratives(self, play_file, map_file):
         """called from the simulation server to create narratives for all characters"""
-        self.play_file = play_file
-        self.map_file = map_file
+
         """Create narratives for all characters,
             then share them with each other (selectively),
             then update them with the latest shared information"""
         for character in cast(List[NarrativeCharacter], self.actors+self.extras):
             #self.message_queue.put({'name':character.name, 'text':f'---- introducing myself -----'})
-            await character.introduce_myself(play_file, map_file)
+            await character.introduce_myself(self.summarize_scenario(), self.summarize_map())
+        for round in range(2):
+            for character in cast(List[NarrativeCharacter], self.actors):
+                await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
+        self.central_narrative = await self.merge_central_narratives()
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
-            await character.write_narrative(play_file, map_file)
+            await character.write_narrative(self.summarize_scenario(), self.summarize_map(), self.central_narrative)
             await asyncio.sleep(0.1)
+        """
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- initial coordination -----'})
             await character.share_narrative()
@@ -1028,12 +1156,13 @@ Ensure your response reflects this change.
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'----- updating narrative -----'})
             character.update_narrative_from_shared_info()
-            logger.info(f'\n{character.name}\n{json.dumps(character.reserialize_narrative_json(character.plan), indent=2)}')
+            logger.info(f'\n{character.name}\n{json.dumps(self.reserialize_acts_times(character.plan), indent=2)}')
             await asyncio.sleep(0.1)
+        """
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
         await asyncio.sleep(0.1)
 
-    async def integrate_narratives(self, character_narrative_blocks):
+    async def integrate_narratives(self, act_index, character_narrative_blocks, act_central_narrative):
         """Integrate narratives into a single coherent narrative for a single act
         character_narrative_blocks is a list of lists, each containing a character and their planned next play act
         """
@@ -1041,7 +1170,262 @@ Ensure your response reflects this change.
         character_plans = []
         for character_block in character_narrative_blocks:
             character = character_block[0]
-            character_narrative = character.reserialize_act_to_string(character_block[1])
+            character_narrative = self.reserialize_act_times(character_block[1])
+            character_plans.append(f'{character.name}\n{character_narrative}\n')
+        character_plans = '\n'.join(character_plans)
+        act_number = character_narrative_blocks[0][1]['act_number']
+
+        character_backgrounds = []
+        for character in cast(List[NarrativeCharacter], self.actors):
+            drives = '\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives])
+            narrative = character.narrative.get_summary('medium')
+            surroundings = character.look_percept
+            memories = '\n'.join(memory.text for memory in character.structured_memory.get_recent(8))
+            emotionalState = EmotionalStance.from_signalClusters(character.driveSignalManager.clusters, character)        
+            emotional_stance = emotionalState.to_definition()
+            character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
+        character_backgrounds = '\n'.join(character_backgrounds)
+
+        prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
+You are given a list of proposed acts, one from each of the characters in the play. These plans were created by each character independently.
+Your job is to integrate them into a single coherent act.
+{{$act_directives}}
+
+{{$act_central_narrative}}
+
+An act is a JSON object containing a sequence of scenes (think of a play).
+Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
+In integrating scenes within an act across characters, pay special attention to the pre- and post-narratives, as well as the characters's goals, to create a coherent scene. 
+It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives.
+Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
+The integrated plan should be a single JSON object with a sequence of acts, each with a sequence of scenes. 
+The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
+
+Here are the original, independent, plans for each character:
+{{$plans}}
+
+In the performance it is currently {{$time}}. Use this information to generate a time-appropriate sequence of scenes for your integrated Act.
+The following additional information about the state of the performance will be useful in integrating the acts.
+
+{{$backgrounds}}
+
+Respond with the updated act, using the following format:
+
+```json
+updated act
+```
+
+Act format is as follows:
+
+An Act is a single JSON document that outlines a short-term plan for yourself
+###  Structure
+Return exactly one JSON object with these keys:
+
+- "act_number" (int, copied from the original act)  
+- "act_title"   (string, copied from the original act or rewritten as appropriate)  
+- "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
+- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "tension_points": [
+    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
+    ...
+  ]
+- "scenes"      (array) 
+
+Each **scene** object must have:
+{ "scene_number": int, // sequential within the play 
+ "scene_title": string, // concise descriptor 
+ "location": string, // pick from resource or terrain names in the map file
+ "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
+ "duration": mm, // the duration of the scene, in minutes
+ "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
+ "action_order": [ "<Name>", … ], // 2-4 beats max, list only characters present 
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ // OPTIONAL: 
+ "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
+ }
+
+Never break JSON validity.  Ensure the returned form is parseable by the json.loads function.
+Keep the JSON human-readable (indent 2 spaces).
+
+Return **only** the JSON.  No commentary, no code fences.
+End your response with </end>
+""")]
+        self.message_queue.put({'name':self.name, 'text':f'------ integrating narratives -----'})
+        await asyncio.sleep(0.1)
+
+        central_dramatic_question = self.central_narrative
+        act_directives = ""
+        if act_number == 1:
+            act_directives = f""" 
+In performing this integration:
+    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Combine overlapping scene intentions from different characters where possible.
+    2. Sequence scenes to introduce characters and create unresolved tension.
+    3. Establish the central dramatic question clearly: {central_dramatic_question}
+    4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
+    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
+    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+ """
+        elif act_number == 2:
+            act_directives = f""" 
+In performing this integration:
+    1. Each scene must advance the central dramatic question: {central_dramatic_question}
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    3. Prevent lateral exploration - every scene should move closer to OR further from resolution.
+    4. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
+    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
+    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
+    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
+    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
+    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+"""
+        elif act_number == 3:
+            act_directives = f""" 
+In performing this integration:
+    1. Directly answer the central dramatic question: {central_dramatic_question}
+    2. No scene should avoid engaging with the question's resolution.
+    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    4. Sequence scenes for maximum tension (alternate trust/mistrust beats)
+    5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
+    6. Add bridging scenes where character proposals create gaps
+    7. Act post-state must explicitly state: whether the central dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
+    8. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
+    9. No scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+
+"""
+        elif act_number == 4:
+            act_directives = f""" 
+In performing this integration:
+    1. Show the immediate aftermath and consequences of Act 3's resolution of: {central_dramatic_question}
+    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.
+    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
+    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
+    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
+    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
+    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
+    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
+"""
+
+        response = self.llm.ask({"time": self.simulation_time.isoformat(), 
+                                 "plans": character_plans, 
+                                 "backgrounds": character_backgrounds, 
+                                 "act_central_narrative": act_central_narrative, 
+                                 "central_dramatic_question": self.central_narrative,
+                                 "act_directives": act_directives},
+                              prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
+        try:
+            updated_narrative_plan = None
+            if not response:
+                return None
+            response = response.replace("```json", "").replace("```", "").strip()
+            updated_narrative_plan = json.loads(response)
+            logger.info(f'Integrated act: {self.reserialize_act_times(updated_narrative_plan)}')
+        except Exception as e:
+            print(f'Error parsing updated act: {e}')
+            updated_narrative_plan = self.repair_json(response, e)
+        if updated_narrative_plan is not None:
+            self.validate_dates_in_plan(updated_narrative_plan)
+        self.narrative = updated_narrative_plan
+        self.message_queue.put({'name':self.name, 'text':f'------ integrated narratives -----'})
+        await asyncio.sleep(0.1)
+        return updated_narrative_plan
+
+    def validate_dates_in_plan(self, narrative_plan):
+        """Validate and adjust scene dates to ensure they are after simulation time and advance temporally.
+        
+        Args:
+            narrative_plan: The narrative plan containing acts and scenes
+        """
+        if narrative_plan and 'acts' in narrative_plan:
+            acts = narrative_plan['acts']
+        elif type(narrative_plan) == dict:
+            acts = [narrative_plan]
+        elif type(narrative_plan) == list:
+            acts = narrative_plan
+        else:
+            return
+            
+        prev_scene_time = self.simulation_time
+        prev_duration = 0
+        for act in acts:
+            if 'scenes' not in act:
+                continue
+            for scene in act['scenes']:
+                if 'time' not in scene:
+                    continue
+                # Parse scene time if it's a string
+                if isinstance(scene['time'], str):
+                    try:
+                        scene_time = datetime.fromisoformat(scene['time'])
+                    except Exception as e:
+                        print(f'Error parsing scene time: {e}')
+                        scene_time = self.simulation_time
+                else:
+                    scene_time = scene['time']
+                # If scene time is before simulation time or previous scene, advance it
+                while scene_time <= prev_scene_time:
+                    # Advance by one day while preserving time of day
+                    scene_time = scene_time + timedelta(days=1)
+                # Update scene time and previous scene time
+                scene['time'] = scene_time
+                if scene_time < prev_scene_time+timedelta(minutes=prev_duration):
+                    scene_time = prev_scene_time+timedelta(minutes=prev_duration)
+                    scene['time'] = scene_time
+                duration = scene.get('duration', 0)
+                if type(duration) == int and duration > 0:
+                    prev_duration = duration
+                else:
+                    prev_duration = 0
+                prev_scene_time = scene_time
+
+
+    async def run_integrated_narrative(self):
+        """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
+        Integrates on an act by act basis, assuming that, since characters had a chance to share their narratives, actwise integration is coherent"""
+        # get length of longest character narrative plan
+        integrated_act_count = 0
+        for character in cast(List[NarrativeCharacter], self.actors):
+            character_narrative_act_count = len(character.plan['acts'])
+            if character_narrative_act_count > integrated_act_count:
+                integrated_act_count = character_narrative_act_count
+
+        try:
+            for i in range(integrated_act_count):
+                act_central_narrative = await self.generate_act_central_narrative(i+1)
+                if act_central_narrative is None:
+                    logger.error('No act central narrative')
+                    return
+                previous_act = None
+                character_narrative_blocks = []
+                for character in cast(List[NarrativeCharacter], self.actors):
+                    if i < len(character.plan['acts']):
+                        updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative)
+                        character_narrative_blocks.append([character, updated_act])  
+                next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative)
+                if next_act is None:
+                    logger.error('No act to run')
+                    return
+                await self.run_narrative_act(next_act, i+1)
+                previous_act = next_act
+        except Exception as e:
+            logger.error(f'Error running integrated narrative: {e}')
+            traceback.print_exc()
+        return
+
+
+    async def write_coda(self):
+        """Integrate narratives into a single coherent narrative for a single act
+        character_narrative_blocks is a list of lists, each containing a character and their planned next play act
+        """
+        # reformat character_narrative_blocks into a list of character plans for the prompt
+        character_plans = []
+        for character_block in character_plans:
+            character = character_block[0]
+            character_narrative = self.reserialize_act_times(character_block[1])
             character_plans.append(f'{character.name}\n{character_narrative}\n')
         character_plans = '\n'.join(character_plans)
 
@@ -1130,7 +1514,7 @@ End your response with </end>
                 return None
             response = response.replace("```json", "").replace("```", "").strip()
             updated_narrative_plan = json.loads(response)
-            logger.info(f'Integrated act: {self.reserialize_act_to_string(updated_narrative_plan)}')
+            logger.info(f'Integrated act: {self.reserialize_act_times(updated_narrative_plan)}')
         except Exception as e:
             print(f'Error parsing updated act: {e}')
             updated_narrative_plan = self.repair_json(response, e)
@@ -1140,103 +1524,121 @@ End your response with </end>
         self.message_queue.put({'name':self.name, 'text':f'------ integrated narratives -----'})
         await asyncio.sleep(0.1)
         return updated_narrative_plan
-
-    def validate_dates_in_plan(self, narrative_plan):
-        """Validate and adjust scene dates to ensure they are after simulation time and advance temporally.
         
-        Args:
-            narrative_plan: The narrative plan containing acts and scenes
-        """
-        if narrative_plan and 'acts' in narrative_plan:
-            acts = narrative_plan['acts']
-        elif type(narrative_plan) == dict:
-            acts = [narrative_plan]
-        elif type(narrative_plan) == list:
-            acts = narrative_plan
-        else:
-            return
-            
-        prev_scene_time = self.simulation_time
-        prev_duration = 0
-        for act in acts:
-            if 'scenes' not in act:
-                continue
-            for scene in act['scenes']:
-                if 'time' not in scene:
-                    continue
-                # Parse scene time if it's a string
-                if isinstance(scene['time'], str):
-                    try:
-                        scene_time = datetime.fromisoformat(scene['time'])
-                    except Exception as e:
-                        print(f'Error parsing scene time: {e}')
-                        scene_time = self.simulation_time
-                else:
-                    scene_time = scene['time']
-                # If scene time is before simulation time or previous scene, advance it
-                while scene_time <= prev_scene_time:
-                    # Advance by one day while preserving time of day
-                    scene_time = scene_time + timedelta(days=1)
-                # Update scene time and previous scene time
-                scene['time'] = scene_time
-                if scene_time < prev_scene_time+timedelta(minutes=prev_duration):
-                    scene_time = prev_scene_time+timedelta(minutes=prev_duration)
-                    scene['time'] = scene_time
-                duration = scene.get('duration', 0)
-                if type(duration) == int and duration > 0:
-                    prev_duration = duration
-                else:
-                    prev_duration = 0
-                prev_scene_time = scene_time
+    async def merge_central_narratives(self):
+        """Merge the central narratives of all characters into a single central narrative"""
+        prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
+You are given a list of central narratives for a play, one from each of the characters in the play. 
+These narratives were created by each character independently, negotiating with the others.
+You are integrating multiple character-negotiated dramatic proposals into a single, cohesive central dramatic question that will drive the play.
 
+## Character Proposals
+{{$character_central_narratives}}
 
-    async def run_integrated_narrative(self):
-        """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
-        Integrates on an act by act basis, assuming that, since characters had a chance to share their narratives, actwise integration is coherent"""
-        # get length of longest character narrative plan
-        integrated_act_count = 0
+## Cast & Context
+**Characters:** {{$character_names_and_brief_descriptions}}
+**Setting:** {{$setting}}
+
+## Integration Task
+Create a unified central dramatic question that:
+1. **Synthesizes character interests** - Incorporates core elements from multiple proposals
+2. **Assigns clear dramatic roles** - Each character has a specific function in the conflict
+4. **Has binary resolution potential** - Can succeed or fail clearly
+5. **Creates character interdependence** - No one can resolve it alone
+
+## Output elements
+1. Central Dramatic Question: [One clear sentence framing the core conflict]
+2. Stakes: [What happens if this question isn't resolved - consequences that matter to all]
+3. Character Roles: [for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 1-2 sentence role description]
+4. Dramatic Tension Sources: [The main opposing forces]
+5. Success Scenario: [Brief description of what "winning" looks like]
+6. Failure Scenario: [Brief description of what "losing" looks like] 
+
+## Output Format
+
+*Write your response as one or two paragraphs totalling no more than 200 words, with no introductory text, code fences or markdown formatting.
+
+What unified central dramatic question emerges from these proposals?         
+                              """)]
+        response = self.llm.ask({"character_central_narratives": '\n'.join([f'{character.name}: {character.current_proposal.to_string() if character.current_proposal else ""}' for character in cast(List[NarrativeCharacter], self.actors)]), 
+                                 "character_names_and_brief_descriptions": '\n'.join([f'{character.name}: {character.character}' for character in cast(List[NarrativeCharacter], self.actors)]), 
+                                 "setting": self.current_state}, 
+                                 prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
+        if response:
+           self.central_narrative = response
+        return self.central_narrative
+
+    async def generate_act_central_narrative(self, act_number ):
+        """Generate a central narrative for the act"""
+        prompt = [UserMessage(content="""You are creating a focused dramatic framework for Act {{$act_number}} based on the overall central narrative and character planning.
+
+## Overall Central Narrative
+{{$play_level_central_narrative}}
+                              
+## Previous Act Scenes
+{{$previous_scenes_summary}}
+
+## Act {{$act_number}}
+
+## Character Act Plans
+{{$character_act_plans}}
+
+## Actor narratives
+{{$actor_narratives}}
+
+## Current Situation
+{{$current_situation}}
+
+## Task
+Generate an act-specific central narrative that:
+1. **Focuses the overall question** - Narrows the play-level dramatic question to what THIS act must resolve
+2. **Escalates from previous acts** - Raises stakes/tension from where the story currently stands  
+3. **Creates scene-plannable conflict** - Gives characters specific dramatic targets for individual scenes
+4. **Maintains character agency** - Respects the roles and drives established in character plans
+5. **Forces binary resolution** - This act must clearly succeed or fail at its specific focus
+
+## Act-Specific Guidelines
+{{$act_specific_guidelines}}
+
+## Output Format
+A paragraph or two including the following elements:
+1. Central Focus: [One terse (10-12 words) sentence stating what specific aspect of the overall question this act addresses]
+2. Stakes: [What happens if this act's focus succeeds vs. fails - immediate consequences (8-10 words)]
+3. Act-Specific Character Roles: [for each character]
+    - {character_name}: [How their overall role manifests specifically in this act - (5-6 words each) who drives decisions, who creates obstacles, etc.]
+4. Required Scene Types: [for each scene type]
+    - {scene_type_name}: [tension builders, confrontations, forced choices, etc.] plus short description of scene focus (4-5 words)
+5. Success Scenario: [What this act accomplishing its focus looks like, in terms of setting up the next act (5-6 words)]
+6. Failure Scenario: [What this act failing at its focus looks like, in terms of setting up the next act (5-6 words)]
+
+Your response should be consistent with the play-level central narrative and the previous acts.
+
+Generate the act-specific framework that will guide scene-level planning.
+re""")]
+        
         for character in cast(List[NarrativeCharacter], self.actors):
-            character_narrative_act_count = len(character.plan['acts'])
-            if character_narrative_act_count > integrated_act_count:
-                integrated_act_count = character_narrative_act_count
+            character.narrative = NarrativeSummary(
+            recent_events="",
+            ongoing_activities="",
+            last_update=self.simulation_time, 
+            active_drives=[]
+        )
 
-        try:
-            for i in range(integrated_act_count):
-                previous_act = None
-                character_narrative_blocks = []
-                for character in cast(List[NarrativeCharacter], self.actors):
-                    if i < len(character.plan['acts']):
-                        updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act)
-                        character_narrative_blocks.append([character, updated_act])  
-                next_act = await self.integrate_narratives(character_narrative_blocks)
-                if next_act is None:
-                    logger.error('No act to run')
-                    return
-                await self.run_narrative_act(next_act, i+1)
-                previous_act = next_act
-        except Exception as e:
-            logger.error(f'Error running integrated narrative: {e}')
-            traceback.print_exc()
-        return
+        act_guidance = [
+            """Act 1: "ESTABLISH foundation - Introduce core conflict, form fragile alliances, set central stakes" """,
+            """Act 2: "COMPLICATE dynamics - Deepen tension, raise external stakes, force difficult choices" """,
+            """Act 3: "RESOLVE or collapse - Final confrontation, decisive action, ultimate success or failure" """,
+            """Act 4: "REFLECT aftermath - Show consequences, character transformation, new equilibrium" """
+        ]
 
-
-    async def step_act(self):
-        """Step through the act - only execute one scene, main job is to find the next scene to run"""
-        next_scene_time = self.simulation_time + timedelta(hours=1000)
-        next_character = None
-        next_scene = None
-        characters_finished_act = []
-        for character in cast(List[NarrativeCharacter], self.actors):
-            if character in characters_finished_act:
-                continue
-            else:
-                scene = character.current_scene
-                if scene is not None:
-                    if scene.get('time') < next_scene_time:
-                        next_scene_time = scene.get('time')
-                        next_character = character
-                        next_scene = scene
-                else:
-                    characters_finished_act.append(character)
-        return next_character, next_scene
-
+        response = self.llm.ask({"play_level_central_narrative": self.central_narrative, 
+                                 "act_number": act_number,
+                                 "character_act_plans": '\n'.join([f'{character.name}: {character.current_act if character.current_act else ""}' for character in cast(List[NarrativeCharacter], self.actors)]), 
+                                 "previous_scenes_summary": '\n'.join([json.dumps(self.reserialize_scene_time(scene), indent=2) for scene in self.previous_scenes]), 
+                                 "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
+                                 "act_specific_guidelines": act_guidance[act_number-1],
+                                 "current_situation": self.current_state}, 
+                                 prompt, max_tokens=250, stops=['</end>'], tag='act_central_narrative')
+        if response:
+            self.act_central_narrative = response
+        return self.act_central_narrative

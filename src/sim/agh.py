@@ -1716,7 +1716,7 @@ Do not simply prepend this task, but rather integrate it into your plan in a way
         # add each new task, but first check for and delete any existing task with the same name
         task_plan = []
         for t, task_hash in enumerate(hash_utils.findall_forms(response)):
-            if t > ntasks:
+            if t >= max(2, ntasks):
                 break
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
             if not self.focus_goal:
@@ -2027,7 +2027,7 @@ Consider the previous act. E.G.:
 Respond in hash-formatted text:
 
 #mode one of {{$modes}}, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
-#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name.
+#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to about 16-20 words for Do or 30 words max for Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
 ##

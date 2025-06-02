@@ -1,6 +1,10 @@
 from enum import Enum
 from weakref import WeakValueDictionary
-
+import os, sys, re, traceback, requests, json
+import numpy as np
+from sentence_transformers import SentenceTransformer
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import hash_utils
 
 class Mode(Enum):
     Think = "Think"
@@ -188,3 +192,38 @@ class Autonomy:
         self.goal = goal
         self.task = task
         self.action = action
+
+class CentralNarrative:
+    def __init__(self, question, why, reason, others, risks):
+        self.question = question
+        self.why = why
+        self.reason = reason
+        self.others = others
+        self.risks = risks
+
+    def to_string(self):
+        return f'CentralNarrative: Question: {self.question}; Why: {self.why}; Reason: {self.reason}; Others Roles: {self.others}; Risks: {self.risks}'
+    
+    @classmethod
+    def parse_from_hash(cls, hash_string):
+        """Parse a hash-formatted string into a CentralNarrative object"""
+        """Validate an XML act and create an Act object
+        
+        Args:
+            hash_string: Hash-formatted act definition
+            task: Task this act is for
+        """
+        try:
+            question = hash_utils.find('question', hash_string)
+            why = hash_utils.find('why', hash_string)
+            reason = hash_utils.find('reason', hash_string)
+            others = hash_utils.find('others', hash_string)
+            risks = hash_utils.find('risks', hash_string)
+            if question and why and reason and others and risks:
+                return CentralNarrative(question, why, reason, others, risks)
+            else:
+                print(f"Error parsing CentralNarrative from hash: {hash_string}")
+                return None
+        except Exception as e:
+            print(f"Error parsing CentralNarrative from hash: {e}")
+            return None       

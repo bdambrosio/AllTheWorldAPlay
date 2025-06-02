@@ -22,11 +22,11 @@ if api_key and api_key != '':
         client = genai.Client(api_key=api_key)
     except Exception as e:
         print(f"Error opening Google client: {e}")
-    try:
-        response = client.models.generate_content(model="gemini-2.5-flash-preview-04-17", contents="Explain how AI works in a few words")
-        print(response.text)        
-    except Exception as e:
-        print(f"Error opening OpenAI client: {e}")
+    #try:
+    #    response = client.models.generate_content(model="gemini-2.5-flash-preview-04-17", contents="Explain how AI works in a few words")
+    #    print(response.text)        
+    #except Exception as e:
+    #    print(f"Error opening OpenAI client: {e}")
 
 class GeminiClient():
     DefaultEndpoint = 'https://api.openai.com'

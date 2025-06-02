@@ -2,12 +2,18 @@ from __future__ import annotations
 import asyncio
 import copy
 from datetime import datetime
+from itertools import tee
 import logging
 from typing import Optional, Dict, List, Any
+#from venv import create
 
+#from attr import Out
 from pyparsing import cast
 import os, sys, re, traceback, requests, json
-from sim.character_dataclasses import Act
+
+from trimesh import Scene
+from unstructured_client import General
+from sim.character_dataclasses import Act, CentralNarrative
 from utils import hash_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
@@ -37,6 +43,9 @@ class NarrativeCharacter(Character):
         self.current_act_index = 0
         self.current_scene_index = 0
         print(f'{self.name}: {self.__class__.__name__}')
+        self.previous_proposal = None
+        self.current_proposal = None
+        self.round_number = 0
         #self.llm.set_model('gpt-4o-mini')
 
     def validate_scene_time(self, scene) -> Optional[datetime]:
@@ -210,11 +219,7 @@ class NarrativeCharacter(Character):
         serialized_str = self.reserialize_narrative_json({"acts":[act]})
         return json.dumps(serialized_str['acts'][0], indent=2)
 
-    async def introduce_myself(self, play_file, map_file):
-        self.play_file = play_file
-        self.map_file = map_file
-        self.play_file_content = open(Path('../plays/') / play_file, 'r').read()
-        self.map_file_content = open(Path('../plays/scenarios/') / map_file, 'r').read()
+    async def introduce_myself(self, play_file_content, map_file_content):
 
         system_prompt = """Imagine you are addressing the audience of a play. 
 Create a short introduction (no more than 60 tokens) to your character, including your name, terse description, role in the play, drives, and most important relationships with other characters. 
@@ -228,13 +233,13 @@ But things may be changing....
 
         mission = """The overall cast of characters and setting are given below in Play.py and Map.py.
 
-<Play.py>
-{{$play}}
-</Play.py>
+<Scenario>
+{{$scenario}}
+</Scenario>
 
-<Map.py>
+<Map>
 {{$map}}
-</Map.py>
+</Map>
 
 
 ## 1.  INPUT FILES
@@ -242,11 +247,8 @@ But things may be changing....
 You have been provided two Python source files above.
 
 ▶ play.py  
-    • Contains Character declarations in the pattern  
-      `CharName = agh.Character("CharName", "...description...", ...)`  
-    • After each character there is a list → `<Char>.drives = [Drive("..."), ...]`  
-    • Percepts or initial internal lines appear via `<Char>.add_perceptual_input(...)`.  
-    • At the end, a Context is created:  
+    • Contains Character declarations
+    • At the end, a Context is defined:  
       `context.Context([CharA, CharB, ...], "world-blurb", scenario_module=<map>)`  
 
 ▶ map.py  
@@ -264,8 +266,8 @@ End your response with </end>
 """
 
         introduction = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix,
-                                addl_bindings={"play": self.play_file_content, 
-                                 "map": self.map_file_content,
+                                addl_bindings={"scenario": play_file_content, 
+                                 "map": map_file_content,
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat(),
                                  "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
@@ -277,43 +279,61 @@ End your response with </end>
     
 
 
-    async def write_narrative(self, play, map):
-        # await self.cognitive_cycle()
-        self.play_file = play
-        self.map_file = map
-        self.play_file_content = open(Path('../plays/') / play, 'r').read()
-        self.map_file_content = open(Path('../plays/scenarios/') / map, 'r').read()
+    async def write_narrative(self, play_file_content:str, map_file_content:str, central_narrative:CentralNarrative):
 
+        mission = """You are a skilled playwright working on an initial outline of the narrative arc for an improvisational play. 
+The overall cast of characters and setting are given below.
 
-        mission = """You are a skilled playwright working on an initial outline of the narrative arc for a single character in a play. 
-The overall cast of characters and setting are given below in Play.py and Map.py.
+<Scenario>
+{{$scenario}}
+</Scenario>
 
-<Play.py>
-{{$play}}
-</Play.py>
-
-<Map.py>
+<Map>
 {{$map}}
-</Map.py>
+</Map>
 
+The negotiation process has established the following central dramatic question that will drive the play:
+{{$central_narrative}}
 
-## 1.  INPUT FILES
+* central_narrative is a paragraph or two including the following elements:
+1. Central Dramatic Question: One clear sentence framing the core conflict
+2. Stakes: What happens if this question isn't resolved - consequences that matter to all
+3. Character Roles: for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 1-2 sentence role description
+4. Dramatic Tension Sources: The main opposing forces that will drive the narrative
+5. Success Scenario: Brief description of what "winning" looks like
+6. Failure Scenario: Brief description of what "losing" looks like
 
-You have been provided two Python source files above.
+After processing the above information and in light of the following information, generate a 3 act plus coda outline for the play.
+Your generated narrative should be consistent with the central dramatic question and the other elements of the central narrative.
 
-▶ play.py  
-    • Contains Character declarations in the pattern  
-      `CharName = agh.Character("CharName", "...description...", ...)`  
-    • After each character there is a list → `<Char>.drives = [Drive("..."), ...]`  
-    • Percepts or initial internal lines appear via `<Char>.add_perceptual_input(...)`.  
-    • At the end, a Context is created:  
-      `context.Context([CharA, CharB, ...], "world-blurb", scenario_module=<map>)`  
+Consider the following guidelines:
+** For act 1:
+    1. This act should be short and to the point..
+    2. Sequence scenes to introduce characters and create unresolved tension.
+    3. Establish the central dramatic question clearly: {{$central_narrative}}
+    4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
+    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
+    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+ 
+** For act 2:
+    1. Each scene must advance the central dramatic question: {{$central_narrative}}
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
+    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
+    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
+    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
+    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
+    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
+    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
 
-▶ map.py  
-    • Defines Enum classes for terrain, infrastructure, resource, and property types.  
-    • Contains `resource_rules`, `terrain_rules`, etc.  (You may cite these names when choosing locations.)
-
-    After processing the above files and in light of the following information, generate a medium-term narrative arc for yourself.
+** For act 3:
+    1. Directly answer the central dramatic question: {{$central_narrative}}
+    2. No scene should avoid engaging with the question's resolution.
+    3. Sequence scenes for maximum tension (alternate trust/mistrust beats)
+    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
+    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
+    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
+    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
 
 """
                             
@@ -355,7 +375,7 @@ Return exactly one JSON object with these keys:
 * "acts" – an array of act objects.  Each act object has  
   - "act_number" (int, 1-based)  
   - "act_title"   (string)  
-  - "act_description" (string, concise description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+  - "act_description" (string, concise (15-20 word) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
   - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
   - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
   - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
@@ -369,8 +389,8 @@ You may later choose to share some or all of it with specific other characters, 
 You will have the opportunity to revise your plan as you go along, observe the results, and as you learn more about the other characters.
 
 ### 2.2  Guidelines
-1. Base every character’s *stated goal* on their `.drives`, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3 acts - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives. An additional final act can be used as a coda.
+1. Base every character’s *stated goal* on their drives, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
+2. Craft 3 acts plus a single-scene Coda - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives. An additional final act can be used as a coda.
 3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
 4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
@@ -383,9 +403,10 @@ Return **only** the JSON.  No commentary, no code fences.
 """
 
         narrative = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix, 
-                                addl_bindings={"play": self.play_file_content, 
-                                 "map": self.map_file_content,
+                                addl_bindings={"scenario": self.context.summarize_scenario(), 
+                                 "map": self.context.summarize_map(),
                                  "name": self.name,
+                                 "central_narrative": central_narrative,
                                  "start_time": self.context.simulation_time.isoformat(),
                                  "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                  "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
@@ -436,7 +457,7 @@ End your response with </end>
 
                 response = default_ask(self, prefix=mission, suffix=suffix, 
                                 addl_bindings={"name": character.name, 
-                                 "plan": json.dumps(self.reserialize_narrative_json(self.plan))}, 
+                                 "plan": json.dumps(self.context.reserialize_acts_times(self.plan))}, 
                                  max_tokens=240, tag='share_narrative')
                 try:
                     say_arg = hash_utils.find('share', response)
@@ -486,6 +507,8 @@ Recent dialogs:
 
 Your plan at the moment is:
 {{$plan}}
+
+if you choose to update an act, remember:
 
 Respond with the single word 'yes' or 'no', and, if yes, the act number of the first act you would like to update, and the updated act, using the following format:
 
@@ -588,7 +611,7 @@ End your response with </end>
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
-                               "plan": json.dumps(self.reserialize_narrative_json(self.plan)),
+                               "plan": json.dumps(self.context.reserialize_acts_times(self.plan)),
                                "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
                               max_tokens=1600, tag='update_narrative')
@@ -636,10 +659,10 @@ End your response with </end>
             logger.error(traceback.format_exc())
         return None
 
-    def replan_narrative_act(self, act, previous_act):
+    def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative):
         """Rewrite the act with the latest shared information"""
 
-        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
+        system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
@@ -647,7 +670,7 @@ Characters hold real agency; they pursue goals, make trade-offs, and can fail. S
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
 By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
         """
-        mission = """ You have already created a initial plan for the following act, and now need to update it based on the actual performance so far.
+        mission = """ You have already created a initial outline for the following act, and now need to update it based on the actual performance so far and the guiding central dramatic question.
 Note the tensions and relationships with other characters, as these may have changed.
 Note also the post-narrative of the previous act, and check consistency with the assumptions made in this act, including it's title, pre-narrative, goals, description, and character goals in the initial scene.
 Based on prior conversations and events recorded below, update your plan for the following act. 
@@ -660,24 +683,70 @@ your original act was:
 
 {{$act}}
 
-and it was number {{$act_number}} in the your original narrative plan:
+and it was number {{$act_number}} in the your original narrative plan.
+The actual previous acts performed were an integration across all characters's plans, and are:
 
-{{$play}}
+{{$previous_acts}}
 
-The actual previous act performed was an integration across all characters's plans, and was:
+The overall play central Question / Conflict driving all dramatic action is:
+{{$central_narrative}}
 
-{{$previous_act}}
+The central narrative agreed upon for the current act (ie, this act being replanned) is:
+{{$act_central_narrative}}
 
 """
         suffix = """
 
-Again, your original short-term plan was:
+Again, your original act plan was:
 
 {{$act}}
 
 Note that the current situation, as well as any assumptions or preconditions on which your original act and plan were based, may no longer be valid.
 However, the original short-term plan above should still be used to locate your new plan within the overall narrative arc of the performance.
-Respond with the updated act, using the following format:
+
+The following act-specific guidelines supplement the general guidelines above, and override them where necessary. Again, the current act number is {{$act_number}}:
+
+** For act 1:
+    1. This act should be short and to the point..
+    2. Sequence scenes to introduce characters and create unresolved tension.
+    3. Establish the central dramatic question clearly: {{$central_narrative}}
+    4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
+    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
+    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+ 
+** For act 2 (midpoint act):
+    1. Each scene must advance the central dramatic question: {{$central_narrative}}
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
+    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
+    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
+    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
+    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
+    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
+    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+
+** For act 3 (final act):
+    1. Directly answer the central dramatic question: {{$central_narrative}}
+    2. No scene should avoid engaging with the question's resolution.
+    3. Sequence scenes for maximum tension (alternate trust/mistrust beats)
+    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
+    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
+    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
+    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+
+** For act 4 (coda):
+    1. Show the immediate aftermath and consequences of Act 3's resolution of: {{$central_narrative}}
+    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.
+    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
+    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
+    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
+    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
+    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
+    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
+
+
+Respond with tee updated act, using the following format:
 
 ```json
 updated act
@@ -691,7 +760,7 @@ Return exactly one JSON object with these keys:
 
 - "act_number" (int, copied from the original act)  
 - "act_title"   (string, copied from the original act or rewritten as appropriate)  
-- "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
+- "act_description" (string, concise (about 15 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
 - "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
 - "act_post_state": (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
@@ -742,18 +811,25 @@ Each **scene** object must have:
     ...
   ]
 }
+
+Again, the act central narrative is:
+
+{{$act_central_narrative}}
+
 ```
 === End of Example ===
 
 End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
-        reserialized_act = self.reserialize_narrative_json(acts)
+        reserialized_act = self.context.reserialize_acts_times(acts)
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
-                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0]), 
+                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1), 
                                "act_number": act['act_number'],
-                               "play": json.dumps(self.reserialize_narrative_json(self.plan)),
-                               "previous_act": json.dumps(self.reserialize_act_to_string(previous_act)) if previous_act else ''},
+                               "act_central_narrative": act_central_narrative,
+                               "central_narrative": self.context.central_narrative,
+                               "play": json.dumps(self.context.reserialize_acts_times(self.plan), indent=1),
+                               "previous_acts": '\n'.join([json.dumps(self.context.reserialize_act_times(act)) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
                               max_tokens=1400, tag='replan_narrative_act')
         try:
             updated_act = None
@@ -772,13 +848,77 @@ End your response with </end>
             self.update_act(updated_act)
         return updated_act
 
-    async def next_scene(self):
-        """Step through the act - only execute one scene, main job is to update act and scene indices"""
-        self.current_scene_index += 1
-        if self.current_act and len(self.current_act.get('scenes', [])) > self.current_scene_index:
-            self.current_scene = self.current_act["scenes"][self.current_scene_index]
-            return self.current_scene
-        else:
-            self.current_scene = None
-            return None
+    async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content):
+        """Negotiate the central dramatic question with other characters"""
 
+        mission="""You are {{$name}} engaging in collaborative story development with other characters to establish the central dramatic question that will drive the upcoming narrative.
+"""
+
+        suffix = """
+# Your Character Profile
+{{$character_description}}
+
+## Cast & Setting
+**Other Characters:**
+{{$other_characters_profiles}}
+
+**Setting & Context:**
+{{$setting_background}}
+
+
+## Negotiation Round {{round_number}} of 2
+
+**Previous Proposals (if Round 2):**
+{{$previous_proposals}}
+
+**Current Proposals on the Table:**
+{{$current_proposals}}
+
+** Your Task
+Propose or advocate for a central dramatic question that:
+1. **Engages your drives** - Creates opportunities/obstacles relevant to your core motivations
+2. **Involves other characters** - Requires meaningful interaction with at least 2-3 others present
+3. **Fits the setting** - Makes sense given the current context and environment
+4. **Creates genuine conflict** - Poses a question where the outcome genuinely matters and isn't predetermined
+5. **Has clear stakes** - Everyone understands what's at risk if the question isn't resolved
+
+** Strategic Considerations
+- In Round 1: Be bold and advocate for your interests
+- In Round 2: Consider compromise positions that serve multiple characters
+- Remember: The question you choose will shape the entire narrative arc
+- Think about whether you want to be protagonist, antagonist, or catalyst in this conflict
+
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Close the hash-formatted text with ##  on a separate line, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#Question centeral question or conflict terse (6-10 words)
+#Why dramatic potential (6-8 words)
+#Reason my character's stake in this question / conflict (6-10 words)
+#Others roles in this question / conflict (8-12 words)
+#Risks weaknesses in this proposal(4-6 words)
+##
+
+What dramatic question do you propose?
+End your response with </end>
+"""
+
+
+        response = default_ask(self, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, 
+                               "character_description": self.character,
+                               "other_characters_profiles": '\n'.join([char.character for char in self.context.actors if char.name != self.name]),
+                               "setting_background": self.context.current_state,
+                               "previous_proposals": '\n'.join([f'{char.name}: {char.previous_proposal.to_string() if char.previous_proposal else ""}' for char in self.context.actors if char.name != self.name]),
+                               "current_proposals": '\n'.join([f'{char.name}: {char.current_proposal.to_string() if char.current_proposal else ""}' for char in self.context.actors if char.name != self.name]),
+                               "round_number": round,
+                               "play_file_content": play_file_content,
+                               "map_file_content": map_file_content},
+                              max_tokens=100, tag='negotiate_central_narrative')
+        if response:
+            central_narrative = CentralNarrative.parse_from_hash(response)
+            self.previous_proposal = self.current_proposal
+            self.current_proposal = central_narrative
+            self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
+            await asyncio.sleep(0.4)
+        return response
