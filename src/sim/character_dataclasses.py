@@ -1,6 +1,8 @@
 from enum import Enum
 from weakref import WeakValueDictionary
-import os, sys, re, traceback, requests, json
+import os, sys
+from datetime import timedelta, datetime
+import json
 import numpy as np
 from sentence_transformers import SentenceTransformer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -21,6 +23,14 @@ def find_first_digit(s):
         if char.isdigit():
             return char
     return None  # Return None if no digit is found
+
+def datetime_handler(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()  # More standard format
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    else:
+        return str(obj) 
 
 
 class Stack:

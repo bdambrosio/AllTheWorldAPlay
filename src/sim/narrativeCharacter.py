@@ -11,9 +11,11 @@ from typing import Optional, Dict, List, Any
 from pyparsing import cast
 import os, sys, re, traceback, requests, json
 
+from sympy import evaluate
 from trimesh import Scene
 from unstructured_client import General
-from sim.character_dataclasses import Act, CentralNarrative
+from sim.character_dataclasses import Act, Task, CentralNarrative, datetime_handler
+from src.utils.Messages import UserMessage
 from utils import hash_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
@@ -217,7 +219,7 @@ class NarrativeCharacter(Character):
     def reserialize_act_to_string(self, act: Dict[str, Any]) -> str:
         """Reserialize the act to a string"""
         serialized_str = self.reserialize_narrative_json({"acts":[act]})
-        return json.dumps(serialized_str['acts'][0], indent=2)
+        return json.dumps(serialized_str['acts'][0], indent=2, default=datetime_handler)
 
     async def introduce_myself(self, play_file_content, map_file_content):
 
@@ -457,7 +459,7 @@ End your response with </end>
 
                 response = default_ask(self, prefix=mission, suffix=suffix, 
                                 addl_bindings={"name": character.name, 
-                                 "plan": json.dumps(self.context.reserialize_acts_times(self.plan))}, 
+                                 "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler)}, 
                                  max_tokens=240, tag='share_narrative')
                 try:
                     say_arg = hash_utils.find('share', response)
@@ -611,7 +613,7 @@ End your response with </end>
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, 
                                "dialogs": '\n'.join(dialogs),
-                               "plan": json.dumps(self.context.reserialize_acts_times(self.plan)),
+                               "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler),
                                "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
                               max_tokens=1600, tag='update_narrative')
@@ -688,17 +690,17 @@ The actual previous acts performed were an integration across all characters's p
 
 {{$previous_acts}}
 
-The overall play central Question / Conflict driving all dramatic action is:
+The overall play Dramatic Context (central Question / Conflict driving all dramatic action is:
 {{$central_narrative}}
 
-The central narrative agreed upon for the current act (ie, this act being replanned) is:
+The dramatic context agreed upon for the current act (ie, this act being replanned) is:
 {{$act_central_narrative}}
 
 """
         suffix = """
 
 Again, your original act plan was:
-
+Act number: {{$act_number}}
 {{$act}}
 
 Note that the current situation, as well as any assumptions or preconditions on which your original act and plan were based, may no longer be valid.
@@ -823,13 +825,14 @@ End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.context.reserialize_acts_times(acts)
+        act_number = act['act_number']
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
-                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1), 
+                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
                                "act_number": act['act_number'],
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,
-                               "play": json.dumps(self.context.reserialize_acts_times(self.plan), indent=1),
-                               "previous_acts": '\n'.join([json.dumps(self.context.reserialize_act_times(act)) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
+                               "play": json.dumps(self.context.reserialize_acts_times(self.plan), indent=1, default=datetime_handler),
+                               "previous_acts": '\n'.join([json.dumps(self.context.reserialize_act_times(act), default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
                               max_tokens=1400, tag='replan_narrative_act')
         try:
             updated_act = None
@@ -882,6 +885,7 @@ Propose or advocate for a central dramatic question that:
 4. **Creates genuine conflict** - Poses a question where the outcome genuinely matters and isn't predetermined
 5. **Has clear stakes** - Everyone understands what's at risk if the question isn't resolved
 
+
 ** Strategic Considerations
 - In Round 1: Be bold and advocate for your interests
 - In Round 2: Consider compromise positions that serve multiple characters
@@ -922,3 +926,85 @@ End your response with </end>
             self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
             await asyncio.sleep(0.4)
         return response
+    
+    """
+    def evaluate_commitment_significance(self, other_character:Character, commitment_task:Task):
+        prompt = [UserMessage(content="valuate the significance of a tentative verbal commitment to the current dramatic context
+    and determine if it is a significant commitment that should be added to the task plan.
+The apparent commitment is inferred from a verbal statement to act now made by self, {{$name}}, to other, {{$target_name}}.
+The apparent commitment is tentative, and may be redundant in the scene you are in.
+The apparent commitment may be hypothetical, and may not be a commitment to act now.
+The apparent commitment may be social chatter, e.g. simply a restatement of already established plans. These should be reported as NOISE.
+The apparent commitment may simply be 'social noise' - a statement of intent or opinion, not a commitment to act now. Again, these should be reported as NOISE.
+The apparent commitment may be relevant to the scene you are in or the dramatic context, and unique wrt tasks already in the task plan. These should be reported as RELEVANT.
+The apparent commitment may be relevant to the scene you are in or the dramatic context, but redundant with tasks already in the task plan. These should be reported as REDUNDANT.
+Alternatively, the apparent commitment may be unique and significant to the scene you are in or the central dramatic question. These should be reported as SIGNIFICANT.
+The apparent commitment may be irrelevant to the scene you are in or the dramatic context. These should be reported as NOISE.
+
+## Dramatic Context
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+<current_scene>
+{{$current_scene}}
+</current_scene>
+
+##Scene Task Plan
+<scene_integrated_task_plan>
+{{$scene_integrated_task_plan}}
+</scene_integrated_task_plan>
+
+##Actual Scene History to date
+<scene_history> 
+{{$scene_history}}
+</scene_history>
+
+<transcript>    
+{{$transcript}}
+</transcript>
+        
+## Apparent Commitment
+<commitment>
+{{$commitment_task}}
+</commitment>
+
+Your task is to evaluate the significance of the apparent commitment.
+Determine if it is 
+    social NOISE that should be ignored.
+    a REDUNDANT task that can be ignored. 
+    a RELEVANT task that can be optionally included.
+    a SIGNIFICANT commitment that should be added to the task plan,  
+Respond with a single word: "NOISE", "REDUNDANT", RELEVANT", or "SIGNIFICANT".
+Do not include any other text in your response.
+
+End your response with </end>
+"
+        )]
+        significance = 'NOISE'
+        response = self.llm.ask({"name": self.name, 
+                               "target_name": other_character.name,
+                               "commitment_task": commitment_task.to_string(),
+                               "central_narrative": self.context.central_narrative,
+                               "act_specific_narrative": self.context.act_central_narrative,
+                               "current_scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                               "scene_integrated_task_plan": self.context.format_scene_integrated_task_plan() if self.context.scene_integrated_task_plan else json.dumps(self.goal.task_plan, indent=2, default=datetime_handler),
+                               "scene_history": '\n'.join([history for history in self.context.scene_history]) if self.context.scene_history else '',
+                               "transcript": self.actor_models.get_actor_model(other_character.name, create_if_missing=True).dialog.get_transcript(8)},
+                                prompt, max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
+        if response:
+            response = response.lower()
+            if 'significant' in response:
+                return 'SIGNIFICANT'
+            elif 'relevant' in response:
+                return 'RELEVANT'
+            elif 'redundant' in response:
+                return 'REDUNDANT'
+            else:
+                return 'NOISE'
+        return 'NOISE'
+    """

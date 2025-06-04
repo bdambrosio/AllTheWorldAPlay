@@ -45,7 +45,7 @@ import asyncio
 from weakref import WeakValueDictionary
 import logging
 from sim.prompt import ask as default_ask
-from src.sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy
+from src.sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy, datetime_handler     
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
 
@@ -1318,6 +1318,18 @@ End response with:
 {{$goal_statement}}
 </goal_directive>
 
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+                              
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+                              
+<scene>
+{{$scene}}
+</scene>
+
 <situation>
 {{$situation}}
 </situation>
@@ -1367,6 +1379,8 @@ Following are memories relevant to the signalClusters above. Consider them in yo
 
 Consider:
 1. The goal directive is the central issue / opportunity / obligation demanding the character's attention.
+2. The character is in the middle of a scene in an improvisational play, the players have agreed to the central narrative and act specific narrative given above. 
+    These must be top priority in translating the goal directive into a goal.
 2. Any patterns or trends in the past goals, tasks, or actions should be considered only insofar as the goal must be consistent with them.
 3. Identify any other actors involved in the goal, and their relationships to the character, insofar as the goal must be consistent with them.
 
@@ -1398,6 +1412,9 @@ End response with:
 """)]
 
         response = self.llm.ask({"goal_statement":goal_statement,
+                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                  "signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
@@ -1602,8 +1619,37 @@ End response with:
         suffix = """
 
 Create up to {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
-Most importantly, the tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
+The tasks must be designed to achieve the focus goal in light of the central narrative, act specific narrative, and scene given below.
+
+##Dramatic Context
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+Scene you will be acting in:
+<scene>
+{{$scene}}
+</scene>
+
+In light of the narrative context above, your acts should serve story momentum as well as character psychology.
+
+Consider how your chosen task_plan:
+- Advances the central narrative question toward resolution or deepens the mystery
+- Escalates or defuses the current act's dramatic tension  
+- Creates new conflict, responds to existing conflict, or avoids confrontation
+- Reveals, conceals, or misdirects crucial information
+- Forces decisions from others or demonstrates your own choices
+- Affects your alliances and relationships in service of the story
+
+Choose actions that drive narrative forward, not just maintain status quo.
+
+The tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
 Each task should be an important component of the overall narrative arc of the scene achieving the focus goal. Do not include tasks merely to fill time or number of tasks.
+Each task should contain the potential for a narrative beat: learn something new, relationship shift, powerful emotion, change in power dynamics, etc.
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
                               
@@ -1655,7 +1701,9 @@ End response with:
 """
         if new_task:
             mission += """\nYou have been given this new task which should be integrated early into your plan. 
-Do not simply prepend this task, but rather integrate it into your plan in a way that is consistent with the focus goal:
+Do not simply prepend this task, but rather integrate it into your plan in a way that is consistent with the focus goal.
+Do not introduce substantially new tasks, but rather integrate the new task into your existing plan.
+Place tasks least important to the dramatic context early in the plan when possible.
             
 ###New Task
 {{$new_task}}
@@ -1686,11 +1734,11 @@ Do not simply prepend this task, but rather integrate it into your plan in a way
             if goal.name == 'preconditions' or goal.name == 'postconditions':
                 ntasks = 1
             elif self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
-                ntasks = self.context.compute_task_plan_limits(self.current_scene)
+                ntasks = self.context.compute_task_plan_limits(self,self.current_scene)
             elif self.__class__.__name__ == 'NarrativeCharacter':
                 logger.info(f'{self.name} generate_task_plan: no current scene, using default ntasks: {ntasks}')
             elif self.context.current_scene:
-                ntasks = self.context.compute_task_plan_limits(self.context.current_scene)
+                ntasks = self.context.compute_task_plan_limits(self, self.context.current_scene)
             if goal.task_plan and replan:
                 ntasks = min(ntasks, max(1, len(goal.task_plan)))
         if self.context.scene_post_narrative:
@@ -1707,6 +1755,9 @@ Do not simply prepend this task, but rather integrate it into your plan in a way
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[:5]),
                                 "scene_narrative": scene_narrative,
+                                "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                 "task_plan": "\n".join([t.to_string() for t in goal.task_plan]) if goal.task_plan else '', 
                                 "new_task": new_task.to_string() if new_task else ''},
                                tag = 'Character.generate_task_plan',
@@ -1715,14 +1766,20 @@ Do not simply prepend this task, but rather integrate it into your plan in a way
 
         # add each new task, but first check for and delete any existing task with the same name
         task_plan = []
-        for t, task_hash in enumerate(hash_utils.findall_forms(response)):
-            if t >= max(2, ntasks):
-                break
+        start_index = -1
+        forms = hash_utils.findall_forms(response)
+        current_task_plan_length = len(goal.task_plan) if goal.task_plan else ntasks
+        if current_task_plan_length < 2 and len(forms) > current_task_plan_length + 1:
+            start_index = len(forms) - current_task_plan_length - 1 # skip early tasks if new plan is too long; preserve important closing tasks.
+        elif current_task_plan_length >= 2 and len(forms) > current_task_plan_length:
+            start_index = len(forms) - current_task_plan_length # skip early tasks if new plan is too long; preserve important closing tasks.
+        for t, task_hash in enumerate(forms):
+            if t < start_index:
+                continue # skip early tasks if new plan is too long; preserve important closing tasks.
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
             if not self.focus_goal:
                 print(f'{self.name} generate_plan: no focus goal, skipping task')
             task = self.validate_and_create_task(task_hash, goal)
-
             if task:
                 task_plan.append(task)
         print(f'{self.name} generate_task_plan: {len(task_plan)} tasks found')
@@ -1957,6 +2014,25 @@ this is derived from your goal:
 {{$goal_string}}
 </goal>
 
+
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+In light of the narrative context above, your acts should serve story momentum as well as character psychology.
+
+Consider how your chosen action:
+- Advances the central narrative question toward resolution or deepens the mystery
+- Escalates or defuses the current act's dramatic tension  
+- Creates new conflict, responds to existing conflict, or avoids confrontation
+- Reveals, conceals, or misdirects crucial information
+- Forces decisions from others or demonstrates your own choices
+- Affects your alliances and relationships in service of the story
+
+Choose actions that drive narrative forward, not just maintain status quo.
 """
         suffix = """
 
@@ -2161,6 +2237,9 @@ End your response with:
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
+                                              "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                              "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                              "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                               "modes": modes,
                                               "actor_genders": actor_genders}, 
                                tag = 'Character.generate_acts',
@@ -2355,11 +2434,14 @@ End your response with:
         if not self.focus_goal or self.check_if_in_dialog_subtask():
             return []
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog between {{$name}} and {{$target_name}},
-and extract the single most important new commitment to act now made by {{$name}} individually, if any. Otherwise respond None.
-Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments. 
+your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
+and identify any new commitment to act individually, now,  made solely by you, {{$name}}, if any. Otherwise respond None.
+Any commitment reported must be definite, immediate, non-hypothetical, and both significant to and not redundant in the scene you are in.
+Be careful to distinguish between hypotheticals and actual commitments. Respond only with an actual commitment. 
+Note that a commitment must come from a clear, firm, statement of intent to act, and not from a question, statement of opinion, statement of fact, or other conversational noise.
 For example, the following transcript contains hypothetical commitments by Alex that should not be reported as new commitments to act:
                             
-<hypotheitcial commitments example>
+<hypotheticial commitments example>
 Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
      and the timeline's slashed in half—how would you keep things from unraveling without your usual backup?
 Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down. 
@@ -2367,8 +2449,22 @@ Alex says: If that happened, I'd quickly get up to speed on the essentials and t
 
 </hypothetical commitments example>
 
+Further, any new commitments should be consistent with the scene you will be acting in, as given below.
+                            
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+                            
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
 
-<transcript>
+<scene>
+{{$scene}}
+</scene>
+
+## the conversation up to this point has been:
+# <transcript>
 {{$transcript}}
 </transcript>
 
@@ -2398,7 +2494,7 @@ Given the following background information:
 {{$joint_tasks}}
 </joint_tasks>
 
-Extract from this transcript a new commitment to act made by self, {{$name}}, to other, {{$target_name}}.
+Extract from this transcript a new commitment to act made by self, {{$name}}, to other, {{$target_name}} relevant to and not redundant in the scene you will are acting in.
 
 Extract only commitments made by {{$name}} that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
 Note that the joint_tasks listed above, are commitments made by both {{$name}} and {{$target_name}} to work together, and should not be reported as new commitments here.
@@ -2470,7 +2566,10 @@ End your response with:
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
-                                 "target_name":target.name}, 
+                                 "target_name":target.name,
+                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''}, 
                                  prompt, tag='update_individual_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=180)
         source = Task('dialog with '+target.name, 
                       description='dialog with '+target.name, 
@@ -2487,11 +2586,19 @@ End your response with:
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
-                print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
-                if self.focus_goal:
-                    #self.focus_task.push(intension)
-                    await asyncio.sleep(0)
-                    #await self.step_task('')
+                if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
+                    significance = self.context.evaluate_commitment_significance(self, target, intension)
+                    if significance == 'NOISE':
+                        continue
+                    elif significance == 'RELEVANT' or significance == 'REDUNDANT':
+                        intension.reason = intension.reason + ' (optional)'
+                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*len(self.context.current_scene['action_order'])) \
+                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*len(self.context.current_scene['action_order'])):
+                        print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
+                        if self.context.scene_integrated_task_plan:
+                            insert_index = self.context.scene_integrated_task_plan_index+1
+                            self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
+                elif self.focus_goal:
                     await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
                 else:
                     print('No focus goal, no new task from conversation')
@@ -2503,9 +2610,33 @@ End your response with:
         """Update individual commitments after closing a dialog"""
         
         prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
-     and extract the single most important new commitment to act now made jointlyby {{$name}} and {{$target_name}}, if any. Otherwise respond None.
+     and identify any new commitment to act now made jointly by {{$name}} and {{$target_name}}, if any. Otherwise respond None.
+Any commitment reported must be definite, immediate, non-hypothetical, and both significant to and not redundant in the scene you are in.
+Note that a commitment must come from a clear, firm, statement of intent, and not from a question, statement of opinion, statement of fact.
 Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments.
+                            
+<hypotheticial commitments example>
+Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
+     and the timeline's slashed in half—how would you keep things from unraveling without your usual backup?
+Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down. 
+    I'd be clear about the risks from the start, tackle key features first, and adjust as needed, making sure everyone's on the same page about what's doable without backup.
+</hypothetical commitments example>
 
+Further, any new commitments should be consistent with and not redundant in the scene you will be acting in, as given below.
+                            
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+                            
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+<scene>
+{{$scene}}
+</scene>
+
+## the conversation up to this point has been:
 <transcript>
 {{$transcript}}
 </transcript>
@@ -2525,9 +2656,9 @@ Given the following background information:
 </reason>
 
 
-Extract from this transcript the single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
+Extract from this transcript a single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
 Extract only an express commitment appear in the transcript and remaining unfulfilled at the end of the transcript.
-If more than one joint action commitmentis found, report the most concrete, immediate, prominent one in the transcript.
+If more than one joint action commitment is found, report the most concrete, immediate, prominent one in the transcript.
                             
 An action can be physical or verbal.
 Thought, e.g. 'reflect on our situation', should NOT be reported as a commitment to act.
@@ -2585,10 +2716,13 @@ End your response with:
 """)]
         response = self.llm.ask({"transcript":transcript, 
                                  "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.focus_goal.task_plan) if self.focus_goal else '',
-                                 "focus_task":self.focus_task.peek(),
+                                 "focus_task":self.focus_task.peek().to_string() if self.focus_task.peek() else '',
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
-                                 "target_name":target.name}, 
+                                 "target_name":target.name,
+                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''}, 
                                  prompt, tag='update_joint_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=240)
         source = Task('dialog with '+target.name, 
                       description='dialog with '+target.name, 
@@ -2606,12 +2740,19 @@ End your response with:
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
-                print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
-                #if target.focus_goal and target.focus_goal.task_plan: # target will execute next!
-                #    target.focus_goal.task_plan.push(0, intension)
-                if self.focus_goal:
-                    #self.focus_task.push(intension)
-                    #await self.step_task('')
+                if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
+                    significance = self.context.evaluate_commitment_significance(self, target, intension)
+                    if significance == 'NOISE':
+                        continue
+                    elif significance == 'RELEVANT' or significance == 'REDUNDANT':
+                        intension.reason = intension.reason + ' (optional)'
+                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*len(self.context.current_scene['action_order'])) \
+                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*len(self.context.current_scene['action_order'])):
+                        print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
+                        if self.context.scene_integrated_task_plan:
+                            insert_index = self.context.scene_integrated_task_plan_index+1
+                            self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
+                elif self.focus_goal:
                     await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
                 else:
                     print('No focus goal, no new task from conversation')
@@ -2751,11 +2892,12 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             dialog_as_list = dialog.split('\n') 
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
+            individual_tasks = []
             if self.name != 'Viewer' and from_actor.name != 'Viewer':
                 joint_tasks = await self.update_joint_commitments_following_conversation(from_actor, dialog)
                 await asyncio.sleep(0)
                 if (not joint_tasks or len(joint_tasks) == 0):
-                    await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
+                    individual_tasks = await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
                 await asyncio.sleep(0)
 
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -2767,7 +2909,8 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             dialog_as_list = dialog.split('\n') 
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
 
-            if from_actor.name != 'Viewer' and self.name != 'Viewer' and (not joint_tasks or len(joint_tasks) == 0):
+            # only allow one individual task to be generated even if there are no joint tasks
+            if from_actor.name != 'Viewer' and self.name != 'Viewer' and (not joint_tasks or len(joint_tasks) == 0) and (not individual_tasks or len(individual_tasks) == 0):
                 await from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
                 await asyncio.sleep(0)
 
@@ -2806,6 +2949,20 @@ Use vivid but economical language, vary emotional tone, and avoid repeating imag
         """
         prompt_string = """Be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
+
+##Current dramatic context:
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+<scene>
+{{$scene}}
+</scene>
+
 Given the following character description, emotional state, current situation, goals, memories, and recent history, """
         prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below, based on your goals in the dialog."""
         prompt_string += """
@@ -2941,7 +3098,10 @@ End your response with:
             'actor_genders': actor_genders,
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
-            "scene_post_narrative": scene_post_narrative
+            "scene_post_narrative": scene_post_narrative,
+            "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+            "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+            "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=180)
         response = xml.find('<response>', answer_xml)
         if response is None:

@@ -24,9 +24,10 @@ import utils.choice as choice
 from typing import List
 import asyncio
 from prompt import ask as default_ask
+from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler
+
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
-    from sim.character_dataclasses import Act, Task, Goal, CentralNarrative
 
 
 logger = logging.getLogger('simulation_core')
@@ -43,7 +44,7 @@ def run_sync(coro):
         return loop.run_until_complete(coro)
     else:
         return asyncio.run(coro)
-        
+
 
 class Context():
     def __init__(self, characters, description, scenario_module, extras=[], server_name=None, model_name=None):
@@ -124,6 +125,8 @@ class Context():
         self.previous_scenes = []
         self.central_narrative: str = ''
         self.act_central_narrative: str = ''
+        self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
+        self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
 
         for actor in self.actors + self.extras + self.npcs:
@@ -263,7 +266,7 @@ class Context():
         voices = self.voice_service.get_voices()
         #print(f"Available voices: {voices}")
         self.message_queue.put({'name':'', 'text':"play context initialized, creating characters...", 
-                                'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5})})
+                                'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5}, default=datetime_handler)})
         await asyncio.sleep(0.1)
 
     def repair_json(self, response, error):
@@ -322,7 +325,7 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
     def reserialize_act_times(self, act: Dict[str, Any]) -> str:
         """Reserialize the act to a string"""
         serialized_str = self.reserialize_acts_times({"acts":[act]})
-        return json.dumps(serialized_str['acts'][0], indent=2)
+        return json.dumps(serialized_str['acts'][0], indent=2, default=datetime_handler)
 
     def extract_simulation_time(self, situation):
         # Extract simulation time from situation description
@@ -822,11 +825,11 @@ Sentence describing physical space, suitable for image generator.
 Updated State description of about 200 words
 </situation>
 
-Respond with an updated world state description of about 200 words reflecting the current time and the environmental changes that have occurred.
+Respond with an updated world state description of about 140 words reflecting the current time and the environmental changes that have occurred.
 Include ONLY the updated situation description in your response. 
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
-Limit your total response to about 200 words
+Limit your total response to about 140 words
 Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
 </end>""")]
@@ -973,11 +976,16 @@ Ensure your response reflects this change.
         return '\n'.join(mapped_actors)
 
         
-    def compute_task_plan_limits(self, scene):
+    def compute_task_plan_limits(self, character, scene):
         """Compute the task plan limits for an actor for a scene"""
-        beats_in_scene = scene.get('action_order', ['a','b'])
+        action_order = scene.get('action_order', ['a','b'])
+        if character.name not in action_order:
+            return 1
+        #beats_in_scene = len(action_order)
+        my_beats = action_order.count(character.name)
         try:
-            character_task_limit = scene.get('task_budget', int(1.5*len(beats_in_scene)))/len(beats_in_scene)
+            #character_task_limit = scene.get('task_budget', int(1.5*len(beats_in_scene)))/len(beats_in_scene)
+            character_task_limit = my_beats
         except Exception as e:
             print(f'Error computing task plan limits: {e}')
             character_task_limit = 1
@@ -1081,19 +1089,24 @@ Ensure your response reflects this change.
             await asyncio.sleep(0.4)
 
         # ok, actors - live!
-        characters_finished_tasks = []
-        while len(characters_in_scene) > len(characters_finished_tasks):
-            for character in characters_in_scene:
-                if character in characters_finished_tasks:
-                    continue
-                elif character.focus_goal is None:
-                    characters_finished_tasks.append(character)
-                    continue
-                else:
-                    self.message_queue.put({'name':'', 'text':f''})
-                    await asyncio.sleep(0.2)
-                    await character.cognitive_cycle(narrative=True)
-                    await asyncio.sleep(1.0)
+        scene_integrated_task_plan = self.integrate_task_plans(scene)
+        self.scene_history = []
+        self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
+        while self.scene_integrated_task_plan_index < len(scene_integrated_task_plan):
+            scene_task = scene_integrated_task_plan[self.scene_integrated_task_plan_index]
+            character = scene_task['actor']
+            character_name = character.name
+            task = scene_task['task']
+            character.focus_goal = scene_task['goal']
+            character.focus_goal.task_plan = [task]
+            character.focus_task = Stack()
+            character.focus_task.push(task)
+            self.scene_history.append(f'{character.name} {task.to_string()}')
+            self.message_queue.put({'name':'', 'text':f''})
+            await asyncio.sleep(0.2)
+            await character.cognitive_cycle(narrative=True)
+            await asyncio.sleep(1.0)
+            self.scene_integrated_task_plan_index += 1
         if self.current_scene.get('post_narrative'):
             self.current_state += '\n'+self.current_scene['post_narrative']
             for character in characters_in_scene:
@@ -1156,7 +1169,7 @@ Ensure your response reflects this change.
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'----- updating narrative -----'})
             character.update_narrative_from_shared_info()
-            logger.info(f'\n{character.name}\n{json.dumps(self.reserialize_acts_times(character.plan), indent=2)}')
+            logger.info(f'\n{character.name}\n{json.dumps(self.reserialize_acts_times(character.plan), indent=2, default=datetime_handler)}')
             await asyncio.sleep(0.1)
         """
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
@@ -1188,7 +1201,7 @@ Ensure your response reflects this change.
 
         prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
 You are given a list of proposed acts, one from each of the characters in the play. These plans were created by each character independently.
-Your job is to integrate them into a single coherent act.
+Your job is to assimilate them into a single coherent act. This may require ignoring or merging scenes. Focus on those scenes that are most relevant to the dramatic context.
 {{$act_directives}}
 
 {{$act_central_narrative}}
@@ -1196,7 +1209,7 @@ Your job is to integrate them into a single coherent act.
 An act is a JSON object containing a sequence of scenes (think of a play).
 Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
 In integrating scenes within an act across characters, pay special attention to the pre- and post-narratives, as well as the characters's goals, to create a coherent scene. 
-It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives.
+It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives. 
 Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
 The integrated plan should be a single JSON object with a sequence of acts, each with a sequence of scenes. 
 The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
@@ -1261,7 +1274,7 @@ End your response with </end>
         if act_number == 1:
             act_directives = f""" 
 In performing this integration:
-    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Combine overlapping scene intentions from different characters where possible.
+    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 4-6 scenes maximum.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}
     4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
@@ -1402,7 +1415,7 @@ In performing this integration:
                 previous_act = None
                 character_narrative_blocks = []
                 for character in cast(List[NarrativeCharacter], self.actors):
-                    if i < len(character.plan['acts']):
+                    if i < len(character.plan['acts']): # what about coda?
                         updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative)
                         character_narrative_blocks.append([character, updated_act])  
                 next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative)
@@ -1634,7 +1647,7 @@ re""")]
         response = self.llm.ask({"play_level_central_narrative": self.central_narrative, 
                                  "act_number": act_number,
                                  "character_act_plans": '\n'.join([f'{character.name}: {character.current_act if character.current_act else ""}' for character in cast(List[NarrativeCharacter], self.actors)]), 
-                                 "previous_scenes_summary": '\n'.join([json.dumps(self.reserialize_scene_time(scene), indent=2) for scene in self.previous_scenes]), 
+                                 "previous_scenes_summary": '\n'.join([json.dumps(self.reserialize_scene_time(scene), indent=2, default=datetime_handler) for scene in self.previous_scenes]), 
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
                                  "act_specific_guidelines": act_guidance[act_number-1],
                                  "current_situation": self.current_state}, 
@@ -1642,3 +1655,202 @@ re""")]
         if response:
             self.act_central_narrative = response
         return self.act_central_narrative
+    
+    def embed_task(self, task):
+        """Embed a task"""
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        embedding = _embedding_model.encode(task.name+': '+task.description+'. because '+task.reason+' to achieve '+task.termination)
+        self.scene_task_embeddings.append(embedding)
+        return embedding
+    
+    def cluster_tasks(self, task_embeddings):
+        """Cluster tasks"""
+        from sklearn.cluster import DBSCAN
+        
+        if not task_embeddings or len(task_embeddings) < 2:
+            self.scene_task_clusters = []
+            return self.scene_task_clusters
+        
+        clustering = DBSCAN(eps=0.20, min_samples=2, metric='cosine')
+        labels = clustering.fit_predict(task_embeddings)
+        
+        # Group by cluster labels
+        clusters = []
+        cluster_dict = {}
+        for i, label in enumerate(labels):
+            if label == -1:  # Outlier
+                clusters.append([i])
+            else:
+                if label not in cluster_dict:
+                    cluster_dict[label] = []
+                cluster_dict[label].append(i)
+        
+        clusters.extend(cluster_dict.values())
+        self.scene_task_clusters = clusters
+        return self.scene_task_clusters
+    
+    def integrate_task_plans(self, scene):
+        """Integrate the task plans of all characters in the scene"""
+        actors_in_scene = []
+        self.scene_task_embeddings = []
+        task_id_to_embedding_index = {}
+        total_input_task_count = 0
+        total_actor_beats = len(scene['action_order'])
+
+
+        actor_tasks = {}        # get actors and task_plans
+        for actor_name in scene['characters']:
+            if actor_name == 'Context':
+                continue
+            actor = self.get_actor_by_name(actor_name)
+            if actor.__class__.__name__ == 'NarrativeCharacter':
+                actors_in_scene.append(actor)
+                actor_tasks[actor.name] = {}
+                actor_tasks[actor.name]['task_plan'] = actor.focus_goal.task_plan if actor.focus_goal and actor.focus_goal.task_plan else []
+                total_input_task_count += len(actor_tasks[actor.name]['task_plan'])
+                actor_tasks[actor.name]['next_task_index'] = 0
+                for n, task in enumerate(actor_tasks[actor.name]['task_plan']):
+                    #actor_tasks[actor]['task_plan'][task.id]['criticality'] = self.evaluate_task_criticality(task)
+                    task_id_to_embedding_index[task.id] = len(self.scene_task_embeddings)
+                    self.embed_task(task)
+
+        prune_level = 0
+        if total_input_task_count > 1.5*total_actor_beats:
+            prune_level = 1
+        if total_input_task_count > 2*total_actor_beats:
+            prune_level = 2
+        if total_input_task_count > 3*total_actor_beats:
+            prune_level = 3
+        scene_task_clusters = self.cluster_tasks(self.scene_task_embeddings)
+
+        # Create mapping from task id to cluster index
+        task_id_to_cluster = {}
+        for cluster_idx, task_indices in enumerate(scene_task_clusters):
+            for embedding_idx in task_indices:
+                # Find task id that corresponds to this embedding index
+                for task_id, emb_idx in task_id_to_embedding_index.items():
+                    if emb_idx == embedding_idx:
+                        task_id_to_cluster[task_id] = cluster_idx
+                        break
+        
+        used_clusters = set()
+        task_index = 0
+        self.scene_integrated_task_plan = []
+        actors_with_remaining_tasks = actors_in_scene
+        while len(actors_with_remaining_tasks) > 0:
+            for name in scene['action_order']:
+                actor: NarrativeCharacter = self.get_actor_by_name(name)
+                if actor not in actors_with_remaining_tasks:
+                    continue
+                next_task_index = actor_tasks[actor.name]['next_task_index']
+                current_task = actor.focus_goal.task_plan[next_task_index]
+                #self.evaluate_commitment_significance(actor, current_task, scene)
+                is_critical = next_task_index == len(actor.focus_goal.task_plan) - 1
+                
+                # Check if this task's cluster has already been used
+                cluster_idx = task_id_to_cluster.get(current_task.id, -1)
+                # note alternative is to merge tasks in a cluster before reaching here if prune_level > 0 and tasks are not critical
+                if cluster_idx not in used_clusters or prune_level < 1 or is_critical:
+                    self.scene_integrated_task_plan.append({'actor': actor, 'goal': actor.focus_goal, 'task': current_task})
+                    used_clusters.add(cluster_idx)
+                else:
+                    print(f'{actor.name} task {current_task.id} is redundant in scene {scene["scene_number"]}')
+                
+                task_index += 1
+                actor_tasks[actor.name]['next_task_index'] += 1
+                if actor_tasks[actor.name]['next_task_index'] >= len(actor_tasks[actor.name]['task_plan']):
+                    actors_with_remaining_tasks.remove(actor)
+            
+        return self.scene_integrated_task_plan
+    
+    def format_scene_integrated_task_plan(self):
+        """Format the scene integrated task plan"""
+        formatted_task_plan = []
+        for scene_task in self.scene_integrated_task_plan:
+            formatted_task_plan.append(f' - Task: {scene_task["actor"].name} {scene_task["goal"].name+': '+scene_task["goal"].description}\n\t {scene_task["task"].to_string()}')
+        return '\n'.join(formatted_task_plan)
+    
+
+    def evaluate_commitment_significance(self, character:Character, other_character:Character, commitment_task:Task):
+        prompt = [UserMessage(content="""Evaluate the significance of a tentative verbal commitment to the current dramatic context
+    and determine if it is a significant commitment that should be added to the task plan.
+The apparent commitment is inferred from a verbal statement to act now made by self, {{$name}}, to other, {{$target_name}}.
+The apparent commitment is tentative, and may be redundant in the scene you are in.
+The apparent commitment may be hypothetical, and may not be a commitment to act now.
+The apparent commitment may be social chatter, e.g. simply a restatement of already established plans. These should be reported as NOISE.
+The apparent commitment may simply be 'social noise' - a statement of intent or opinion, not a commitment to act now. Again, these should be reported as NOISE.
+The apparent commitment may be relevant to the scene you are in or the dramatic context, and unique wrt tasks already in the task plan. These should be reported as RELEVANT.
+The apparent commitment may be relevant to the scene you are in or the dramatic context, but redundant with tasks already in the task plan. These should be reported as REDUNDANT.
+Alternatively, the apparent commitment may be unique and significant to the scene you are in or the central dramatic question. These should be reported as SIGNIFICANT.
+The apparent commitment may be irrelevant to the scene you are in or the dramatic context. These should be reported as NOISE.
+
+## Dramatic Context
+<central_narrative>
+{{$central_narrative}}
+</central_narrative>
+
+<act_specific_narrative>
+{{$act_specific_narrative}}
+</act_specific_narrative>
+
+<current_scene>
+{{$current_scene}}
+</current_scene>
+
+##Scene Task Plan
+<scene_integrated_task_plan>
+{{$scene_integrated_task_plan}}
+</scene_integrated_task_plan>
+
+##Actual Scene History to date
+<scene_history> 
+{{$scene_history}}
+</scene_history>
+
+<transcript>    
+{{$transcript}}
+</transcript>
+        
+## Apparent Commitment
+<commitment>
+{{$commitment_task}}
+</commitment>
+
+Your task is to evaluate the significance of the apparent commitment.
+Determine if it is 
+    social NOISE that should be ignored.
+    a REDUNDANT task that can be ignored. 
+    a RELEVANT task that can be optionally included.
+    a SIGNIFICANT commitment that should be added to the task plan.
+    a CRUCIAL commitment, the task plan is incomplete relative to the dramatic context without it.
+Respond with a single word: "NOISE", "REDUNDANT", RELEVANT", "SIGNIFICANT", or "CRUCIAL".
+Do not include any other text in your response.
+
+End your response with </end>
+"""
+        )]
+        significance = 'NOISE'
+        response = self.llm.ask({"name": character.name, 
+                               "target_name": other_character.name,
+                               "commitment_task": commitment_task.to_string(),
+                               "central_narrative": self.central_narrative,
+                               "act_specific_narrative": self.act_central_narrative,
+                               "current_scene": json.dumps(self.current_scene, indent=2, default=datetime_handler) if self.current_scene else '',
+                               "scene_integrated_task_plan": self.format_scene_integrated_task_plan() if self.scene_integrated_task_plan else "",
+                               "scene_history": '\n'.join([history for history in self.scene_history]) if self.scene_history else '',
+                               "transcript": character.actor_models.get_actor_model(other_character.name, create_if_missing=True).dialog.get_transcript(8)},
+                                prompt, max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
+        if response:
+            response = response.lower()
+            if 'crucial' in response:
+                return 'CRUCIAL'
+            elif 'significant' in response:
+                return 'SIGNIFICANT'
+            elif 'relevant' in response:
+                return 'RELEVANT'
+            elif 'redundant' in response:
+                return 'REDUNDANT'
+            else:
+                return 'NOISE'
+        return 'NOISE'
