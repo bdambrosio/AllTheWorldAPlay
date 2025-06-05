@@ -444,3 +444,7 @@ class KnownActorManager:
         with open(filepath, 'r') as f:
             data = json.load(f)
         return cls.from_json(data, owner, context)
+    
+    def get_dialog_transcripts(self, max_turns=10):
+        """return a list of dialog transcripts"""
+        return '\n'.join([actor.dialog.get_transcript(max_turns) for actor in self.known_actors.values() if actor is not self and actor.dialog])

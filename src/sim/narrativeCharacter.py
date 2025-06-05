@@ -47,7 +47,8 @@ class NarrativeCharacter(Character):
         print(f'{self.name}: {self.__class__.__name__}')
         self.previous_proposal = None
         self.current_proposal = None
-        self.round_number = 0
+        self.round_number = 0 # central narrative negotiation round number
+        self.central_narrative = None
         #self.llm.set_model('gpt-4o-mini')
 
     def validate_scene_time(self, scene) -> Optional[datetime]:
@@ -164,11 +165,11 @@ class NarrativeCharacter(Character):
                         return False, f"Invalid character data for {char_name}"
                     
                 # Validate action_order
-                if not 1 <= len(scene["action_order"]) <= 4:
+                if not 1 <= len(scene["action_order"]) <= 2*len(scene["characters"]):
                     logger.info(f'{self.name} validate_narrative_act: scene {scene["scene_number"]} has {len(scene["action_order"])} actions')
-                    if len(scene["characters"]) > 3:
+                    if len(scene["characters"]) > 4:
                         # too many characters
-                        return False, f"Scene {scene['scene_number']} must have 2-4 actions"
+                        return False, f"Scene {scene['scene_number']} must have 2-4 characters"
                     action_order = scene["action_order"]
                     characters_in_scene = []
                     new_action_order = []
@@ -283,7 +284,7 @@ End your response with </end>
 
     async def write_narrative(self, play_file_content:str, map_file_content:str, central_narrative:CentralNarrative):
 
-        mission = """You are a skilled playwright working on an initial outline of the narrative arc for an improvisational play. 
+        mission = """You are a skilled actor / playwright working on an initial outline for an improvisational play. 
 The overall cast of characters and setting are given below.
 
 <Scenario>
@@ -294,10 +295,14 @@ The overall cast of characters and setting are given below.
 {{$map}}
 </Map>
 
-The negotiation process has established the following central dramatic question that will drive the play:
+A prior negotiation process has established the following central dramatic question that will drive the overall play:
 {{$central_narrative}}
 
-* central_narrative is a paragraph or two including the following elements:
+You also have your own plans that may or may not be consistent with the central dramatic question. Key is how they play a role in or support the central dramatic question.
+Focus your own screenplay outline on your role in the play:
+{{$my_narrative}}
+
+* narrative is a paragraph or two including the following elements:
 1. Central Dramatic Question: One clear sentence framing the core conflict
 2. Stakes: What happens if this question isn't resolved - consequences that matter to all
 3. Character Roles: for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 1-2 sentence role description
@@ -345,13 +350,13 @@ Do not include any other explanatory, discursive, or formatting text.
 End your response with </end>
 """
 
-        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minutemovie.
+        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minute screenplay.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive. A very short final act can be added as a coda.
+By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive. A very short final act can be added as a coda.
         """
 
         suffix = """
@@ -409,6 +414,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "map": self.context.summarize_map(),
                                  "name": self.name,
                                  "central_narrative": central_narrative,
+                                 "my_narrative": self.central_narrative,
                                  "start_time": self.context.simulation_time.isoformat(),
                                  "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                  "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
@@ -923,25 +929,56 @@ End your response with </end>
             central_narrative = CentralNarrative.parse_from_hash(response)
             self.previous_proposal = self.current_proposal
             self.current_proposal = central_narrative
+            self.central_narrative = central_narrative.to_string() # store as string, since that is how global central narrative is stored
             self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
             await asyncio.sleep(0.4)
         return response
     
-    """
-    def evaluate_commitment_significance(self, other_character:Character, commitment_task:Task):
-        prompt = [UserMessage(content="valuate the significance of a tentative verbal commitment to the current dramatic context
-    and determine if it is a significant commitment that should be added to the task plan.
-The apparent commitment is inferred from a verbal statement to act now made by self, {{$name}}, to other, {{$target_name}}.
-The apparent commitment is tentative, and may be redundant in the scene you are in.
-The apparent commitment may be hypothetical, and may not be a commitment to act now.
-The apparent commitment may be social chatter, e.g. simply a restatement of already established plans. These should be reported as NOISE.
-The apparent commitment may simply be 'social noise' - a statement of intent or opinion, not a commitment to act now. Again, these should be reported as NOISE.
-The apparent commitment may be relevant to the scene you are in or the dramatic context, and unique wrt tasks already in the task plan. These should be reported as RELEVANT.
-The apparent commitment may be relevant to the scene you are in or the dramatic context, but redundant with tasks already in the task plan. These should be reported as REDUNDANT.
-Alternatively, the apparent commitment may be unique and significant to the scene you are in or the central dramatic question. These should be reported as SIGNIFICANT.
-The apparent commitment may be irrelevant to the scene you are in or the dramatic context. These should be reported as NOISE.
+    def refresh_task(self, task, scene_task_plan, final_task=False):
+        """Refresh the task to ensure it is up to date with the latest information
+        adapted from Character.generate_task_plan"""
 
-## Dramatic Context
+        if not self.focus_goal:
+            raise ValueError(f'No focus goal for {self.name}')
+        """generate task alternatives to achieve a focus goal"""
+        goal = self.focus_goal        
+        system_prompt = """You are an actor in an improvisational play. Review the following planned task in light of recent events. 
+
+##Previously Planned Task
+{{$planned_task}}
+
+##Instructions
+Review your planned task against current conditions and decide if it should be:
+1. **KEPT** - Still appropriate and achievable as planned
+2. **REVISED** - Core intent is good but details need adjustment  
+3. **REPLACED** - Circumstances have made a different approach better
+
+Consider these factors:
+- Has the scene dynamic shifted from your expectations?
+- Are the planned actors still available/relevant?
+- Do recent events create better opportunities?
+- Does your task conflict with or duplicate others in the scene plan?
+
+Respond with either:
+- "KEEP" (if no changes needed)
+- The revised task in hash format (if changes would improve effectiveness)
+
+Following will be a large set of background information about the play, the scene, and the task.
+
+
+
+"""
+
+        mission = """
+
+You previously planned to pursue this task next:
+
+{{$planned_task}}
+{{$final_task}}
+
+In the following Dramatic Context:
+
+##Dramatic Context
 <central_narrative>
 {{$central_narrative}}
 </central_narrative>
@@ -950,61 +987,124 @@ The apparent commitment may be irrelevant to the scene you are in or the dramati
 {{$act_specific_narrative}}
 </act_specific_narrative>
 
-<current_scene>
-{{$current_scene}}
-</current_scene>
+You have your own plans that may or may not be consistent with the central dramatic question. 
+Potential conflict between your own plans and the central dramatic question is real, only you can decide.
 
-##Scene Task Plan
-<scene_integrated_task_plan>
-{{$scene_integrated_task_plan}}
-</scene_integrated_task_plan>
+<my_narrative>
+{{$my_narrative}}
+</my_narrative>
 
-##Actual Scene History to date
-<scene_history> 
+##Scene
+The current scene you will be acting in is:
+<scene>
+{{$scene}}
+</scene>
+
+and, importantly, the scene narrative is:
+<scene_narrative>
+{{$scene_narrative}}
+</scene_narrative>
+
+The overall task plan for this scene is as follows, although as yet unperformed tasks may be revised as events unfold:
+<scene_task_plan>
+{{$scene_task_plan}}
+</scene_task_plan>
+
+And the following set of tasks has already been performed within the scene:
+<scene_history>
 {{$scene_history}}
 </scene_history>
 
-<transcript>    
-{{$transcript}}
-</transcript>
-        
-## Apparent Commitment
-<commitment>
-{{$commitment_task}}
-</commitment>
+##Previous Achievments
+{{$achievments}}
 
-Your task is to evaluate the significance of the apparent commitment.
-Determine if it is 
-    social NOISE that should be ignored.
-    a REDUNDANT task that can be ignored. 
-    a RELEVANT task that can be optionally included.
-    a SIGNIFICANT commitment that should be added to the task plan,  
-Respond with a single word: "NOISE", "REDUNDANT", RELEVANT", or "SIGNIFICANT".
-Do not include any other text in your response.
+"""
 
-End your response with </end>
-"
-        )]
-        significance = 'NOISE'
-        response = self.llm.ask({"name": self.name, 
-                               "target_name": other_character.name,
-                               "commitment_task": commitment_task.to_string(),
-                               "central_narrative": self.context.central_narrative,
-                               "act_specific_narrative": self.context.act_central_narrative,
-                               "current_scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
-                               "scene_integrated_task_plan": self.context.format_scene_integrated_task_plan() if self.context.scene_integrated_task_plan else json.dumps(self.goal.task_plan, indent=2, default=datetime_handler),
-                               "scene_history": '\n'.join([history for history in self.context.scene_history]) if self.context.scene_history else '',
-                               "transcript": self.actor_models.get_actor_model(other_character.name, create_if_missing=True).dialog.get_transcript(8)},
-                                prompt, max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
-        if response:
-            response = response.lower()
-            if 'significant' in response:
-                return 'SIGNIFICANT'
-            elif 'relevant' in response:
-                return 'RELEVANT'
-            elif 'redundant' in response:
-                return 'REDUNDANT'
+        suffix = """    
+##Instructions
+Review your planned task against current conditions and decide if it should be:
+1. **KEPT** - Still appropriate and achievable as planned
+2. **REVISED** - Core intent is good but details need adjustment  
+3. **REPLACED** - Circumstances have made a different approach better
+
+Consider these factors:
+- Has the scene dynamic shifted from your expectations?
+- Are the planned actors still available/relevant?
+- Do recent events create better opportunities?
+- Does your task conflict with or duplicate others in the scene plan?
+
+Respond with either:
+- "KEEP" (if no changes needed)
+- The revised task in hash format (if changes would improve effectiveness)
+
+Remember, if you choose to make any changes:                             
+ - A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
+ - The task(s) should be distinct from one another, and each should advance the focus goal.
+ - Use known actor names in the task description unless deliberately introducing a new actor. Characters known to this character include:
+    {{$known_actors}}
+
+ - Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
+ - In refering to other actors, always use their name, without other labels like 'Agent', 
+ and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
+
+
+##Task Format
+A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
+Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
+Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#name brief (4-6 words) task name
+#description terse (6-8 words) statement of the action to be taken.
+#reason (6-7 words) on why this action is important now
+#actors the names of any other actors involved in this task, comma separated. if no other actors, use None
+#start_time (2-3 words) expected start time of the action
+#duration (2-3 words) expected duration of the action in minutes
+#termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
+##
+
+Respond ONLY with KEEP, if you choose to leave the proposed task unchanged, or with the revised task in hash-formatted-text format and ending with ## as shown above.
+
+End response with:
+</end>
+"""
+
+        if self.context.scene_post_narrative:
+            scene_narrative = f"\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
+        else:
+            scene_narrative = ''
+        scene_task_plan = '\n'.join([f'{t["actor"].name}: {t["task"].to_string()}' for t in scene_task_plan])
+        logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
+        response = default_ask(self, system_prompt=system_prompt,
+                               prefix=mission, 
+                               suffix=suffix, 
+                               addl_bindings={"focus_goal":goal.to_string(),
+                                "planned_task": task.to_string(),
+                                "final_task": "\nThis is your final task in this scene." if final_task else '',
+                                "known_actors": "\n".join([name for name in self.actor_models.names()]),
+                                "achievments": '\n'.join(self.achievments[:5]),
+                                "scene_narrative": scene_narrative,
+                                "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                "my_narrative": self.central_narrative if self.central_narrative else '',
+                                "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                                "scene_task_plan": scene_task_plan, 
+                                "scene_history": '\n'.join(self.context.scene_history)},
+                               tag = 'Character.generate_task_plan',
+                               max_tokens=100, log=True)
+
+
+        # add each new task, but first check for and delete any existing task with the same name
+        forms = hash_utils.findall_forms(response)
+        if forms and len(forms) > 0:
+            task_hash = forms[0]
+            print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
+            if not self.focus_goal:
+                print(f'{self.name} generate_plan: no focus goal, skipping task')
+            new_task = self.validate_and_create_task(task_hash, goal)
+            if new_task:
+                goal.task_plan = [new_task] # only use the first task, that's all we asked for.
+                return new_task
             else:
-                return 'NOISE'
-        return 'NOISE'
-    """
+                print(f'{self.name} generate_plan: no new task')
+        return task

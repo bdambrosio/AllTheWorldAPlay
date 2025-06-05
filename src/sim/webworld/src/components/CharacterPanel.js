@@ -84,6 +84,16 @@ function CharacterPanel({
       <div className="middle-section">
         <div className="section-container">
           <div className="tasks-area">
+            Act: {character.current_act?.title || 'No Act'}
+          </div>
+        </div>
+        <div className="section-container">
+          <div className="tasks-area">
+            Scene: {character.current_scene?.title || 'No Scene'}
+          </div>
+        </div>
+        <div className="section-container">
+          <div className="tasks-area">
             {character.tasks?.[0]}
           </div>
         </div>

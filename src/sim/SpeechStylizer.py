@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import os, sys, re, traceback, requests, json
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
+from src.sim.cognitive.EmotionalStance import Arousal, Orientation, Tone
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import random
 from typing import Dict, List, Optional
@@ -161,7 +163,7 @@ class SpeechStylizer:
 {{$drives}}
 
 Based on these descriptions, analyze the character's speech style and provide a JSON response with these exact keys:
-- tone: list of tone words (e.g. gruff, warm, polite, casual, thoughtful)
+- tone: 1 or 2 most dominant, stable, tone likely present in character's speech (e.g. gruff, warm, polite, casual, thoughtful)
 - formality: float between 0-1 (0 being very informal, 1 being very formal)
 - lexical_quirks: dictionary containing:
   - slang: float 0-1 indicating likelihood of using slang
@@ -197,8 +199,8 @@ Format your response as valid JSON only, no other text.
 
     # ---------------------------------------------------------------------
     def _from_emotion(self) -> Dict:
-        ranked_signalClusters = self.char.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
+        #ranked_signalClusters = self.char.driveSignalManager.get_scored_clusters()
+        #focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         emotionalState = self.char.emotionalStance        
         style = {"tone": [], "syntactic_oddity": 0.0}
         
@@ -212,15 +214,15 @@ Format your response as valid JSON only, no other text.
             
         # Map tone to emotional qualities
         tone_mapping = {
-            "Angry": ["angry", "sharp"],
-            "Fearful": ["nervous", "anxious"],
-            "Anxious": ["nervous", "worried"],
-            "Sad": ["melancholic", "subdued"],
-            "Disgusted": ["disdainful", "cold"],
-            "Surprised": ["excited", "animated"],
-            "Curious": ["interested", "engaged"],
-            "Joyful": ["buoyant", "cheerful"],
-            "Content": ["calm", "satisfied"]
+            Tone.Angry: ["angry", "sharp"],
+            Tone.Fearful: ["nervous", "anxious"],
+            Tone.Anxious: ["nervous", "worried"],
+            Tone.Sad: ["melancholic", "subdued"],
+            Tone.Disgusted: ["disdainful", "cold"],
+            Tone.Surprised: ["excited", "animated"],
+            Tone.Curious: ["interested", "engaged"],
+            Tone.Joyful: ["buoyant", "cheerful"],
+            Tone.Content: ["calm", "satisfied"]
         }
         
         if emotionalState.tone in tone_mapping:
@@ -228,20 +230,20 @@ Format your response as valid JSON only, no other text.
             
         # Map orientation to additional tone qualities
         orientation_mapping = {
-            "Controlling": ["authoritative"],
-            "Challenging": ["defiant"],
-            "Appeasing": ["conciliatory"],
-            "Avoiding": ["distant"],
-            "Supportive": ["warm"],
-            "Seekingsupport": ["vulnerable"],
-            "Connecting": ["open"],
-            "Performing": ["animated"],
-            "Observing": ["measured"],
-            "Defending": ["guarded"]
+            Orientation.Controlling: ["authoritative"],
+            Orientation.Challenging: ["defiant"],
+            Orientation.Appeasing: ["conciliatory"],
+            Orientation.Avoiding: ["distant"],
+            Orientation.Supportive: ["warm"],
+            Orientation.Seekingsupport: ["vulnerable"],
+            Orientation.Connecting: ["open"],
+            Orientation.Performing: ["animated"],
+            Orientation.Observing: ["measured"],
+            Orientation.Defending: ["guarded"]
         }
         
         if emotionalState.orientation in orientation_mapping:
-            style["tone"].append(orientation_mapping[emotionalState.orientation])
+            style["tone"].extend(orientation_mapping[emotionalState.orientation])
             
         return style
 
@@ -429,17 +431,17 @@ End your response with:
         """Turn dict into a `<STYLE>` block to inject into prompts."""
         lines: List[str] = []
         if style["tone"]:
-            lines.append(f"tone, a set of emotional qualities that describe the character's speech: {', '.join(style['tone'])}")
-        lines.append(f"formality, the degree of formality of the character's speech, from 0 (very informal) to 1 (very formal): {style['formality']:.2f}")
+            lines.append(f"tone (a set of emotional qualities that describe the character's speech): {', '.join(style['tone'])}")
+        lines.append(f"formality (the degree of formality of the character's speech, from 0 - very informal to 1 - very formal): {style['formality']:.2f}")
         quirks = style["lexical_quirks"]
         if quirks.get("slang", 0.0) > 0.01:
-            lines.append(f"slang probability, the likelihood the character will use slang typical of their age and background for this utterance: {quirks['slang']:.2f}")
+            lines.append(f"slang probability (the likelihood the character will use slang typical of their age and background for this utterance): {quirks['slang']:.2f}")
         if quirks.get("metaphor", 0.0) > 0.01:
-            lines.append(f"metaphor probability, the likelihood the character will use a metaphor for this utterance: {quirks['metaphor']:.2f}")
+            lines.append(f"metaphor probability (the likelihood the character will use a metaphor for this utterance): {quirks['metaphor']:.2f}")
         if quirks.get("profanity"):
             lines.append("profanity_allowed: true")
         if style["syntactic_oddity"] > 0.01:
-            lines.append(f"syntactic oddity, the likelihood the character will use a syntactically odd or unusual sentence structure for this utterance: {style['syntactic_oddity']:.2f}")
+            lines.append(f"syntactic oddity (the likelihood the character will use a syntactically odd or unusual sentence structure for this utterance): {style['syntactic_oddity']:.2f}")
         return "<STYLE>\n" + "\n".join(lines) + "\n</STYLE>"
 
     def stylize(self, original_say, target, style_block):
@@ -451,9 +453,15 @@ Your job is to rewrite a text so that it:
 2. Preserves the original semantic intent.
 3. Sounds like natural spoken dialogue (use contractions, real cadence).
 4. Fits the character's voice and current emotional stance.
-5. Avoids any repetition found in the original line.
-6. Stays ≤ 2 sentences unless explicitly told to be longer.
-7. Avoids repetition of the phrases in recent history.
+5. Avoids repetition of past speech unless needed for dramatic effect.
+6. Stays at most same length as original.
+7. Avoids repetition of the phrases in recent history, especially of short 'social' phrases you used recently (e.g. 'yeah', 'ok', 'sure', 'right', 'no problem', "I'm on it!", etc.)
+    History (you are {{$name}}):
+    {{$speech_transcript}}
+    
+    History specifically with {{$target}}, the target of the current utterance:
+    {{$recent_history}}
+
 
 ### STYLE
 {{$style_block}}
@@ -472,14 +480,21 @@ Your job is to rewrite a text so that it:
 
 """),
     UserMessage(content="""
-Rewrite the *ORIGINAL* line so it matches the style directives.  
+Rewrite the *ORIGINAL* text so it matches the style directives.  
 Return **only** the rewritten line—no extra commentary, no tags, no quotation marks.
 """)]
+        
+        filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
+        filtered_transcript = [t for t in filtered_transcript if t.startswith(self.char.name)]
+
         if target:
-            recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-10:]
+            recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-20:]
         else:
-            recent_history = self.char.actor_models.get_actor_model(self.char.name, create_if_missing=True).dialog.transcript[-10:]
-        response = self.char.llm.ask({"original_say": original_say, 
+            recent_history = self.char.actor_models.get_actor_model(self.char.name, create_if_missing=True).dialog.transcript[-20:]
+        response = self.char.llm.ask({"name": self.char.name, 
+                                      "target": target.name if target else None,
+                                      "speech_transcript": filtered_transcript,
+                                      "original_say": original_say, 
                                       "recent_history": recent_history,
                                       "style_block": style_block, 
                                       "character_description": self.char.character, 

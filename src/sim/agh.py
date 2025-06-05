@@ -207,6 +207,10 @@ class Character:
  
 
     def set_autonomy(self, autonomy_json):
+        if 'act' in autonomy_json:
+            self.autonomy.act = autonomy_json['act']
+        if 'scene' in autonomy_json:
+            self.autonomy.scene = autonomy_json['scene']
         if 'signal' in autonomy_json:
             self.autonomy.signal = autonomy_json['signal']
         if 'goal' in autonomy_json:
@@ -215,6 +219,46 @@ class Character:
             self.autonomy.task = autonomy_json['task']
         if 'action' in autonomy_json:
             self.autonomy.action = autonomy_json['action']
+
+    def get_current_act_info(self):
+        """Get current act information for display"""
+        if hasattr(self, 'current_act') and self.current_act:
+            # NarrativeCharacter has its own current_act
+            return {
+                'title': self.current_act.get('act_title', 'Unknown Act'),
+                'description': self.current_act.get('act_description', ''),
+                'number': self.current_act.get('act_number', 0),
+                'pre': self.current_act.get('act_pre_state', ''),
+                'post': self.current_act.get('act_post_state', '')
+            }
+        elif self.context and self.context.current_act:
+            # Regular character uses context current_act
+            return {
+                'title': self.context.current_act.get('act_title', 'Unknown Act'),
+                'description': self.context.current_act.get('act_description', ''),
+                'number': self.context.current_act.get('act_number', 0),
+                'pre': self.context.current_act.get('act_pre_state', ''),
+                'post': self.context.current_act.get('act_post_state', '')
+            }
+        return {'title': 'No Act', 'description': '', 'number': 0}
+
+    def get_current_scene_info(self):
+        """Get current scene information for display"""
+        if hasattr(self, 'current_scene') and self.current_scene:
+            # NarrativeCharacter has its own current_scene
+            return {
+                'title': self.current_scene.get('scene_title', 'Unknown Scene'),
+                'location': self.current_scene.get('location', ''),
+                'number': self.current_scene.get('scene_number', 0)
+            }
+        elif self.context and self.context.current_scene:
+            # Regular character uses context current_scene
+            return {
+                'title': self.context.current_scene.get('scene_title', 'Unknown Scene'),
+                'location': self.context.current_scene.get('location', ''),
+                'number': self.context.current_scene.get('scene_number', 0)
+            }
+        return {'title': 'No Scene', 'location': '', 'number': 0}
 
     def set_character_traits(self):
         prompt = [SystemMessage(content="""Given the following character description, extract the character's likely gender, age group, accent, and personality keywords as a hash-formatted block.
@@ -1630,6 +1674,12 @@ The tasks must be designed to achieve the focus goal in light of the central nar
 {{$act_specific_narrative}}
 </act_specific_narrative>
 
+In addition, you have your own plans that may or may not be consistent with the central dramatic question. Potential conflict between your own plans and the central dramatic question is real, only you can decide.
+
+<my_narrative>
+{{$my_narrative}}
+</my_narrative>
+
 Scene you will be acting in:
 <scene>
 {{$scene}}
@@ -1757,6 +1807,7 @@ Place tasks least important to the dramatic context early in the plan when possi
                                 "scene_narrative": scene_narrative,
                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                "my_narrative": self.central_narrative if self.central_narrative else '',
                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                 "task_plan": "\n".join([t.to_string() for t in goal.task_plan]) if goal.task_plan else '', 
                                 "new_task": new_task.to_string() if new_task else ''},
@@ -1915,7 +1966,7 @@ End your response with:
             self.add_perceptual_input(statement, mode='internal')
             self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             if self.context.current_state.count('Following update may invalidate') > 3:
-                await self.context.update(local_only=True)
+                #await self.context.update(local_only=True)
                 await asyncio.sleep(0)
             return True, 100
         elif satisfied != None and 'partial' in satisfied.lower():
@@ -1927,7 +1978,7 @@ End your response with:
                 self.add_perceptual_input(statement, mode='internal')
                 self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
                 if self.context.current_state.count('Following update may invalidate') > 3:
-                    await self.context.update(local_only=True)
+                    #await self.context.update(local_only=True)
                     await asyncio.sleep(0)
                 return True, progress
         #elif satisfied != None and 'insufficient' in satisfied.lower():
@@ -1955,7 +2006,7 @@ End your response with:
         if target_name is None:
             return act
         
-        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(6)
+        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(20)
         if dialog is None or len(dialog) == 0:
             return act
         prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
@@ -2085,6 +2136,8 @@ Dialog guidance: If speaking (mode is Say), then:
 - In any case, when using pronouns, always match the pronoun gender (he, she, his, her, they, their,etc) to the sex of the referent, or use they/their if a group. 
 - Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
 - Avoid repeating stereotypical past dialog.
+- Avoid repeating dialog from 
+{{$dialog_transcripts}}.
 
 When describing an action:
 - Reference previous action if this is a continuation
@@ -2241,7 +2294,8 @@ End your response with:
                                               "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                               "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                               "modes": modes,
-                                              "actor_genders": actor_genders}, 
+                                              "actor_genders": actor_genders,
+                                              "dialog_transcripts": self.actor_models.get_dialog_transcripts(20)}, 
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
         response = response.strip()
@@ -3520,6 +3574,17 @@ End your response with:
                                                   self.get_character_description().strip(),
                                                   relationsOnly=self.step % self.update_interval != 0 )
         self.step += 1
+        
+        # Push Act and Scene information if autonomy is enabled for display
+        if hasattr(self, 'autonomy'):
+            if self.autonomy.act or self.autonomy.scene:
+                # Push current act and scene info to UI for display
+                self.context.message_queue.put({
+                    'name': self.name, 
+                    'text': 'character_update', 
+                    'data': self.to_json()
+                })
+                await asyncio.sleep(0.1)
 
         if not narrative:
             if self.focus_goal:
@@ -3571,8 +3636,8 @@ End your response with:
             self.context.simulation_time += timedelta(hours=delay)
             if old_time.day!= self.context.simulation_time.day:
                 pass # need to figure out out to force UI to no sho old image
-            if delay > 1.0:
-                self.context.update()
+            if delay > 15.0:
+                self.context.update(changes_only=True)
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
                 await asyncio.sleep(0)
         except Exception as e:
@@ -3797,7 +3862,9 @@ End your response with:
                 'ongoing_activities': self.narrative.ongoing_activities,
                 'relationships': self.actor_models.get_known_relationships(),
             },
-            'signals': self.focus_goal.name if self.focus_goal else ''
+            'signals': self.focus_goal.name if self.focus_goal else '',
+            'current_act': self.get_current_act_info(),
+            'current_scene': self.get_current_scene_info()
         }
 
     def find_say_result(self) -> str:
@@ -3877,7 +3944,7 @@ end your response with:
                         'relationship': model.relationship or '',
                         'dialog': {
                             'active': bool(model.dialog.active) if model.dialog else False,
-                            'transcript': model.dialog.get_transcript() or '' if model.dialog else ''
+                            'transcript': model.dialog.get_transcript(10) or '' if model.dialog else ''
                         } if model.dialog else None
                     }
                     for model in (self.actor_models.known_actors.values() if self.actor_models else [])

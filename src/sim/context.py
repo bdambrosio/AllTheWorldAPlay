@@ -754,8 +754,27 @@ End your response with:
         await asyncio.sleep(0.1)
         return consequences, world_updates, character_updates
 
+    def identify_state_changes(self, previous_state, new_state):
+        """Identify changes in the state description"""
+        prompt = [UserMessage(content="""You are a skilled setting analyst. Identify the changes from the previousState and newState below:
+<previousState>
+{{$previous_state}}
+</previousState>
+         
+<newState>
+{{$new_state}}
+</newState>
 
-    async def update(self, narrative='', local_only=False):
+Respond with one or two concise sentences describing the changes.
+Respond only with the text describing the changes.
+Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
+End your response with:
+</end>
+""")]
+        response = self.llm.ask({"previous_state": previous_state, "new_state": new_state}, prompt, tag='Context.identify_state_changes', temp=0.6, stops=['</end>'], max_tokens=100)
+        return response
+
+    async def update(self, narrative='', local_only=False, changes_only=False):
 
         history = self.history()
 
@@ -846,7 +865,7 @@ Ensure your response reflects this change.
                                 tag='Context.update', temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
-        if not local_only:
+        if not local_only and not changes_only:
             self.message_queue.put({'name':'', 'text':f'\n\n----- situation update -----{self.simulation_time.isoformat()}'})
             self.transcript.append(f'\n\n----- situation update ----- {self.simulation_time.isoformat()}\n')
             await asyncio.sleep(0.1)
@@ -857,9 +876,15 @@ Ensure your response reflects this change.
         if local_only:
             self.last_update_time = self.simulation_time
             return
-        self.show = new_situation
-        self.message_queue.put({'name':'', 'text':self.show})
-        self.transcript.append(f'{self.show}')
+        if not changes_only:
+            self.show = new_situation
+            self.message_queue.put({'name':'', 'text':self.show})
+            self.transcript.append(f'{self.show}')
+        else:
+            changes = self.identify_state_changes(self.current_state, new_situation)
+            self.message_queue.put({'name':'', 'text':changes})
+            self.transcript.append(f'{new_situation}')
+
         self.show = '' # has been added to message queue!
         self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_json()})
         await asyncio.sleep(0.1)
@@ -1036,7 +1061,7 @@ Ensure your response reflects this change.
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
-            await self.update()
+            await self.update(changes_only=True)
             await asyncio.sleep(0)
 
         if scene.get('post_narrative'):
@@ -1099,9 +1124,11 @@ Ensure your response reflects this change.
             task = scene_task['task']
             character.focus_goal = scene_task['goal']
             character.focus_goal.task_plan = [task]
+            # refresh task to ensure it is up to date with the latest information
+            task = character.refresh_task(task, scene_integrated_task_plan, final_task=self.scene_integrated_task_plan_index == len(scene_integrated_task_plan)-1)
             character.focus_task = Stack()
             character.focus_task.push(task)
-            self.scene_history.append(f'{character.name} {task.to_string()}')
+            self.scene_history.append(f'{character.name} {task.to_string()}') # should this be after cognitive cycle? But what if spontaneous subtasks are generated?
             self.message_queue.put({'name':'', 'text':f''})
             await asyncio.sleep(0.2)
             await character.cognitive_cycle(narrative=True)
@@ -1156,7 +1183,10 @@ Ensure your response reflects this change.
         for round in range(2):
             for character in cast(List[NarrativeCharacter], self.actors):
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
-        self.central_narrative = await self.merge_central_narratives()
+        self.central_narrative = await self.merge_central_narratives()            
+        self.message_queue.put({'name':'Global', 'text':f'central_narrative: {self.central_narrative}\n'})
+        await asyncio.sleep(0.4)
+
         for character in cast(List[NarrativeCharacter], self.actors):
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             await character.write_narrative(self.summarize_scenario(), self.summarize_map(), self.central_narrative)
@@ -1200,7 +1230,8 @@ Ensure your response reflects this change.
         character_backgrounds = '\n'.join(character_backgrounds)
 
         prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
-You are given a list of proposed acts, one from each of the characters in the play. These plans were created by each character independently.
+You are given a list of proposed acts, one from each of the characters in the play. 
+These plans were created by each character independently, emphasizing their own role in the play.
 Your job is to assimilate them into a single coherent act. This may require ignoring or merging scenes. Focus on those scenes that are most relevant to the dramatic context.
 {{$act_directives}}
 

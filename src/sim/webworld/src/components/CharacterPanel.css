@@ -69,9 +69,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
+  min-height: 0;
 }
 
 .character-image-container {
+  flex-shrink: 0;
   position: relative;
   margin-bottom: 10px;
   display: flex;
@@ -118,7 +121,7 @@
 
 .section-container {
   flex: 1;
-  min-height: 100px;
+  min-height: 60px;
   margin-bottom: 0;
 }
 
@@ -129,7 +132,7 @@
 .tasks-area, .history-area {
   padding: 8px;
   border: 1px solid #444;
-  height: 80px;
+  height: 60px;
   overflow-y: auto;
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
@@ -145,6 +148,7 @@
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
   font-size: 0.9em;
+  flex-shrink: 0;
 }
 
 .thoughts-content {
@@ -200,6 +204,10 @@
   margin: 10px;
   width: 340px;
   background-color: #333333;
+  height: calc(100% - 20px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .info-panes {
@@ -225,6 +233,7 @@
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
+  flex-shrink: 0;
 }
 
 .explore-button:hover {

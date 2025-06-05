@@ -197,7 +197,9 @@ class Act:
         return f'Act t{self.id} {self.mode}: {self.action}; reason: {self.reason}; result: {self.result}'
 
 class Autonomy:
-    def __init__(self, signal=True, goal=True, task=True, action=True):
+    def __init__(self, act=True, scene=True, signal=True, goal=True, task=True, action=True):
+        self.act = act
+        self.scene = scene
         self.signal = signal
         self.goal = goal
         self.task = task

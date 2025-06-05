@@ -20,7 +20,8 @@ importlib.reload(suburban)
 map_file_name='suburban.py' # needed to trigger narrative creation
 
 # Character definitions
-Hu = NarrativeCharacter("Hu", """You are Hu Manli, a healthy, professioinally dressed 39 year old chinese female insurance executive. 
+Hu = NarrativeCharacter("Hu", """You are Hu Manli, a healthy, professionally dressed 39 year old chinese female insurance executive. 
+You speak directly and candidly.
 You are a workaholic, but also love to travel and have a passion for adventure.
 Life has suddently thrown a curveball. A competitor named Xue is stealing your clients and threatening your success.
 You are ambitious, competitive, and determined to outshine Xue.
@@ -46,21 +47,23 @@ Xue.set_drives([
 ])
 
 Ding = NarrativeCharacter("Ding", """You are Ding Zhiyuan, a middle-aged chinese Philosophy professor, wearing a dark suit and tie. 
-                          You are the husband of Hu. You are mild-mannered, but restless in middle age and resentful of Hu's success.""", 
+You speak calmly, and infrequently insert philosophical metaphors into your speech.
+You are the husband of Hu. You are mild-mannered, but restless in middle age and resentful of Hu's success.""", 
                        server_name=server_name)
 Ding.set_drives([
     "succeed at work, outshine Hu",
     "midlife crisis - find adventure, excitement, romance"
 ])
 
-Wang = NarrativeCharacter("Wang", """You are Wang Xue, a 23 year old female student who dresses provocatively. You are a student of Ding""", server_name=server_name)
+Wang = NarrativeCharacter("Wang", """You are Wang Xue, a 23 year old female student who dresses provocatively and enjoys stirring up trouble. You are a student of Ding""", server_name=server_name)
 Wang.set_drives([
     "make a name for yourself, be a good student",
     "find adventure, excitement, romance, maybe a boyfriend"
 ])
 
 Qiu = NarrativeCharacter("Qiu", """Qiu Ying, a 32 year old chinese female wealthy widow and mistress of Ding.
-You
+You are very jealous of Hu and resentful of Ding's relationship with her.
+You enjoy manipulating people for your own gain.
                          """, server_name=server_name)
 Qiu.set_drives([
     "Get Ding to leave Hu and marry you.",
@@ -81,10 +84,10 @@ Yangho.set_drives([
 
 
 # Create context with forest scenario
-W = context.Context([Hu, Xue, Ding, Qiu],
+W = context.Context([Hu, Xue, Qiu],
     """A modern chinese urban  setting with a mix of buildings, roads, and other signs of humanity.""",
     scenario_module=suburban,  # Pass the forest scenario module
-    extras=[Wang, Xiaoyu, Yangho],
+    extras=[Wang, Xiaoyu, Yangho, Ding],
     server_name=server_name,
    )
 Hu.add_perceptual_input("You suspect your husband Ding is having an affair with Wang Xue, his student", 'internal')
