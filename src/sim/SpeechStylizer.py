@@ -84,6 +84,8 @@ class SpeechStylizer:
         self.voice_embeddings = _voice_embeddings
         self.voice_id = self.pick_best_voice(_voices)
         self._call_counter = 0
+        # Track recent words for overuse detection
+        self._recent_words = []  # List of (word, weight) tuples
 
     # =====================================================================
     # PUBLIC API
@@ -445,6 +447,13 @@ End your response with:
         return "<STYLE>\n" + "\n".join(lines) + "\n</STYLE>"
 
     def stylize(self, original_say, target, style_block):
+        filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
+        filtered_transcript = '\n'.join([t for t in filtered_transcript if t.startswith(self.char.name)])
+        
+        # Get overused words to avoid
+        overused_words = self.get_overused_words(filtered_transcript)
+        overused_text = f"AVOID these overused words/phrases: {', '.join(overused_words)}" if overused_words else ""
+        
         prompt = [SystemMessage(content="""
 You are a dialogue style-transfer module.  
 Your job is to rewrite a text so that it:
@@ -455,7 +464,7 @@ Your job is to rewrite a text so that it:
 4. Fits the character's voice and current emotional stance.
 5. Avoids repetition of past speech unless needed for dramatic effect.
 6. Stays at most same length as original.
-7. Avoids repetition of the phrases in recent history, especially of short 'social' phrases you used recently (e.g. 'yeah', 'ok', 'sure', 'right', 'no problem', "I'm on it!", etc.)
+7. Avoids repetition of words or phrases in recent history, especially of short 'social' phrases (e.g. "I'm on it!") or words that would alternated with variants in normal conversational speech (e.g. "loyalty").
     History (you are {{$name}}):
     {{$speech_transcript}}
     
@@ -483,9 +492,6 @@ Your job is to rewrite a text so that it:
 Rewrite the *ORIGINAL* text so it matches the style directives.  
 Return **only** the rewritten line—no extra commentary, no tags, no quotation marks.
 """)]
-        
-        filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
-        filtered_transcript = [t for t in filtered_transcript if t.startswith(self.char.name)]
 
         if target:
             recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-20:]
@@ -568,4 +574,58 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         max_score = max(scores)
         best_voice = voices[scores.index(max_score)]
         return best_voice['voice_id']
+
+    def get_overused_words(self, filtered_transcript=None, threshold=3, max_words=10):
+        """
+        Generate a list of words/phrases to avoid based on recent usage.
+        
+        Args:
+            filtered_transcript: List of recent utterances (if None, gets from character)
+            threshold: Minimum count to consider a word overused 
+            max_words: Maximum number of words to return
+            
+        Returns:
+            List of overused words/phrases to avoid
+        """
+        if filtered_transcript is None:
+            filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
+            filtered_transcript = [t for t in filtered_transcript if t.startswith(self.char.name)]
+        
+        # Extract just the spoken text (remove "CharacterName: " prefix)
+        spoken_text = []
+        for line in filtered_transcript:
+            if ': ' in line:
+                spoken_text.append(line.split(': ', 1)[1].lower())
+        
+        if not spoken_text:
+            return []
+        
+        # Count common short phrases and filler words
+        word_count = {}
+        filler_patterns = [
+            'yeah', 'ok', 'okay', 'sure', 'right', 'alright', 'well',
+            'no problem', "i'm on it", 'got it', 'sounds good', 
+            'makes sense', 'i see', 'i think', 'i mean', 'you know'
+        ]
+        
+        # Count occurrences
+        full_text = ' '.join(spoken_text)
+        for pattern in filler_patterns:
+            count = full_text.count(pattern)
+            if count >= threshold:
+                word_count[pattern] = count
+        
+        # Also count individual words that appear frequently
+        words = full_text.split()
+        for word in words:
+            # Skip very short words and common articles/prepositions
+            if len(word) > 2 and word not in ['the', 'and', 'but', 'for', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'will', 'would', 'could', 'should']:
+                word_count[word] = word_count.get(word, 0) + 1
+        
+        # Filter by threshold and sort by frequency
+        overused = [(word, count) for word, count in word_count.items() if count >= threshold]
+        overused.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return just the words, limited to max_words
+        return [word for word, count in overused[:max_words]]
 

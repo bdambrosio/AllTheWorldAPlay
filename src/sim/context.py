@@ -872,6 +872,7 @@ Ensure your response reflects this change.
          
         if new_situation is None:
             return
+        previous_state = self.current_state
         self.current_state = new_situation
         if local_only:
             self.last_update_time = self.simulation_time
@@ -881,7 +882,7 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':'', 'text':self.show})
             self.transcript.append(f'{self.show}')
         else:
-            changes = self.identify_state_changes(self.current_state, new_situation)
+            changes = self.identify_state_changes(previous_state, new_situation)
             self.message_queue.put({'name':'', 'text':changes})
             self.transcript.append(f'{new_situation}')
 

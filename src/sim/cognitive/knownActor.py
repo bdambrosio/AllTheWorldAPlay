@@ -447,4 +447,10 @@ class KnownActorManager:
     
     def get_dialog_transcripts(self, max_turns=10):
         """return a list of dialog transcripts"""
-        return '\n'.join([actor.dialog.get_transcript(max_turns) for actor in self.known_actors.values() if actor is not self and actor.dialog])
+        transcripts = []
+        for actor in self.known_actors.values():
+            if actor is not self and actor.dialog:
+                transcript = actor.dialog.get_transcript(max_turns)
+                if transcript:
+                    transcripts.extend(transcript.split('\n'))
+        return transcripts
