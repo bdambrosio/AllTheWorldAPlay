@@ -930,7 +930,7 @@ End your response with </end>
             self.previous_proposal = self.current_proposal
             self.current_proposal = central_narrative
             self.central_narrative = central_narrative.to_string() # store as string, since that is how global central narrative is stored
-            self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
+            #self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
             await asyncio.sleep(0.4)
         return response
     

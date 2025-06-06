@@ -729,7 +729,7 @@ Include in your response:
 - changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 - specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
-Be  terse, only report the most significant  state changes. Limit your response to about 80 words.
+Be terse, only report the most significant  state changes. Limit your response to about 80 words.
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -1045,6 +1045,8 @@ Ensure your response reflects this change.
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
+        if isinstance(scene["time"], datetime) and scene["time"] < self.simulation_time:
+            scene["time"] = self.simulation_time
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
         await asyncio.sleep(0.1)
         self.current_state += f'\n{scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'
@@ -1107,6 +1109,7 @@ Ensure your response reflects this change.
                 goal_text = ''
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
+            character.request_goal_choice([scene_goals[character.name]])
             self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
             await asyncio.sleep(0.4)
             # now generate initial task plan
@@ -1127,6 +1130,7 @@ Ensure your response reflects this change.
             character.focus_goal.task_plan = [task]
             # refresh task to ensure it is up to date with the latest information
             task = character.refresh_task(task, scene_integrated_task_plan, final_task=self.scene_integrated_task_plan_index == len(scene_integrated_task_plan)-1)
+            character.request_task_choice([task])
             character.focus_task = Stack()
             character.focus_task.push(task)
             self.scene_history.append(f'{character.name} {task.to_string()}') # should this be after cognitive cycle? But what if spontaneous subtasks are generated?
@@ -1307,6 +1311,7 @@ End your response with </end>
             act_directives = f""" 
 In performing this integration:
     1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 4-6 scenes maximum.
+    2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}
     4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.

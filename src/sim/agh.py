@@ -163,6 +163,7 @@ class Character:
         self.driveSignalManager:DriveSignalManager = DriveSignalManager(self, self.llm, ask=default_ask)
         self.driveSignalManager.set_context(self.context)
         self.focus_goal:Goal = None
+        self.focus_goal_history:List[Goal] = []
         self.focus_task:Stack = Stack()
         self.last_task = None
         self.focus_action:Act = None
@@ -1119,13 +1120,14 @@ End response with:
                     if goal.name == 'preconditions' and goal.description == self.focus_goal.preconditions:
                         self.goals.remove(goal)
             self.context.current_state += f"\nFollowing goal has been satisfied. This may invalidate parts of the above:\n{goal.to_string()}"
-            self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
+            #self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
             self.achievments.append(goal.termination)
             if goal in self.goals:
                 self.goals.remove(goal)            
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
             self.update_drives(goal)
             if self.focus_goal is goal:
+                self.focus_goal_history.append(goal)
                 self.focus_goal = None
         return satisfied
 
@@ -1866,20 +1868,57 @@ observable world updates from most recent act
 {{$updates}}
 </updates>
 
-Respond ONLY with the concise (10-20 words) statement about the actual achievements with respect to the goal or task.
+<history>
+{{$history}}
+</history>
+
+<events>
+{{$events}}
+</events>
+
+<recent_memories>
+{{$memories}}
+</recent_memories>
+                              
+<relationships>
+{{$relationships}}
+</relationships>
+                              
+Respond ONLY with the concise (20-50 words) statement about the actual achievements with respect to the goal or task.
+Include in a simple text paragraph:
+ - The goal or task name
+ - The termination criterion
+ - The actual achievement, ie progress towards the termination criterion
+ - What was achieved, ie a change in your information state, relationships, or world state
+ - What remains unachieved, if the goal or task was not completely satisfied.
+                              
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]
 
+        # Get recent memories
+        recent_memories = self.structured_memory.get_recent(8)
+        memory_text = '\n'.join(memory.text for memory in recent_memories)
+
+        if consequences == '':
+            consequences = self.context.last_consequences
+        if updates == '':
+            updates = self.context.last_updates
         response = self.llm.ask({"objective": object.to_string(),
                                 "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
-                                 "satisfied": satisfied,
-                                 "progress": progress,
-                                 "situation": self.context.current_state,
-                                 "world": self.context.current_state,
-                                 "consequences": consequences,
-                                 "updates": updates}, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=30)
+                                "satisfied": satisfied,
+                                "progress": progress,
+                                "situation": self.context.current_state,
+                                "world": self.context.current_state,
+                                "consequences": consequences,
+                                "updates": updates,
+                                "events": consequences + '\n' + updates,
+                                "character": self.get_character_description(),
+                                "history": self.format_history_for_UI(),
+                                "relationships": self.narrative.get_summary('medium'),
+                                "memories": memory_text
+                                 }, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=80)
         return response
 
     async def test_termination(self, object, termination_check, consequences, updates='', type=''):
@@ -3318,8 +3357,8 @@ End your response with:
                 # Wait for response with timeout                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
 
                 waited = 0
-                while waited < 999.0:
-                    await asyncio.sleep(0)
+                while waited < 30.0:
+                    await asyncio.sleep(0.1)
                     waited += 0.1
                     if not self.context.choice_response.empty():
                         try:
@@ -3390,8 +3429,8 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 999.0:
-                await asyncio.sleep(0)
+            while waited < 30.0:
+                await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
                     try:
@@ -3464,7 +3503,7 @@ End your response with:
                     'mode': act.mode,
                     'action': act.action,
                     'reason': act.reason,
-                    'target': act.target[0].name if act.target else '',
+                    'target': act.target[0].name if (act.target and len(act.target) > 0) else '',
                     'context': {
                         'emotional_stance': {
                                 'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
@@ -3483,8 +3522,8 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 999.0:
-                await asyncio.sleep(0)
+            while waited < 30.0:
+                await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
                     try:
@@ -3590,6 +3629,7 @@ End your response with:
             if self.focus_goal:
                 satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
             if satisfied:
+                self.focus_goal_history.append(self.focus_goal)
                 self.focus_goal = None
 
             if not self.focus_goal and (not self.goals or len(self.goals) == 0):
@@ -3620,6 +3660,7 @@ End your response with:
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
             print(f'{self.name} narrative cognitive_cycle: no focus task')
             if self.focus_goal:
+                self.focus_goal_history.append(self.focus_goal)
                 self.focus_goal = None
             return
             
@@ -3683,6 +3724,7 @@ End your response with:
                         logger.debug(f'{self.name} step_tasks: assertion error: postconditions goal {self.focus_goal.name} not satisfied')
                     if self.focus_goal and self.focus_goal in self.goals:
                         self.goals.remove(self.focus_goal)
+                        self.focus_goal_history.append(self.focus_goal)
                         self.focus_goal = None
                 elif self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
                     # termination not yet satisfied, and this is a main goal (has termination), subgoal on termination clause
@@ -3834,11 +3876,19 @@ End your response with:
             reason = f'{self.last_task.reason}'
         return f'{self.thought.strip()}'
    
+    def get_focus_goal_string(self):
+        if self.focus_goal:
+            return self.focus_goal.short_string()
+        elif self.focus_goal_history and len(self.focus_goal_history) > 0:
+            return self.focus_goal_history[-1].short_string()
+        else:
+            return ''
+        
     def format_tasks_for_UI(self):
         """Format tasks for UI display as array of strings"""
         tasks = []
         if self.focus_goal:
-            tasks.append(f"Goal: {self.focus_goal.short_string()}")
+            tasks.append(f"Goal: {self.get_focus_goal_string()}")
         if self.focus_task.peek():
             tasks.append(f"Task: {self.focus_task.peek().short_string()}")
         elif self.last_task:
