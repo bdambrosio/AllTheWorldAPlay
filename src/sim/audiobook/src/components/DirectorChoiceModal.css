@@ -1,0 +1,181 @@
+.director-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.director-modal-content {
+  background: #333;
+  padding: 20px;
+  border-radius: 4px;
+  width: 500px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.director-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.director-modal-context {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #222;
+  border-radius: 4px;
+}
+
+.director-modal-body {
+  display: flex;
+  gap: 20px;
+}
+
+.director-modal-options {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice-option {
+  background: #444;
+  border: none;
+  padding: 15px;
+  text-align: left;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.choice-option:hover {
+  background: #555;
+}
+
+.option-name {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.option-description {
+  font-size: 0.95em;
+  margin-bottom: 8px;
+  color: #ddd;
+}
+
+.option-mode,
+.option-action,
+.option-reason,
+.option-target {
+  font-size: 0.9em;
+  margin-top: 4px;
+  color: #bbb;
+  padding-left: 8px;
+  border-left: 2px solid #555;
+}
+
+.option-termination {
+  font-size: 0.85em;
+  color: #999;
+  margin-top: 8px;
+}
+
+.option-context {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.signal-cluster {
+  font-size: 0.9em;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+.emotional-stance {
+  font-size: 0.85em;
+  color: #888;
+}
+
+.new-goal-form {
+  flex: 1;
+  padding: 15px;
+  background: #222;
+  border-radius: 4px;
+}
+
+.new-goal-form h4 {
+  margin: 0 0 15px 0;
+  color: #fff;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: #ddd;
+  font-size: 0.9em;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 8px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 0.9em;
+}
+
+.form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #666;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 10px;
+  background: #444;
+  border: none;
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.submit-button:hover {
+  background: #555;
+}
+
+.form-error {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+  padding: 8px;
+  margin-bottom: 15px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  text-align: center;
+} 

@@ -1,0 +1,283 @@
+.character-info {
+  margin: 6px 0;
+  width: 340px;
+}
+
+.character-block {
+  background-color: #333333;
+  border-radius: 5px;
+  padding: 2px;
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-bar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.name-and-image {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.char-name {
+  font-weight: bold;
+  min-width: fit-content;
+}
+
+.char-state {
+  flex: 1;
+  max-height: 80px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding: 5px;
+  background-color: #2b2b2b;  /* Slightly darker for contrast */
+  border-radius: 3px;
+  margin-right: 5px;
+}
+
+/* Style scrollbar for better visibility */
+.char-state::-webkit-scrollbar {
+  width: 6px;
+}
+
+.char-state::-webkit-scrollbar-track {
+  background: #2b2b2b;
+}
+
+.char-state::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.char-state::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+.active-task, .char-state {
+  flex: 1;
+  word-wrap: break-word;
+}
+
+.middle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Modal-specific middle section styles */
+.character-modal-body .middle-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.character-image-container {
+  flex-shrink: 0;
+  position: relative;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.name-column {
+  width: 128px;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.character-name {
+  color: #d0d0d0;
+  font-weight: bold;
+  word-wrap: break-word;
+  font-size: 1.1em;
+}
+
+.character-signals {
+  color: #cab939;  /* Brighter text color */
+  font-size: 0.9em;
+  word-wrap: break-word;
+  line-height: 1.3;
+  background: rgba(255, 255, 255, 0.05);  /* Subtle light background */
+  padding: 4px 8px;  /* Add some padding */
+  border-radius: 2px;  /* Slight rounding */
+  margin-top: 4px;  /* Space from name */
+}
+
+.character-image {
+  width: 192px;
+  height: 144px;
+  object-fit: cover;
+  object-position: center;
+  flex-shrink: 0;
+}
+
+.section-container {
+  flex: 1;
+  min-height: 60px;
+  margin-bottom: 0;
+}
+
+/* Modal-specific section container styles */
+.character-modal-body .section-container {
+  flex: 1;
+  min-height: 80px;
+  margin-bottom: 8px;
+}
+
+.section-container h4 {
+  display: none;
+}
+
+.tasks-area, .history-area {
+  padding: 8px;
+  border: 1px solid #444;
+  height: 60px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3);
+  color: #d0d0d0;
+  font-size: 0.9em;
+}
+
+/* Modal-specific task and history area styles */
+.character-modal-body .tasks-area,
+.character-modal-body .history-area {
+  height: 100%;
+  min-height: 80px;
+}
+
+.thoughts-area {
+  margin-top: 0;
+  padding: 8px;
+  border: 1px solid #444;
+  height: 80px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3);
+  color: #d0d0d0;
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+
+/* Modal-specific thoughts area styles */
+.character-modal-body .thoughts-area {
+  flex: 1;
+  height: auto;
+  min-height: 100px;
+}
+
+.thoughts-content {
+  max-height: 300px;
+  padding-right: 5px;
+}
+
+.character-block h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.1em;
+}
+
+.character-state {
+  margin-left: 79px;
+  color: #b0b0b0;
+  font-size: 0.75em;
+  line-height: 1.4;
+}
+
+.character-show {
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.character-thoughts {
+  margin-bottom: 6px;
+  color: #d0d0d0;
+}
+
+.character-tasks {
+  margin-bottom: 6px;
+  font-size: 0.9em;
+}
+
+.character-history {
+  font-size: 0.9em;
+  color: #909090;
+}
+
+.history-entry {
+  margin: 3px 0;
+}
+
+.task-item, .history-item {
+  margin-bottom: 5px;
+  font-size: 0.9em;
+}
+
+.character-panel {
+  border: 1px solid #444;
+  padding: 10px;
+  margin: 10px;
+  width: 340px;
+  background-color: #333333;
+  height: calc(100% - 20px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* Modal-specific character panel styles */
+.character-modal-body .character-panel {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: none;
+  background-color: transparent;
+}
+
+.info-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.tasks-pane, .history-pane {
+  min-width: 0;
+  padding: 6px;
+}
+
+.explore-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  background-color: #444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.explore-button:hover {
+  background-color: #555;
+}
+
+.tasks-area {
+  font-size: 0.9em;
+}  

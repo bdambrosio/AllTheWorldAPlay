@@ -1,0 +1,362 @@
+/* Dark theme base */
+body {
+  background-color: #2b2b2b;
+  color: #e0e0e0;
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  display: flex;
+  width: 100%;
+  gap: 5px;
+  padding: 10px;
+  height: 100vh;
+  max-width: 100%;
+  margin: 0;
+  background-color: #2b2b2b;
+  box-sizing: border-box;
+  overflow: hidden;
+  position: fixed; /* Add this to prevent container from scrolling */
+}
+
+.main-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* Allow flex items to shrink below content size */
+}
+
+.world-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Add this to contain children */
+}
+
+.world-header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;  /* Prevent header from shrinking */
+}
+
+.world-panel {
+  width: 408px;
+  height: 408px;
+  background-color: #333333;
+  border-radius: 0px;
+  padding: 10px;
+  flex-shrink: 0;
+}
+
+.world-description {
+  flex: 1;
+  background-color: #333333;
+  border-radius: 2px;
+  padding: 10px;
+  color: #FFFFFF;
+  min-height: 408px;
+}
+
+.character-info {
+  margin: 10px 0;
+}
+
+.character-block {
+  background-color: #3c3c3c;
+  border-radius: 5px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.character-block h3 {
+  margin: 0 0 10px 0;
+  color: #2b2b2b;
+}
+
+.character-state {
+  color: #2b2b2b;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.command-area {
+  margin-top: auto;
+}
+
+.output-area {
+  background-color: #2d2d2d;
+  border-radius: 5px;
+  padding: 10px;
+  margin-bottom: 5px;
+  height: 200px;
+  overflow-y: auto;
+}
+
+.message {
+  color: #d0d0d0;
+  margin: 5px 0;
+}
+
+.input-area {
+  margin-top: 10px;
+}
+
+.command-input {
+  width: 100%;
+  padding: 8px;
+  background-color: #404040;
+  border: 1px solid #505050;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 1em;
+}
+
+.command-input::placeholder {
+  color: #808080;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: #333;
+  border-left: 1px solid #444;
+}
+
+.control-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.control-button {
+  padding: 8px 12px;
+  background: #444;
+  border: none;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.control-button:hover {
+  background: #555;
+}
+
+.control-button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.status-area {
+  margin: 10px 0;
+  padding: 10px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  color: #ccc;
+}
+
+.director-chair-button {
+  margin-top: auto;
+  padding: 12px;
+  background: #2c5282;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.director-chair-button:hover {
+  background: #2a4365;
+}
+
+.command-panel {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.history-panel {
+  grid-column: 2;
+  grid-row: 1;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.character-panels {
+  width: 360px;
+  min-width: 360px;
+  box-sizing: border-box;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.character-panel {
+  background-color: #2b2b2b;
+  border: 1px solid #000000;
+  border-radius: 5px;
+  padding: 10px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.memory-panel {
+  display: none; /* Hidden initially, can be shown later */
+}
+
+h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.message {
+  padding: 8px;
+  margin: 4px 0;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.center-panel {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.log-area {
+  flex: 1;
+  background-color: #2b2b2b;
+  color: #e0e0e0;
+  padding: 10px;
+  font-family: 'Courier New', Courier;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto; /* Changed from scroll to auto */
+  min-height: 0; /* Add this to allow proper flex shrinking */
+  max-height: 98%; /* Add this to ensure containment */
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #333333;
+  padding: 20px;
+  border-radius: 5px;
+  z-index: 1000;
+}
+
+.dialog button {
+  margin: 5px;
+  padding: 5px 10px;
+}
+
+/* Ensure image fits container */
+.world-panel img {
+  width: 98%;
+  height: 98%;
+  object-fit: scale-down;
+}
+
+/* Character Modal Styles */
+.character-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.character-modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  resize: both;
+  overflow: auto;
+  min-width: 300px;
+  min-height: 400px;
+}
+
+.character-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #ccc;
+  background-color: #f8f8f8;
+}
+
+.character-modal-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+.character-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.character-modal-close:hover {
+  background-color: #e0e0e0;
+}
+
+.character-modal-body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+
+.character-modal-body .character-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.character-modal-body .middle-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.character-modal-body .section-container {
+  flex: 1;
+  margin-bottom: 8px;
+}
+
+.character-modal-body .thoughts-area {
+  flex: 1;
+}
