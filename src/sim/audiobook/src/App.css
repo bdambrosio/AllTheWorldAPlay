@@ -293,7 +293,7 @@ h3 {
 }
 
 .character-modal-content {
-  background: white;
+  background: #333333;
   border-radius: 8px;
   width: 480px;
   max-width: 90vw;
@@ -311,13 +311,13 @@ h3 {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #ccc;
-  background-color: #f8f8f8;
+  border-bottom: 1px solid #555;
+  background-color: #444444;
 }
 
 .character-modal-header h3 {
   margin: 0;
-  color: #333;
+  color: #e0e0e0;
 }
 
 .character-modal-close {
@@ -325,19 +325,20 @@ h3 {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #666;
+  color: #e0e0e0;
   padding: 4px;
   border-radius: 4px;
 }
 
 .character-modal-close:hover {
-  background-color: #e0e0e0;
+  background-color: #555;
 }
 
 .character-modal-body {
   flex: 1;
   padding: 16px;
   overflow: auto;
+  background-color: #333333;
 }
 
 .character-modal-body .character-panel {

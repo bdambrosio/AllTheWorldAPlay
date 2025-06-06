@@ -170,10 +170,10 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
             <h4>Narrative Summary</h4>
             <div className="narrative-summary">
               <h5>Recent Events</h5>
-              <div className="narrative-section">{explorerState.narrative.recent_events}</div>
+              <div className="narrative-section">{explorerState.narrative?.recent_events || 'No recent events'}</div>
               
               <h5>Ongoing Activities</h5>
-              <div className="narrative-section">{explorerState.narrative.ongoing_activities}</div>
+              <div className="narrative-section">{explorerState.narrative?.ongoing_activities || 'No ongoing activities'}</div>
             </div>
           </div>
         )}
@@ -310,4 +310,4 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
   );
 }
 
-export default ExplorerModal; 
+export default ExplorerModal;   
