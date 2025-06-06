@@ -1,0 +1,20 @@
+.show-panel {
+  background-color: #333333;
+  border-radius: 5px;
+  padding: 20px;
+  margin: 0 20px;
+  height: 300px;
+  overflow-y: auto;
+  font-size: 1.1em;
+}
+
+.show-entry {
+  margin: 10px 0;
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.character-name {
+  color: #b0b0b0;
+  font-weight: bold;
+} 
