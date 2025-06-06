@@ -35,23 +35,29 @@ function CharacterPanel({
 
   // Handle explorer modal open
   const handleExplorerOpen = async () => {
-    setShowExplorer(true);
-    sendReplayEvent('setShowExplorer', { 
-      characterName: character.name,
-      show: true 
-    });
-    
-    // Use cached state if running or processing
-    if (character.status === 'processing' || character.status === 'running') {
-      console.log('Using cached explorer state');
-      return;
-    }
-
-    setExplorerStatus('loading');
     try {
-      await sendCommand('get_character_details', { name: character.name });
+      setShowExplorer(true);
+      
+      if (sendReplayEvent && typeof sendReplayEvent === 'function') {
+        sendReplayEvent('setShowExplorer', { 
+          characterName: character.name,
+          show: true 
+        });
+      }
+      
+      // Use cached state if running or processing
+      if (character.status === 'processing' || character.status === 'running') {
+        console.log('Using cached explorer state');
+        return;
+      }
+
+      setExplorerStatus('loading');
+      
+      if (sendCommand && typeof sendCommand === 'function') {
+        await sendCommand('get_character_details', { name: character.name });
+      }
     } catch (err) {
-      console.error('Error requesting explorer state:', err);
+      console.error('Error in handleExplorerOpen:', err);
       setExplorerStatus('error');
     }
   };
@@ -130,13 +136,21 @@ function CharacterPanel({
           sessionId={sessionId}
           lastState={lastExplorerState}
           status={explorerStatus}
-          onClose={() => setShowExplorer(false)}
-          sendCommand={sendCommand}
-          sendReplayEvent={sendReplayEvent}
+          onClose={() => {
+            setShowExplorer(false);
+            if (sendReplayEvent && typeof sendReplayEvent === 'function') {
+              sendReplayEvent('setShowExplorer', { 
+                characterName: character.name,
+                show: false 
+              });
+            }
+          }}
+          sendCommand={sendCommand || (() => {})}
+          sendReplayEvent={sendReplayEvent || (() => {})}
         />
       )}
     </div>
   );
 }
 
-export default CharacterPanel; 
+export default CharacterPanel;  
