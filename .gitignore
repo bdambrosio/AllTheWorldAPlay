@@ -70,3 +70,4 @@ images/*.png
 
 sim/simulation.log
 src/plays/replays/*.json
+!src/plays/replays/lost_test.json

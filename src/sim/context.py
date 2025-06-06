@@ -845,7 +845,7 @@ Updated State description of about 200 words
 </situation>
 
 Respond with an updated world state description of about 140 words reflecting the current time and the environmental changes that have occurred.
-Include ONLY the updated situation description in your response. 
+Include ONLY the updated situation description in your response. Do not include changes of the description (e.g., 'more detailed'), only changes to the situation being described.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
 Limit your total response to about 140 words
