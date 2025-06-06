@@ -1050,7 +1050,7 @@ End response with:
                 if drive is not self.drives[0]:
                     if len(drive.attempted_goals) > 0:
                         if drive in self.drives: # only update if drive still exists, may have already been rewritten
-                            update = drive.update_on_goal_completion(self, goal)
+                            update = drive.update_on_goal_completion(self, goal, 'goal completed')
                             if update:
                                 try:
                                     self.drives.remove(drive)

@@ -447,8 +447,8 @@ End your response with:
         return "<STYLE>\n" + "\n".join(lines) + "\n</STYLE>"
 
     def stylize(self, original_say, target, style_block):
-        filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
-        filtered_transcript = '\n'.join([t for t in filtered_transcript if t.startswith(self.char.name)])
+        transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
+        filtered_transcript = '\n'.join([t for t in transcript if t.startswith(self.char.name)])
         
         # Get overused words to avoid
         overused_words = self.get_overused_words(filtered_transcript)

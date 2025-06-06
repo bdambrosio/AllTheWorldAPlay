@@ -1,5 +1,6 @@
 from __future__ import annotations
 from itertools import tee
+import json
 from reprlib import Repr
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -84,7 +85,7 @@ class Drive:
             return False
         return self.id == other.id
     
-    def update_on_goal_completion(self, character: Character, goal: Goal) -> Optional[Drive]:
+    def update_on_goal_completion(self, character: Character, goal: Goal, completion_statement: str) -> Optional[Drive]:
         """Update drive based on goal completion
         Core Transformation Patterns
 1. Scope Transformations
@@ -208,6 +209,93 @@ End your response with:
         else:
             return None
         
+
+    def update_on_goal_completion_draft(self,character: Character, goal, completion_statement: str) -> Optional[Drive]:
+        """ Called whenever a goal or task linked to this drive is finished.
+        The LLM returns JSON with:
+            new_drive        - new wording or same wording
+            action           - 'evolve' | 'lower_activation' | 'lower_priority' | 'retire'
+            activation_delta - int (optional, default 0)
+        """
+
+        # ------ build prompt --------------------------------------------------
+        system_msg = SystemMessage(content="You are an expert dramaturg and psychologist.")
+        mission = """
+A goal or task linked to this drive has just been completed.
+
+##Goal or Task
+{{$name}}: {{$description}}  (termination: {{$termination}})
+
+##Completion information
+{{$completion_statement}}
+
+##Drive
+{{$drive}}
+Current activation level: {{$activation}}
+
+Recent attempts for this drive (max 5):
+{{$attempts}}
+
+Recently satisfied goals for this drive (max 5):
+{{$satisfied}}
+
+Character sketch:
+{{$character}}
+
+##Instructions
+Please decide how the drive should change.  Reply **only** with a JSON object:
+  {
+    "new_drive": "8-12 word description",
+    "action": "evolve | lower_activation | lower_priority | retire",
+    "activation_delta": int   # optional, 0 … +100
+  }
+End with </end>"""
+
+        prompt = [system_msg,UserMessage(content=mission)]
+        bindings = {
+                "name": goal.name,
+                "description": goal.description,
+                "termination": goal.termination,
+                "completion_statement": completion_statement,
+                "drive": self.text,
+                "activation": self.activation_level,
+                "attempts": "\n".join(
+                    f"• {g.name} ({g.termination})" for g in self.attempted_goals[-5:]
+                ) or "—",
+                "satisfied": "\n".join(
+                    f"• {g.name} ({g.termination})" for g in self.satisfied_goals[-5:]
+                ) or "—",
+                "character": character.character.strip()[:400]  # truncate safety
+            }
+
+        # ------ ask model -----------------------------------------------------
+        raw = character.llm.ask(bindings, prompt, tag="Drive.update", temp=0.2, stops=["</end>"], max_tokens=120)
+        if not raw:
+            return None
+
+        try:
+            data = json.loads(raw)
+        except Exception:
+            # failed to parse; keep drive unchanged
+            return None
+
+        # ------ apply result --------------------------------------------------
+        action = data.get("action", "evolve")
+        new_text = data.get("new_drive", self.text).strip()
+        delta = int(data.get("activation_delta", 0))
+
+        if action == "retire":
+            # caller removes the drive entirely
+            return None
+
+        # create updated Drive object
+        updated = Drive(new_text)
+        updated.activation_level = max(0, min(100, self.activation_level + delta))
+
+        # caller can inspect `action` to move drive lower in list if needed
+        updated.metadata["action"] = action
+        return updated
+
 
     @classmethod
     def get_by_id(cls, id: str):
