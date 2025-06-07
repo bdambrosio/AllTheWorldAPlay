@@ -1,0 +1,66 @@
+### UI build stage
+FROM node:20 AS ui
+LABEL org.opencontainers.image.source=https://github.com/bdambrosio/AllTheWorldAPlay
+WORKDIR /build
+
+# 1.  copy only the manifests first (better cache)
+COPY src/sim/audiobook/package*.json ./
+RUN npm ci --omit=dev --legacy-peer-deps          # or `npm ci` if you want dev deps for the build
+
+# 2.  copy the rest of the UI source
+COPY src/sim/audiobook/ .
+
+# 3.  produce the static bundle
+RUN npm run build              # by default writes to audiobook/build
+###############################################################
+# 2) Runtime stage: Python 3.12 install #
+###############################################################
+# Use an official Python base image
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies and Node.js
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    procps \   
+    htop \        
+    nano \         
+    net-tools \    
+    iputils-ping \ 
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only the allowed directories from src
+COPY src/sim/replay.py /app/src/sim/replay.py
+COPY src/plays /app/src/plays
+
+# Copy the built UI files from the ui stage
+COPY --from=ui /build/build ./static
+
+# Install Python dependencies
+RUN pip install --no-cache-dir fastapi uvicorn websockets requests
+
+# Install React dependencies and build
+WORKDIR /app/src/sim/audiobook
+COPY src/sim/audiobook/package*.json ./
+RUN npm install --legacy-peer-deps
+COPY src/sim/audiobook/ .
+
+# Add src to PYTHONPATH
+ENV PYTHONPATH=/app:
+
+# Expose the port your app runs on
+EXPOSE 8000
+EXPOSE 3000
+
+# Add this before the CMD line:
+COPY start_audiobook.sh /app/start_audiobook.sh
+RUN chmod +x /app/start_audiobook.sh
+
+WORKDIR /app
+# Replace the CMD line with:
+CMD ["/app/start_audiobook.sh"]
