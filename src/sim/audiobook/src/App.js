@@ -4,7 +4,7 @@ import CharacterPanel from './components/CharacterPanel';
 import ShowPanel from './components/ShowPanel';
 import WorldPanel from './components/WorldPanel';
 import DirectorChoiceModal from './components/DirectorChoiceModal';
-import DirectorChairModal from './components/DirectorChairModal';
+
 import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
 import config from './config';
@@ -37,7 +37,7 @@ function App() {
   const messageQueue = useRef([]);
   const sendingLock = useRef(false);
   const [choiceRequest, setChoiceRequest] = useState(null);
-  const [showDirectorChair, setShowDirectorChair] = useState(false);
+
   const [activeTab, setActiveTab] = useState(0);
   const [pendingTabEvent, setPendingTabEvent] = useState(null);
   const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
@@ -505,8 +505,7 @@ function App() {
             <button onClick={handleRefresh} className="control-button" disabled={appMode === 'replay'}>
               Refresh
             </button>
-            <button className="control-button" onClick={() => sendCommand('load_known_actors')} disabled={appMode === 'replay'}>Load</button>
-            <button className="control-button" onClick={() => sendCommand('save_known_actors')} disabled={appMode === 'replay'}>Save</button>
+
             <button 
               className="control-button" 
               onClick={handleToggleSpeech}
@@ -522,12 +521,7 @@ function App() {
               'Paused'
             }</div>
           </div>
-          <button 
-            className="director-chair-button"
-            onClick={() => setShowDirectorChair(true)}
-          >
-            Director's Chair
-          </button>
+
         </div>
 
         {showPlayDialog && (
@@ -585,13 +579,7 @@ function App() {
           />
         )}
 
-        {showDirectorChair && (
-          <DirectorChairModal
-            characters={characters}
-            onClose={() => setShowDirectorChair(false)}
-            sendCommand={sendCommand}
-          />
-        )}
+
 
         {pendingExplorerEvent && pendingExplorerEvent.action === 'setShowExplorer' && (
           <ExplorerModal
