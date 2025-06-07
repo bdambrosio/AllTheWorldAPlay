@@ -141,7 +141,6 @@ function App() {
                 break;
               case 'world_update':
                 console.log('world_update:', data.data);
-                setLogText('');
                 setWorldState(data.data);
                 break;
               case 'command_complete':
