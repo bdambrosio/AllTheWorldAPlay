@@ -25,6 +25,20 @@
   margin-bottom: 20px;
 }
 
+.explorer-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #e0e0e0;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.explorer-modal-close:hover {
+  background-color: #555;
+}
+
 .modal-header h2 {
   margin: 0;
   color: #fff;
@@ -530,4 +544,4 @@ h5 {
   color: white;
   border: none;
   cursor: pointer;
-}  
+}    
