@@ -22,13 +22,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
     }
   }, [character?.chatOutput]);
 
-  const refreshData = async () => {
-    try {
-      await sendCommand('get_character_details', { name: character.name });
-    } catch (e) {
-      setError(`Error refreshing data: ${e.message}`);
-    }
-  };
+
 
   const handleTabClick = (tabName) => {
     setActiveTab(tabName);
@@ -54,10 +48,6 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
     <div className="explorer-modal">
       <div className="modal-header">
         <h2>{character.name} State Explorer</h2>
-        <div>
-          <button onClick={refreshData}>Refresh</button>
-          <button onClick={handleClose}>Close</button>
-        </div>
       </div>
 
       <div className="tab-bar">
@@ -310,4 +300,4 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
   );
 }
 
-export default ExplorerModal;   
+export default ExplorerModal;       
