@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useReplay } from '../contexts/ReplayContext';
 
-const TabPanel = ({ characters, sendReplayEvent, onCharacterClick }) => {
+const TabPanel = ({ characters, sendReplayEvent, onCharacterClick, onCollapseChange }) => {
     const { recordEvent } = useReplay();
     const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -15,7 +15,9 @@ const TabPanel = ({ characters, sendReplayEvent, onCharacterClick }) => {
     };
 
     const toggleCollapse = () => {
-        setIsCollapsed(!isCollapsed);
+        const newCollapsedState = !isCollapsed;
+        setIsCollapsed(newCollapsedState);
+        onCollapseChange?.(newCollapsedState);
     };
 
     return (
@@ -48,4 +50,4 @@ const TabPanel = ({ characters, sendReplayEvent, onCharacterClick }) => {
     );
 };
 
-export default TabPanel;  
+export default TabPanel;    
