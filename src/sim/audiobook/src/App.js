@@ -43,6 +43,8 @@ function App() {
   const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
   const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
   const [openCharacterModals, setOpenCharacterModals] = useState({});
+  const [modalPositions, setModalPositions] = useState({});
+  const [dragState, setDragState] = useState({ isDragging: false, dragOffset: { x: 0, y: 0 }, activeModal: null });
   const [isCharacterPanelCollapsed, setIsCharacterPanelCollapsed] = useState(false);
   const [appMode, setAppMode] = useState('simulation');
   const pendingPlayLoadRef = useRef(null);
@@ -98,6 +100,9 @@ function App() {
                 console.log('show_update:', data.text);
                 setLogText(prev => {
                   const newEntry = (data.name && data.name.trim() !== '') ? `${data.name}: ${data.text}` : data.text;
+                  if (data.text && data.text.includes('-----scene-----')) {
+                    return newEntry;
+                  }
                   return prev ? `${prev} \n${newEntry}` : newEntry;
                 });
                 break;
@@ -444,6 +449,45 @@ function App() {
     sendCommand('toggle_speech');        // tell the server
   };
 
+  const handleModalMouseDown = (e, characterName) => {
+    const rect = e.currentTarget.closest('.character-modal-content').getBoundingClientRect();
+    setDragState({
+      isDragging: true,
+      activeModal: characterName,
+      dragOffset: {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      }
+    });
+  };
+
+  const handleModalMouseMove = (e) => {
+    if (dragState.isDragging && dragState.activeModal) {
+      setModalPositions(prev => ({
+        ...prev,
+        [dragState.activeModal]: {
+          x: e.clientX - dragState.dragOffset.x,
+          y: e.clientY - dragState.dragOffset.y
+        }
+      }));
+    }
+  };
+
+  const handleModalMouseUp = () => {
+    setDragState({ isDragging: false, dragOffset: { x: 0, y: 0 }, activeModal: null });
+  };
+
+  useEffect(() => {
+    if (dragState.isDragging) {
+      document.addEventListener('mousemove', handleModalMouseMove);
+      document.addEventListener('mouseup', handleModalMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleModalMouseMove);
+        document.removeEventListener('mouseup', handleModalMouseUp);
+      };
+    }
+  }, [dragState.isDragging]);
+
   return (
     <ReplayProvider>
       <div className="app-container">
@@ -605,8 +649,20 @@ function App() {
         {Object.entries(openCharacterModals).map(([characterName, isOpen]) => 
           isOpen && characters[characterName] && (
             <div key={characterName} className="character-modal-overlay">
-              <div className="character-modal-content">
-                <div className="character-modal-header">
+              <div 
+                className="character-modal-content"
+                style={{
+                  position: 'absolute',
+                  left: modalPositions[characterName]?.x || '50%',
+                  top: modalPositions[characterName]?.y || '50%',
+                  transform: modalPositions[characterName] ? 'none' : 'translate(-50%, -50%)'
+                }}
+              >
+                <div 
+                  className="character-modal-header"
+                  onMouseDown={(e) => handleModalMouseDown(e, characterName)}
+                  style={{ cursor: 'move' }}
+                >
                   <h3>{characterName}</h3>
                   <button 
                     className="character-modal-close"
