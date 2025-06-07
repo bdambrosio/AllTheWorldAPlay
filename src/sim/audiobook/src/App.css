@@ -320,6 +320,8 @@ h3 {
   padding: 16px;
   border-bottom: 1px solid #555;
   background-color: #444444;
+  cursor: move;
+  user-select: none;
 }
 
 .character-modal-header h3 {
