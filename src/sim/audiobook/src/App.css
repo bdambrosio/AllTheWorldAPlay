@@ -9,8 +9,8 @@ body {
 .app-container {
   display: flex;
   width: 100%;
-  gap: 5px;
-  padding: 10px;
+  gap: 2px;
+  padding: 5px;
   height: 100vh;
   max-width: 100%;
   margin: 0;
@@ -197,13 +197,20 @@ body {
 }
 
 .character-panels {
-  width: 360px;
-  min-width: 360px;
+  width: 180px;
+  min-width: 180px;
   box-sizing: border-box;
   overflow: hidden;
   height: 100%;
   display: flex;
   flex-direction: column;
+  transition: width 0.3s ease;
+  flex-shrink: 0;
+}
+
+.character-panels.collapsed {
+  width: 35px !important;
+  min-width: 35px !important;
 }
 
 .character-panel {
@@ -234,7 +241,7 @@ h3 {
 }
 
 .center-panel {
-  grid-column: 2;
+  flex: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
