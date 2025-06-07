@@ -261,6 +261,14 @@ Contact bruce@tuuyi.com for more info.
             'timestamp': time.time()
         }
 
+    async def page_end(session_id):
+        if current_replay_index[session_id] >= len(replay_events[session_id]):
+            return True
+        event = replay_events[session_id][current_replay_index[session_id]]
+        if event.get('type') == 'show_update' and event.get('text') and (event.get('text', '').startswith('----- Act') or event.get('text', '').startswith(' -----scene-')):
+            return True
+        return False
+
     async def send_prologue(session_id, websocket):
         await websocket.send_json({
             'type': 'show_update',
@@ -279,6 +287,39 @@ Contact bruce@tuuyi.com for more info.
 
 """})
     await asyncio.sleep(.1)
+    
+    async def run_replay_loop(session_id, break_on_page_end=True):
+        global current_replay_index, is_replay_running
+        is_replay_running[session_id] = True
+        try:
+            while current_replay_index[session_id] < len(replay_events[session_id]) and is_replay_running[session_id]:
+                print(f"Sending step event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
+                event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
+                if event:
+                    await websocket.send_json(event)
+                    # If this event needs speech completion, wait for it
+                    if event.get('needs_speech_complete'):
+                        speech_complete_event[session_id].clear()
+                        try:
+                            await asyncio.wait_for(speech_complete_event[session_id].wait(), timeout=SPEECH_TIMEOUT)
+                        except asyncio.CancelledError:
+                            pass
+                        except asyncio.TimeoutError:
+                            print("Speech completion timeout")
+                                    
+                    # Cache character details for later use
+                    await post_process_event(session_id, event)
+                    delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
+                    await asyncio.sleep(delay)
+                current_replay_index[session_id] += 1
+                if break_on_page_end and await page_end(session_id):
+                    break
+            print("Reached break point of replay")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            is_replay_running[session_id] = False
+
     try:
         while True:
             try:
@@ -335,63 +376,21 @@ Contact bruce@tuuyi.com for more info.
                     continue
 
                 elif data.get('action') == 'step':
-                    # Step: send next event
-                    if current_replay_index[session_id] < len(replay_events[session_id]):
-                        print(f"Sending step event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
-                        event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
-                        if event:
-                            await websocket.send_json(event)
-                        # Cache character details for later use
-                        if event:
-                            await post_process_event(session_id, event)
-                        current_replay_index[session_id] += 1
-                        await send_command_ack('step')
-                    else:
-                        print("No more replay events")
-                        await send_command_ack('step')
-                        is_replay_mode[session_id] = False
-                        continue
+                    # Cancel any existing run task
+                    if replay_task.get(session_id) and not replay_task[session_id].done():
+                        replay_task[session_id].cancel()
+                        
+                    # Start the task
+                    replay_task[session_id] = asyncio.create_task(run_replay_loop(session_id, break_on_page_end=True))
+                    await send_command_ack('step')                   
 
                 elif data.get('action') == 'run':
                     # Cancel any existing run task
                     if replay_task.get(session_id) and not replay_task[session_id].done():
                         replay_task[session_id].cancel()
                         
-                    # Define the run loop as a separate function
-                    async def run_replay_loop():
-                        global current_replay_index, is_replay_running
-                        is_replay_running[session_id] = True
-                        try:
-                            while current_replay_index[session_id] < len(replay_events[session_id]) and is_replay_running[session_id]:
-                                print(f"Sending step event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
-                                event = await handle_event_image(session_id, replay_events[session_id][current_replay_index[session_id]])
-                                if event:
-                                    await websocket.send_json(event)
-                                    # If this event needs speech completion, wait for it
-                                    if event.get('needs_speech_complete'):
-                                        speech_complete_event[session_id].clear()
-                                        try:
-                                            await asyncio.wait_for(speech_complete_event[session_id].wait(), timeout=SPEECH_TIMEOUT)
-                                        except asyncio.CancelledError:
-                                            pass
-                                        except asyncio.TimeoutError:
-                                            print("Speech completion timeout")
-                                    
-                                    # Cache character details for later use
-                                    await post_process_event(session_id, event)
-                                    delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
-                                    await asyncio.sleep(delay)
-                                else:
-                                    print(f"Skipping event: {replay_events[session_id][current_replay_index[session_id]].get('type')}")
-                                current_replay_index[session_id] += 1
-                            print("Reached end of replay")
-                        except asyncio.CancelledError:
-                            pass
-                        finally:
-                            is_replay_running[session_id] = False
-                        
                     # Start the task
-                    replay_task[session_id] = asyncio.create_task(run_replay_loop())
+                    replay_task[session_id] = asyncio.create_task(run_replay_loop(session_id, break_on_page_end=False))
                     await send_command_ack('run')
 
                 elif data.get('action') == 'pause':
