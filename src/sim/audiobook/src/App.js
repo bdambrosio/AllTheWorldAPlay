@@ -43,6 +43,7 @@ function App() {
   const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
   const [pendingExplorerTabEvent, setPendingExplorerTabEvent] = useState(null);
   const [openCharacterModals, setOpenCharacterModals] = useState({});
+  const [isCharacterPanelCollapsed, setIsCharacterPanelCollapsed] = useState(false);
   const [appMode, setAppMode] = useState('simulation');
   const pendingPlayLoadRef = useRef(null);
   const [speechEnabled, setSpeechEnabled] = useState(true);
@@ -446,7 +447,7 @@ function App() {
   return (
     <ReplayProvider>
       <div className="app-container">
-        <div className="character-panels">
+        <div className={`character-panels ${isCharacterPanelCollapsed ? 'collapsed' : ''}`}>
           <TabPanel 
             characters={Object.values(characters)
               .filter(character => character && character.name)
@@ -474,6 +475,7 @@ function App() {
                 [characterName]: true
               }));
             }}
+            onCollapseChange={setIsCharacterPanelCollapsed}
           />
         </div>
         <div className="center-panel">
