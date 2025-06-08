@@ -4,6 +4,8 @@ import CharacterPanel from './components/CharacterPanel';
 import ShowPanel from './components/ShowPanel';
 import WorldPanel from './components/WorldPanel';
 import DirectorChoiceModal from './components/DirectorChoiceModal';
+import ActChoiceModal from './components/ActChoiceModal';
+import SceneChoiceModal from './components/SceneChoiceModal';
 import DirectorChairModal from './components/DirectorChairModal';
 import TabPanel from './components/TabPanel';
 import './components/TabPanel.css';
@@ -62,10 +64,10 @@ function App() {
         websocket.current.onmessage = (event) => {
               const data = JSON.parse(event.data);
           console.log('Message received:', data);  // See full message
-          if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice') {
+          if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice' || data.text === 'scene_choice') {
             setChoiceRequest({
               ...data,
-              choice_type: data.text.split('_')[0]  // 'goal', 'task', or 'act'
+              choice_type: data.text.split('_')[0]  // 'goal', 'task', 'act', or 'scene'
             });
           } else {
             switch(data.type) {
@@ -195,7 +197,7 @@ function App() {
                 setAppMode(data.mode);
                 break;
               case 'speak':
-                console.log('Speak message received:', data);
+                console.log('Speak message received:');
                 if (speechEnabledRef.current && data.audio) {
                   const mime = data.audio_format === 'mp3' || !data.audio_format ? 'audio/mp3' : `audio/${data.audio_format}`;
                   const audio = new Audio(`data:${mime};base64,${data.audio}`);
@@ -335,7 +337,21 @@ function App() {
       selected_id: choiceId
     };
 
-    if (customData) {
+    // Handle narrative act/scene choices differently
+    if (choiceRequest.choice_type === 'act' && choiceRequest.act_data) {
+      if (customData) {
+        response.updated_act = customData;
+      } else {
+        response.updated_act = choiceRequest.act_data;
+      }
+    } else if (choiceRequest.choice_type === 'scene' && choiceRequest.scene_data) {
+      if (customData) {
+        response.updated_scene = customData;
+      } else {
+        response.updated_scene = choiceRequest.scene_data;
+      }
+    } else if (customData) {
+      // Handle character-level choices (goal, task, action)
       response.custom_data = {
         name: customData.name,
         mode: customData?.mode || '',
@@ -570,7 +586,23 @@ function App() {
           </div>
         )}
 
-        {choiceRequest && (
+        {choiceRequest && choiceRequest.choice_type === 'act' && (
+          <ActChoiceModal
+            request={choiceRequest}
+            onChoice={handleChoice}
+            onClose={() => setChoiceRequest(null)}
+          />
+        )}
+
+        {choiceRequest && choiceRequest.choice_type === 'scene' && (
+          <SceneChoiceModal
+            request={choiceRequest}
+            onChoice={handleChoice}
+            onClose={() => setChoiceRequest(null)}
+          />
+        )}
+
+        {choiceRequest && ['goal', 'task', 'action'].includes(choiceRequest.choice_type) && (
           <DirectorChoiceModal
             request={choiceRequest}
             onChoice={handleChoice}

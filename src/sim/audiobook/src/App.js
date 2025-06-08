@@ -65,7 +65,7 @@ function App() {
         
         websocket.current.onmessage = (event) => {
               const data = JSON.parse(event.data);
-          console.log('Message received:', data);  // See full message
+          //console.log('Message received:', data);  // See full message
           if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice') {
             setChoiceRequest({
               ...data,
@@ -202,7 +202,7 @@ function App() {
                 setAppMode(data.mode);
                 break;
               case 'speak':
-                console.log('Speak message received:', data);
+                console.log('Speak message received');
                 if (speechEnabledRef.current && data.audio) {
                   const mime = data.audio_format === 'mp3' || !data.audio_format ? 'audio/mp3' : `audio/${data.audio_format}`;
                   const audio = new Audio(`data:${mime};base64,${data.audio}`);

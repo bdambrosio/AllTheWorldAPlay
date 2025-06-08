@@ -3735,8 +3735,8 @@ End your response with:
                         logger.info(f'{self.name} step_tasks: termination fail focus goal {self.focus_goal.name} instantiating termination goal {self.focus_goal.termination}')
                         #self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
                         #self.generate_task_plan(self.focus_goal, ntasks=1)
-                        if old_goal in self.goals:
-                            self.goals.remove(old_goal) # don't try this goal again
+                    elif old_goal in self.goals:
+                        self.goals.remove(old_goal) # don't try this goal again
                     return False
                 else:
                     logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
@@ -3780,8 +3780,8 @@ End your response with:
             await self.act_on_action(self.focus_action, self.focus_task.peek())
             act_count += 1
                
-            # Did we push opportunistic subtasks?
-            while task in self.focus_task.stack and self.focus_task.peek() != task and subtask_count < 2: # only allow 2 subtasks
+            # Did we push opportunistic subtasks? This should be obv
+            while task in self.focus_task.stack and self.focus_task.peek() != task and subtask_count < 1: # only allow 1 subtasks
                 # just recursively call step_task here?
                 subtask = self.focus_task.peek()
                 #self.look(task.name+': '+task.description)

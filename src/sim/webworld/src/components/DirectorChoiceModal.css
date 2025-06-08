@@ -178,4 +178,157 @@
   border-radius: 3px;
   font-size: 0.9em;
   text-align: center;
-} 
+}
+
+/* Styles for Act and Scene modals */
+.form-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  background: #222;
+  border-radius: 4px;
+}
+
+.form-section h4 {
+  margin: 0 0 15px 0;
+  color: #fff;
+  font-size: 1.1em;
+  border-bottom: 1px solid #444;
+  padding-bottom: 8px;
+}
+
+.tension-point {
+  margin-bottom: 15px;
+  padding: 12px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  border-left: 3px solid #555;
+}
+
+.tension-point-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.tension-point-header h5 {
+  margin: 0;
+  color: #ddd;
+  font-size: 1em;
+}
+
+.character-goal {
+  margin-bottom: 15px;
+  padding: 12px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  border-left: 3px solid #555;
+}
+
+.character-goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.character-goal-header h5 {
+  margin: 0;
+  color: #ddd;
+  font-size: 1em;
+}
+
+.add-character {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 15px;
+}
+
+.add-character input {
+  flex: 1;
+}
+
+.add-button,
+.remove-button,
+.cancel-button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background 0.2s;
+}
+
+.add-button {
+  background: #4a7c59;
+  color: white;
+}
+
+.add-button:hover {
+  background: #5a8c69;
+}
+
+.remove-button {
+  background: #c74545;
+  color: white;
+}
+
+.remove-button:hover {
+  background: #d75555;
+}
+
+.cancel-button {
+  background: #666;
+  color: white;
+  margin-right: 10px;
+}
+
+.cancel-button:hover {
+  background: #777;
+}
+
+.scenes-list {
+  background: #1a1a1a;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.scene-summary {
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #333;
+  border-radius: 3px;
+  color: #ddd;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #444;
+}
+
+.form-group select {
+  width: 100%;
+  padding: 8px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 0.9em;
+}
+
+.form-group select:focus {
+  outline: none;
+  border-color: #666;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 4px;
+  color: #888;
+  font-size: 0.8em;
+}

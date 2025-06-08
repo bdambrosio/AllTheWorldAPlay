@@ -89,6 +89,7 @@ class Context():
         self.transcript = [] #message queue history
         self.choice_response = asyncio.Queue()  # Queue for receiving choice responses from UI
         self.current_actor_index = 0  # Add this line to track position in actors list
+        
         self.show = ''
         self.simulation_time = self.extract_simulation_time(description)
         self.reference_manager = ReferenceManager(self, self.llm)
@@ -268,6 +269,30 @@ class Context():
         self.message_queue.put({'name':'', 'text':"play context initialized, creating characters...", 
                                 'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5}, default=datetime_handler)})
         await asyncio.sleep(0.1)
+        
+        # DEBUG: Test act choice after simulation message loop is running
+        print("DEBUG: Testing act_choice message flow from start() method...")
+        test_act = {
+            "act_number": 1,
+            "act_title": "Debug Test Act",
+            "act_description": "Test description for debugging",
+            "act_goals": {"primary": "test goal", "secondary": "test secondary"},
+            "act_pre_state": "test pre state",
+            "act_post_state": "test post state", 
+            "tension_points": [],
+            "scenes": []
+        }
+        
+        # Test the message queue directly
+        test_choice_request = {
+            'text': 'act_choice',
+            'choice_type': 'act',
+            'act_data': test_act
+        }
+        print(f"DEBUG: Putting test act_choice message on queue: {test_choice_request['text']}")
+        self.message_queue.put(test_choice_request)
+        print("DEBUG: Test message added to queue, waiting for processing...")
+        await asyncio.sleep(1.0)  # Give simulation.py time to process and forward
 
     def repair_json(self, response, error):
         """Repair JSON if it is invalid"""
@@ -1045,6 +1070,11 @@ Ensure your response reflects this change.
     async def run_scene(self, scene):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
+        new_scene = await self.request_scene_choice(scene)
+        if new_scene is None:
+            logger.error(f'No scene to run: {scene["scene_title"]}')
+            return
+        await asyncio.sleep(0.1)
         if isinstance(scene["time"], datetime) and scene["time"] < self.simulation_time:
             scene["time"] = self.simulation_time
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
@@ -1322,8 +1352,8 @@ In performing this integration:
             act_directives = f""" 
 In performing this integration:
     1. Each scene must advance the central dramatic question: {central_dramatic_question}
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
-    3. Prevent lateral exploration - every scene should move closer to OR further from resolution.
+    2. Midpoint scene should fundamentally and dramaticallycomplicate the question (make it harder to answer or change its nature).
+    3. Minimize lateral exploration - every scene should move closer to OR further from resolution.
     4. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
@@ -1335,14 +1365,14 @@ In performing this integration:
         elif act_number == 3:
             act_directives = f""" 
 In performing this integration:
-    1. Directly answer the central dramatic question: {central_dramatic_question}
-    2. No scene should avoid engaging with the question's resolution.
+    1. Directly answer the central dramatic question: {central_dramatic_question}. Decide how the central dramatic question will be answered now, before generating the act, and stick to it.
+    2. No scene should avoid engaging with the question's resolution you have chosen.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
-    4. Sequence scenes for maximum tension (alternate trust/mistrust beats)
+    4. Sequence scenes for maximum tension (alternate tension/relief beats)
     5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
-    6. Add bridging scenes where character proposals create gaps
+    6. Add bridging scenes where character proposals create gaps, but only when essential.
     7. Act post-state must explicitly state: whether the central dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
-    8. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
+    8. Final scene post-narrative must show the concrete resolution to the primary tensions in the scene- not "they find peace" but "they escape the forest together" or "they remain trapped but united."
     9. No scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
 
 """
@@ -1456,6 +1486,11 @@ In performing this integration:
                         updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative)
                         character_narrative_blocks.append([character, updated_act])  
                 next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative)
+                new_act = await self.request_act_choice(next_act)
+                await asyncio.sleep(0.1)
+                if new_act is None:
+                    logger.error('No act to run')
+                    return
                 if next_act is None:
                     logger.error('No act to run')
                     return
@@ -1617,6 +1652,95 @@ What unified central dramatic question emerges from these proposals?
         if response:
            self.central_narrative = response
         return self.central_narrative
+
+    async def request_act_choice(self, act_data):
+        """Request an act choice from the UI - following request_goal_choice pattern"""
+        request=False
+        for actor in cast(List[Character], self.actors):
+            if actor.autonomy.act:
+                request=True
+        if not request:
+            return act_data
+        print(f"DEBUG: Context.request_act_choice called with act_data: {act_data.get('act_title', 'unknown')} (act #{act_data.get('act_number', 'unknown')})")
+        
+        # Send choice request to UI
+        choice_request = {
+            'text': 'act_choice',
+            'choice_type': 'act',
+            'act_data': act_data
+        }
+        
+        # Drain any old responses from the queue
+        while not self.choice_response.empty():
+            _ = self.choice_response.get_nowait()
+        
+        # Send choice request to UI
+        print(f"DEBUG: Context putting act_choice message on queue: {choice_request['text']}")
+        self.message_queue.put(choice_request)
+        await asyncio.sleep(0)
+        
+        # Wait for response with timeout
+        waited = 0
+        while waited < 30.0:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+            if not self.choice_response.empty():
+                try:
+                    response = self.choice_response.get_nowait()
+                    if response and response.get('updated_act'):
+                        return response['updated_act']
+                    elif response and response.get('selected_id') is not None:
+                        # If UI just confirmed without changes
+                        return act_data
+                except Exception as e:
+                    print(f'Context request_act_choice error: {e}')
+                    break
+        
+        # If we get here, either timed out or had an error - return original
+        return act_data
+
+    async def request_scene_choice(self, scene_data):
+        """Request a scene choice from the UI - following request_goal_choice pattern"""
+        request=False
+        for actor in cast(List[Character], self.actors):
+            if actor.autonomy.scene:
+                request=True
+        if not request:
+            return scene_data
+        # Send choice request to UI
+        choice_request = {
+            'text': 'scene_choice',
+            'choice_type': 'scene',
+            'scene_data': scene_data
+        }
+        
+        # Drain any old responses from the queue
+        while not self.choice_response.empty():
+            _ = self.choice_response.get_nowait()
+        
+        # Send choice request to UI
+        self.message_queue.put(choice_request)
+        await asyncio.sleep(0.1)
+        
+        # Wait for response with timeout
+        waited = 0
+        while waited < 30.0:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+            if not self.choice_response.empty():
+                try:
+                    response = self.choice_response.get_nowait()
+                    if response and response.get('updated_scene'):
+                        return response['updated_scene']
+                    else:
+                        # If UI just confirmed without changes
+                        return scene_data
+                except Exception as e:
+                    print(f'Context request_scene_choice error: {e}')
+                    break
+        
+        # If we get here, either timed out or had an error - return original
+        return scene_data
 
     async def generate_act_central_narrative(self, act_number ):
         """Generate a central narrative for the act"""

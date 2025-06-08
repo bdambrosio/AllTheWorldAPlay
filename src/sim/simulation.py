@@ -62,6 +62,15 @@ sim_logger.info("Test message")
 
 logger = logging.getLogger('simulation_core')
 
+def datetime_handler(obj):
+    """Handle datetime serialization for JSON"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()  # More standard format
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    else:
+        return str(obj)
+
 class SimulationServer:
     def __init__(self):
         self.zmq_context = zmq.asyncio.Context()
@@ -97,13 +106,13 @@ class SimulationServer:
                 
     async def send_result(self, result):
         try:
-            await self.result_socket.send_json(result)
+            await self.result_socket.send_json(result, default=datetime_handler)
         except Exception as e:
             logger.error(f"Error sending result: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
         
     async def send_command_ack(self, command):
-        await self.result_socket.send_json({'type': 'command_ack', 'command': command})
+        await self.result_socket.send_json({'type': 'command_ack', 'command': command}, default=datetime_handler)
     
     
     async def update_character_states(self):
@@ -206,11 +215,21 @@ class SimulationServer:
                 llm_api.MODEL = self.model_name
                 llm_api.set_model(self.model_name)
 
-            if 'webworld_play' in sys.modules:
-                del sys.modules['webworld_play']
+            # Clear any cached modules that might cause issues
+            modules_to_clear = [key for key in sys.modules.keys() if 'webworld_play' in key or 'lost' in key]
+            for mod in modules_to_clear:
+                del sys.modules[mod]
+                print(f'DEBUG: cleared module {mod}')
+            print(f'DEBUG: loading play {play_path}')
+            print(f'DEBUG: creating spec...')
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
+            print(f'DEBUG: spec created: {spec}')
+            print(f'DEBUG: creating module from spec...')
             module = importlib.util.module_from_spec(spec)
+            print(f'DEBUG: module created: {module}')
+            print(f'DEBUG: about to call exec_module...')
             spec.loader.exec_module(module)            
+            print(f'DEBUG: exec_module completed')
             if not hasattr(module, 'W'):
                 raise ValueError("Play file must define a 'W' variable holding context")
 
@@ -503,6 +522,10 @@ class SimulationServer:
                     }
                     if command.get('custom_data'):
                         response['custom_data'] = command.get('custom_data')
+                    if command.get('updated_act'):
+                        response['updated_act'] = command.get('updated_act')
+                    if command.get('updated_scene'):
+                        response['updated_scene'] = command.get('updated_scene')
                     self.sim_context.choice_response.put_nowait(response)
                 await asyncio.sleep(0.1)
                 return
@@ -572,6 +595,7 @@ class SimulationServer:
             try:
                 if self.sim_context and not self.sim_context.message_queue.empty():
                     message = self.sim_context.message_queue.get_nowait()
+                    print(f"DEBUG: simulation.py processing message: {message.get('text', 'unknown')}")
                     if message['text'] == 'character_update':
                         # async character update messages include the actor data in the message
                         actor_data = message['data']
@@ -615,7 +639,8 @@ class SimulationServer:
                             'char_name': message['name'],
                             'text': message['text']
                         })
-                    elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice']:
+                    elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice', 'scene_choice']:
+                        print(f"DEBUG: simulation.py forwarding choice message: {message.get('text')}")
                         await self.send_result(message)
 
                     elif message.get('text') == 'character_detail':
