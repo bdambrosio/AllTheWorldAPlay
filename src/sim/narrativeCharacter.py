@@ -69,132 +69,7 @@ class NarrativeCharacter(Character):
             # Handle invalid format or type
             return self.context.simulation_time
 
-    def validate_narrative_json(self, json_data: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:
-        """
-        Validates the narrative JSON structure and returns (is_valid, error_message)
-        """
-        # Check top-level structure
-        if not isinstance(json_data, dict):
-            return False, "Root must be a JSON object"
-    
-        if "title" not in json_data or not isinstance(json_data["title"], str):
-            return False, "Missing or invalid 'title' field"
-        
-        if "acts" not in json_data or not isinstance(json_data["acts"], list):
-            return False, "Missing or invalid 'acts' array"
-        
-        # Validate each act
-        for n, act in enumerate(json_data["acts"]):
-            if not isinstance(act, dict):
-                return False, f"Act {n} must be a JSON object"
-            else:
-                valid, json_data["acts"][n] = self.validate_narrative_act(act, require_scenes=require_scenes)
-                if not valid:
-                    return False, f"Act {n} is invalid: {json_data['acts'][n]}"
-                
-        return True, "Valid narrative structure"
- 
-    def validate_narrative_act(self, act: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:       # Validate each act
-        if not isinstance(act, dict):
-            return False, "Act must be a JSON object"
-                
-        # Check required act fields
-        if "act_number" not in act or not isinstance(act["act_number"], int):
-            return False, "Missing or invalid 'act_number'"
-        if "act_description" not in act or not isinstance(act["act_description"], str):
-            return False, "Missing or invalid 'act_description'"
-        if "act_goals" not in act or not isinstance(act["act_goals"], dict):
-            return False, "Missing or invalid 'act_goals'"
-        if "act_pre_state" not in act or not isinstance(act["act_pre_state"], str):
-            return False, "Missing or invalid 'act_pre_state'"
-        if "act_post_state" not in act or not isinstance(act["act_post_state"], str):
-            return False, "Missing or invalid 'act_post_state'"
-        if "tension_points" not in act or not isinstance(act["tension_points"], list):
-            return False, "Missing or invalid 'tension_points'"
-        for tension_point in act["tension_points"]:
-            if not isinstance(tension_point, dict):
-                return False, "Tension point must be a JSON object"
-            if "characters" not in tension_point or not isinstance(tension_point["characters"], list):  
-                return False, "Tension point must have 'characters' array"
-            if "issue" not in tension_point or not isinstance(tension_point["issue"], str):
-                return False, "Tension point must have 'issue' string"
-            if "resolution_requirement" not in tension_point or not isinstance(tension_point["resolution_requirement"], str):
-                return False, "Tension point must have 'resolution_requirement' string"
-        if require_scenes:
-            if act["act_number"] == 1:
-                if "scenes" not in act or not isinstance(act["scenes"], list):
-                    return False, "First act must have 'scenes' array"
-        if "scenes" in act:
-            # Validate each scene
-            for scene in act["scenes"]:
-                if not isinstance(scene, dict):
-                    return False, "Scene must be a JSON object"
-                        
-                # Check required scene fields
-                required_fields = {
-                    "scene_number": int,
-                    "scene_title": str,
-                    "location": str,
-                    "time": str,
-                    "duration": int, # in minutes
-                    "characters": dict,
-                    "action_order": list,
-                    "pre_narrative": str,
-                    "post_narrative": str
-                }
-                    
-                for field, field_type in required_fields.items():
-                    if field not in scene or not isinstance(scene[field], field_type):
-                        if field == 'pre_narrative' or field == 'post_narrative':
-                            scene[field] = ''
-                        elif field == 'duration':
-                            scene[field] = 15
-                        else:
-                            return False, f"Missing or invalid '{field}' in scene"
-                    
-                # Validate time field
-                scene_time = self.validate_scene_time(scene)
-                if scene_time is None:
-                    return False, f"Invalid time format in scene {scene['scene_number']}"
-                else:
-                    scene["time"] = scene_time # update the time field with the validated datetime object
-                    
-                # Validate characters structure
-                for char_name, char_data in scene["characters"].items():
-                    if not isinstance(char_data, dict) or "goal" not in char_data:
-                        return False, f"Invalid character data for {char_name}"
-                    
-                # Validate action_order
-                if not 1 <= len(scene["action_order"]) <= 2*len(scene["characters"]):
-                    logger.info(f'{self.name} validate_narrative_act: scene {scene["scene_number"]} has {len(scene["action_order"])} actions')
-                    if len(scene["characters"]) > 4:
-                        # too many characters
-                        return False, f"Scene {scene['scene_number']} must have 2-4 characters"
-                    action_order = scene["action_order"]
-                    characters_in_scene = []
-                    new_action_order = []
-                    for character in action_order:
-                        if character not in characters_in_scene:
-                            characters_in_scene.append(character)
-                            new_action_order.append(character)
-                    scene["action_order"] = new_action_order
 
-                # Validate optional task_budget
-                if "task_budget" in scene and not isinstance(scene["task_budget"], int):
-                    return False, f"Invalid task_budget in scene {scene['scene_number']}"
-                elif "task_budget" in scene and scene["task_budget"] > 2*len(scene["action_order"]):
-                    logger.debug(f"task_budget in scene {scene['scene_number']} is too high")
-                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
-                elif "task_budget" not in scene:
-                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
-
-                # Validate narrative lengths
-                if len(scene["pre_narrative"].split()) > 120:
-                    return False, f"Pre-narrative too long in scene {scene['scene_number']}"
-                if len(scene["post_narrative"].split()) > 120:
-                    return False, f"Post-narrative too long in scene {scene['scene_number']}"
-        
-        return True, act
 
     def reserialize_narrative_json(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -424,7 +299,7 @@ Return **only** the JSON.  No commentary, no code fences.
         except Exception as e:
             print(f'Error parsing narrative: {e}')
             self.plan = self.context.repair_json(narrative, e)
-        valid, reason = self.validate_narrative_json(self.plan, require_scenes=False)
+        valid, reason = self.context.validate_narrative_json(self.plan, require_scenes=False)
         if not valid:
             print(f'Invalid narrative: {reason}')
             return None
@@ -481,7 +356,7 @@ End your response with </end>
         return None
 
     def update_act(self, new_act):
-        valid, reason = self.validate_narrative_act(new_act, require_scenes=True)
+        valid, reason = self.context.validate_narrative_act(new_act, require_scenes=True)
         if not valid:
             print(f'Invalid act: {reason}')
             return False
@@ -924,7 +799,7 @@ End your response with </end>
                                "round_number": round,
                                "play_file_content": play_file_content,
                                "map_file_content": map_file_content},
-                              max_tokens=100, tag='negotiate_central_narrative')
+                              max_tokens=200, tag='negotiate_central_narrative')
         if response:
             central_narrative = CentralNarrative.parse_from_hash(response)
             self.previous_proposal = self.current_proposal

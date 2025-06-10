@@ -50,6 +50,7 @@ function App() {
   const pendingPlayLoadRef = useRef(null);
   const [speechEnabled, setSpeechEnabled] = useState(true);
   const speechEnabledRef = useRef(speechEnabled);
+  const persistentAudioRef = useRef(null);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -204,8 +205,15 @@ function App() {
               case 'speak':
                 console.log('Speak message received');
                 if (speechEnabledRef.current && data.audio) {
+                  // Initialize persistent audio element if not already done
+                  if (!persistentAudioRef.current) {
+                    persistentAudioRef.current = new Audio();
+                  }
+                  
                   const mime = data.audio_format === 'mp3' || !data.audio_format ? 'audio/mp3' : `audio/${data.audio_format}`;
-                  const audio = new Audio(`data:${mime};base64,${data.audio}`);
+                  const audio = persistentAudioRef.current;
+                  
+                  // Set up callbacks for this specific audio
                   audio.onended = () => {
                     sendCommand('speech_complete');
                   };
@@ -213,6 +221,9 @@ function App() {
                     console.error('Audio playback error:', error);
                     sendCommand('speech_complete');
                   };
+                  
+                  // Set the new audio source and play
+                  audio.src = `data:${mime};base64,${data.audio}`;
                   audio.play().catch(error => {
                     console.error('Audio play failed:', error);
                     sendCommand('speech_complete');
@@ -445,6 +456,15 @@ function App() {
   }, [speechEnabled]);
 
   const handleToggleSpeech = () => {
+    // Initialize persistent audio element during user interaction to satisfy iOS requirements
+    if (!persistentAudioRef.current) {
+      persistentAudioRef.current = new Audio();
+      // Play a tiny bit of silence to "prime" the audio context on iOS
+      persistentAudioRef.current.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+      persistentAudioRef.current.play().catch(() => {
+        // Ignore errors from the silent audio - it's just for priming
+      });
+    }
     sendCommand('toggle_speech');        // tell the server
   };
 
@@ -456,6 +476,20 @@ function App() {
       dragOffset: {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
+      }
+    });
+  };
+
+  const handleModalTouchStart = (e, characterName) => {
+    e.preventDefault(); // Prevent scrolling
+    const touch = e.touches[0];
+    const rect = e.currentTarget.closest('.character-modal-content').getBoundingClientRect();
+    setDragState({
+      isDragging: true,
+      activeModal: characterName,
+      dragOffset: {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
       }
     });
   };
@@ -472,7 +506,25 @@ function App() {
     }
   };
 
+  const handleModalTouchMove = (e) => {
+    if (dragState.isDragging && dragState.activeModal) {
+      e.preventDefault(); // Prevent scrolling
+      const touch = e.touches[0];
+      setModalPositions(prev => ({
+        ...prev,
+        [dragState.activeModal]: {
+          x: touch.clientX - dragState.dragOffset.x,
+          y: touch.clientY - dragState.dragOffset.y
+        }
+      }));
+    }
+  };
+
   const handleModalMouseUp = () => {
+    setDragState({ isDragging: false, dragOffset: { x: 0, y: 0 }, activeModal: null });
+  };
+
+  const handleModalTouchEnd = () => {
     setDragState({ isDragging: false, dragOffset: { x: 0, y: 0 }, activeModal: null });
   };
 
@@ -480,9 +532,13 @@ function App() {
     if (dragState.isDragging) {
       document.addEventListener('mousemove', handleModalMouseMove);
       document.addEventListener('mouseup', handleModalMouseUp);
+      document.addEventListener('touchmove', handleModalTouchMove, { passive: false });
+      document.addEventListener('touchend', handleModalTouchEnd);
       return () => {
         document.removeEventListener('mousemove', handleModalMouseMove);
         document.removeEventListener('mouseup', handleModalMouseUp);
+        document.removeEventListener('touchmove', handleModalTouchMove);
+        document.removeEventListener('touchend', handleModalTouchEnd);
       };
     }
   }, [dragState.isDragging]);
@@ -660,6 +716,7 @@ function App() {
                 <div 
                   className="character-modal-header"
                   onMouseDown={(e) => handleModalMouseDown(e, characterName)}
+                  onTouchStart={(e) => handleModalTouchStart(e, characterName)}
                   style={{ cursor: 'move' }}
                 >
                   <h3>{characterName}</h3>

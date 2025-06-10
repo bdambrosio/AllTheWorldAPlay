@@ -268,34 +268,21 @@ class Context():
         #print(f"Available voices: {voices}")
         self.message_queue.put({'name':'', 'text':"play context initialized, creating characters...", 
                                 'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5}, default=datetime_handler)})
-        await asyncio.sleep(0.1)
-        
-        # DEBUG: Test act choice after simulation message loop is running
-        print("DEBUG: Testing act_choice message flow from start() method...")
-        test_act = {
-            "act_number": 1,
-            "act_title": "Debug Test Act",
-            "act_description": "Test description for debugging",
-            "act_goals": {"primary": "test goal", "secondary": "test secondary"},
-            "act_pre_state": "test pre state",
-            "act_post_state": "test post state", 
-            "tension_points": [],
-            "scenes": []
-        }
-        
-        # Test the message queue directly
-        test_choice_request = {
-            'text': 'act_choice',
-            'choice_type': 'act',
-            'act_data': test_act
-        }
-        print(f"DEBUG: Putting test act_choice message on queue: {test_choice_request['text']}")
-        self.message_queue.put(test_choice_request)
-        print("DEBUG: Test message added to queue, waiting for processing...")
         await asyncio.sleep(1.0)  # Give simulation.py time to process and forward
 
     def repair_json(self, response, error):
         """Repair JSON if it is invalid"""
+
+        if not response.startswith('{')and '{' in response:
+            start = response.find('{')
+            end = response.rfind('}')
+            response = response[start:end+1]
+            try:
+                return json.loads(response)
+            except Exception as e:
+                error = e
+
+        # Ok, ask llm
         prompt = [UserMessage(content="""You are a JSON repair tool.
 Your task is to repair the following JSON:
 
@@ -635,8 +622,9 @@ Most important are those consequences that might activate or inactive tasks or a
 {{$state}}
 </environment>
 
-Your response should be concise, and only include only statements about changes to the existing Environment.
-Do NOT repeat elements of the existing Environment, respond only with significant changes.
+Your response should be concise, and only include only statements about changes to existing Environment.
+Do NOT report changes to the description (e.g. the time is not listed), only changes to the situation being described.
+Do NOT repeat elements of the existing Environment, respond only with significant changes to the Environment.
 Do NOT repeat as an update items already present at the end of the Environment statement.
 Your updates should be dispassionate. 
 Use the following XML format:
@@ -1074,6 +1062,7 @@ Ensure your response reflects this change.
         if new_scene is None:
             logger.error(f'No scene to run: {scene["scene_title"]}')
             return
+        scene = new_scene
         await asyncio.sleep(0.1)
         if isinstance(scene["time"], datetime) and scene["time"] < self.simulation_time:
             scene["time"] = self.simulation_time
@@ -1491,6 +1480,8 @@ In performing this integration:
                 if new_act is None:
                     logger.error('No act to run')
                     return
+                else:
+                    next_act = new_act
                 if next_act is None:
                     logger.error('No act to run')
                     return
@@ -1656,8 +1647,8 @@ What unified central dramatic question emerges from these proposals?
     async def request_act_choice(self, act_data):
         """Request an act choice from the UI - following request_goal_choice pattern"""
         request=False
-        for actor in cast(List[Character], self.actors):
-            if actor.autonomy.act:
+        for actor in self.actors:
+            if not actor.autonomy.act:
                 request=True
         if not request:
             return act_data
@@ -1681,14 +1672,19 @@ What unified central dramatic question emerges from these proposals?
         
         # Wait for response with timeout
         waited = 0
-        while waited < 30.0:
+        while waited < 300.0:
             await asyncio.sleep(0.1)
             waited += 0.1
             if not self.choice_response.empty():
                 try:
                     response = self.choice_response.get_nowait()
                     if response and response.get('updated_act'):
-                        return response['updated_act']
+                        new_act = response['updated_act']
+                        valid, reason = self.validate_narrative_act(new_act, require_scenes=True)
+                        if not valid:
+                            print(f'Invalid act: {reason}')
+                            return act_data
+                        return new_act
                     elif response and response.get('selected_id') is not None:
                         # If UI just confirmed without changes
                         return act_data
@@ -1699,11 +1695,156 @@ What unified central dramatic question emerges from these proposals?
         # If we get here, either timed out or had an error - return original
         return act_data
 
+    def validate_narrative_json(self, json_data: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:
+        """
+        Validates the narrative JSON structure and returns (is_valid, error_message)
+        """
+        # Check top-level structure
+        if not isinstance(json_data, dict):
+            return False, "Root must be a JSON object"
+    
+        if "title" not in json_data or not isinstance(json_data["title"], str):
+            return False, "Missing or invalid 'title' field"
+        
+        if "acts" not in json_data or not isinstance(json_data["acts"], list):
+            return False, "Missing or invalid 'acts' array"
+        
+        # Validate each act
+        for n, act in enumerate(json_data["acts"]):
+            if not isinstance(act, dict):
+                return False, f"Act {n} must be a JSON object"
+            else:
+                valid, json_data["acts"][n] = self.validate_narrative_act(act, require_scenes=require_scenes)
+                if not valid:
+                    return False, f"Act {n} is invalid: {json_data['acts'][n]}"
+                
+        return True, "Valid narrative structure"
+ 
+    def validate_narrative_act(self, act: Dict[str, Any], require_scenes=True) -> tuple[bool, str]:       # Validate each act
+        if not isinstance(act, dict):
+            return False, "Act must be a JSON object"
+                
+        # Check required act fields
+        if "act_number" not in act or not isinstance(act["act_number"], int):
+            return False, "Missing or invalid 'act_number'"
+        if "act_description" not in act or not isinstance(act["act_description"], str):
+            return False, "Missing or invalid 'act_description'"
+        if "act_goals" not in act or not isinstance(act["act_goals"], dict):
+            return False, "Missing or invalid 'act_goals'"
+        if "act_pre_state" not in act or not isinstance(act["act_pre_state"], str):
+            return False, "Missing or invalid 'act_pre_state'"
+        if "act_post_state" not in act or not isinstance(act["act_post_state"], str):
+            return False, "Missing or invalid 'act_post_state'"
+        if "tension_points" not in act or not isinstance(act["tension_points"], list):
+            return False, "Missing or invalid 'tension_points'"
+        for tension_point in act["tension_points"]:
+            if not isinstance(tension_point, dict):
+                return False, "Tension point must be a JSON object"
+            if "characters" not in tension_point or not isinstance(tension_point["characters"], list):  
+                return False, "Tension point must have 'characters' array"
+            if "issue" not in tension_point or not isinstance(tension_point["issue"], str):
+                return False, "Tension point must have 'issue' string"
+            if "resolution_requirement" not in tension_point or not isinstance(tension_point["resolution_requirement"], str):
+                return False, "Tension point must have 'resolution_requirement' string"
+        if require_scenes:
+            if act["act_number"] == 1:
+                if "scenes" not in act or not isinstance(act["scenes"], list):
+                    return False, "First act must have 'scenes' array"
+        if "scenes" in act:
+            # Validate each scene
+            for scene in act["scenes"]:
+                if not isinstance(scene, dict):
+                    return False, "Scene must be a JSON object"
+                        
+                # Check required scene fields
+                required_fields = {
+                    "scene_number": int,
+                    "scene_title": str,
+                    "location": str,
+                    "time": str,
+                    "duration": int, # in minutes
+                    "characters": dict,
+                    "action_order": list,
+                    "pre_narrative": str,
+                    "post_narrative": str
+                }
+                    
+                for field, field_type in required_fields.items():
+                    if field not in scene or not isinstance(scene[field], field_type):
+                        if field == 'pre_narrative' or field == 'post_narrative':
+                            scene[field] = ''
+                        elif field == 'duration':
+                            scene[field] = 15
+                        else:
+                            return False, f"Missing or invalid '{field}' in scene"
+                    
+                # Validate time field
+                scene_time = self.validate_scene_time(scene)
+                if scene_time is None:
+                    return False, f"Invalid time format in scene {scene['scene_number']}"
+                else:
+                    scene["time"] = scene_time # update the time field with the validated datetime object
+                    
+                # Validate characters structure
+                for char_name, char_data in scene["characters"].items():
+                    if not isinstance(char_data, dict) or "goal" not in char_data:
+                        return False, f"Invalid character data for {char_name}"
+                    
+                # Validate action_order
+                if not 1 <= len(scene["action_order"]) <= 2*len(scene["characters"]):
+                    logger.info(f'validate_narrative_act: scene {scene["scene_number"]} has {len(scene["action_order"])} actions')
+                    if len(scene["characters"]) > 4:
+                        # too many characters
+                        return False, f"Scene {scene['scene_number']} must have 2-4 characters"
+                    action_order = scene["action_order"]
+                    characters_in_scene = []
+                    new_action_order = []
+                    for character in action_order:
+                        if character not in characters_in_scene:
+                            characters_in_scene.append(character)
+                            new_action_order.append(character)
+                    scene["action_order"] = new_action_order
+
+                # Validate optional task_budget
+                if "task_budget" in scene and not isinstance(scene["task_budget"], int):
+                    return False, f"Invalid task_budget in scene {scene['scene_number']}"
+                elif "task_budget" in scene and scene["task_budget"] > 2*len(scene["action_order"]):
+                    logger.debug(f"task_budget in scene {scene['scene_number']} is too high")
+                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
+                elif "task_budget" not in scene:
+                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
+
+                # Validate narrative lengths
+                if len(scene["pre_narrative"].split()) > 120:
+                    return False, f"Pre-narrative too long in scene {scene['scene_number']}"
+                if len(scene["post_narrative"].split()) > 120:
+                    return False, f"Post-narrative too long in scene {scene['scene_number']}"
+        
+        return True, act
+        
+    def validate_scene_time(self, scene):
+        """
+        Validate and parse the scene time from ISO 8601 format.
+        Returns a datetime object if valid, None if invalid or missing.
+        """
+        time_str = scene.get('time')
+        if not time_str:
+            return self.simulation_time
+        time_str = time_str.strip().replace('x', '0')
+        time_str = time_str.replace('00T', '01T') # make sure day is not 00
+        try:
+            # Parse ISO 8601 format
+            scene_time = datetime.fromisoformat(time_str)
+            return scene_time
+        except (ValueError, TypeError):
+            # Handle invalid format or type
+            return self.simulation_time
+
     async def request_scene_choice(self, scene_data):
         """Request a scene choice from the UI - following request_goal_choice pattern"""
         request=False
-        for actor in cast(List[Character], self.actors):
-            if actor.autonomy.scene:
+        for actor in self.actors:
+            if not actor.autonomy.scene:
                 request=True
         if not request:
             return scene_data
@@ -1724,20 +1865,26 @@ What unified central dramatic question emerges from these proposals?
         
         # Wait for response with timeout
         waited = 0
-        while waited < 30.0:
+        while waited < 300.0:
             await asyncio.sleep(0.1)
             waited += 0.1
             if not self.choice_response.empty():
-                try:
-                    response = self.choice_response.get_nowait()
-                    if response and response.get('updated_scene'):
-                        return response['updated_scene']
-                    else:
-                        # If UI just confirmed without changes
+                response = self.choice_response.get_nowait()
+                if response and response.get('updated_scene'):
+                    new_scene = response['updated_scene']
+                    try:
+                        scene_time = self.validate_scene_time(new_scene)
+                    except Exception as e:
+                        print(f'Context request_scene_choice error: {e}')
                         return scene_data
-                except Exception as e:
-                    print(f'Context request_scene_choice error: {e}')
-                    break
+                    if scene_time is None:
+                        return scene_data
+                    else: 
+                        new_scene["time"] = scene_time # update the time field with the validated datetime object
+                        return new_scene
+                else:
+                    # If UI just confirmed without changes
+                    return scene_data
         
         # If we get here, either timed out or had an error - return original
         return scene_data

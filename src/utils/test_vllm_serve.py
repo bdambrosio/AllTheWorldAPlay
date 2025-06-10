@@ -19,15 +19,14 @@ unclassified
 
 """
 
-prompt = [SystemMessage(content='Your task is to determine the sensory mode of the following message.'),
-          UserMessage(content=content),
-          UserMessage(content='Respond with only the single word for the sensory mode, no other text.\n'),
-          #AssistantMessage(content='')
+prompt = [UserMessage(content=f"""Your task is to determine the sensory mode of the following message:
+    {content} 
+Respond with only the single word for the sensory mode, followed by </end>. Do NOT include any thinking or reasoning in your response.</think>"""),
           ]
 
 for i in range(5):
     start = time.time()
-    response = llm.ask({}, prompt, temp=0, max_tokens=10, stops=['<end/>'])
+    response = llm.ask({}, prompt, temp=0, max_tokens=200, stops=['</end>'])
     elapsed = time.time()-start
     print(f'llm: {elapsed:.2f}')
     print(response)

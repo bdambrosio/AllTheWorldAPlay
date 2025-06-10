@@ -3357,7 +3357,7 @@ End your response with:
                 # Wait for response with timeout                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
 
                 waited = 0
-                while waited < 30.0:
+                while waited < 300.0:
                     await asyncio.sleep(0.1)
                     waited += 0.1
                     if not self.context.choice_response.empty():
@@ -3429,7 +3429,7 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 30.0:
+            while waited < 300.0:
                 await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
@@ -3522,7 +3522,7 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 30.0:
+            while waited < 300.0:
                 await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():

@@ -11,8 +11,9 @@ from utils.Messages import SystemMessage, UserMessage, AssistantMessage
 from utils.LLMRequestOptions import LLMRequestOptions
 from PIL import Image
 from io import BytesIO
+
 import utils.ClaudeClient as anthropic_client
-import utils.OpenAIClient as openai_client
+from utils.OpenAIClient import OpenAIClient
 import utils.llcppClient as llcpp_client
 import utils.DeepSeekClient as DeepSeekClient
 import utils.CohereClient as cohere_client
@@ -34,15 +35,6 @@ try:
 except Exception as e:
     print(f"Error getting OpenAI API key: {e}")
 
-if api_key is not None and api_key != '':
-    try:
-        openai_client = openai_client.OpenAIClient()
-    except Exception as e:
-        print(f"Error opening OpenAI client: {e}")
-else:
-    openai_client = None
-model = 'gpt-4.1-mini'
-
 import utils.GrokClient as GrokClient
 grok_client = GrokClient
 
@@ -62,6 +54,7 @@ vllm_model = '/home/bruce/Downloads/models/DeepSeek-R1-Distill-Qwen-32B'
 vllm_model = '/home/bruce/Downloads/models/phi-4'
 vllm_model = 'google/gemma-3-27b-it'
 vllm_model = 'Qwen/Qwen3-32B'
+vllm_model = 'XiaomimMiMo/MiMo-7B-SFT'
 elapsed_times = {}
 iteration_count = 0
 
@@ -80,7 +73,7 @@ Your task is to compress detailed scene descriptions into optimal prompts for St
 </scene>
 Rules:
 The input is either a character description or a scene description. If the former, then the first word is the character name.
-Preserve key visual elements and artistic direction, including, if it is a character description, character appearance and emotional state as well askey elements of the background scene.
+Preserve key visual elements and artistic direction, including, if it is a character description, character appearance and emotional state as well as key elements of the background scene.
 Prioritize descriptive adjectives and specific nouns
 Maintain the core mood/atmosphere
 Remove narrative elements that don't affect the visual
@@ -135,6 +128,8 @@ class LLM():
             self.model = model_name
         else:
             self.model = MODEL
+        if self.server_name == 'openai':
+            self.openai_client = OpenAIClient(model_name=self.model)
         if self.server_name == 'vllm':
             try:
                 response = requests.get('http://localhost:5000/v1/models', headers=headers)
@@ -182,7 +177,7 @@ class LLM():
         if log:
             logging.debug(f'Prompt: {substituted_prompt}\n')
         if 'openai' in self.server_name:
-            response = openai_client.executeRequest(prompt=substituted_prompt, options=options)
+            response = self.openai_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
         elif options.model is not None and 'deepseek' in options.model:
             response= deepseek_client.executeRequest(prompt=substituted_prompt, options=options)
