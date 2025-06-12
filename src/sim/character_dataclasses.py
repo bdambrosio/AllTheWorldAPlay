@@ -104,6 +104,9 @@ def parse_duration(duration_str: str) -> timedelta:
     Returns:
         timedelta object
     """
+    if isinstance(duration_str, timedelta):
+        return duration_str
+    
     try:
         # Try simple integer (minutes)
         return timedelta(minutes=int(duration_str))

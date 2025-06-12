@@ -412,6 +412,11 @@ End your response with:
         mode = hash_utils.find('mode', hash_string)
         action = hash_utils.find('action', hash_string)
         duration = hash_utils.find('duration', hash_string)
+        if isinstance(duration, str) and duration.strip().isdigit():
+            duration = timedelta(minutes=int(duration))
+        elif isinstance(duration, int):
+            duration = timedelta(minutes=duration)
+
         target_names = hash_utils.findList('target', hash_string)
         targets = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in target_names]
         actor_names = hash_utils.findList('actors', hash_string)
@@ -3517,6 +3522,7 @@ End your response with:
                     'mode': action.mode,
                     'action': action.action,
                     'reason': action.reason,
+                    'duration': action.duration,
                     'target': self.get_action_target(action),
                     } for i, action in enumerate(actions)]
             }
@@ -3560,11 +3566,10 @@ End your response with:
                                         duration=custom_data.get('duration', 1),
                                         source=self.focus_task.peek(),
                                         target=[target]
-                                    )
-                                if custom_act:
-                                    print(f'{self.name} request_action_choice: custom act {custom_act.mode} {custom_act.action}')
-                                    self.focus_action = custom_act
-                                    return self.focus_action
+                                    )   
+                                print(f'{self.name} request_action_choice: custom act {custom_act.mode} {custom_act.action}')
+                                self.focus_action = custom_act
+                                return self.focus_action
                             self.focus_action = actions[response['selected_id']]
                             return self.focus_action    
                     except Exception as e:
