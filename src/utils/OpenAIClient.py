@@ -59,7 +59,7 @@ class OpenAIClient:
         if self.model_name.startswith('Qwen3'):
             try:
                 response = self.client.chat.completions.create(
-                    model='/home/bruce/Downloads/models/Qwen3-14B',
+                    model='Qwen/Qwen3-14B',
                     messages=prompt,
                     max_tokens=options.max_tokens,
                     temperature=options.temperature,

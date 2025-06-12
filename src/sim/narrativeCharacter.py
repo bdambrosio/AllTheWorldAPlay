@@ -2,18 +2,10 @@ from __future__ import annotations
 import asyncio
 import copy
 from datetime import datetime
-from itertools import tee
 import logging
 from typing import Optional, Dict, List, Any
-#from venv import create
-
-#from attr import Out
-from pyparsing import cast
 import os, sys, re, traceback, requests, json
 
-from sympy import evaluate
-from trimesh import Scene
-from unstructured_client import General
 from sim.character_dataclasses import Act, Task, CentralNarrative, datetime_handler
 from src.utils.Messages import UserMessage
 from utils import hash_utils
@@ -21,7 +13,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
 from enum import Enum
 from typing import TYPE_CHECKING
-from utils.llm_api import LLM
 from sim.prompt import ask as default_ask
 from sim.agh import Character
 

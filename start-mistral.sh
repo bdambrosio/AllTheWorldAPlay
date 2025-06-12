@@ -2,6 +2,7 @@
 # Start the Python backend
 cd /app/src/plays/
 cp config_openai.py config.py # set config to use openai
+vllm serve Mistral/Mistral-Small-3.1-24B-Instruct-2503 --max-model-len 16384 --enforce-eager --port 5000  --gpu-memory-utilization 0.75 &
 cd /app/src/sim/
 uvicorn main:app --host 0.0.0.0 --port 8000  > main.log 2>&1 &      
 cd /app/src/utils/    # main engine

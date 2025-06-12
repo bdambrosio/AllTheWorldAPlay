@@ -90,8 +90,11 @@ EXPOSE 3000
 
 # Add this before the CMD line:
 COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+COPY start-Qwen3.sh /app/start-Qwen3.sh
+COPY start-mistral.sh /app/start-mistral.sh
+COPY start-openai.sh /app/start-openai.sh
+RUN chmod +x /app/start.sh /app/start-Qwen3.sh /app/start-mistral.sh /app/start-openai.sh
 
 WORKDIR /app
 # Replace the CMD line with:
-CMD ["/app/start.sh"]
+CMD ["/app/start-openai.sh"]

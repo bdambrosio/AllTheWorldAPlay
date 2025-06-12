@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import re
 import sys
-from gguf.scripts.gguf_dump import main
+from ray.tune.cli.scripts import cli
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
-    sys.exit(main())
+    sys.exit(cli())

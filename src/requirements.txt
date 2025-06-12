@@ -36,3 +36,4 @@ fastapi[standard]
 playsound3
 coqui-tts
 hf_xet
+vllm>=0.9.1
