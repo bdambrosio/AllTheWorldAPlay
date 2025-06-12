@@ -639,7 +639,7 @@ class SimulationServer:
                             'char_name': message['name'],
                             'text': message['text']
                         })
-                    elif message.get('text') in ['goal_choice', 'task_choice', 'act_choice', 'scene_choice']:
+                    elif message.get('text') in ['action_choice', 'goal_choice', 'task_choice', 'act_choice', 'scene_choice']:
                         print(f"DEBUG: simulation.py forwarding choice message: {message.get('text')}")
                         await self.send_result(message)
 

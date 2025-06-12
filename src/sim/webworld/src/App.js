@@ -64,10 +64,10 @@ function App() {
         websocket.current.onmessage = (event) => {
               const data = JSON.parse(event.data);
           console.log('Message received:', data);  // See full message
-          if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice' || data.text === 'scene_choice') {
+          if (data.text === 'goal_choice' || data.text === 'task_choice' || data.text === 'act_choice' || data.text === 'action_choice' || data.text === 'scene_choice') {
             setChoiceRequest({
               ...data,
-              choice_type: data.text.split('_')[0]  // 'goal', 'task', 'act', or 'scene'
+              choice_type: data.text.split('_')[0]  // 'goal', 'task', 'act', 'action', or 'scene'
             });
           } else {
             switch(data.type) {

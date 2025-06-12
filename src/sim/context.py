@@ -1128,7 +1128,7 @@ Ensure your response reflects this change.
                 goal_text = ''
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
-            character.request_goal_choice([scene_goals[character.name]])
+            await character.request_goal_choice(scene_goals[character.name], narrative=True)
             self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
             await asyncio.sleep(0.4)
             # now generate initial task plan
@@ -1149,7 +1149,7 @@ Ensure your response reflects this change.
             character.focus_goal.task_plan = [task]
             # refresh task to ensure it is up to date with the latest information
             task = character.refresh_task(task, scene_integrated_task_plan, final_task=self.scene_integrated_task_plan_index == len(scene_integrated_task_plan)-1)
-            character.request_task_choice([task])
+            #await character.request_task_choice([task]) #not needed, cog_cycle will do it
             character.focus_task = Stack()
             character.focus_task.push(task)
             self.scene_history.append(f'{character.name} {task.to_string()}') # should this be after cognitive cycle? But what if spontaneous subtasks are generated?
@@ -1672,7 +1672,7 @@ What unified central dramatic question emerges from these proposals?
         
         # Wait for response with timeout
         waited = 0
-        while waited < 300.0:
+        while waited < 600.0:
             await asyncio.sleep(0.1)
             waited += 0.1
             if not self.choice_response.empty():
@@ -1865,7 +1865,7 @@ What unified central dramatic question emerges from these proposals?
         
         # Wait for response with timeout
         waited = 0
-        while waited < 300.0:
+        while waited < 600.0:
             await asyncio.sleep(0.1)
             waited += 0.1
             if not self.choice_response.empty():

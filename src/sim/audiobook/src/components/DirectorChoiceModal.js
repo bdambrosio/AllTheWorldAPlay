@@ -62,7 +62,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
     }
   }, [request]);
 
-  if (!request || !['goal', 'task', 'act'].includes(request.choice_type)) return null;
+  if (!request || !['goal', 'task', 'act', 'action'].includes(request.choice_type)) return null;
 
   const { character_name, options } = request;
 

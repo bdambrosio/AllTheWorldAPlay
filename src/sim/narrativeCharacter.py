@@ -730,6 +730,9 @@ End your response with </end>
         if updated_act:
             print(f'{self.name} updates act {act_id}')
             self.update_act(updated_act)
+        else:
+            print(f'{self.name} failed to update act {act_id}')
+            updated_act = act
         return updated_act
 
     async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content):

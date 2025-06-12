@@ -50,7 +50,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
           reason: firstOption.reason || '',
           termination: firstOption.termination || ''
         }));
-      } else if (request.choice_type === 'act') {
+      } else if (request.choice_type === 'action') {
         setNewAct(prev => ({
           ...prev,
           mode: firstOption.mode || 'Do',
@@ -62,7 +62,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
     }
   }, [request]);
 
-  if (!request || !['goal', 'task', 'act'].includes(request.choice_type)) return null;
+  if (!request || !['goal', 'task', 'action'].includes(request.choice_type)) return null;
 
   const { character_name, options } = request;
 
@@ -239,7 +239,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
                 {option.action && <div className="option-action">Action: {option.action}</div>}
                 {option.reason && <div className="option-reason">Reason: {option.reason}</div>}
                 {option.target && <div className="option-target">Target: {option.target}</div>}
-                {request.choice_type !== 'act' && option.termination && (
+                {request.choice_type !== 'action' && option.termination && (
                   <div className="option-termination">Until: {option.termination}</div>
                 )}
                 {option.context && (
@@ -377,8 +377,8 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
             </div>
           )}
 
-          {/* Act form - only show for act choices */}
-          {request.choice_type === 'act' && (
+          {/* Action form - only show for action choices */}
+          {request.choice_type === 'action' && (
             <div className="new-act-form">
               <h4>Create New Action</h4>
               <form onSubmit={handleNewActSubmit}>

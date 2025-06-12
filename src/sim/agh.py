@@ -1487,7 +1487,6 @@ End response with:
             else:
                 print(f'Warning: Invalid goal generation response for {goal_hash}')
 
-
         if len(goals) > 0:
             self.focus_goal = goals[0]
             self.goals = goals
@@ -2337,7 +2336,8 @@ End your response with:
                                               "dialog_transcripts": self.actor_models.get_dialog_transcripts(20)}, 
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
-        response = response.strip()
+        if response is not None:
+            response = response.strip()
         # Rest of existing while loop...
         act_hashes = hash_utils.findall_forms(response)
         act_alternatives = []
@@ -3305,19 +3305,21 @@ End your response with:
         return admissible_goals, impossible_goals
 
 
-    async def request_goal_choice(self, goals):
+    async def request_goal_choice(self, goals, narrative=False):
         """Request a goal choice from the UI"""
         if self.autonomy.goal:
-            no_admissible_goals = True
-            untried = True
-            admissible_goals, impossible_goals = await self.admissible_goals(goals)
-            if len(admissible_goals) == 0:
-                for goal in goals.copy():
-                    if goal.preconditions:
-                        subgoal = Goal(name='preconditions', actors=[self], description=goal.preconditions, preconditions=None, 
+            if narrative:
+                self.focus_goal = choice.exp_weighted_choice(goals, 0.5)
+                return self.focus_goal
+            else:
+                admissible_goals, impossible_goals = await self.admissible_goals(goals)
+                if len(admissible_goals) == 0:
+                    for goal in goals.copy():
+                        if goal.preconditions:
+                            subgoal = Goal(name='preconditions', actors=[self], description=goal.preconditions, preconditions=None, 
                                         termination=goal.preconditions, signalCluster=goal.signalCluster, drives=goal.drives)
-                        self.goals.append(subgoal)
-                        admissible_goals.append(subgoal)
+                            self.goals.append(subgoal)
+                            admissible_goals.append(subgoal)
 
             if len(admissible_goals) > 0:
                 self.focus_goal = choice.exp_weighted_choice(admissible_goals, 0.5)
@@ -3357,7 +3359,7 @@ End your response with:
                 # Wait for response with timeout                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
 
                 waited = 0
-                while waited < 300.0:
+                while waited < 600.0:
                     await asyncio.sleep(0.1)
                     waited += 0.1
                     if not self.context.choice_response.empty():
@@ -3429,7 +3431,7 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 300.0:
+            while waited < 600.0:
                 await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
@@ -3452,7 +3454,9 @@ End your response with:
                                 self.focus_task.push(task)
                                 return task
                         elif response and response.get('selected_id') is not None:
-                            self.focus_task.push(tasks[response['selected_id']])
+                            focus_task = tasks[response['selected_id']]
+                            if self.focus_task.peek() != focus_task:
+                                self.focus_task.push(focus_task)
                             return self.focus_task.peek()
                     except Exception as e:
                         print(f'{self.name} request_task_choice error: {e}')
@@ -3473,45 +3477,48 @@ End your response with:
             return raw * 0.4
         return raw
 
+    def get_action_target(self, action):
+        if action.target and isinstance(action.target, list) and len(action.target) > 0:
+            if action.target[0] and isinstance(action.target[0], Character):
+                return action.target[0].name
+            elif action.target[0] and isinstance(action.target[0], str):
+                return action.target[0]
+        elif action.target and isinstance(action.target, Character):
+            return action.target.name
+        else:
+            return ''
 
-    async def request_act_choice(self, acts):
+    async def request_action_choice(self, actions):
         """Request an act choice from the UI"""
         if self.autonomy.action:
             #if len(acts) > 0 and acts[0].mode != 'Think':
             #    self.focus_action = acts[0]
             #    return self.focus_action
-            self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
-            if not self.focus_action and len(acts) > 0:
-                self.focus_action = acts[0]
+            self.focus_action = choice.pick_weighted(list(zip(actions, [self.ActWeight(len(actions), n, action) for n, action in enumerate(actions)])))[0]
+            if not self.focus_action and len(actions) > 0:
+                self.focus_action = actions[0]
             elif not self.focus_action:
-                print(f'{self.name} request_act_choice: no act selected')
+                print(f'{self.name} request_action_choice: no act selected')
                 return
             return self.focus_action
         
-        if len(acts) < 2:
-                print(f'{self.name} request_act_choice: not enough acts')
-        for act in acts:
-            if not act.source or not act.source.goal or not act.source.goal.signalCluster:
-                print(f'{self.name} request_act_choice: act {act.mode} {act.action} has no source or goal or signal cluster')
-        if len(acts) > 0: # debugging
+        if len(actions) < 2:
+                print(f'{self.name} request_action_choice: not enough acts')
+        for action in actions:
+            if not action.source or not action.source.goal or not action.source.goal.signalCluster:
+                print(f'{self.name} request_action_choice: act {action.mode} {action.action} has no source or goal or signal cluster')
+        if len(actions) > 0: # debugging
                 # Send choice request to UI
             choice_request = {
-                'text': 'act_choice',
+                'text': 'action_choice',
                 'character_name': self.name,
                 'options': [{
                     'id': i,
-                    'mode': act.mode,
-                    'action': act.action,
-                    'reason': act.reason,
-                    'target': act.target[0].name if (act.target and len(act.target) > 0) else '',
-                    'context': {
-                        'emotional_stance': {
-                                'arousal': str(act.source.goal.signalCluster.emotional_stance.arousal.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
-                                'tone': str(act.source.goal.signalCluster.emotional_stance.tone.value) if act.source and act.source.goal and act.source.goal.signalCluster else '',
-                                'orientation': str(act.source.goal.signalCluster.emotional_stance.orientation.value) if act.source and act.source.goal and act.source.goal.signalCluster else ''
-                            }
-                        }
-                    } for i, act in enumerate(acts)]
+                    'mode': action.mode,
+                    'action': action.action,
+                    'reason': action.reason,
+                    'target': self.get_action_target(action),
+                    } for i, action in enumerate(actions)]
             }
             # Drain any old responses from the queue
             while not self.context.choice_response.empty():
@@ -3522,7 +3529,7 @@ End your response with:
             
             # Wait for response with timeout
             waited = 0
-            while waited < 300.0:
+            while waited < 600.0:
                 await asyncio.sleep(0.1)
                 waited += 0.1
                 if not self.context.choice_response.empty():
@@ -3539,7 +3546,7 @@ End your response with:
                                         mode_enum = Mode[mode]  # This validates against the enum
                                         mode = mode_enum.value  # Get standardized string value
                                     except KeyError:
-                                        self.focus_action = acts[0]
+                                        self.focus_action = actions[0]
                                         return self.focus_action
 
                                 actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
@@ -3555,17 +3562,17 @@ End your response with:
                                         target=[target]
                                     )
                                 if custom_act:
-                                    print(f'{self.name} request_act_choice: custom act {custom_act.mode} {custom_act.action}')
+                                    print(f'{self.name} request_action_choice: custom act {custom_act.mode} {custom_act.action}')
                                     self.focus_action = custom_act
                                     return self.focus_action
-                            self.focus_action = acts[response['selected_id']]
+                            self.focus_action = actions[response['selected_id']]
                             return self.focus_action    
                     except Exception as e:
-                        print(f'{self.name} request_act_choice error: {e}')
+                        print(f'{self.name} request_action_choice error: {e}')
                         break
             
             # If we get here, either timed out or had an error
-            self.focus_action = choice.pick_weighted(list(zip(acts, [self.ActWeight(len(acts), n, act) for n, act in enumerate(acts)])))[0]
+            self.focus_action = choice.pick_weighted(list(zip(actions, [self.ActWeight(len(actions), n, action) for n, action in enumerate(actions)])))[0]
             return self.focus_action
 
     async def regenerate_goal_hierarchy(self):
@@ -3772,7 +3779,7 @@ End your response with:
         while act_count < 2 and self.focus_task.peek():
             #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
-            await self.request_act_choice(action_alternatives) # sets self.focus_action
+            await self.request_action_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
             await asyncio.sleep(0)
@@ -3786,7 +3793,7 @@ End your response with:
                 subtask = self.focus_task.peek()
                 #self.look(task.name+': '+task.description)
                 action_alternatives: List[Act] = self.generate_acts(task)
-                await self.request_act_choice(action_alternatives) # sets self.focus_action
+                await self.request_action_choice(action_alternatives) # sets self.focus_action
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
                 await asyncio.sleep(0)

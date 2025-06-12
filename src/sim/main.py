@@ -349,7 +349,7 @@ def convert_sim_to_ws_message(sim_result):
             'type': 'error',
             'error': sim_result.get('error', 'Unknown error')
         }
-    # Pass through other message types as-is
+    # Pass through other message types as-is (including all choice messages)
     return sim_result
 
 def load_replay_file(file_path: Path) -> list:
