@@ -4,7 +4,6 @@ import requests
 import json
 from typing import Dict, Optional, List, Any
 import os
-from playsound3 import playsound
 import tempfile
 import asyncio
 import soundfile as sf
@@ -55,34 +54,6 @@ class CoquiTTSProvider:
             print(f"Error initializing Coqui-TTS: {e}")
             self._voices_loaded = False
             raise
-
-    async def speak(self, text: str, options: Dict = None) -> None:
-        if not self.tts:
-            self.initialize()
-
-        options = options or {}
-        
-        try:
-            # Get reference audio if provided
-            speaker_wav = options.get('speaker_wav')
-            language = options.get('language', 'en')
-            
-            # Generate audio
-            audio = self.tts.tts(
-                text=text,
-                speaker_wav=speaker_wav,
-                language=language
-            )
-
-            # Save to temporary file and play
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-                sf.write(temp_file.name, audio, self.sample_rate)
-                temp_file.flush()
-                playsound(temp_file.name)
-                os.unlink(temp_file.name)  # Clean up
-
-        except Exception as e:
-            raise Exception(f"Coqui-TTS error: {e}")
 
     async def synthesize(self, text: str, options: Dict = None) -> str:
         """Generate speech and return the path to the audio file without playing it."""

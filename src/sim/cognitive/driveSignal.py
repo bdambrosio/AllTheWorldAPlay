@@ -29,7 +29,11 @@ if TYPE_CHECKING:
     from sim.agh import Character, Goal  # Only imported during type checking
     from sim.cognitive.EmotionalStance import EmotionalStance
 
-_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+try:
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+except Exception as e:
+    print(f"Warning: Could not load embedding model locally: {e}")
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 
 def noisy_add(a: float, b: float) -> float:
@@ -531,6 +535,8 @@ class DriveSignalManager:
     def analyze_text(self, text: str, drives: List[Drive], current_time: datetime) -> List[DriveSignal]:
         """Analyze text for drive-related signals"""
 
+        #if True:
+        #    return []
         self.current_time = current_time
         try:
             signals = []
@@ -553,7 +559,9 @@ Consider <Surroundings> carefully for additional context.
 Signals can originate from elements explicitly mentioned there, especially those related to safety, survival, or immediate opportunities.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
+The valid tags in this response are signal, type, description, drive_ids, importance, urgency.
+The type tag takes a single work as its content, either issue or opportunity.
+be careful to insert line breaks only where shown, separating a value from the next tag, as in the following example:
 
 #signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
 #type issue or opportunity
@@ -607,7 +615,9 @@ Report any issues or opportunities you expect the owner is aware of with respect
 {drive.id}: {drive.text}
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
+The valid tags in this response are signal, type, description, drive_ids, importance, urgency.
+The type tag takes a single work as its content, either issue or opportunity.
+be careful to insert line breaks only where shown, separating a value from the next tag, as in the following example:
 
 #signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
 #type issue or opportunity

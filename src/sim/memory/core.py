@@ -15,7 +15,12 @@ if TYPE_CHECKING:
     from sim.cognitive.driveSignal import SignalCluster
 
 # At module level
-_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+try:
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+except Exception as e:
+    print(f"Warning: Could not load embedding model locally: {e}")
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+#_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 @dataclass
 class MemoryEntry:
@@ -325,10 +330,14 @@ class NarrativeSummary:
     
     def get_summary(self, length: str = 'medium') -> str:
         """Get narrative summary of specified length (short/medium/long)"""
+        #if True: # ablation testing
+        #    return ''
         if length == 'short' or length == 'medium':
             # Just recent events and current activities
             return "\n\n".join([self.recent_events, self.ongoing_activities])
         else:
             # Full narrative
             return self.get_full_narrative()
+        
+
     

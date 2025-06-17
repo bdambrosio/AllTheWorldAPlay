@@ -7,7 +7,8 @@ from utils.LLMRequestOptions import LLMRequestOptions
 from utils.Messages import SystemMessage
 from utils.Messages import AssistantMessage
 from google import genai
-from google.genai import types # type: ignore
+from google.genai import types
+
 
 client = None
 api_key = None

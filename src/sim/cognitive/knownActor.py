@@ -86,6 +86,7 @@ End with:
     def update_relationship(self, all_texts, use_all_texts=False):      
         """self is An instance of a model of another actor 
           updating beliefs about owner relationship to this actor"""
+
         if use_all_texts:
             char_memories = all_texts
         else:

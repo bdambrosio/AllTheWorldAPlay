@@ -1,23 +1,27 @@
+from datetime import datetime
 import sys, os
-
-from src.sim.agh import Character
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
-from src.sim.agh import Character
+from src.sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 from plays.scenarios import suburban
+
+importlib.reload(configuration)  # force reload in case cached version
+server_name = configuration.server_name 
+model_name = configuration.model_name
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 model_name = configuration.model_name
 importlib.reload(suburban)
 
+
 # Create the human player character
-Sage = Character("Sage", """Sage, a 60-year-old female herbalist who wears soft grey robes and has become a mentor figure.
+Sage = NarrativeCharacter("Sage", """Sage, a 60-year-old female herbalist who wears soft grey robes and has become a mentor figure.
 I have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi and the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    
 I am a Zen Buddhist and a member of the Soka Gakkai, a lay Buddhist organization.
 I am also deeply knowledgeable in more traditional philosophy, including the works of Plato, Aristotle, and the Stoics, as well as more recent thinkers like Hegel, Nietzsche, and Heidegger.
@@ -28,12 +32,12 @@ I maintain a calm, confident presence that puts others at ease.""", server_name=
 
 
 # Set individual drives that influence behavior
-Sage.set_drives([
-    "helping others find their own wisdom",
-    "sharing experiences without preaching",
-    "encouraging critical thinking",
-    "creating a safe space for honest discussion"
-])
+Sage.drives = [
+    Drive("helping others find their own wisdom"),
+    Drive("sharing experiences without preaching"),
+    Drive("encouraging critical thinking"),
+    Drive("creating a safe space for honest discussion")
+]
 
 # Initialize the context
 W = context.Context([Sage],

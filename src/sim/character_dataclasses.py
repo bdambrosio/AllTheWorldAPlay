@@ -4,7 +4,7 @@ import os, sys
 from datetime import timedelta, datetime
 import json
 import numpy as np
-from sentence_transformers import SentenceTransformer
+#from sentence_transformers import SentenceTransformer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import hash_utils
 

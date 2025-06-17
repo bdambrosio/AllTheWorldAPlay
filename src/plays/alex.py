@@ -34,6 +34,12 @@ Alex.drives = [
     Drive("Have happy life with Susan.")
 ]
 
+Susan = NarrativeCharacter('Susan', "A young woman with a kind face", server_name=server_name)
+Susan.drives = [Drive("Get Alex a job"), Drive('be happy, support Alex  ')]
+Receptionist = NarrativeCharacter('Receptionist', "A young man with a kind face", server_name=server_name)
+Receptionist.drives = [Drive("Do a good job"), Drive('get a raise')]
+Interviewer = NarrativeCharacter('Interviewer', "A skilled antagonistic interviewer looking for flaws or weaknesses in your skills and or personality", server_name=server_name)
+Interviewer.drives = [Drive("Evaluate Alex's skills and personality"), Drive('get a raise')]
 
 # Setting up the world context
 W = context.Context([Alex],
@@ -44,6 +50,7 @@ Outside is a driveway with a car, and beyond that a quiet suburban street.
 A calendar on the wall has today's date circled with "INTERVIEW - 9:00 AM" written on it.
 Alex is in bed, having just woken up to the alarm. The automatic coffee maker has finished brewing in the kitchen.""",
     scenario_module=suburban,
+    extras=[Susan, Receptionist, Interviewer],
     server_name=server_name
 )
 
@@ -51,9 +58,6 @@ Alex.actor_models.resolve_character('Alex')
 Alex.add_perceptual_input("Your alarm just went off. It's 7:15 AM.",'internal')
 Alex.add_perceptual_input("You have a job interview is at 9:00 AM downtown, at the Office. It's about 30 minutes away by car.", 'internal')
 Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", 'internal')
-Susan =W.get_npc_by_name('Susan', description="A young woman with a kind face", x=20, y=20, create_if_missing=True)
-Receptionist =W.get_npc_by_name('Receptionist', description="A young man with a kind face", x=20, y=20, create_if_missing=True)
-Interviewer =W.get_npc_by_name('Interviewer', description="A skilled antagonistic interviewer looking for flaws or weaknesses in your skills and or personality", x=20, y=20, create_if_missing=True)
 Receptionist.mapAgent.move_to_resource('Office1')
 Interviewer.mapAgent.move_to_resource('Office1')
 Susan.mapAgent.x = Alex.mapAgent.x

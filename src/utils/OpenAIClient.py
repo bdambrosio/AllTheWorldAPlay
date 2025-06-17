@@ -75,7 +75,7 @@ class OpenAIClient:
                 print(f"VLLM Qwen3 request error (: {e}")
                 return {"status":'error', "message":str(e)}
         else:
-            max_retries = 2
+            max_retries = 3
             for attempt in range(max_retries):
                 try:
                     response = self.client.chat.completions.create(
@@ -86,7 +86,7 @@ class OpenAIClient:
                             top_p=options.top_p,
                             stop=options.stops, 
                             stream=False,
-                            timeout=60.0
+                            timeout=30.0
                         )
                     item = response.choices[0].message
                     return item.content

@@ -8,7 +8,12 @@ from src.utils import hash_utils
 from src.utils.Messages import UserMessage
 
 # At module level
-_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+try:
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+except Exception as e:
+    print(f"Warning: Could not load embedding model locally: {e}")
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+#_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 class SensoryMode(Enum):
     VISUAL = "visual"

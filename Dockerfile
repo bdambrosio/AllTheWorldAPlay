@@ -16,7 +16,9 @@ RUN echo "===== build dir contents =====" \
 # ──--------------------------------------
 
 
-RUN npm ci --legacy-peer-deps        # or `npm ci` if you want dev deps for the build
+# 👉 robust npm settings + install
+RUN npm config set fetch-retries 5 
+RUN npm ci       # or `npm ci` if you want dev deps for the build
 
 # 2.  copy the rest of the UI source
 COPY src/sim/webworld/ .
@@ -42,7 +44,8 @@ RUN apt-get update && \
 
 # --- B. (optional) build tools if you compile wheels --------
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential git && \
+    apt-get install -y --no-install-recommends build-essential git \
+    pkg-config libcairo2-dev libgirepository1.0-dev gir1.2-gtk-3.0 &&\
     rm -rf /var/lib/apt/lists/*
 
 # Use an official Python base image
@@ -54,6 +57,7 @@ WORKDIR /app
 # Install build dependencies and Node.js
 RUN apt-get update && apt-get install -y \
     build-essential \
+    git \
     curl \
     procps \   
     htop \        
@@ -66,12 +70,26 @@ RUN apt-get update && apt-get install -y \
 
 # Copy only the allowed directories from src
 COPY src /app/src
+COPY src/constraints.txt /app/src/constraints.txt
 
 # Copy the built UI files from the ui stage
 COPY --from=ui /build/build ./static
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r src/requirements.txt
+RUN python -m pip install --upgrade pip                \
+    && pip config set global.progress_bar off          \
+    && pip config set global.timeout 1000              \
+    && pip config set install.trusted-host pypi.org \
+    && pip config set install.trusted-host files.pythonhosted.org
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libcairo2-dev libgirepository1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "== /app/src listing ==" && ls -l /app/src | head
+
+RUN pip install --no-cache-dir \
+    -r src/requirements.txt \
+    -c src/constraints.txt
 
 # Install React dependencies and build
 WORKDIR /app/src/sim/webworld
@@ -90,10 +108,11 @@ EXPOSE 3000
 
 # Add this before the CMD line:
 COPY start.sh /app/start.sh
+COPY start-ablation.sh /app/start-ablation.sh
 COPY start-Qwen3.sh /app/start-Qwen3.sh
 COPY start-mistral.sh /app/start-mistral.sh
 COPY start-openai.sh /app/start-openai.sh
-RUN chmod +x /app/start.sh /app/start-Qwen3.sh /app/start-mistral.sh /app/start-openai.sh
+RUN chmod +x /app/start.sh /app/start-Qwen3.sh /app/start-mistral.sh /app/start-openai.sh /app/start-ablation.sh
 
 WORKDIR /app
 # Replace the CMD line with:

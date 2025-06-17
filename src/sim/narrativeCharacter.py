@@ -176,7 +176,7 @@ Focus your own screenplay outline on your role in the play:
 5. Success Scenario: Brief description of what "winning" looks like
 6. Failure Scenario: Brief description of what "losing" looks like
 
-After processing the above information and in light of the following information, generate a 3 act plus coda outline for the play.
+After processing the above information and in light of the following information, generate a 3 act outline for the play.
 Your generated narrative should be consistent with the central dramatic question and the other elements of the central narrative.
 
 Consider the following guidelines:
@@ -222,7 +222,7 @@ Keep the stakes personal and specific—loss of trust, revelation of a secret, a
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive. A very short final act can be added as a coda.
+By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive.
         """
 
         suffix = """
@@ -263,7 +263,7 @@ You will have the opportunity to revise your plan as you go along, observe the r
 
 ### 2.2  Guidelines
 1. Base every character’s *stated goal* on their drives, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3 acts plus a single-scene Coda - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives. An additional final act can be used as a coda.
+2. Craft 3 acts - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives.
 3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
 4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
@@ -767,19 +767,18 @@ Propose or advocate for a central dramatic question that:
 - Remember: The question you choose will shape the entire narrative arc
 - Think about whether you want to be protagonist, antagonist, or catalyst in this conflict
 
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Respond using the following hash-formatted text, where each line consists of a # (hash mark) followed by a tag (text, no spaces), a single space, and the content.
+For this request the tags are Question, Why, Reason, Others, Risks.
 Close the hash-formatted text with ##  on a separate line, as shown below.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#Question centeral question or conflict terse (6-10 words)
+#Question central question or conflict terse (6-10 words)
 #Why dramatic potential (6-8 words)
-#Reason my character's stake in this question / conflict (6-10 words)
-#Others roles in this question / conflict (8-12 words)
+#Reason my character's stake in this question or conflict (6-10 words)
+#Others roles others play in this central question or conflict (8-12 words)
 #Risks weaknesses in this proposal(4-6 words)
 ##
 
-What dramatic question do you propose?
-End your response with </end>
 """
 
 

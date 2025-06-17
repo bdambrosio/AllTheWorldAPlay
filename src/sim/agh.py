@@ -2199,7 +2199,7 @@ Consider the previous act. E.G.:
 Respond in hash-formatted text:
 
 #mode one of {{$modes}}, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
-#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to about 16-20 words for Do or 30 words max for Say.
+#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
 ##
@@ -2659,7 +2659,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(task.name for task in self.focus_task.stack),
+                                 "all_tasks":'\n'.join([task.name for task in self.focus_task.stack]),
                                  "focus_task":self.focus_task.peek(),
                                  "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
@@ -2813,7 +2813,7 @@ End your response with:
 </end>
 """)]
         response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join(hash_utils.find('name', task) for task in self.focus_goal.task_plan) if self.focus_goal else '',
+                                 "all_tasks":'\n'.join([task.name for task in self.focus_goal.task_plan]) if self.focus_goal else '',
                                  "focus_task":self.focus_task.peek().to_string() if self.focus_task.peek() else '',
                                  "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
                                  "name":self.name, 
@@ -2878,6 +2878,8 @@ End your response with:
         """ called from acts when a character says something to this character """
         #if self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > 10):
         #    return True
+        if from_actor and from_actor.name.lower() == 'viewer':
+            return False
         prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
 <transcript>
@@ -2914,6 +2916,27 @@ End your response with:
         end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10))
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
+    
+    def reflect_on_dialog(self, dialog):
+        """reflect on the thought dialog - duplicate, already have reason_over!"""
+        system_prompt = """You are a rational agent reflecting about your situarion."""
+        prefix = """You are reflecting on your situation given the following insights:
+
+<dialog>
+{{$dialog}}
+</dialog>
+"""
+        suffix = """
+Review all the information above and identify, in light of the focus provided by the dialog, up to 3 new insights or understandings that are significant to your situation and not present explicitly in the other above information.
+An insight might be a new understanding of a relationship (e.g. I should not trust ...), a new understanding of a goal (e.g. I should achieve ...), or a new understanding of a situation (e.g. That door is the way out).
+Respond only with a concise statement of no more than 20 words for each new insight.
+Do not include and introductory, discursive, formatting, or explanatory text.
+If you can derive nothing new of significance wrt thought, respond with 'None'.
+"""
+        response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, addl_bindings={"dialog":dialog}, tag='reflect_on_dialog', max_tokens=70)
+        if response and response.strip().lower() != 'none':
+            self.add_perceptual_input(f'Reflecting:\n {response}', percept=False, mode='internal')
+        return
             
     async def think(self, message: str, source: Task=None, respond: bool=True):
         """ called from acts when a character says something to itself """
@@ -2939,8 +2962,6 @@ End your response with:
                 self.reason_over(dialog)
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
-                if self.name != 'Viewer':
-                    self.update_individual_commitments_following_conversation(self, dialog, [])
                 #self.driveSignalManager.recluster()
                 return
 
@@ -3200,7 +3221,7 @@ End your response with:
             "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
             "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
             "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''
-            }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=180)
+            }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
         if response is None:
             print(f'No response to hear')

@@ -147,7 +147,7 @@ class LLM():
             IMAGE_PATH.mkdir(parents=True, exist_ok=True)
             print(f"Directory '{IMAGE_PATH}' created.")
 
-    def run_request(self, bindings, prompt, options, log=False):
+    def run_request(self, bindings, prompt, options, log=False, trace=True):
         global vllm_model
         #
         ### first substitute for {{$var-name}} in prompt
@@ -173,7 +173,8 @@ class LLM():
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role':message.role, 'content':new_content})
 
-        print(f'\n{json.dumps(substituted_prompt)}\n')      
+        if trace:
+            print(f'\n{json.dumps(substituted_prompt)}\n')      
         if log:
             logging.debug(f'Prompt: {substituted_prompt}\n')
         if 'openai' in self.server_name:
@@ -249,7 +250,7 @@ class LLM():
             traceback.print_exc()
             raise Exception(response)
 
-    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=False):
+    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=False, trace=False):
         global elapsed_times, iteration_count
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
@@ -261,7 +262,7 @@ class LLM():
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
-            response = self.run_request(input, prompt_msgs, options, log=log)
+            response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
             if not tag or tag == '':

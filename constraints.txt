@@ -1,0 +1,6 @@
+# --- google client stack -------------------------------------------------
+google-generativeai==0.8.5            # >=0.8 has async helpers & bug-fixes
+google-ai-generativelanguage==0.6.15  # matches 0.8.5 above
+google-api-python-client==2.172.0     # 2025-05-22 release
+proto-plus==1.26.1                    # satisfies every google-* wheel
+# ------------------------------------------------------------------------

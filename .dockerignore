@@ -7,3 +7,4 @@ src/*
 !src/requirements.txt
 webworld/node_modules/
 webworld/build/
+!src/constraints.txt

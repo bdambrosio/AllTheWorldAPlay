@@ -19,7 +19,12 @@ if TYPE_CHECKING:
     from sim.narrativeCharacter import NarrativeCharacter
     from sim.cognitive.knownActor import KnownActor
 logger = logging.getLogger('simulation_core')
-_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  
+try:
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+except Exception as e:
+    print(f"Warning: Could not load embedding model locally: {e}")
+    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+#_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 _embedding_model.max_seq_length = 384
 _voice_embeddings = None
 _voices = None
@@ -82,7 +87,11 @@ class SpeechStylizer:
             _voice_embeddings = [get_voice_embedding(voice) for voice in _voices if get_voice_embedding(voice) is not None]
         self.voices = _voices
         self.voice_embeddings = _voice_embeddings
-        self.voice_id = self.pick_best_voice(_voices)
+        try:
+            self.voice_id = self.pick_best_voice(_voices)
+        except Exception as e:
+            logger.error(f"Error picking best voice: {e}")
+            self.voice_id = None
         self._call_counter = 0
         # Track recent words for overuse detection
         self._recent_words = []  # List of (word, weight) tuples
@@ -165,7 +174,7 @@ class SpeechStylizer:
 {{$drives}}
 
 Based on these descriptions, analyze the character's speech style and provide a JSON response with these exact keys:
-- tone: 1 or 2 most dominant, stable, tone likely present in character's speech (e.g. gruff, warm, polite, casual, thoughtful)
+- tone: most dominant, stable, tones (e.g. gruff, warm, polite, casual, thoughtful) likely present in character's speech (limit to 1 -2 tones)
 - formality: float between 0-1 (0 being very informal, 1 being very formal)
 - lexical_quirks: dictionary containing:
   - slang: float 0-1 indicating likelihood of using slang
@@ -447,6 +456,8 @@ End your response with:
         return "<STYLE>\n" + "\n".join(lines) + "\n</STYLE>"
 
     def stylize(self, original_say, target, style_block):
+        if self.char.name == 'Viewer':
+            return original_say
         transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
         filtered_transcript = '\n'.join([t for t in transcript if t.startswith(self.char.name)])
         
@@ -512,6 +523,8 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
 
     def to_elevenlabs_params(self, style: Dict) -> Dict:
         """Convert SpeechStylizer style to ElevenLabs speech parameters."""
+        if self.voice_id is None:
+            return None
         params = {
             'stability': 1.0 - (style['syntactic_oddity'] * 0.5),  # Reduce stability for odd syntax
             'similarity_boost': 1.0 - (style['lexical_quirks']['slang'] * 0.3),  # Reduce similarity for slang

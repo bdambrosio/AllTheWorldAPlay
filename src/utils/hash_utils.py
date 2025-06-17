@@ -3,6 +3,7 @@ import string
 from typing import List
 
 def _validate_tag(tag):
+    tag = tag.strip().rstrip(':')
     """Validate tag contains only letters a-zA-Z and underscores"""
     if not tag or not isinstance(tag, str):
         raise ValueError("Tag must be a non-empty string")
@@ -102,10 +103,11 @@ def find(tag, text):
     tag_marker = f'#{tag}'
     
     for line in lines:
+        line = line.replace(tag+':', tag)
         stripped = line.strip().lower()
         if stripped.startswith(tag_marker + ' '):
             # Use original line for result to preserve case of content
-            return line.strip()[len(tag_marker)+1:].replace('#', '').strip()
+            return line.strip()[len(tag_marker)+1:].replace('#', '').strip().rstrip(':')
     return ""
 
 def set(tag, form, value):

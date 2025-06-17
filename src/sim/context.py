@@ -129,6 +129,7 @@ class Context():
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
+        self.embedding_model = None
 
         for actor in self.actors + self.extras + self.npcs:
             #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
@@ -277,10 +278,39 @@ class Context():
             start = response.find('{')
             end = response.rfind('}')
             response = response[start:end+1]
-            try:
-                return json.loads(response)
-            except Exception as e:
-                error = e
+
+        # Remove newlines that are outside of string values
+        in_string = False
+        result = []
+        i = 0
+        while i < len(response):
+            if response[i] == '"' and (i == 0 or response[i-1] != '\\'):
+                in_string = not in_string
+            if not in_string and response[i] == '\n':
+                i += 1
+                continue
+            result.append(response[i])
+            i += 1
+        response = ''.join(result)
+
+        # Find first complete JSON form
+        brace_count = 0
+        json_end = 0
+        for i, char in enumerate(response):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    json_end = i + 1
+                    break
+        if json_end > 0:
+            response = response[:json_end]
+
+        try:
+            return json.loads(response)
+        except Exception as e:
+            error = e
 
         # Ok, ask llm
         prompt = [UserMessage(content="""You are a JSON repair tool.
@@ -632,7 +662,7 @@ Use the following XML format:
 concise statement(s) of significant changes to Environment, if any, one per line.
 </updates>
 
-Include ONLY the concise updated state description in your response. Be concise, limit your response to about 20 words.
+Include ONLY the concise updated state description in your response. Be concise, limit your response to about 30 words.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
 </end>""")
@@ -742,7 +772,7 @@ Include in your response:
 - changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 - specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
-Be terse, only report the most significant  state changes. Limit your response to about 80 words.
+Be terse, only report the most significant  state changes. Limit your response to 70 words.
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -778,7 +808,7 @@ End your response with:
 {{$new_state}}
 </newState>
 
-Respond with one or two concise sentences describing the changes.
+Respond with one or two concise sentences describing the changes. Include only changes in the situation being described, not changes to the description itself.
 Respond only with the text describing the changes.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 End your response with:
@@ -854,14 +884,14 @@ Respond using the following XML format:
 
 <situation>
 Sentence describing physical space, suitable for image generator.
-Updated State description of about 200 words
+Updated State description of up to 125 words
 </situation>
 
-Respond with an updated world state description of about 140 words reflecting the current time and the environmental changes that have occurred.
+Respond with an updated world state description of at most 125 words reflecting the current time and the environmental changes that have occurred.
 Include ONLY the updated situation description in your response. Do not include changes of the description (e.g., 'more detailed'), only changes to the situation being described.
 Do not include any introductory, explanatory, or discursive text, or any markdown or other formatting. 
 .
-Limit your total response to about 140 words
+Limit your total response to 125 words at most.
 Ensure your response is surrounded with <situation> and </situation> tags as shown above.
 End your response with:
 </end>""")]
@@ -1890,6 +1920,13 @@ What unified central dramatic question emerges from these proposals?
         return scene_data
 
     async def generate_act_central_narrative(self, act_number ):
+        if self.embedding_model is None:
+            from sentence_transformers import SentenceTransformer
+            try:
+                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
+            except Exception as e:
+                print(f"Warning: Could not load embedding model locally: {e}")
+                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         """Generate a central narrative for the act"""
         prompt = [UserMessage(content="""You are creating a focused dramatic framework for Act {{$act_number}} based on the overall central narrative and character planning.
 
@@ -1966,9 +2003,8 @@ re""")]
     
     def embed_task(self, task):
         """Embed a task"""
-        from sentence_transformers import SentenceTransformer
-        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        embedding = _embedding_model.encode(task.name+': '+task.description+'. because '+task.reason+' to achieve '+task.termination)
+
+        embedding = self.embedding_model.encode(task.name+': '+task.description+'. because '+task.reason+' to achieve '+task.termination)
         self.scene_task_embeddings.append(embedding)
         return embedding
     
@@ -2043,7 +2079,6 @@ re""")]
                         break
         
         used_clusters = set()
-        task_index = 0
         self.scene_integrated_task_plan = []
         actors_with_remaining_tasks = actors_in_scene
         while len(actors_with_remaining_tasks) > 0:
@@ -2052,6 +2087,9 @@ re""")]
                 if actor not in actors_with_remaining_tasks:
                     continue
                 next_task_index = actor_tasks[actor.name]['next_task_index']
+                if next_task_index >= len(actor.focus_goal.task_plan):
+                    actors_with_remaining_tasks.remove(actor)
+                    continue
                 current_task = actor.focus_goal.task_plan[next_task_index]
                 #self.evaluate_commitment_significance(actor, current_task, scene)
                 is_critical = next_task_index == len(actor.focus_goal.task_plan) - 1
@@ -2065,7 +2103,6 @@ re""")]
                 else:
                     print(f'{actor.name} task {current_task.id} is redundant in scene {scene["scene_number"]}')
                 
-                task_index += 1
                 actor_tasks[actor.name]['next_task_index'] += 1
                 if actor_tasks[actor.name]['next_task_index'] >= len(actor_tasks[actor.name]['task_plan']):
                     actors_with_remaining_tasks.remove(actor)
