@@ -15,7 +15,7 @@ model_name = configuration.model_name
 importlib.reload(garden)
 
 map_file_name = 'garden.py' # needed to trigger narrative creation
-
+narrative=False
 lemon = NarrativeCharacter("Lemonade", """You are a pale grey tabbykitten. 
 You love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 You are intelligent and very curious about everything.

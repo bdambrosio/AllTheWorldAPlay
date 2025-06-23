@@ -15,7 +15,7 @@ import random
 import string
 import traceback
 import time
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import List, Dict, Optional, TYPE_CHECKING, cast
 from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
 from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
@@ -45,6 +45,7 @@ import asyncio
 from weakref import WeakValueDictionary
 import logging
 from sim.prompt import ask as default_ask
+from sim.cognitivePrompt import CognitiveToolInterface
 from src.sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy, datetime_handler     
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
@@ -155,6 +156,7 @@ class Character:
         self.always_respond = True
         
         # Initialize memory systems
+        self.cognitive_llm = CognitiveToolInterface(self)
         self.structured_memory:StructuredMemory = StructuredMemory(owner=self)
         self.memory_consolidator:MemoryConsolidator = MemoryConsolidator(self, self.llm, self.context)
         self.memory_retrieval:MemoryRetrieval = MemoryRetrieval()
@@ -396,7 +398,13 @@ End your response with:
             actors =  [self] + actors
 
         if name and description and reason and termination and actors:
-            task = Task(name, description, reason, termination.replace('##','').strip(), goal, actors, start_time, duration)
+            task = Task(name, description=description, 
+                        reason=reason, 
+                        termination = termination.replace('##','').strip(), 
+                        goal = goal, 
+                        actors = actors, 
+                        start_time = start_time, 
+                        duration = duration)
             return task
         else:
             print(f"Warning: Invalid task generation response for {task_hash}") 
@@ -417,10 +425,11 @@ End your response with:
         elif isinstance(duration, int):
             duration = timedelta(minutes=duration)
 
+        name_stop_list = ['none', 'no', 'one', 'self', 'me', 'i', 'my', 'mine', 'ours', 'us', 'we', 'our', 'ourselves']
         target_names = hash_utils.findList('target', hash_string)
-        targets = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in target_names]
+        targets = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in target_names if name.strip().lower() not in name_stop_list]
         actor_names = hash_utils.findList('actors', hash_string)
-        actors = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in actor_names]
+        actors = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in actor_names if name.strip().lower() not in name_stop_list]
 
         # Clean up mode string and validate against Mode enum
         if mode:
@@ -624,7 +633,7 @@ End response with:
             return ''  
         obs = self.mapAgent.look()
         view = {}
-        for dir in ['North', 'Northeast', 'East', 'Southeast', 
+        for dir in ['Current','North', 'Northeast', 'East', 'Southeast', 
                    'South', 'Southwest', 'West', 'Northwest']:
             dir_obs = map.extract_direction_info(self.context.map, obs, dir)
             view[dir] = dir_obs
@@ -1048,14 +1057,14 @@ End response with:
 
     def update_drives(self, goal: Goal):
         """Update drives based on goal satisfaction"""
-        self.update()
         if hasattr(goal, 'drives'):
-            for drive in goal.drives:
+            for drive in cast(List[Drive], goal.drives):
                 drive.satisfied_goals.append(goal)
                 # don't update the primary drive
                 if drive is not self.drives[0]:
                     if len(drive.attempted_goals) > 0:
                         if drive in self.drives: # only update if drive still exists, may have already been rewritten
+                            drive.activation *= 0.9
                             update = drive.update_on_goal_completion(self, goal, 'goal completed')
                             if update:
                                 try:
@@ -1250,11 +1259,12 @@ End response with:
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
-            self.show += act_arg + '.\n'# sees ' + percept + '. '
+            consequences = await self.context.look(self, act)
+            if  consequences and len(consequences) > 0:
+                self.add_perceptual_input(f'{consequences}', mode='internal')  
+            self.lastActResult = consequences
+            self.show += act_arg + '.\n ' + consequences
             self.context.message_queue.put({'name':self.name, 'text':self.show})
-            self.context.transcript.append(f'{self.name}: {self.show}')
-            self.show = '' # has been added to message queue!
-            self.add_perceptual_input(f"\nYou look: {act_arg}\n  {percept}", mode='visual')
             await asyncio.sleep(0)
 
         elif act_mode == 'Think': # Say is handled below
@@ -1268,14 +1278,13 @@ End response with:
 
             if self.focus_task.peek() and not self.focus_task.peek().name.startswith('internal dialog with '+self.name): # no nested inner dialogs for now
                     # initiating an internal dialog
-                dialog_task = Task('internal dialog with '+self.name, 
+                dialog_task = Task(name = 'internal dialog with '+self.name, 
                                     description=self.name + ' thinks ' + act_arg, 
                                     reason=reason, 
                                     termination='natural end of internal dialog', 
                                     goal=None,
                                     start_time=self.context.simulation_time,
                                     duration=0,
-
                                     actors=[self])
                 self.focus_task.push(dialog_task)
                 self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate()
@@ -1363,76 +1372,81 @@ End response with:
             perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
             signal_memories.extend(perceptual_memories)
 
-        prompt = [UserMessage(content="""Instantiate a goal object for the following goal directive.
-                              
-<goal_directive>
-{{$goal_statement}}
-</goal_directive>
-
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-                              
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-                              
-<scene>
-{{$scene}}
-</scene>
-
-<situation>
-{{$situation}}
-</situation>
-
-<surroundings>
-{{$surroundings}}
-</surroundings>
-
-<character>
+        prompt = [UserMessage(content="""You are {{$name}}.
+#Character
 {{$character}}
-</character>
+##
+                              
+Instantiate a goal object for the following goal directive.
+                              
+#Goal statement
+{{$goal_statement}}
+##
 
-<recent_events>
+#Central narrative
+{{$central_narrative}}
+##
+                              
+#Act specific narrative
+{{$act_specific_narrative}}
+##
+                              
+#Scene
+{{$scene}}
+##
+
+#Situation
+{{$situation}}
+##
+
+#Surroundings
+{{$surroundings}}
+##
+
+#Recent events
 {{$recent_events}}
-</recent_events>
+##
+                              
+#Recently achieved goals
+{{$goal_history}}
+##
 
-Additional information about the character to support developing your response
+
+Additional information about the your character to support developing your response
 Drives are the character's basic motivations. Activation indicates how strongle the drive is active at present in the character's consciousness.
 
-<drives>
+#Drives
 {{$drives}}
-</drives>
+##
 
 Relationships are the character's relationships with other actors.
 
-<relationships>
+#Relationships
 {{$relationships}}
-</relationships>
+##
                               
-<recent_memories>
+#Recent memories
 {{$recent_memories}}
-</recent_memories>
+##
 
 
 Following are a few signalClusters ranked by impact. These are issues or opportunities nagging at the periphery of the character's consciousness.
 These clusters may overlap.
                               
-<signalClusters>
+#SignalClusters
 {{$signalClusters}}
-</signalClusters>
+##
 
 Following are memories relevant to the signalClusters above. Consider them in your goal generation:
 
-<signal_memories>
+#Signal memories
 {{$signal_memories}}
-</signal_memories>
+##
 
 Consider:
-1. The goal directive is the central issue / opportunity / obligation demanding the character's attention.
-2. The character is in the middle of a scene in an improvisational play, the players have agreed to the central narrative and act specific narrative given above. 
-    These must be top priority in translating the goal directive into a goal.
-2. Any patterns or trends in the past goals, tasks, or actions should be considered only insofar as the goal must be consistent with them.
+1 The goal directive is the play director's overall instruction to the character for this scene.
+2. The character is about to perform a scene in an improvisational play, the players have agreed to the central narrative and act specific narrative given above. 
+2. Any patterns or trends in the past goals, tasks, or actions and their outcomes should be considered in generating the specific goal for this character in this scene.
 3. Identify any other actors involved in the goal, and their relationships to the character, insofar as the goal must be consistent with them.
 
 
@@ -1462,7 +1476,9 @@ End response with:
 </end>
 """)]
 
-        response = self.llm.ask({"goal_statement":goal_statement,
+        response = self.llm.ask({"name":self.name,
+                                 "character": self.get_character_description(),
+                                 "goal_statement":goal_statement,
                                  "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                  "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
                                  "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
@@ -1472,6 +1488,7 @@ End response with:
                                  "surroundings": self.look_percept,
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
+                                 "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in self.goal_history]) if self.goal_history else 'None to report',
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
@@ -1499,8 +1516,9 @@ End response with:
             print(f'{self.name} generated {len(goals)} goals for scene!')
         return goals
 
-    def generate_goal_alternatives(self):
+    def generate_goal_alternatives(self, previous_goal:Goal=None):
         """Generate up to 3 goal alternatives. Get ranked signalClusters, choose three focus signalClusters, and generate a goal for each"""
+        self.look()
         self.driveSignalManager.recluster()
         self.driveSignalManager.check_drive_signals()
         ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
@@ -1617,7 +1635,7 @@ End response with:
 
 
         primary_drive = self.drives[0]
-        self.driveSignalManager.check_drive_signal(primary_drive)
+        #self.driveSignalManager.check_drive_signal(primary_drive)
         primary_drive_signals = self.driveSignalManager.get_signals_for_drive(primary_drive)
         response = self.llm.ask({"signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
@@ -1650,7 +1668,114 @@ End response with:
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
+    async def generate_goals(self, previous_goal:Goal=None):
+        """generate alternative goals to work on"""
+        self.look()
+        mission = """Identify the highest priority goal alternatives the actor should focus on next given the following information.
+You have just completed the following goal:
+#previous goal
+{{$previous_goal}}
+##
 
+#goal related memories
+{{$goal_related_memories}}
+##
+
+Consider:
+1. What is the central issue / opportunity / obligation demanding the character's attention?
+2. Given the following available information about the character, the situation, and the surroundings, how can the character best advance the central dramatic question?
+3. Identify any other actors involved in the goal, and their relationships to the character.
+4. Try to identify a goal that might be the center of an overall story arc of a play or movie.
+5. Goals must be distinct from one another.
+6. Goals must be consistent with the character's drives and emotional stance.
+
+"""
+        suffix = """
+Respond with up to three highest priority, most encompassing, next goal alternatives, in the following parts: 
+    goal - a terse (5-8 words) name for the goal, 
+    description - concise (8-14 words) further details of the goal, intended to guide task generation, 
+    otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
+    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
+    preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
+        These should be necessary pre-conditions for the expected initial tasks of this goal.
+
+Be sure to include a goal that responds to the character's primary drive in the context of the central narrative, the drive signals, and the information above.
+Do NOT duplicate or significantly overlap the completed goal or generate a goal for objectives duplicating the completion statement of the completed goal.
+Other goals must not duplicate or significantly overlap this goal or the completed goal. 
+
+#primary drive
+{{$primary_drive}}
+##
+
+#drive signals
+{{$primary_drive_signals}}
+##
+                              
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#goal terse (5-8) words) name for this goal
+#description concise (8-14) words) further details of this goal
+#otherActorName name of the other actor involved in this goal, or None if no other actor is involved
+#signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
+#preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
+#termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+##
+
+
+Respond ONLY with the above hash-formatted text.
+End response with:
+</end>
+"""
+
+
+        goal_memories = []
+        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
+        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:5]] # first 3 in score order
+        for sc in focus_signalClusters:
+            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
+            for pm in perceptual_memories:
+                if pm not in goal_memories:
+                    goal_memories.append(pm)
+        for g in self.goals:
+            memories = self.perceptual_state.get_information_items(g.short_string(), threshold=0.01, max_results=3)
+            for gm in memories:
+                if gm not in goal_memories:
+                    goal_memories.append(gm)
+
+        if self.context.scene_post_narrative:
+            scene_narrative = f"\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
+        else:
+            scene_narrative = ''
+        response = default_ask(self, 
+                               prefix=mission, 
+                               suffix=suffix, 
+                               addl_bindings={
+                                   "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                                   "primary_drive_signals": "\n".join([f'{sc.id}: {sc.text}' for sc in self.driveSignalManager.get_signals_for_drive(self.drives[0])]),
+                                   "my_narrative": self.central_narrative if self.central_narrative else '',
+                                   "previous_goal": previous_goal.to_string()+f'\n\n completion statement: {previous_goal.completion_statement}' if previous_goal else '',
+                                   "goal_related_memories": "\n".join([m.content for m in goal_memories])},
+                               tag = 'Character.generate_goals',
+                               max_tokens=350, log=True)
+
+
+        goals = []
+        forms = hash_utils.findall_forms(response)
+        for goal_hash in forms:
+            goal = self.validate_and_create_goal(goal_hash)
+            if goal:
+                print(f'{self.name} generated goal: {goal.to_string()}')
+                goals.append(goal)
+            else:
+                print(f'Warning: Invalid goal generation response for {goal_hash}')
+        if len(goals) < 2:
+            print(f'Warning: Only {len(goals)} goals generated for {self.name}')
+        self.goals = goals
+        self.driveSignalManager.clear_clusters(goals)
+        print(f'{self.name} generated {len(goals)} goals')
+        return goals
 
     async def generate_task_plan(self, goal:Goal=None, new_task:Task=None, replan=False, ntasks=None):
         if not self.focus_goal:
@@ -1668,7 +1793,7 @@ End response with:
         
         suffix = """
 
-Create up to {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
+Create at most {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
 The tasks must be designed to achieve the focus goal in light of the central narrative, act specific narrative, and scene given below.
 
 ##Dramatic Context
@@ -1730,7 +1855,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
 ##
 
-Start with an appropriate task recognizing previous achievments. 
+Start with an appropriate task in light of previous achievments and the dramatic context. 
 
 {{$achievments}}
 
@@ -1739,13 +1864,12 @@ and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
 Respond ONLY with the tasks in hash-formatted-text format and each ending with ## as shown above.
 Order tasks in the assumed order of execution.
 
+Remember, generate at most {{$ntasks}} tasks.
+
 ###Scene
 {{$scene_narrative}}
-
-End response with:
-</end>
 """
-        mission = """create a sequence of up to {{$ntasks}} tasks to achieve the focus goal: 
+        mission = """create a sequence of at most{{$ntasks}} tasks to achieve the focus goal: 
 ###Focus Goal
 {{$focus_goal}}
 """
@@ -2006,6 +2130,7 @@ End your response with:
         if satisfied != None and satisfied.lower().strip() == 'complete':
             print(f'  **Satisfied!**')
             statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
+            object.completion_statement = statement
             self.add_perceptual_input(statement, mode='internal')
             self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             if self.context.current_state.count('Following update may invalidate') > 3:
@@ -2018,6 +2143,7 @@ End your response with:
             if progress/100.0 > random.random() + threshold:
                 print(f'  **Satisfied partially! {satisfied}, {progress}%**')
                 statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
+                object.completion_statement = statement
                 self.add_perceptual_input(statement, mode='internal')
                 self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
                 if self.context.current_state.count('Following update may invalidate') > 3:
@@ -2130,9 +2256,9 @@ Choose actions that drive narrative forward, not just maintain status quo.
 """
         suffix = """
 
-recent percepts related to the current goals and tasks include:
-
+#recent percepts related to the current goals and tasks
 {{$goal_memories}}
+##
 
 Respond with two alternative acts, including their Mode, action, target, and expected duration. 
 The acts should vary in mode and action.
@@ -2329,7 +2455,7 @@ End your response with:
         else:
             scene_post_narrative = ''
 
-        response = default_ask(character=self, prefix=mission, suffix=suffix, 
+        response = default_ask(self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
@@ -2337,8 +2463,9 @@ End your response with:
                                               "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                               "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
                                               "modes": modes,
+                                              "name": self.name,
                                               "actor_genders": actor_genders,
-                                              "dialog_transcripts": self.actor_models.get_dialog_transcripts(20)}, 
+                                              "dialog_transcripts": '\n'.join(self.actor_models.get_dialog_transcripts(20))}, 
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
         if response is not None:
@@ -2607,13 +2734,13 @@ Respond using the following hash-formatted text, where each tag is preceded by a
 Each intension should be closed by a ## tag on a separate line.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#name brief (4-6 words) task name
-#description terse (6-8 words) statement of the action to be taken
+#name brief (4 words max) task name
+#description terse (6 words max) statement of the action to be taken
 #actors {{$name}}
-#start_time (2-3 words) expected start time of the action, typically elapsed time from now
-#duration (2-3 words) expected duration of the action in minutes
-#reason (6-7 words) on why this action is important now
-#termination (5-7 words) easily satisfied termination test to quickly end this task
+#start_time (2 words) expected start time of the action, typically elapsed time from now
+#duration (2 words) expected duration of the action in minutes
+#reason (4 words max) on why this action is important now
+#termination (5 words max) easily satisfied termination test to quickly end this task
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
@@ -2684,14 +2811,15 @@ End your response with:
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
+                action_order_length = len(self.context.current_scene['action_order']) if self.context.current_scene else 10 # if not in a scene, skip the significance check
                 if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
                     significance = self.context.evaluate_commitment_significance(self, target, intension)
                     if significance == 'NOISE':
                         continue
                     elif significance == 'RELEVANT' or significance == 'REDUNDANT':
                         intension.reason = intension.reason + ' (optional)'
-                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*len(self.context.current_scene['action_order'])) \
-                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*len(self.context.current_scene['action_order'])):
+                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*action_order_length) \
+                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*action_order_length):
                         print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
                         if self.context.scene_integrated_task_plan:
                             insert_index = self.context.scene_integrated_task_plan_index+1
@@ -2765,12 +2893,12 @@ Consider the all_tasks and current task and action reason in determining if ther
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
-#name brief (4-6 words) action name
-#description terse (6-8 words) statement of the action to be taken
+#name brief (4 words max) action name
+#description terse (6 words max) statement of the action to be taken
 #actors {{$name}}, {{$target_name}}
-#reason (6-7 words) on why this action is important now
-#duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) easily satisfied termination test to quickly end this task
+#reason (4 words max) on why this action is important now
+#duration (2 words) expected duration of the action in minutes
+#termination (5 words max) easily satisfied termination test to quickly end this task
 ##
 
 In refering to other actors, always use their name, without other labels like 'Agent', 
@@ -2839,17 +2967,19 @@ End your response with:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
                 if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
+                    action_order_length = len(self.context.current_scene['action_order']) if self.context.current_scene else 10 # if not in a scene, skip the significance check
                     significance = self.context.evaluate_commitment_significance(self, target, intension)
                     if significance == 'NOISE':
                         continue
                     elif significance == 'RELEVANT' or significance == 'REDUNDANT':
                         intension.reason = intension.reason + ' (optional)'
-                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*len(self.context.current_scene['action_order'])) \
-                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*len(self.context.current_scene['action_order'])):
+                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*action_order_length) \
+                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*action_order_length):
                         print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
                         if self.context.scene_integrated_task_plan:
                             insert_index = self.context.scene_integrated_task_plan_index+1
                             self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
+                            intensions.append(intension)
                 elif self.focus_goal:
                     await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
                 else:
@@ -3660,14 +3790,15 @@ End your response with:
 
         if not narrative:
             if self.focus_goal:
+                goal = self.focus_goal
                 satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
-            if satisfied:
-                self.focus_goal_history.append(self.focus_goal)
-                self.focus_goal = None
+                if satisfied:
+                    self.focus_goal_history.append(goal)
+                    await self.generate_goals(previous_goal=goal)
+                    await self.request_goal_choice(self.goals)
 
             if not self.focus_goal and (not self.goals or len(self.goals) == 0):
-                self.update()
-                self.generate_goal_alternatives()
+                await self.generate_goals()
                 await self.request_goal_choice(self.goals)
                 for goal in self.goals.copy():
                     if goal is self.focus_goal:
@@ -3718,11 +3849,15 @@ End your response with:
             print(f'{self.name} cognitive_cycle error: {e}')
 
         if not narrative:
-            await self.clear_goal_if_satisfied(self.focus_goal)
+            goal = self.focus_goal
+            satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+            if satisfied:
+                await self.generate_goals(previous_goal=goal)
+                await self.request_goal_choice(self.goals)
         return
 
        
-    async def step_tasks(self, n: int=1):
+    async def step_tasks(self, n: int=2):
         #runs through up to n tasks in a task_plan
         # like step_task, the invariant is that the task stack is empty on return, and the first task in focus_goal task_plan is the next task to run, if it exists
         task_count = 0
@@ -3743,13 +3878,18 @@ End your response with:
             
             if self.focus_goal and not self.focus_goal.task_plan:
                 if self.focus_goal.name == 'preconditions':
-                    # ok, we ran preconditions goal, get rid of it and clear preconditions clause from source goal.
+                    # ok, we ran preconditions goal, get rid of it and clear preconditions clause from source goal, make it focus_goal.
+                    base_goal = None
                     for goal2 in self.goals:
                         if goal2.preconditions == self.focus_goal.termination:
                             goal2.preconditions = None # remove preconditions, we've already satisfied them
+                            base_goal = goal2
                     if self.focus_goal in self.goals:
                         self.goals.remove(self.focus_goal)
-                    await self.request_goal_choice(self.goals) # do we need this?
+                    if base_goal:
+                        self.focus_goal = base_goal
+                        return False
+
                 elif self.focus_goal.name == 'postconditions':
                     # ok, we ran postconditions goal, get rid of it
                     satisfied = await self.clear_goal_if_satisfied(self.focus_goal) # do all the end of goal stuff for source goal
@@ -3759,18 +3899,20 @@ End your response with:
                         self.goals.remove(self.focus_goal)
                         self.focus_goal_history.append(self.focus_goal)
                         self.focus_goal = None
+                        return True
                 elif self.focus_goal and self.focus_goal.termination and self.focus_goal.name != 'preconditions' and self.focus_goal.name != 'postconditions':
                     # termination not yet satisfied, and this is a main goal (has termination), subgoal on termination clause
                     old_goal = self.focus_goal
                     satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
-                    if not satisfied:
-                        logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not satisfied')
-                        logger.info(f'{self.name} step_tasks: termination fail focus goal {self.focus_goal.name} instantiating termination goal {self.focus_goal.termination}')
-                        #self.instantiate_narrative_goal(self.focus_goal.termination, generate_conditions=False)
-                        #self.generate_task_plan(self.focus_goal, ntasks=1)
-                    elif old_goal in self.goals:
-                        self.goals.remove(old_goal) # don't try this goal again
-                    return False
+                    if not satisfied: # goal not satisfied and no remaining tasks
+                        if not self.context.narrative: # extend task plan
+                            await self.generate_task_plan(self.focus_goal)
+                            await self.request_task_choice(self.focus_goal.task_plan)
+                    elif old_goal in self.goals: #satisfied.
+                        self.goals.remove(old_goal)
+                        if old_goal == self.focus_goal:
+                            self.focus_goal = None
+                    return True
                 else:
                     logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
                     return False
@@ -3843,7 +3985,8 @@ End your response with:
             return True
             
         if self.focus_task.peek() is task:
-            self.focus_task.pop() # didn't get done by turn limit pretend task is done            return True # probably need to replan around step failure, but we're not going to do that here
+            return False
+            #self.focus_task.pop() # didn't get done by turn limit pretend task is done            return True # probably need to replan around step failure, but we're not going to do that here
         else: # clear assigned task and all intensions created by it, out of turns for this task
             while task in self.focus_task.stack:
                 self.focus_task.pop()

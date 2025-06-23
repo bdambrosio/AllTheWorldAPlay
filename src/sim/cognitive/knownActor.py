@@ -336,7 +336,10 @@ class KnownActorManager:
 
     def format_relationships(self, include_transcript=False):
         relationships = self.get_known_relationships(include_transcript)
-        return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])
+        if relationships:
+            return '\n\n'.join([f"{name}:\n {relationship}" for name, relationship in relationships.items()])
+        else:
+            return 'None to report'
 
     def get_known_actor_relationship(self, actor_name: str) -> str:
         """
@@ -447,11 +450,11 @@ class KnownActorManager:
         return cls.from_json(data, owner, context)
     
     def get_dialog_transcripts(self, max_turns=10):
-        """return a list of dialog transcripts"""
+        """return a list of lines fromdialog transcripts"""
         transcripts = []
         for actor in self.known_actors.values():
             if actor is not self and actor.dialog:
                 transcript = actor.dialog.get_transcript(max_turns)
                 if transcript:
-                    transcripts.extend(transcript.split('\n'))
+                    transcripts.extend([f'#Name: {actor.canonical_name}']+transcript.split('\n')+['##'])
         return transcripts

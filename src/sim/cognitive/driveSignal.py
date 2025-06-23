@@ -73,6 +73,13 @@ class Drive:
 
     id: str = field(init=False)
     
+    @classmethod
+    def get_by_id(cls, id: str):
+        if id in cls._instances:
+            return cls._instances[id]
+        else:
+            return None
+    
     def __post_init__(self):
         Drive._id_counter += 1
         id_val = f"d{Drive._id_counter}"
@@ -207,7 +214,7 @@ End your response with:
                                     "character": f'{character.character}'}, prompt, tag='DriveSignal.update_drive', temp=0.1, stops=['</end>'], max_tokens=30)
         if result:
             try:
-                return Drive(result.strip())
+                return Drive(text=result.strip(), activation=self.activation*0.9)
             except:
                 return None
         else:
@@ -563,15 +570,15 @@ The valid tags in this response are signal, type, description, drive_ids, import
 The type tag takes a single work as its content, either issue or opportunity.
 be careful to insert line breaks only where shown, separating a value from the next tag, as in the following example:
 
-#signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
+#signal 3-4 words max tersely naming the key theme or essence (e.g., "Food Source Discovered")
 #type issue or opportunity
-#description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
+#description 4-6 words max explicitly identifying the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
 #importance 0.0-1.0
 #urgency 0.0-1.0
 ##
 
-Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
+Only respond if you find a clear and strong signal. Report only the single most urgent importantsignal.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
                           
@@ -627,7 +634,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #urgency 0.0-1.0
 ##
 
-Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
+Only respond if you find a clear and strong signal. Multiple signals can be on separate lines. Report at most 2 signals.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
@@ -828,7 +835,7 @@ End your response with:
         self.get_scored_clusters() # rank new clusters
         print(f"Reclustered into {len(self.clusters)} clusters")
         
-    def get_signals_for_drive(self, drive: Drive, n: int = 3) -> List[Tuple[SignalCluster, float]]:
+    def get_signals_for_drive(self, drive: Drive=None, drive_id=None, n: int = 3) -> List[Tuple[SignalCluster, float]]:
         """Get the n highest scoring SignalClusters most similar to the given Drive.
         
         Args:
@@ -847,6 +854,10 @@ End your response with:
             return []
         
         # Calculate similarity scores
+        if drive is None and drive_id is not None:
+            drive = Drive.get_by_id(drive_id)
+        if drive is None:
+            return []
         similar_clusters = []
         for cluster, cluster_score in scored_clusters:
             similarity = self._cosine_similarity(drive.embedding, cluster.centroid)

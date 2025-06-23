@@ -18,7 +18,7 @@ model_name = configuration.model_name
 importlib.reload(suburban)    
 
 map_file_name='suburban.py' # needed to trigger narrative creation
-
+narrative=True
 # Character definitions
 Hu = NarrativeCharacter("Hu", """You are Hu Manli, a healthy, professionally dressed 39 year old chinese female insurance executive. 
 You speak directly and candidly.

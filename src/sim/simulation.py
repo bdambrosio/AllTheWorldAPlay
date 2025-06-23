@@ -44,11 +44,11 @@ log_path = os.path.join(logs_dir, 'simulation.log')
 
 # Create the logger
 sim_logger = logging.getLogger('simulation_core')
-sim_logger.setLevel(logging.INFO)
+sim_logger.setLevel(logging.DEBUG)
 
 # Create file handler and set level
 file_handler = logging.FileHandler(log_path, mode='w')
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(logging.DEBUG)
 
 # Create formatter
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -219,17 +219,14 @@ class SimulationServer:
             modules_to_clear = [key for key in sys.modules.keys() if 'webworld_play' in key or 'lost' in key]
             for mod in modules_to_clear:
                 del sys.modules[mod]
-                print(f'DEBUG: cleared module {mod}')
-            print(f'DEBUG: loading play {play_path}')
-            print(f'DEBUG: creating spec...')
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
-            print(f'DEBUG: spec created: {spec}')
-            print(f'DEBUG: creating module from spec...')
+            #print(f'DEBUG: spec created: {spec}')
+            #print(f'DEBUG: creating module from spec...')
             module = importlib.util.module_from_spec(spec)
-            print(f'DEBUG: module created: {module}')
-            print(f'DEBUG: about to call exec_module...')
+            #print(f'DEBUG: module created: {module}')
+            #print(f'DEBUG: about to call exec_module...')
             spec.loader.exec_module(module)            
-            print(f'DEBUG: exec_module completed')
+            #print(f'DEBUG: exec_module completed')
             if not hasattr(module, 'W'):
                 raise ValueError("Play file must define a 'W' variable holding context")
 
@@ -262,13 +259,17 @@ class SimulationServer:
                 os.makedirs(self.known_actors_dir)
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)+len(self.sim_context.extras)} actors")
             self.sim_context.message_queue.put({'name':self.sim_context.name, 'text':f'----- {play_name} loaded-----'})
+            map_file_name = None
             if hasattr(module, 'map_file_name'):
-                await self.sim_context.create_character_narratives(play_name, module.map_file_name)
+                map_file_name = module.map_file_name
+            if hasattr(module, 'narrative') and module.narrative:
+                await self.sim_context.create_character_narratives(play_name, map_file_name)
                 self.narrative_play = True
                 #await self.sim_context.run_character_narratives()
                 self.narrative_task = asyncio.create_task(self.sim_context.run_integrated_narrative())
             else:
-                print(f'No narrative or map file name found for {play_name}, running unplanned')
+                print(f'narrative=False or map file name not found for {play_name}, running unplanned')
+                await self.sim_context.introduce_characters(play_name, map_file_name)
         except Exception as e:
             traceback.print_exc()
             await self.send_result({
@@ -312,6 +313,7 @@ class SimulationServer:
             # Send command acknowledgment
             await self.send_command_ack('step')
         except Exception as e:
+            traceback.print_exc()
             logger.error(f"Error in simulation step: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
             self.is_running = False
@@ -362,8 +364,8 @@ class SimulationServer:
                 await self.run_task
             except asyncio.CancelledError:
                 pass
-            # Start new run task
-            self.run_task = asyncio.create_task(self.run_loop())
+        # Start new run task
+        self.run_task = asyncio.create_task(self.run_loop())
         
         # Send command acknowledgment
         await self.send_command_ack('run')
@@ -471,15 +473,8 @@ class SimulationServer:
                     await self.send_command_ack('step')
                     await asyncio.sleep(0.1)
                     return
-                elif self.step_task and not self.step_task.done():
-                    self.step_task.cancel()
-                    try:
-                        await self.step_task
-                    except asyncio.CancelledError:
-                        pass
-                    # Start new step task
-                    self.step_task = asyncio.create_task(self.step())
-                    # Don't await it - let it run independently
+                else:
+                    await self.step()
                     await asyncio.sleep(0.1)
                     return
             elif cmd_name == 'run':
@@ -595,7 +590,7 @@ class SimulationServer:
             try:
                 if self.sim_context and not self.sim_context.message_queue.empty():
                     message = self.sim_context.message_queue.get_nowait()
-                    print(f"DEBUG: simulation.py processing message: {message.get('text', 'unknown')}")
+                    #print(f"DEBUG: simulation.py processing message: {message.get('text', 'unknown')}")
                     if message['text'] == 'character_update':
                         # async character update messages include the actor data in the message
                         actor_data = message['data']
@@ -640,7 +635,7 @@ class SimulationServer:
                             'text': message['text']
                         })
                     elif message.get('text') in ['action_choice', 'goal_choice', 'task_choice', 'act_choice', 'scene_choice']:
-                        print(f"DEBUG: simulation.py forwarding choice message: {message.get('text')}")
+                        #print(f"DEBUG: simulation.py forwarding choice message: {message.get('text')}")
                         await self.send_result(message)
 
                     elif message.get('text') == 'character_detail':

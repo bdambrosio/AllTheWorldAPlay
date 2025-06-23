@@ -20,6 +20,8 @@ import utils.CohereClient as cohere_client
 import utils.GeminiClient as gemini_client
 
 MODEL = '' # set by simulation from config.py
+logger = logging.getLogger('simulation_core')
+#logger.setLevel(logging.DEBUG)
 
 response_prime_needed = False
 tabby_api_key = os.getenv("TABBY_API_KEY")
@@ -176,7 +178,7 @@ class LLM():
         if trace:
             print(f'\n{json.dumps(substituted_prompt)}\n')      
         if log:
-            logging.debug(f'Prompt: {substituted_prompt}\n')
+            logger.info(f'Prompt: {substituted_prompt}\n')
         if 'openai' in self.server_name:
             response = self.openai_client.executeRequest(prompt=substituted_prompt, options=options)
             return response
@@ -250,7 +252,7 @@ class LLM():
             traceback.print_exc()
             raise Exception(response)
 
-    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=False, trace=False):
+    def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=True, trace=False):
         global elapsed_times, iteration_count
         if max_tokens is None: max_tokens = 400
         if temp is None: temp = 0.7
@@ -262,9 +264,11 @@ class LLM():
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
+            print(f'{tag}...', end='')
             response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
             #response = response.replace('<|im_end|>', '')
             elapsed = time.time()-start
+            print(f'{elapsed:.2f}')
             if not tag or tag == '':
                 tag = 'default'
             if tag != '':
@@ -288,8 +292,8 @@ class LLM():
                         if eos_index > -1:
                             response=response[:eos_index]
             if log:
-                logging.debug(f'Response:\n{response}\n')
-                logging.getLogger().handlers[0].flush()
+                logger.info(f'Response:\n{response}\n')
+                #logger.handlers[0].flush()
             return response
         except Exception as e:
             traceback.print_exc()

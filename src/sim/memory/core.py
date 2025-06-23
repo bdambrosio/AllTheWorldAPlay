@@ -328,16 +328,9 @@ class NarrativeSummary:
                                     
         return "\n\n".join(sections)
     
-    def get_summary(self, length: str = 'medium') -> str:
+    def get_summary(self, scope: str = None) -> str:
         """Get narrative summary of specified length (short/medium/long)"""
-        #if True: # ablation testing
-        #    return ''
-        if length == 'short' or length == 'medium':
-            # Just recent events and current activities
-            return "\n\n".join([self.recent_events, self.ongoing_activities])
-        else:
-            # Full narrative
-            return self.get_full_narrative()
+        return self.get_full_narrative()
         
 
     

@@ -62,7 +62,7 @@ class Goal:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
     
-    def __init__(self, name, actors, description, preconditions, termination, signalCluster, drives):
+    def __init__(self, name, actors, description, preconditions=None, termination=None, signalCluster=None, drives=None):
         Goal._id_counter += 1
         self.id = f"g{Goal._id_counter}"
         Goal._instances[self.id] = self
@@ -76,6 +76,7 @@ class Goal:
         self.progress = 0
         self.task_plan = []
         self.tasks = []
+        self.completion_statement = ''
 
     def __eq__(self, other):
         if not isinstance(other, Goal):
@@ -134,7 +135,7 @@ class Task:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
     
-    def __init__(self, name, description, reason, termination, goal, actors, start_time, duration):
+    def __init__(self, name, description, reason, actors, goal, termination=None, start_time=None, duration=None):
         Task._id_counter += 1
         self.id = f"t{Task._id_counter}"
         Task._instances[self.id] = self
@@ -149,6 +150,7 @@ class Task:
         self.needs = ''
         self.result = ''
         self.acts = []
+        self.completion_statement = ''
 
     def __eq__(self, other):
         if not isinstance(other, Task):
@@ -217,7 +219,7 @@ class CentralNarrative:
         self.risks = risks
 
     def to_string(self):
-        return f'CentralNarrative: Question: {self.question}; Why: {self.why}; Reason: {self.reason}; Others Roles: {self.others}; Risks: {self.risks}'
+        return f'CentralNarrative: Question - {self.question}; Why - {self.why}; Reason - {self.reason}; Others Roles - {self.others}; Risks - {self.risks}'
     
     @classmethod
     def parse_from_hash(cls, hash_string):

@@ -1092,12 +1092,12 @@ class WorldMap:
         if self.resource_registry:
             lines.append("\nResourceInstances:")
             for resource_id, resource_data in self.resource_registry.items():
-                lines.append(f"  {resource_id}:")
-                
+                text = f"  {resource_id}"
                 # Check if resource has an owner
                 owner = resource_data['properties'].get('owner')
                 if owner:
-                    lines.append(f"    owner: {owner.name}")
+                    text += f", owner: {owner.name}"
+                lines.append(text)
         
         return '\n'.join(lines)
 

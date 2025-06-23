@@ -19,6 +19,16 @@ from pathlib import Path
 from datetime import datetime
 from scipy import stats
 from statsmodels.stats import multitest
+import logging
+
+home = str(Path.home())
+logs_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'logs/')
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+log_path = os.path.join(logs_dir, 'simulation.log')
+
+# Create the logger
+sim_logger = logging.getLogger('simulation_core')
 
 llm = LLM('openai', model_name='gpt-4.1-mini')
 #llm = LLM('vllm')
@@ -1211,18 +1221,18 @@ if __name__ == "__main__":
     # compute_descriptive_statistics_hybrid(df)
     # sys.exit()
     # Load scenario - use relative path resolution
-    scenario_path = Path(__file__).parent / '../../plays/lost.py'
+    scenario_path = Path(__file__).parent / '../../plays/alex.py'
     with open(scenario_path, 'r') as f:
         scenario_lines = f.readlines()
         scenario = parse_scenario(scenario_lines)
 
     # Load transcript
-    with open('src/sim/evaluation/lost-4.1-all-20250617.txt', 'r') as f:
+    with open('src/sim/evaluation/Interview-4.1-base-20250623.txt', 'r') as f:
         transcript = f.readlines()
         
     # Run evaluation
     results = evaluate_transcript(
-        ['Samantha', 'Joe'],
+        ['Alex', 'Susan', 'Receptionist', 'Interviewer'],
         scenario,
         '\n'.join(transcript),
         6000

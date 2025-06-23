@@ -308,7 +308,7 @@ async def shutdown_event():
 
 def convert_sim_to_ws_message(sim_result):
     """Convert simulation message format to websocket format"""
-    print(f"Converting message: {sim_result.get('type')}")  # Debug logging
+    #print(f"Converting message: {sim_result.get('type')}")  # Debug logging
     
     # Handle show_update messages from the simulation
     if sim_result.get('type') == 'show_update':

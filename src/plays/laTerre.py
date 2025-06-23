@@ -18,7 +18,7 @@ model_name = configuration.model_name
 importlib.reload(rural)
 
 map_file_name = 'rural.py' # needed to trigger narrative creation
-
+narrative=True
 J = NarrativeCharacter("Jean", """Jean Macquart, a hardworking young unmarried peasant farmer working his father's farm. 
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.

@@ -84,7 +84,7 @@ class EmotionalStance:
         self.tone = tone
         self.orientation = orientation
 
-    def to_definition(self):
+    def to_string(self):
         return f'{str(self.arousal.value)}, {str(self.tone.value)}, {str(self.orientation.value)}'
 
     def to_definition(self):

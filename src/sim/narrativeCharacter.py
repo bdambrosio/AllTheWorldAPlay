@@ -6,7 +6,8 @@ import logging
 from typing import Optional, Dict, List, Any
 import os, sys, re, traceback, requests, json
 
-from sim.character_dataclasses import Act, Task, CentralNarrative, datetime_handler
+from sim.character_dataclasses import Act, Goal, Task, CentralNarrative, datetime_handler
+from src.sim.cognitive.EmotionalStance import EmotionalStance
 from src.utils.Messages import UserMessage
 from utils import hash_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -15,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from sim.prompt import ask as default_ask
 from sim.agh import Character
+from sim.cognitivePrompt import CognitiveToolInterface
 
 if TYPE_CHECKING:
     from sim.memory.core import NarrativeSummary
@@ -40,7 +42,7 @@ class NarrativeCharacter(Character):
         self.current_proposal = None
         self.round_number = 0 # central narrative negotiation round number
         self.central_narrative = None
-        #self.llm.set_model('gpt-4o-mini')
+        self.cognitive_tools = CognitiveToolInterface(self)
 
     def validate_scene_time(self, scene) -> Optional[datetime]:
         """
@@ -88,7 +90,7 @@ class NarrativeCharacter(Character):
         serialized_str = self.reserialize_narrative_json({"acts":[act]})
         return json.dumps(serialized_str['acts'][0], indent=2, default=datetime_handler)
 
-    async def introduce_myself(self, play_file_content, map_file_content):
+    async def introduce_myself(self, play_file_content, map_file_content=None):
 
         system_prompt = """Imagine you are addressing the audience of a play. 
 Create a short introduction (no more than 60 tokens) to your character, including your name, terse description, role in the play, drives, and most important relationships with other characters. 
@@ -136,37 +138,45 @@ End your response with </end>
 
         introduction = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix,
                                 addl_bindings={"scenario": play_file_content, 
-                                 "map": map_file_content,
+                                 "map": map_file_content if map_file_content else '',
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat(),
                                  "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                  "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
-                                 max_tokens=200, tag='narrative')
+                                 max_tokens=200, tag='NarrativeCharacter.introduction')
         if introduction:
             self.context.message_queue.put({'name':self.name, 'text':introduction+'\n'})
             await asyncio.sleep(0)
     
 
 
-    async def write_narrative(self, play_file_content:str, map_file_content:str, central_narrative:CentralNarrative):
+    async def write_narrative(self, play_file_content:dict, map_file_content:str, central_narrative:CentralNarrative):
 
-        mission = """You are a skilled actor / playwright working on an initial outline for an improvisational play. 
-The overall cast of characters and setting are given below.
+        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minute screenplay.
+Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
+Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive.
+        """
 
-<Scenario>
+        mission = """ 
+The overall setting, cast of characters, and physical world are given below.
+
+#Setting
 {{$scenario}}
-</Scenario>
 
-<Map>
+#Physical World
 {{$map}}
-</Map>
+##
 
-A prior negotiation process has established the following central dramatic question that will drive the overall play:
+
+A prior negotiation process has established the following central dramatic question that will drive the overall play*:
 {{$central_narrative}}
 
-You also have your own plans that may or may not be consistent with the central dramatic question. Key is how they play a role in or support the central dramatic question.
-Focus your own screenplay outline on your role in the play:
-{{$my_narrative}}
+You also have your own plans that may or may not be consistent with the central dramatic question.
+Focus your personal lifeplan on what you see as your role in the play*: {{$my_narrative}}
 
 * narrative is a paragraph or two including the following elements:
 1. Central Dramatic Question: One clear sentence framing the core conflict
@@ -177,7 +187,6 @@ Focus your own screenplay outline on your role in the play:
 6. Failure Scenario: Brief description of what "losing" looks like
 
 After processing the above information and in light of the following information, generate a 3 act outline for the play.
-Your generated narrative should be consistent with the central dramatic question and the other elements of the central narrative.
 
 Consider the following guidelines:
 ** For act 1:
@@ -209,39 +218,18 @@ Consider the following guidelines:
     7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
 
 """
-                            
-        suffix="""
-Respond only with your introduction.
-Do not include any other explanatory, discursive, or formatting text.
-End your response with </end>
-"""
-
-        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minute screenplay.
-Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
-Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive.
-        """
 
         suffix = """
 
-Imagine you are {{$name}} and your drives include:
+Remember, you are {{$name}}
 
-Primary 
-{{$primary_drive}}
-
-Secondary
-{{$secondary_drive}}
-
-## 2.  TASK
-Generate a single JSON document named **narrative.json** that outlines the narrative arc for yourself focused on your primary and secondary drives.
+## TASK: Generate a narrative arc for yourself
+Generate a single JSON document that outlines the narrative arc for yourself.
 The narrative should start at the current time: {{$start_time}}
-Given where you are in life, what you have achieved so far, and what you want to achieve, this should be a plan for a long enough elapse time to make interesting dramatic progress wrt a primary issue in the scenario.
 Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.
 By the end of the narrative, the primary drive should be resolved.
-### 2.1  Structure
+
+### Structure
 Return exactly one JSON object with these keys:
 
 * "title"    – a short, evocative play title.  
@@ -276,7 +264,7 @@ Return **only** the JSON.  No commentary, no code fences.
 """
 
         narrative = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix, 
-                                addl_bindings={"scenario": self.context.summarize_scenario(), 
+                                addl_bindings={"scenario": json.dumps(self.context.summarize_scenario(), indent=2, default=datetime_handler), 
                                  "map": self.context.summarize_map(),
                                  "name": self.name,
                                  "central_narrative": central_narrative,
@@ -284,7 +272,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "start_time": self.context.simulation_time.isoformat(),
                                  "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                  "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
-                                 max_tokens=5000, tag='narrative')
+                                 max_tokens=5000, tag='NarrativeCharacter.write_narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
         except Exception as e:
@@ -332,7 +320,7 @@ End your response with </end>
                 response = default_ask(self, prefix=mission, suffix=suffix, 
                                 addl_bindings={"name": character.name, 
                                  "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler)}, 
-                                 max_tokens=240, tag='share_narrative')
+                                 max_tokens=240, tag='NarrativeCharacter.share_narrative')
                 try:
                     say_arg = hash_utils.find('share', response)
                     if say_arg:
@@ -345,6 +333,13 @@ End your response with </end>
                     print(f'Error parsing shared narrative: {e}')
                     traceback.print_exc()
         return None
+
+    def get_act_from_plan(self, act_number):
+        for act in self.plan["acts"]:
+            if act["act_number"] == act_number:
+                return act
+        return None
+
 
     def update_act(self, new_act):
         valid, reason = self.context.validate_narrative_act(new_act, require_scenes=True)
@@ -420,7 +415,7 @@ Each **scene** object must have:
  "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
  "duration": int, // in minutes
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
- "action_order": [ "<Name>", … ], // 2-4 beats max, list only characters present 
+ "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
@@ -451,9 +446,11 @@ Each **scene** object must have:
       "duration": int, // in minutes
       "location": "Location 1",
       "characters": { "Character 1": { "goal": "Goal 1" }, ... },
-      "action_order": [ "Character 1, ...,... ], // 2-4 beats max, list only characters present but a character can act more than once in a scene
-      "pre_narrative": "Pre-narrative 1",
-      "post_narrative": "Post-narrative 1"
+      "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
+      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+      "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+       // OPTIONAL: 
+      "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
     },
     ...
   ]
@@ -478,7 +475,6 @@ be careful to insert line breaks only where shown, separating a value from the n
 ```json
 updated act
 ```
-End your response with </end>
 """
         dialogs = self.actor_models.dialogs()
 
@@ -488,7 +484,7 @@ End your response with </end>
                                "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler),
                                "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
                                "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
-                              max_tokens=1600, tag='update_narrative')
+                              max_tokens=1600, tag='NarrativeCharacter.update_narrative')
         try:
             updated_act = None
             act_id = -1
@@ -533,7 +529,7 @@ End your response with </end>
             logger.error(traceback.format_exc())
         return None
 
-    def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative):
+    def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
         """Rewrite the act with the latest shared information"""
 
         system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
@@ -558,6 +554,10 @@ your original act was:
 {{$act}}
 
 and it was number {{$act_number}} in the your original narrative plan.
+
+Critically, the play has progressed since you originally formulated this act, perhaps in unanticipated directions. The previous act post-state (ie, the actual situation after the previous act) is now:
+{{$previous_act_post_state}}
+
 The actual previous acts performed were an integration across all characters's plans, and are:
 
 {{$previous_acts}}
@@ -571,11 +571,10 @@ The dramatic context agreed upon for the current act (ie, this act being replann
 """
         suffix = """
 
-Again, your original act plan was:
-Act number: {{$act_number}}
-{{$act}}
+Pay special attention to the goals you have already attempted and their completion status in planning your new act. 
+Do not repeat goals that have already been attempted and completed, unless you have a new reason to attempt them again or it is important for dramatic tension.
 
-Note that the current situation, as well as any assumptions or preconditions on which your original act and plan were based, may no longer be valid.
+Note that in the current situation any assumptions or preconditions on which your original act and plan were based may no longer be valid.
 However, the original short-term plan above should still be used to locate your new plan within the overall narrative arc of the performance.
 
 The following act-specific guidelines supplement the general guidelines above, and override them where necessary. Again, the current act number is {{$act_number}}:
@@ -584,7 +583,7 @@ The following act-specific guidelines supplement the general guidelines above, a
     1. This act should be short and to the point..
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {{$central_narrative}}
-    4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
+    4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.
     5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
     6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
  
@@ -620,7 +619,7 @@ The following act-specific guidelines supplement the general guidelines above, a
     9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
 
 
-Respond with tee updated act, using the following format:
+Respond with the updated act, using the following format:
 
 ```json
 updated act
@@ -650,7 +649,7 @@ Each **scene** object must have:
  "location": string, // pick from resource or terrain names in the map file
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
- "action_order": [ "<Name>", … ], // 2-4 beats max, list only characters present 
+ "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
@@ -678,9 +677,11 @@ Each **scene** object must have:
       "time": "2025-01-01T09:00:00", // the start time of the scene, in ISO 8601 format
       "location": "Location 1",
       "characters": { "Character 1": { "goal": "Goal 1" }, ... },
-      "action_order": [ "Character 1, ...,... ], // 2-4 beats max, list only characters present but a character can act more than once in a scene
-      "pre_narrative": "Pre-narrative 1",
-      "post_narrative": "Post-narrative 1"
+      "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
+      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+      "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+      // OPTIONAL: 
+      "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
     },
     ...
   ]
@@ -693,7 +694,6 @@ Again, the act central narrative is:
 ```
 === End of Example ===
 
-End your response with </end>
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.context.reserialize_acts_times(acts)
@@ -701,11 +701,12 @@ End your response with </end>
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
                                "act_number": act['act_number'],
+                               "previous_act_post_state": previous_act_post_state,
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,
                                "play": json.dumps(self.context.reserialize_acts_times(self.plan), indent=1, default=datetime_handler),
                                "previous_acts": '\n'.join([json.dumps(self.context.reserialize_act_times(act), default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
-                              max_tokens=1400, tag='replan_narrative_act')
+                              max_tokens=1400, tag='NarrativeCharacter.replan_narrative_act')
         try:
             updated_act = None
             act_id = act['act_number']
@@ -724,9 +725,11 @@ End your response with </end>
         else:
             print(f'{self.name} failed to update act {act_id}')
             updated_act = act
+        self.current_act = updated_act
+        self.current_act_index = act_number
         return updated_act
 
-    async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content):
+    async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content=None):
         """Negotiate the central dramatic question with other characters"""
 
         mission="""You are {{$name}} engaging in collaborative story development with other characters to establish the central dramatic question that will drive the upcoming narrative.
@@ -791,14 +794,14 @@ be careful to insert line breaks only where shown, separating a value from the n
                                "current_proposals": '\n'.join([f'{char.name}: {char.current_proposal.to_string() if char.current_proposal else ""}' for char in self.context.actors if char.name != self.name]),
                                "round_number": round,
                                "play_file_content": play_file_content,
-                               "map_file_content": map_file_content},
-                              max_tokens=200, tag='negotiate_central_narrative')
+                               "map_file_content": map_file_content if map_file_content else ''},
+                              max_tokens=200, tag='NarrativeCharacter.negotiate_central_narrative')
         if response:
             central_narrative = CentralNarrative.parse_from_hash(response)
             self.previous_proposal = self.current_proposal
             self.current_proposal = central_narrative
             self.central_narrative = central_narrative.to_string() # store as string, since that is how global central narrative is stored
-            #self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
+            self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
             await asyncio.sleep(0.4)
         return response
     
@@ -833,8 +836,6 @@ Respond with either:
 
 Following will be a large set of background information about the play, the scene, and the task.
 
-
-
 """
 
         mission = """
@@ -842,9 +843,11 @@ Following will be a large set of background information about the play, the scen
 You previously planned to pursue this task next:
 
 {{$planned_task}}
+
+The scene will end with this task:
 {{$final_task}}
 
-In the following Dramatic Context:
+You are performing a in play with the following Dramatic Context:
 
 ##Dramatic Context
 <central_narrative>
@@ -890,20 +893,20 @@ And the following set of tasks has already been performed within the scene:
 
         suffix = """    
 ##Instructions
-Review your planned task against current conditions and decide if it should be:
-1. **KEPT** - Still appropriate and achievable as planned
-2. **REVISED** - Core intent is good but details need adjustment  
-3. **REPLACED** - Circumstances have made a different approach better
+Review your planned task against current conditions and decide if it should be kept, revised, or replaced.
+1. Choose to keep the task if it is still appropriate and achievable as planned
+2. Choose to revise the task if the core intent is good but details need significant adjustment  
+3. Choose to replace the task if circumstances have made a different approach better
 
 Consider these factors:
-- Has the scene dynamic shifted from your expectations?
-- Are the planned actors still available/relevant?
+- Has the scene dynamic shifted significantlyfrom your expectations?
+- Have the relationships among planned actors changed in ways that make your task no longer appropriate?
 - Do recent events create better opportunities?
-- Does your task conflict with or duplicate others in the scene plan?
+- Does your task conflict with or duplicate others in the scene plan? Avoid duplication. Review past goals and their completion status to ensure you are not repeating yourself.
 
 Respond with either:
-- "KEEP" (if no changes needed)
-- The revised task in hash format (if changes would improve effectiveness)
+- "KEEP" (if no changes needed) *OR*
+- The revised /replaced task in hash format (if changes would improve effectiveness)
 
 Remember, if you choose to make any changes:                             
  - A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
@@ -968,7 +971,7 @@ End response with:
             task_hash = forms[0]
             print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
             if not self.focus_goal:
-                print(f'{self.name} generate_plan: no focus goal, skipping task')
+                print(f'{self.name} generate_plan: no focus goal, skipping task')   
             new_task = self.validate_and_create_task(task_hash, goal)
             if new_task:
                 goal.task_plan = [new_task] # only use the first task, that's all we asked for.
@@ -976,3 +979,114 @@ End response with:
             else:
                 print(f'{self.name} generate_plan: no new task')
         return task
+    
+    def generate_new_focus_goal(self, goal):
+        """ just completed a goal, generate the next focus goal to work on"""
+        pass
+
+    def closing_acts(self, situation: str, task: Task, goal: Goal=None):
+
+        system_prompt = """You are {{$name}}, a character at the end of an improvisational play. 
+This is your chance to reflect on the past, face the future, and decide if you have anything to say to any of the other characters.
+You have two goals in this.
+First, reach some closure with the other characters, as part of your improvisational performance in your role as {{$name}}.
+Second, give the audience a feeling of closure, even if the overall dramatic question is left unresolved.
+
+To achieve these goals, you will be given the option below to engage in a final dialog with one or more of the other characters.
+"""
+        
+        prefix = """The overall dramatic question has been
+#Central Dramatic Question
+{{$central_narrative}}
+##
+
+In the final act it narrowed down to
+#Act Specific Narrative
+{{$act_specific_narrative}}
+##
+
+And the current state of resolution of that question is:
+#Final Outcome
+{{$final_outcome}}
+##
+
+"""
+        suffix = """
+
+First, identify the other characters you want to reach closure with.
+Then, for each identified character, generate at most one Say action.
+The Say action should be a short statement of your feelings about the experience you had with that character, and any remaining unexpressed thoughts or intentions wrt that character that need closure.
+It should be one or two sentences, no more than 20 words.
+
+Review your character and current emotional stance when choosing what to say.. 
+Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression.
+Remember, this is your final chance to reach closure with the other characters, and to give the audience a feeling of closure, even if the overall dramatic question is left unresolved.
+Your may, as examples, wish to:
+- Acknowledge the other character's role in the play.
+- Ask the other character a question to resolve a remaining ambiguity about the Central Dramatic Question of the Act Specific Narrative.
+- Express gratitude for the other character's help.
+- Express regret or anger for your own or the other character's actions.
+- Express hope for the other character's future.
+- Express a desire to work together in the future.
+
+Dialog (Say) guidance:
+- The specificAct must contain only the actual words to be spoken.
+- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
+    Use contractions and language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
+- If intended recipient is known  or has been spoken to before (e.g., in RecentHistory), 
+    then pronoun reference is preferred to explicit naming, or can even be omitted. 
+- In any case, when using pronouns, always match the pronoun gender (he, she, his, her, they, their,etc) to the sex of the referent, or use they/their if a group. 
+- Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
+- Avoid repeating stereotypical past dialog.
+- Avoid repeating dialog from 
+{{$dialog_transcripts}}.
+                              
+Respond using the following hash-formatted text for each , where each tag is preceded by a # and followed by a single space, followed by its content.
+Each intension should be closed by a ## tag on a separate line.
+Be careful to insert line breaks only where shown, separating a value from the next tag.
+
+#mode Say
+#action thoughts, words to speak. Be concise, limit your response to 30 words max for mode Say.
+#target name of the actor you are speaking to.
+#duration 2 minutes
+##
+
+Do not include any introductory, explanatory, or discursive text. Remember, respond with 2 or at most 3 alternative acts.
+End your response with:
+</end>
+"""
+
+        response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
+                               addl_bindings={
+                                              "final_outcome": situation,
+                                              "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+                                              "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                              "name": self.name,
+                                              "dialog_transcripts": '\n'.join(self.actor_models.get_dialog_transcripts(20))}, 
+                               tag = 'NarrativeCharacter.closing_acts',
+                               max_tokens=200, log=True)
+        if response is not None:
+            response = response.strip()
+        # Rest of existing while loop...
+        act_hashes = hash_utils.findall_forms(response)
+        act_alternatives = []
+        if len(act_hashes) == 0:
+            print(f'No act found in response: {response}')
+            self.actions = []
+            return []
+        if not task.goal:
+            print(f'{self.name} generate_act_alternatives: task {task.name} has no goal!')
+            if not self.focus_goal:
+                print(f'{self.name} generate_act_alternatives: no focus goal either!')
+            task.goal = self.focus_goal
+        if len(act_hashes) < 2:
+            print(f'{self.name} generate_act_alternatives: only {len(act_hashes)} acts found')
+        for act_hash in act_hashes:
+            try:
+                act = self.validate_and_create_act(act_hash, task)
+                if act:
+                    act_alternatives.append(act)
+            except Exception as e:
+                print(f"Error parsing Hash, Invalid Act. (act_hash: {act_hash}) {e}")
+        self.actions = act_alternatives
+        return act_alternatives

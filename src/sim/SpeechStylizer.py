@@ -95,6 +95,8 @@ class SpeechStylizer:
         self._call_counter = 0
         # Track recent words for overuse detection
         self._recent_words = []  # List of (word, weight) tuples
+        self.relationship_cache = {}
+        self.relationships_last_refreshed = 0
 
     # =====================================================================
     # PUBLIC API
@@ -273,6 +275,10 @@ Format your response as valid JSON only, no other text.
             logger.error(f"KnownActor {target.name} is not a KnownActor: {known_actor}")
         else:
             relationship = known_actor.relationship
+
+        if self.relationship_cache.get(target.name) is not None and self.relationships_last_refreshed < 3:
+            self.relationships_last_refreshed += 1
+            return self.relationship_cache[target.name]
         
         prompt = [
             SystemMessage(content="""You are a dialogue style analyzer.
@@ -322,6 +328,8 @@ End your response with:
                 style["formality"] = float(formality.strip())
             except ValueError:
                 pass
+            self.relationship_cache[target.name] = style
+            self.relationships_last_refreshed = 0
             return style
         except:
            logger.error(f"Error analyzing relationship style for {self.char.name} and {target.name}: {traceback.format_exc()}")

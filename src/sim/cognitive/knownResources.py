@@ -41,7 +41,10 @@ class KnownResourceManager:
         self.known_resources = {}
 
     def to_string(self):
-        return '\n'.join([resource.to_string() for resource in self.known_resources.values()])
+        if self.known_resources:
+            return '\n'.join([resource.to_string() for resource in self.known_resources.values()])
+        else:
+            return 'None to report'
 
     def names(self):
         return [resource.name for resource in self.known_resources.values()]

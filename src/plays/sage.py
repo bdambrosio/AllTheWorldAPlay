@@ -19,7 +19,7 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(suburban)
 
-
+narrative=False
 # Create the human player character
 Sage = NarrativeCharacter("Sage", """Sage, a 60-year-old female herbalist who wears soft grey robes and has become a mentor figure.
 I have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi and the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    

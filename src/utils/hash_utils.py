@@ -98,16 +98,19 @@ def find(tag, text):
     if not text or not isinstance(text, str):
         return ""
         
-    tag = _validate_tag(tag)
+    tag = _validate_tag(tag) #returns tag.lower
     lines = text.split('\n')
-    tag_marker = f'#{tag}'
+    tag_marker = f'#{tag.lower()}'
     
     for line in lines:
         line = line.replace(tag+':', tag)
         stripped = line.strip().lower()
+        stripped = stripped.replace(tag+':', tag+" ")
         if stripped.startswith(tag_marker + ' '):
             # Use original line for result to preserve case of content
             return line.strip()[len(tag_marker)+1:].replace('#', '').strip().rstrip(':')
+        elif stripped.startswith(tag_marker): # maybe space omitted
+            return line.strip()[len(tag_marker):].replace('#', '').strip().rstrip(':')
     return ""
 
 def set(tag, form, value):
