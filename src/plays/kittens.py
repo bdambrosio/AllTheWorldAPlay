@@ -16,7 +16,7 @@ importlib.reload(garden)
 
 map_file_name = 'garden.py' # needed to trigger narrative creation
 narrative=False
-lemon = NarrativeCharacter("Lemonade", """You are a pale grey tabbykitten. 
+lemon = NarrativeCharacter("Lemonade", """Lemonade, a pale grey tabbykitten. 
 You love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 You are intelligent and very curious about everything.
 Your name is Lemonade, others often call you Lemon""", server_name=server_name)
@@ -27,7 +27,7 @@ lemon.set_drives([
     "safety from threats including accident, physical threats from unknown or adversarial actors or adverse events by staying close to meow-meow",
 ])
 
-meow = NarrativeCharacter("Meow-Meow", """You are a grey full-grown tabby cat. 
+meow = NarrativeCharacter("Meow-Meow", """Meow-Meow, a grey full-grown tabby cat. 
 You love Lemonade, but sometimes need a break from her playfulness.
 You like to sleep, and occasionally hunt bugs and butterflys.
 Your name is Meow-Meow""", server_name=server_name)

@@ -1227,7 +1227,7 @@ if __name__ == "__main__":
         scenario = parse_scenario(scenario_lines)
 
     # Load transcript
-    with open('src/sim/evaluation/Interview-4.1-base-20250623.txt', 'r') as f:
+    with open('src/sim/evaluation/Interview-2.5-base-20250625.txt', 'r') as f:
         transcript = f.readlines()
         
     # Run evaluation

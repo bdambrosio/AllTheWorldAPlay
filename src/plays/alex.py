@@ -34,7 +34,7 @@ Alex.drives = [
     Drive("Have happy life with Susan.")
 ]
 
-Susan = NarrativeCharacter('Susan', "A young woman with a kind face", server_name=server_name)
+Susan = NarrativeCharacter('Susan', "Susan, A young woman with a kind face", server_name=server_name)
 Susan.drives = [Drive("Get Alex a job"), Drive('be happy, support Alex  ')]
 Receptionist = NarrativeCharacter('Receptionist', "A young man with a kind face", server_name=server_name)
 Receptionist.drives = [Drive("Do a good job"), Drive('get a raise')]

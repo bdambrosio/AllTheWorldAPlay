@@ -144,11 +144,18 @@
   display: none;
 }
 
-.tasks-area, .history-area {
+.tasks-area,
+.history-area,
+.thoughts-area {
+  min-height: 60px;
+  max-height: 40vh;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.tasks-area {
   padding: 8px;
   border: 1px solid #444;
-  height: 60px;
-  overflow-y: auto;
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
   font-size: 0.9em;
@@ -165,12 +172,9 @@
   margin-top: 0;
   padding: 8px;
   border: 1px solid #444;
-  height: 80px;
-  overflow-y: auto;
   background: rgba(0, 0, 0, 0.3);
   color: #d0d0d0;
   font-size: 0.9em;
-  flex-shrink: 0;
 }
 
 /* Modal-specific thoughts area styles */

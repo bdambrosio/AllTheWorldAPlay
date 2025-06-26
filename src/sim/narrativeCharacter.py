@@ -319,7 +319,7 @@ End your response with </end>
 
                 response = default_ask(self, prefix=mission, suffix=suffix, 
                                 addl_bindings={"name": character.name, 
-                                 "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler)}, 
+                                 "plan": json.dumps(self.plan, default=datetime_handler)}, 
                                  max_tokens=240, tag='NarrativeCharacter.share_narrative')
                 try:
                     say_arg = hash_utils.find('share', response)
@@ -542,7 +542,8 @@ By the final act, resolve—or intentionally leave poised—the protagonist’s 
         """
         mission = """ You have already created a initial outline for the following act, and now need to update it based on the actual performance so far and the guiding central dramatic question.
 Note the tensions and relationships with other characters, as these may have changed.
-Note also the post-narrative of the previous act, and check consistency with the assumptions made in this act, including it's title, pre-narrative, goals, description, and character goals in the initial scene.
+Note also the final scene and post-state of the previous act.
+Check consistency with the choices made in this updated act, including it's title, pre-state, location, goals, description, and character goals in the initial scene.
 Based on prior conversations and events recorded below, update your plan for the following act. 
 The act may be empty, ie have no scenes. In this case, you should flesh out the act with scenes based on it's title and place in the play. Make sure the overall narrative arc is maintained.
 If there are scenes in the act, they may have already occurred in the performance so far, or may no longer be relevant (e.g. other actor's plans have changed), and if so should be removed or rewritten to reflect the new information.
@@ -554,19 +555,14 @@ your original act was:
 {{$act}}
 
 and it was number {{$act_number}} in the your original narrative plan.
-
+####
 Critically, the play has progressed since you originally formulated this act, perhaps in unanticipated directions. The previous act post-state (ie, the actual situation after the previous act) is now:
 {{$previous_act_post_state}}
+####
 
 The actual previous acts performed were an integration across all characters's plans, and are:
 
 {{$previous_acts}}
-
-The overall play Dramatic Context (central Question / Conflict driving all dramatic action is:
-{{$central_narrative}}
-
-The dramatic context agreed upon for the current act (ie, this act being replanned) is:
-{{$act_central_narrative}}
 
 """
         suffix = """
@@ -704,8 +700,8 @@ Again, the act central narrative is:
                                "previous_act_post_state": previous_act_post_state,
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,
-                               "play": json.dumps(self.context.reserialize_acts_times(self.plan), indent=1, default=datetime_handler),
-                               "previous_acts": '\n'.join([json.dumps(self.context.reserialize_act_times(act), default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
+                               "play": json.dumps(self.plan, indent=1, default=datetime_handler),
+                               "previous_acts": '\n'.join([json.dumps(act, default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
                               max_tokens=1400, tag='NarrativeCharacter.replan_narrative_act')
         try:
             updated_act = None
@@ -801,7 +797,7 @@ be careful to insert line breaks only where shown, separating a value from the n
             self.previous_proposal = self.current_proposal
             self.current_proposal = central_narrative
             self.central_narrative = central_narrative.to_string() # store as string, since that is how global central narrative is stored
-            self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
+            #self.context.message_queue.put({'name':self.name, 'text':f'proposes {self.current_proposal.to_string()}\n'})
             await asyncio.sleep(0.4)
         return response
     

@@ -14,7 +14,7 @@ map_file_name = 'apocalypse.py' # needed to trigger narrative creation
 narrative=False
 server_name = configuration.server_name
 
-K = NarrativeCharacter("Kidd", """Kidd,a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
+K = NarrativeCharacter("Kidd", """Kidd, a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
 You are a newcomer to the strange, isolated city of Bellona.
 You are intelligent, introspective, and somewhat disoriented by your new surroundings.
 You are curious about the city and its inhabitants, driven by a deep loneliness and longing for something more from life.
@@ -28,7 +28,7 @@ K.set_drives([
     "expressing yourself through writing and art.",
 ])
 K.add_to_history("You think: Where am I? This city seems so strange and unfamiliar. I feel disoriented, but also intrigued by the unusual atmosphere.")
-L = NarrativeCharacter("Lanya", """Lanya,a young, dark-haired woman dressed in scavenged clothes, living in the city of Bellona.
+L = NarrativeCharacter("Lanya", """Lanya, a young, dark-haired woman dressed in scavenged clothes, living in the city of Bellona.
 You are confident, independent, and adapted to the city's unconventional way of life.
 You are open-minded and comfortable with your sexuality.
 You have a strong sense of self and a deep understanding of the city's dynamics.

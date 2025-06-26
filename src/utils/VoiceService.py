@@ -191,7 +191,7 @@ class ElevenLabsProvider:
         # Build request parameters
         request_data = {
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_multilingual_v2",
             "voice_settings": {
                 "stability": options.get('stability', 0.5),
                 "similarity_boost": options.get('similarityBoost', 0.5)

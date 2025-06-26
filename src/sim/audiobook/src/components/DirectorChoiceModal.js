@@ -64,7 +64,7 @@ function DirectorChoiceModal({ request, onChoice, onClose }) {
 
   if (!request || !['goal', 'task', 'act', 'action'].includes(request.choice_type)) return null;
 
-  const { character_name, options } = request;
+  const { character_name, options = [] } = request;
 
   const handleNewGoalChange = (e) => {
     const { name, value } = e.target;

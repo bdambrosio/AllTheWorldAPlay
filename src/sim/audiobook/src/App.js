@@ -106,6 +106,7 @@ function App() {
                   }
                   return prev ? `${prev} \n${newEntry}` : newEntry;
                 });
+                setIsProcessing(false);
                 break;
               case 'context_update':
                 console.log('context_update:', data.text);
@@ -117,7 +118,7 @@ function App() {
               case 'status_update':
                 console.log('status_update:', data.status);
                 setSimState(data.status);
-                setIsProcessing(data.status.running && !data.status.paused);
+                setIsProcessing(false);
                 break;
               case 'output':
                 console.log('output:', data.text);
@@ -143,6 +144,7 @@ function App() {
               case 'world_update':
                 console.log('world_update:', data.data);
                 setWorldState(data.data);
+                setIsProcessing(false);
                 break;
               case 'command_complete':
                 if (data.command === 'step' || data.command === 'refresh') {
@@ -151,12 +153,28 @@ function App() {
                 break;
               case 'command_ack':
                 console.log('Debug - command_ack received:', data);
-                setIsProcessing(false);
-                setSimState(prev => ({
-                  ...prev,
-                  running: false,
-                  paused: true
-                }));
+
+                if (data.command === 'run') {
+                  // entering continuous playback
+                  setSimState(prev => ({
+                    ...prev,
+                    running: true,
+                    paused: false
+                  }));
+                  setIsProcessing(false);
+                } else if (data.command === 'pause') {
+                  setSimState(prev => ({
+                    ...prev,
+                    running: false,
+                    paused: true
+                  }));
+                  setIsProcessing(false);
+                } else if (data.command === 'step' || data.command === 'next_scene' || data.command === 'prev_scene') {
+                  // we remain in stepping state until a breakpoint event clears it
+                } else {
+                  // Other acknowledgements do not alter running/paused state
+                  setIsProcessing(false);
+                }
                 if (data.command === 'load_play' && pendingPlayLoadRef.current) {
                   console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
                   setCurrentPlay(pendingPlayLoadRef.current);
@@ -176,28 +194,6 @@ function App() {
               case 'replay_event':
                 console.log('Replay event:', data);
                 handleReplayEvent(data);
-                break;
-              case 'setActiveTab':
-                if (event.arg.panelId === 'characterTabs') {
-                  const characterArray = Object.values(characters);
-                  if (characterArray.length > 0) {
-                    const characterIndex = characterArray.findIndex(char => char.name === event.arg.characterName);
-                    if (characterIndex !== -1) {
-                      setActiveTab(characterIndex);
-                    } else {
-                      setPendingTabEvent(event);
-                    }
-                  } else {
-                    setPendingTabEvent(event);
-                  }
-                }
-                break;
-              case 'setExplorerTab':
-                if (characters[event.arg.characterName]) {
-                  setPendingExplorerTabEvent(event);
-                } else {
-                  setPendingExplorerTabEvent(event);
-                }
                 break;
               case 'mode_update':
                 setAppMode(data.mode);
@@ -233,6 +229,13 @@ function App() {
               case 'speech_toggle':
                 speechEnabledRef.current = data.enabled;  // sync ref right away
                 setSpeechEnabled(data.enabled);
+                break;
+              /* Ignore automatic UI-control messages that are replay-specific. */
+              case 'setActiveTab':
+              case 'setExplorerTab':
+              case 'setShowExplorer':
+                // In Audiobook we manage tab/modals only via explicit user interaction
+                // or through handleReplayEvent() when processing stored replay data.
                 break;
               default:
                 console.log('Unknown message type:', data.type);
@@ -275,6 +278,18 @@ function App() {
     recordEvent('step', 'simulation');
     sendReplayEvent('step', 'simulation', 'step');
     sendCommand('step');
+  };
+
+  const handleNextScene = async () => {
+    setIsProcessing(true);
+    recordEvent('next_scene', 'simulation');
+    sendCommand('next_scene');
+  };
+
+  const handlePrevScene = async () => {
+    setIsProcessing(true);
+    recordEvent('prev_scene', 'simulation');
+    sendCommand('prev_scene');
   };
 
   const handleRun = async () => {
@@ -599,8 +614,14 @@ function App() {
               onClick={handleRun} 
               disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Play</button>
             <button className="control-button" 
+              onClick={handlePrevScene} 
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Prev</button>
+            <button className="control-button" 
               onClick={handleStep} 
               disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Step</button>
+            <button className="control-button" 
+              onClick={handleNextScene} 
+              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Next</button>
             <button className="control-button" onClick={handlePause}>Pause</button>
             <button className="control-button" onClick={() => sendCommand('showMap')} disabled={appMode === 'replay'}>Show Map</button>
             <button onClick={handleRefresh} className="control-button" disabled={appMode === 'replay'}>

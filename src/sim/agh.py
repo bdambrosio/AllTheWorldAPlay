@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 import os, json, math, time, requests, sys
 
 from sklearn import tree
@@ -24,6 +25,7 @@ from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
 from src.sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
+from utils.llm_api import generate_image
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
 from sim.memoryStream import MemoryStream
@@ -105,7 +107,7 @@ class Character:
         else:
             self.reference_dscp = self.llm.ask({}, [SystemMessage(content='generate a concise single sentence description for this character useful for reference resolution. Respond only with the description. End your response with: </end>'), 
                                                     UserMessage(content=f"""character name {self.name}\ncharacter description:\n{character_description}\n\nEnd your response with: </end>""")
-        ], tag='reference_dscp', max_tokens=24, stops=["</end>"])
+        ], tag='reference_dscp', max_tokens=40, stops=["</end>"])
         if self.reference_dscp:
             self.reference_dscp = self.reference_dscp.strip()
         else:
@@ -821,7 +823,7 @@ water: the water resources visible
                 context += candidates[i]+'. '
                 i +=1
             context = context[:96]
-            description = 'Portrait of '+'. '.join(self.character.split('.')[:2])[8:] # assumes character description starts with 'You are <name>'
+            description = 'Portrait of a '+self.gender+': '+'. '.join(self.character.split('.')[:2])+'. '# assumes character description starts with 'You are <name>'
             
             prompt = [UserMessage(content="""Following is a description of a character in a play. 
 
@@ -3089,7 +3091,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                 dialog_as_list = dialog.split('\n') 
                 self.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
                 dialog_model.deactivate_dialog()
-                self.reason_over(dialog)
+                self.reason_over(dialog) # if we think we should think about something, then do it!
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
                 #self.driveSignalManager.recluster()
@@ -3114,6 +3116,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
 """
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, addl_bindings={"thought":thought}, tag='reason_over', max_tokens=70)
         if response and response.strip().lower() != 'none':
+            print(f'{self.name} reason_over: {response}')
             self.add_perceptual_input(f'Reasoning over thought:\n {response}', percept=False, mode='internal')
         return
 
@@ -3736,7 +3739,7 @@ End your response with:
         await self.request_goal_choice(self.goals)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_goal:
             raise Exception(f'{self.name} cognitive_cycle: no focus goal')
@@ -3744,7 +3747,7 @@ End your response with:
         await self.request_task_choice(self.focus_goal.task_plan)
         await asyncio.sleep(0.1)
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
-        #self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
+        self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
         await asyncio.sleep(0.1)
         if not self.focus_task.peek():
             return # no admissible task at this time
@@ -3767,7 +3770,7 @@ End your response with:
         await asyncio.sleep(0)
         self.thought = ''
         if self.focus_goal: 
-            self.reason_over(self.focus_goal.name+'. '+self.focus_goal.description)
+            pass #self.reason_over(self.focus_goal.name+'. '+self.focus_goal.description)
 
         self.memory_consolidator.update_cognitive_model(self.structured_memory, 
                                                   self.narrative, 
@@ -4074,9 +4077,17 @@ End your response with:
     #def format_history(self):
     #    return '\n'.join([xml.find('<text>', memory) for memory in self.history])
 
-    def to_json(self):
+    def to_json(self, gen_image=False):
         """Return JSON-serializable representation"""
-        return {
+        image_data = None
+        if gen_image:
+            description = self.generate_image_description()
+            if description:
+                image_path = generate_image(self.llm, description, filepath=self.name+'.png')
+                with open(image_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode()
+
+        data = {
             'name': self.name,
             'show': self.show.strip(),  # Current visible state
             'thoughts': self.format_thought_for_UI(),  # Current thoughts
@@ -4092,6 +4103,9 @@ End your response with:
             'current_act': self.get_current_act_info(),
             'current_scene': self.get_current_scene_info()
         }
+        if image_data:
+            data['image'] = image_data
+        return data
 
     def find_say_result(self) -> str:
         """Find if recent say action influenced other actors"""

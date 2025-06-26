@@ -1294,11 +1294,12 @@ Ensure your response reflects this change.
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
             await character.request_goal_choice(scene_goals[character.name], narrative=True)
-            self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
+            self.message_queue.put({'name':character.name, 'text':'character_update', 'data':character.to_json()})
             await asyncio.sleep(0.4)
             # now generate initial task plan
             await character.generate_task_plan(character.focus_goal, ntasks=(scene['action_order']).count(character.name)+1)
-            self.message_queue.put({'name':'character.name', 'text':'character_update', 'data':character.to_json()})
+            self.message_queue.put({'name':character.name, 'text':'character_update', 'data':character.to_json(gen_image=True)})
+            self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await asyncio.sleep(0.4)
 
         # ok, actors - live!
@@ -1319,17 +1320,28 @@ Ensure your response reflects this change.
             character.focus_task = Stack()
             character.focus_task.push(task)
             self.scene_history.append(f'{character.name} {task.to_string()}') # should this be after cognitive cycle? But what if spontaneous subtasks are generated?
-            self.message_queue.put({'name':'', 'text':f''})
+            #self.message_queue.put({'name':'', 'text':f''})
             await asyncio.sleep(0.2)
-            if character.name.lower() == 'interviewer':
-                print(f'{character.name} {task.to_string()}')
+            while self.step is False and  self.run is False:
+                await asyncio.sleep(0.5)
             await character.step_task(task)
+            self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
+            self.step = False
+
             await asyncio.sleep(1.0)
             self.scene_integrated_task_plan_index += 1
+        
+        outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
+        if outcomes:
+            true_outcomes = '\n'.join([outcome.get('outcome') for outcome in outcomes if outcome.get('test') == True])
+            self.current_scene['post_narrative'] = true_outcomes
         if self.current_scene.get('post_narrative'):
             self.current_state += '\n'+self.current_scene['post_narrative']
             for character in characters_in_scene:
                 character.add_perceptual_input(self.current_scene['post_narrative'], mode = 'internal')
+                character.reason_over(self.current_scene['post_narrative'])
+                self.message_queue.put({'name':'', 'text':'character_update', 'data':character.to_json(gen_image=True)})
+            self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
 
@@ -1407,8 +1419,15 @@ Ensure your response reflects this change.
         for round in range(1):
             for character in cast(List[NarrativeCharacter], self.actors):
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
-        self.central_narrative = await self.merge_central_narratives()            
-        self.message_queue.put({'name':'Global', 'text':f'central_narrative: {self.central_narrative}\n'})
+                self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
+        self.central_narrative = await self.merge_central_narratives()         
+        prologue = self.central_narrative   
+        prologue = prologue.replace('Central Dramatic Question: ','')
+        end = prologue.find('Character Roles:')
+        if end > 0:
+            prologue = prologue[:end]
+        self.message_queue.put({'name':'Prologue', 'text':f'{self.central_narrative}\n'})
+
         await asyncio.sleep(0.4)
 
         for character in cast(List[NarrativeCharacter], self.actors):
@@ -1473,11 +1492,13 @@ Most critically, this act is being written in the context of the actual situatio
 
 An act is a JSON object containing a sequence of scenes (think of a play).
 Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
-In integrating scenes within an act across characters, pay special attention to the pre- and post-narratives, as well as the characters's goals, to create a coherent scene. 
+In integrating scenes within an act across characters, pay special attention to the pre- and post-states, as well as the characters's goals, to create a coherent scene. 
 It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives. 
 Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
 The integrated plan should be a single JSON object with a sequence of acts, each with a sequence of scenes. 
 The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
+Be sure that that integrated act is consistent with the previous act's post-state.
+Note carefully the proposed acts pre-conditions and locations, and resolve any inconsistencies among them or with the previous act's post-state.
 
 Here are the original, independent, plans for each character:
 {{$plans}}
@@ -1723,34 +1744,35 @@ In performing this integration:
             return None
 
 
-    async def check_post_state_ambiguity(self, act):
+    async def check_post_state_ambiguity(self, act, scene=None):
         """Check if the post state is ambiguous"""
         prefix = """You are a skilled playwright and narrative integrator.
-You are given a post state for an act.
+You are given a planned post state for an act or scene.
 You are checking if the post state statement is unambiguous, or presents a set of possible outcomes.
 In either case, test each possible outcome against the current state of the play to determine if it is the case.
 The current state of the play is:
 """
         suffix = """
 
-#act
-{{$act}}
+#Planned Act or Scene just completed
+{{$act_or_scene}}
 ##
 
-#Act pre-state
-{{$act_pre_state}}
+#Planned Act or Scene Pre-state
+{{$pre_state}}
 ##
 
-#Claimed post state
+#Planned Post-state of the act or scene just completed
 {{$post_state}}
 ##
 
-#Act central narrative
+#Planned Act central narrative
 {{$act_central_narrative}}
 ##
 
-The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act, and act pre-state, the situation assumedbefore the act starts.
-Return a succint name for each possible outcome, together with True or False according to whether that outcome is so in the state of the play.
+The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
+the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
+Return a succint name for each possible outcome, together with True or False according to whether that outcome is so in the actual state of the play.
 Use hash-formatted text for your response, as shown below. 
 the required tags are Outcome and Test. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
 be careful to insert line breaks only where shown, separating a value from the next tag:
@@ -1766,10 +1788,17 @@ be careful to insert line breaks only where shown, separating a value from the n
 
 ...
 """
-        response = await self.context_ask(prefix=prefix, suffix=suffix, addl_bindings={"act": json.dumps(act, indent=2, default=datetime_handler), 
-        "post_state": act.get('act_post_state', ''), 
-        "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '', 
-        "act_pre_state": act.get('act_pre_state', '')}, 
+        if scene:
+            pre_state = scene.get('scene_pre_state', '')
+            post_state = scene.get('scene_post_state', '')
+            act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
+        else:
+            pre_state = act.get('act_pre_state', '')
+            post_state = act.get('act_post_state', '')
+            act_or_scene = json.dumps(act, indent=2, default=datetime_handler)
+            
+        response = await self.context_ask(prefix=prefix, suffix=suffix, addl_bindings={"act_or_scene": act_or_scene, 
+        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else ''}, 
         max_tokens=100, tag='check_post_state_ambiguity')
         if response:
             outcomes = []
@@ -1805,21 +1834,23 @@ be careful to insert line breaks only where shown, separating a value from the n
             return
 
         for character in cast(List[NarrativeCharacter], self.actors):
-            goal = Goal(name='Coda', description='reflect on the state of affairs and your role in it', 
-                        actors=[character], drives=[])
-            task = Task(name='Coda', description='reflect on the state of affairs and your role in it', 
+            character.reason_over(act_post_state)
+            """goal = Goal(name='Coda', description='think about the state of affairs and your role in it', 
+                        actors=[character], drives=[]))
+            task = Task(name='Coda', description='think over the state of affairs and your role in it', 
                         reason='An act is over. time to reflect on the journey so far and your role in it.', 
-                        termination=None, goal=goal, actors=[character], start_time=self.simulation_time, duration=1)
+                        termination=None, goal=goal, actors=[character], start_time=self.simulation_time, duration=1) # TODO: duration?
             character.goals = [goal]
             character.focus_goal = goal
             character.focus_goal.task_plan = [task]
             character.focus_task.push(task)
             await character.step_task(task)
+            """
         if not final:
             return act_post_state
         for character in cast(List[NarrativeCharacter], self.actors):
             goal = Goal(name='Coda', description='reflect on the past, face the future.', actors=[character], drives=[])
-            task = Task(name='Coda', description='reflect on the state of affairs and your role in it', 
+            task = Task(name='Coda', description='think over the state of affairs and your role in it', 
                         reason='An act is over. time to reflect on the journey so far and your role in it.', 
                         termination=None, goal=goal, actors=[character], start_time=self.simulation_time, duration=1)
             character.goals = [goal]

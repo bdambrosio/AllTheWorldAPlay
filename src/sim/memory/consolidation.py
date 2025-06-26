@@ -189,9 +189,9 @@ End with:
         
         # Update recent events
         recent_window = current_time - timedelta(hours=2)  # Last 4 hours
-        recent_abstracts = [abs for abs in memory.get_recent_abstractions(5)
+        recent_abstracts = [abs for abs in memory.get_recent_abstractions(7)
                            if abs.start_time >= recent_window]
-        recent_concretes = [mem for mem in memory.get_recent(10)
+        recent_concretes = [mem for mem in memory.get_recent(16)
                            if mem.timestamp >= recent_window]
         
         prompt = [UserMessage(content=f"""Create a detailed narrative of recent events (last 4 hours) for this character.

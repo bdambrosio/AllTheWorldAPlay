@@ -92,7 +92,7 @@ End your response with:
     compressed_prompt = description
     cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'
-    response =  requests.get(url, params={"prompt":"phtorealistic style: "+compressed_prompt, "size":size})
+    response =  requests.get(url, params={"prompt":"photorealistic style: "+compressed_prompt, "size":size})
     if response.status_code == 200:
         image_content = response.content
     # Save the image to a file
@@ -299,10 +299,3 @@ class LLM():
             traceback.print_exc()
             return None
        
-if __name__ == '__main__':
-    llm = LLM()
-    response = llm.ask({}, [UserMessage(content='You are Owl, a smart and helpful bot\n\nWho are you?'),
-                            ], max_tokens=10, temp=.4)
-    
-    print(response)
-    
