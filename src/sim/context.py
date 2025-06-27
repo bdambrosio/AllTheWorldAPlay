@@ -1560,7 +1560,7 @@ End your response with </end>
         if act_number == 1:
             act_directives = f""" 
 In performing this integration:
-    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 4-6 scenes maximum.
+    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 6 scenes maximum. This may require omitting some scenes that have lesser importance to the act narrative.
     2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}

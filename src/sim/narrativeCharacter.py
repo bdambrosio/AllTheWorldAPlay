@@ -154,7 +154,7 @@ End your response with </end>
 
         system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minute screenplay.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
@@ -362,7 +362,7 @@ End your response with </end>
 
         system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
@@ -534,7 +534,7 @@ updated act
 
         system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
@@ -597,7 +597,7 @@ The following act-specific guidelines supplement the general guidelines above, a
 ** For act 3 (final act):
     1. Directly answer the central dramatic question: {{$central_narrative}}
     2. No scene should avoid engaging with the question's resolution.
-    3. Sequence scenes for maximum tension (alternate trust/mistrust beats)
+    3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)
     4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
     5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
     6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."

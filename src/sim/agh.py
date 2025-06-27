@@ -3060,7 +3060,7 @@ End your response with:
 """
         suffix = """
 Review all the information above and identify, in light of the focus provided by the dialog, up to 3 new insights or understandings that are significant to your situation and not present explicitly in the other above information.
-An insight might be a new understanding of a relationship (e.g. I should not trust ...), a new understanding of a goal (e.g. I should achieve ...), or a new understanding of a situation (e.g. That door is the way out).
+An insight might be a new understanding of a relationship (e.g. I am falling in love with ...), a new understanding of a goal (e.g. I should achieve ...), or a new understanding of a situation (e.g. That door is the way out).
 Respond only with a concise statement of no more than 20 words for each new insight.
 Do not include and introductory, discursive, formatting, or explanatory text.
 If you can derive nothing new of significance wrt thought, respond with 'None'.
@@ -3194,13 +3194,13 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
         system_prompt = """You are a seasoned writer writing dialog for a movie.
-Keep the stakes personal and specific—loss of trust, revelation of a secret, a deadline that can’t be missed—so the audience feels the pulse of consequence.
+Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through action, thought, spoken intention, and subtext, not narration.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
         """
         prompt_string = """Be faithful to your character as presented in the following.
-Disagreement is not only allowed but expected when trust is low, fear is high, or the character perceives conflicting goals or a threat.
+Disagreement is not only allowed but expected when confidence is low or relationship is in question, fear is high, or the character perceives conflicting goals or a threat.
 
 ##Current dramatic context:
 <central_narrative>
@@ -3275,7 +3275,7 @@ Your last action was:
         prompt_string += "" if self is from_actor else """Your first step in composing your response is to decide if you agree with the speaker. 
 Even if speaker is a close friend, you may disagree with them, and that is fine.
 Use how you think of speaker as a key determinant in composing your response. 
-Do you trust that speaker's drives and goals align with yours? Do you believe speaker's statement is sincere?
+Do you believe that speaker's drives and goals align with yours? Do you believe speaker's statement is sincere?
 What is speaker's emotional state? Would they enjoy humor at this point, or should your response be cautious and measured?
 """
         prompt_string += """Use the following XML template in your response:

@@ -11,7 +11,7 @@ from plays.scenarios import apocalypse
 
 importlib.reload(configuration)# force reload in case cached version
 map_file_name = 'apocalypse.py' # needed to trigger narrative creation
-narrative=False
+narrative=True
 server_name = configuration.server_name
 
 K = NarrativeCharacter("Kidd", """Kidd, a 27 year old bisexual male of mixed racial descent, known only as "Kidd".
