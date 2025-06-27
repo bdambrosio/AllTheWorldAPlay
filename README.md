@@ -1,4 +1,4 @@
-## ImprovAI[^1]
+## ImprovAI[^1] Version 2.1
 *rename will migrate to all other appearances of label, and reflects slight project refocus.*
 ### A playground for cognitive software and other beings.
 ### Vision update
@@ -164,5 +164,5 @@ export OPENROUTER_API_KEY= (don't forget to set model name in plays/config.py)
 
 Ideas / contributions (via PRs?) most welcome.
 
-[^1]: With all due respect, master, the world is NOT a stage. It is not a mere backdrop for human activity. The world IS THE PLAY,we humans no more significant than any of the myriad other actors comprising it.
+[^1]: An Improvisational AI Theater. If this term is copywritten (? is that a word) let me know, sorry.
 [^2]: with a simple world sim underneath they can interact with.
