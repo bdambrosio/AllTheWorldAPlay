@@ -13,6 +13,9 @@ from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
 import signal
+from ReplayStateManager import ReplayStateManager, ReplayState
+
+SPEECH_TIMEOUT = 30  # seconds
 
 # Create replay directory if it doesn't exist
 main_dir = Path(__file__).parent
@@ -31,28 +34,24 @@ scene_markers: Dict[str, list] = {}          # list of indices that start a scen
 current_scene_idx: Dict[str, int] = {}       # pointer within scene_markers
 
 is_replay_mode: Dict[str, bool] = {}
-is_replay_running: Dict[str, bool] = {}
 speech_enabled: Dict[str, bool] = {}
 character_details_cache: Dict[str, dict] = {}
 image_cache: Dict[str, dict] = {}
-speech_complete_event: Dict[str, asyncio.Event] = {}
 
-# Add to globals
-replay_task: Dict[str, asyncio.Task] = {}
+state_managers: Dict[str, ReplayStateManager] = {}
 
-def init_session_state(session_id):
+def init_session_state(session_id, websocket_send_func=None):
     sessions[session_id] = session_id
     replay_events[session_id] = []
     current_replay_index[session_id] = 0
     scene_markers[session_id] = []
     current_scene_idx[session_id] = 0
     is_replay_mode[session_id] = False
-    is_replay_running[session_id] = False
     speech_enabled[session_id] = True
     character_details_cache[session_id] = {}
     image_cache[session_id] = {}
-    speech_complete_event[session_id] = asyncio.Event()
-    replay_task[session_id] = None
+    if websocket_send_func is not None:
+        state_managers[session_id] = ReplayStateManager(session_id, websocket_send_func)
 
 def release_session_state(session_id):
     if session_id in replay_events:
@@ -61,8 +60,6 @@ def release_session_state(session_id):
         del current_replay_index[session_id]
     if session_id in is_replay_mode:
         del is_replay_mode[session_id]
-    if session_id in is_replay_running:
-        del is_replay_running[session_id]
     if session_id in scene_markers:
         del scene_markers[session_id]
     if session_id in current_scene_idx:
@@ -73,35 +70,11 @@ def release_session_state(session_id):
         del character_details_cache[session_id]
     if session_id in image_cache:
         del image_cache[session_id]
-    if session_id in speech_complete_event:
-        del speech_complete_event[session_id]
-    if session_id in replay_task:
-        del replay_task[session_id]
-
-    if session_id in character_details_cache:
-        del character_details_cache[session_id]
-    if session_id in image_cache:
-        del image_cache[session_id]
-    if session_id in speech_complete_event:
-        del speech_complete_event[session_id]
-    if session_id in replay_task:
-        task = replay_task[session_id]
-        if task and not task.done():
-            task.cancel()
-            del replay_task[session_id]
+    if session_id in state_managers:
+        state_managers[session_id].cleanup()
+        del state_managers[session_id]
 
 
-SPEECH_TIMEOUT = 30  # seconds
-
-# used to control the speed of the replay
-EVENT_DELAYS = {
-    'replay_event': 0.5,      # UI events
-    'show_update': 1.0,       # Text updates
-    'world_update': 0.5,      # World state changes
-    'character_update': 0.4,  # Character updates
-    'command_ack': 0.1,       # Command acknowledgments
-    'default': 0.2           # Any other event type
-}
 
 # Add a dictionary to store the most recent character details
 
@@ -219,15 +192,21 @@ async def handle_event_image(session_id, event):
 async def create_session():
     global image_cache
     session_id = str(uuid.uuid4())
-    init_session_state(session_id)
+    init_session_state(session_id, None)
     return {"session_id": session_id}
 
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    global image_cache, replay_events, current_replay_index, is_replay_mode, is_replay_running
+    global image_cache, replay_events, current_replay_index, is_replay_mode
     await websocket.accept()
-    init_session_state(session_id)
+    
+    async def websocket_send_func(message):
+        await websocket.send_json(message)
+    
+    init_session_state(session_id, websocket_send_func)
+    state_manager = state_managers[session_id]
+    
     # Send initial mode information
     await websocket.send_json({
         "type": "mode_update",
@@ -299,10 +278,11 @@ Contact bruce@tuuyi.com for more info.
     await asyncio.sleep(.1)
     
     async def run_replay_loop(session_id, break_on_page_end=True):
-        global current_replay_index, is_replay_running
-        is_replay_running[session_id] = True
+        state_manager = state_managers[session_id]
         try:
-            while current_replay_index[session_id] < len(replay_events[session_id]) and is_replay_running[session_id]:
+            while (current_replay_index[session_id] < len(replay_events[session_id]) and 
+                   state_manager.state in [ReplayState.PROCESSING, ReplayState.WAITING_SPEECH]):
+                
                 # Fetch event and advance pointer immediately to avoid duplicates if the loop
                 # is cancelled during awaits after sending.
                 idx = current_replay_index[session_id]
@@ -314,16 +294,15 @@ Contact bruce@tuuyi.com for more info.
 
                     # wait for speech playback if required
                     if event.get('needs_speech_complete'):
-                        speech_complete_event[session_id].clear()
-                        try:
-                            await asyncio.wait_for(speech_complete_event[session_id].wait(), timeout=SPEECH_TIMEOUT)
-                        except (asyncio.CancelledError, asyncio.TimeoutError):
+                        await state_manager.start_speech_wait()
+                        speech_success = await state_manager.wait_for_speech_complete()
+                        if not speech_success:
                             pass
 
                     # store character details for later quick-look requests
                     await post_process_event(session_id, event)
 
-                    delay = EVENT_DELAYS.get(event.get('type'), EVENT_DELAYS['default'])
+                    delay = await state_manager.get_event_delay(event.get('type', 'default'))
                     await asyncio.sleep(delay)
 
                     # If this event represents a visual/log update, pause the loop so the
@@ -333,8 +312,6 @@ Contact bruce@tuuyi.com for more info.
 
         except asyncio.CancelledError:
             pass
-        finally:
-            is_replay_running[session_id] = False
 
     try:
         while True:
@@ -369,6 +346,9 @@ Contact bruce@tuuyi.com for more info.
                 # Handle load: load selected replay file for playback
                 elif command == 'load_play' and data.get('play'):
                     try:
+                        if not await state_manager.start_operation('load_play'):
+                            continue
+                            
                         selected_file = data['play']
                         replay_events[session_id] = load_replay_file(replays_dir / selected_file)
                         current_replay_index[session_id] = 0
@@ -382,10 +362,10 @@ Contact bruce@tuuyi.com for more info.
                         ]
                         current_scene_idx[session_id] = 0
                         is_replay_mode[session_id] = True
-                        await send_command_ack('load_play')
+                        await state_manager.complete_operation('load_play')
                     except Exception as e:
                         print(f"Error loading replay file: {e}")
-                        release_session_state(session_id)
+                        await state_manager.enter_error_state(f"Failed to load replay file: {e}")
                         break
                     continue
                 
@@ -397,46 +377,39 @@ Contact bruce@tuuyi.com for more info.
                     await send_command_ack('start_replay')
 
                 elif data.get('action') == 'speech_complete':
-                    speech_complete_event[session_id].set()
+                    await state_manager.signal_speech_complete()
                     continue
 
                 elif data.get('action') == 'step':
-                    # Cancel any existing run task
-                    if replay_task.get(session_id) and not replay_task[session_id].done():
-                        replay_task[session_id].cancel()
+                    if not await state_manager.start_operation('step'):
+                        continue
                         
-                    # Start the task
-                    replay_task[session_id] = asyncio.create_task(run_replay_loop(session_id, break_on_page_end=True))
-                    await send_command_ack('step')                   
+                    # Start the task using safe transition
+                    await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, break_on_page_end=True)
+                    )
+                    await state_manager.complete_operation('step')                   
 
                 elif data.get('action') == 'run':
-                    # Cancel any existing run task
-                    if replay_task.get(session_id) and not replay_task[session_id].done():
-                        replay_task[session_id].cancel()
+                    if not await state_manager.start_operation('run'):
+                        continue
                         
-                    # Start the task
-                    replay_task[session_id] = asyncio.create_task(run_replay_loop(session_id, break_on_page_end=False))
-                    await send_command_ack('run')
+                    # Start the task using safe transition
+                    await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, break_on_page_end=False)
+                    )
+                    await state_manager.complete_operation('run')
 
                 elif data.get('action') == 'pause':
-                    # Set flag to stop the run loop
-                    is_replay_running[session_id] = False
-                    # Also cancel the task for immediate effect
-                    if replay_task.get(session_id) and not replay_task[session_id].done():
-                        replay_task[session_id].cancel()
-
-                    # Notify front-end that pause has been processed
-                    await send_command_ack('pause')
+                    await state_manager.pause_operation()
                     
                 elif data.get('action') == 'toggle_speech':
-                    global speech_enabled
                     speech_enabled[session_id] = not speech_enabled[session_id]
                     await websocket.send_json({
                         'type': 'speech_toggle',
                         'enabled': speech_enabled[session_id]
                     })
-                    # Add command acknowledgment
-                    await send_command_ack('toggle_speech')
+                    await state_manager._send_command_ack('toggle_speech')
                     continue
 
                 # Next, add a handler for get_character_details commands during replay
@@ -458,21 +431,18 @@ Contact bruce@tuuyi.com for more info.
                     continue
                  
                 elif data.get('type') == 'speech_complete':
-                    speech_complete_event[session_id].set()
+                    await state_manager.signal_speech_complete()
                     continue
 
                 # ---------------- Scene navigation -----------------
                 elif data.get('action') == 'next_scene':
-                    # Cancel any running replay loop
-                    if replay_task.get(session_id) and not replay_task[session_id].done():
-                        replay_task[session_id].cancel()
+                    if not await state_manager.start_operation('next_scene'):
+                        continue
 
                     # Move to next scene if available
                     if current_scene_idx[session_id] + 1 < len(scene_markers[session_id]):
                         current_scene_idx[session_id] += 1
                         current_replay_index[session_id] = scene_markers[session_id][current_scene_idx[session_id]]
-                    # Send ack immediately (UI keeps processing flag)
-                    await send_command_ack('next_scene')
 
                     # Send the scene-head event to refresh UI
                     idx = current_replay_index[session_id]
@@ -481,16 +451,16 @@ Contact bruce@tuuyi.com for more info.
                         await websocket.send_json(event)
                         await post_process_event(session_id, event)
                         current_replay_index[session_id] += 1
+                        
+                    await state_manager.complete_operation('next_scene')
 
                 elif data.get('action') == 'prev_scene':
-                    if replay_task.get(session_id) and not replay_task[session_id].done():
-                        replay_task[session_id].cancel()
+                    if not await state_manager.start_operation('prev_scene'):
+                        continue
 
                     if current_scene_idx[session_id] > 0:
                         current_scene_idx[session_id] -= 1
                         current_replay_index[session_id] = scene_markers[session_id][current_scene_idx[session_id]]
-
-                    await send_command_ack('prev_scene')
 
                     idx = current_replay_index[session_id]
                     event = await handle_event_image(session_id, replay_events[session_id][idx])
@@ -498,6 +468,8 @@ Contact bruce@tuuyi.com for more info.
                         await websocket.send_json(event)
                         await post_process_event(session_id, event)
                         current_replay_index[session_id] += 1
+                        
+                    await state_manager.complete_operation('prev_scene')
 
     except WebSocketDisconnect:
         queue_task.cancel()

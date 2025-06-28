@@ -10,30 +10,26 @@ import './components/TabPanel.css';
 import config from './config';
 import { ReplayProvider, useReplay } from './contexts/ReplayContext';
 import ExplorerModal from './components/ExplorerModal';
+import { useReplayState } from './hooks/useReplayState';
 
 function App() {
   const { recordEvent } = useReplay();
+  const replayState = useReplayState();
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [characters, setCharacters] = useState({});
   const [showText, setShowText] = useState('');
-  const [simStatus, setSimStatus] = useState({
-    running: false,
-    paused: false
-  });
   const [logText, setLogText] = useState('');
   const [plays, setPlays] = useState([]);
   const [showPlayDialog, setShowPlayDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [selectedPlay, setSelectedPlay] = useState(null);
-  const [simState, setSimState] = useState({ running: false, paused: false });
   const [currentPlay, setCurrentPlay] = useState(null);
   const [worldState, setWorldState] = useState({});
   const websocket = useRef(null);
   const logRef = useRef(null);
   const initialized = useRef(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const messageQueue = useRef([]);
   const sendingLock = useRef(false);
   const [choiceRequest, setChoiceRequest] = useState(null);
@@ -81,7 +77,7 @@ function App() {
                   [data.name]: {
                     ...data.data,
                     image: data.data.image ? `data:image/jpeg;base64,${data.data.image}` : null,
-                    status: isProcessing ? 'processing' : 'idle',
+                    status: replayState.isProcessing ? 'processing' : 'idle',
                     explorer_state: data.data.explorer_state
                   }
                 }));
@@ -106,7 +102,6 @@ function App() {
                   }
                   return prev ? `${prev} \n${newEntry}` : newEntry;
                 });
-                setIsProcessing(false);
                 break;
               case 'context_update':
                 console.log('context_update:', data.text);
@@ -115,10 +110,8 @@ function App() {
                   return prev ? `${prev} \n\n ${newEntry} \n\n` : newEntry;
                 });
                 break;
-              case 'status_update':
-                console.log('status_update:', data.status);
-                setSimState(data.status);
-                setIsProcessing(false);
+              case 'state_update':
+                replayState.handleStateUpdate(data);
                 break;
               case 'output':
                 console.log('output:', data.text);
@@ -137,44 +130,12 @@ function App() {
               case 'play_loaded':
                 setCurrentPlay(data.name);
                 break;
-              case 'state_update':
-                console.log('state_update:', data);
-                setSimState(data);
-                break;
               case 'world_update':
                 console.log('world_update:', data.data);
                 setWorldState(data.data);
-                setIsProcessing(false);
-                break;
-              case 'command_complete':
-                if (data.command === 'step' || data.command === 'refresh') {
-                  setIsProcessing(false);
-                }
                 break;
               case 'command_ack':
                 console.log('Debug - command_ack received:', data);
-
-                if (data.command === 'run') {
-                  // entering continuous playback
-                  setSimState(prev => ({
-                    ...prev,
-                    running: true,
-                    paused: false
-                  }));
-                  setIsProcessing(false);
-                } else if (data.command === 'pause') {
-                  setSimState(prev => ({
-                    ...prev,
-                    running: false,
-                    paused: true
-                  }));
-                  setIsProcessing(false);
-                } else if (data.command === 'step' || data.command === 'next_scene' || data.command === 'prev_scene') {
-                  // we remain in stepping state until a breakpoint event clears it
-                } else {
-                  // Other acknowledgements do not alter running/paused state
-                  setIsProcessing(false);
-                }
                 if (data.command === 'load_play' && pendingPlayLoadRef.current) {
                   console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
                   setCurrentPlay(pendingPlayLoadRef.current);
@@ -274,43 +235,32 @@ function App() {
   };
 
   const handleStep = async () => {
-    setIsProcessing(true);
     recordEvent('step', 'simulation');
     sendReplayEvent('step', 'simulation', 'step');
     sendCommand('step');
   };
 
   const handleNextScene = async () => {
-    setIsProcessing(true);
     recordEvent('next_scene', 'simulation');
     sendCommand('next_scene');
   };
 
   const handlePrevScene = async () => {
-    setIsProcessing(true);
     recordEvent('prev_scene', 'simulation');
     sendCommand('prev_scene');
   };
 
   const handleRun = async () => {
-    setIsProcessing(true);
     recordEvent('run', 'simulation');
     sendCommand('run');
   };
 
   const handlePause = () => {
-    setIsProcessing(false);
     recordEvent('pause', 'simulation');
     sendCommand('pause');
   };
 
   const handleRefresh = () => {
-    setIsProcessing(false);
-    setSimState(prev => ({
-      ...prev,
-      running: false,
-      paused: true
-    }));
     sendCommand('refresh');
   };
 
@@ -462,9 +412,8 @@ function App() {
   useEffect(() => {
     console.log('Debug - appMode:', appMode);
     console.log('Debug - currentPlay:', currentPlay);
-    console.log('Debug - isProcessing:', isProcessing);
-    console.log('Debug - simState:', simState);
-  }, [appMode, currentPlay, isProcessing, simState]);
+    console.log('Debug - replayState:', replayState.state);
+  }, [appMode, currentPlay, replayState.state]);
 
   useEffect(() => {
     speechEnabledRef.current = speechEnabled;
@@ -612,17 +561,19 @@ function App() {
             <button className="control-button" onClick={handleInitialize}>Start</button>
             <button className="control-button" 
               onClick={handleRun} 
-              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Play</button>
+              disabled={replayState.isButtonDisabled('run') || (appMode === 'replay' && !currentPlay)}>Play</button>
             <button className="control-button" 
               onClick={handlePrevScene} 
-              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Prev</button>
+              disabled={replayState.isButtonDisabled('prev') || (appMode === 'replay' && !currentPlay)}>Prev</button>
             <button className="control-button" 
               onClick={handleStep} 
-              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Step</button>
+              disabled={replayState.isButtonDisabled('step') || (appMode === 'replay' && !currentPlay)}>Step</button>
             <button className="control-button" 
               onClick={handleNextScene} 
-              disabled={isProcessing || simState.running || (appMode === 'replay' && !currentPlay)}>Next</button>
-            <button className="control-button" onClick={handlePause}>Pause</button>
+              disabled={replayState.isButtonDisabled('next') || (appMode === 'replay' && !currentPlay)}>Next</button>
+            <button className="control-button" 
+              onClick={handlePause} 
+              disabled={replayState.isButtonDisabled('pause')}>Pause</button>
             <button className="control-button" onClick={() => sendCommand('showMap')} disabled={appMode === 'replay'}>Show Map</button>
             <button onClick={handleRefresh} className="control-button" disabled={appMode === 'replay'}>
               Refresh
@@ -637,11 +588,7 @@ function App() {
           </div>
           <div className="status-area">
             {currentPlay && <div>Play: {currentPlay}</div>}
-            <div>Status: {
-              simState.running ? 'Running' : 
-              isProcessing ? 'Processing...' : 
-              'Paused'
-            }</div>
+            <div>Status: {replayState.getStatusText()}</div>
           </div>
 
         </div>
@@ -665,7 +612,6 @@ function App() {
             </select>
             <button
               onClick={() => {
-                setIsProcessing(true);
                 pendingPlayLoadRef.current = selectedPlay;
                 sendCommand('load_play', { play: selectedPlay });
                 setShowPlayDialog(false);
