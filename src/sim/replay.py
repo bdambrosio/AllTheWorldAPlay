@@ -1,5 +1,6 @@
 import os, json, time, requests, sys
 import traceback
+import logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ import asyncio
 from contextlib import asynccontextmanager
 import signal
 from ReplayStateManager import ReplayStateManager, ReplayState
+
+logger = logging.getLogger(__name__)
 
 SPEECH_TIMEOUT = 30  # seconds
 
@@ -279,23 +282,39 @@ Contact bruce@tuuyi.com for more info.
     
     async def run_replay_loop(session_id, break_on_page_end=True):
         state_manager = state_managers[session_id]
+        logger.info(f"run_replay_loop starting, break_on_page_end={break_on_page_end}, state={state_manager.state.value}")
         try:
+            # Ensure we're in PROCESSING state at the start of the loop
+            if state_manager.state == ReplayState.IDLE:
+                logger.warning(f"run_replay_loop called but state is {state_manager.state.value}, setting to PROCESSING")
+                await state_manager._transition_state(ReplayState.PROCESSING, "run_replay_loop")
+            
+            event_count = 0
             while (current_replay_index[session_id] < len(replay_events[session_id]) and 
                    state_manager.state in [ReplayState.PROCESSING, ReplayState.WAITING_SPEECH]):
+                
+                # Log state periodically to detect pause
+                if event_count % 10 == 0:
+                    logger.info(f"run_replay_loop: processing event {current_replay_index[session_id]}, state={state_manager.state.value}")
                 
                 # Fetch event and advance pointer immediately to avoid duplicates if the loop
                 # is cancelled during awaits after sending.
                 idx = current_replay_index[session_id]
                 current_replay_index[session_id] += 1
+                event_count += 1
 
                 event = await handle_event_image(session_id, replay_events[session_id][idx])
                 if event:
+                    if event.get('type') == 'speak':
+                        logger.info(f"Processing speech event at index {idx}: {event.get('message', {}).get('text', 'No text')[:50]}...")
                     await websocket.send_json(event)
 
                     # wait for speech playback if required
                     if event.get('needs_speech_complete'):
+                        logger.info(f"Starting speech wait for event at index {idx}")
                         await state_manager.start_speech_wait()
                         speech_success = await state_manager.wait_for_speech_complete()
+                        logger.info(f"Speech wait completed, success: {speech_success}, state: {state_manager.state.value}")
                         if not speech_success:
                             pass
 
@@ -305,18 +324,64 @@ Contact bruce@tuuyi.com for more info.
                     delay = await state_manager.get_event_delay(event.get('type', 'default'))
                     await asyncio.sleep(delay)
 
-                    # If this event represents a visual/log update, pause the loop so the
-                    # user sees one "screen" per Step click.
+                    # If this event represents a visual/log update, check if we should break
+                    # for Step mode, but continue processing any immediately following speech events
                     if break_on_page_end and event.get('type') in ('show_update', 'world_update'):
+                        logger.info("run_replay_loop: visual event processed, checking for following speech events")
+                        
+                        # Continue processing any immediately following speech events
+                        while (current_replay_index[session_id] < len(replay_events[session_id]) and 
+                               state_manager.state in [ReplayState.PROCESSING, ReplayState.WAITING_SPEECH]):
+                            
+                            # Peek at the next event to see if it's speech
+                            next_idx = current_replay_index[session_id]
+                            next_event = replay_events[session_id][next_idx]
+                            
+                            # If the next event is speech or character update, process it as part of this step
+                            if next_event.get('type') in ('speak', 'character_update'):
+                                logger.info(f"run_replay_loop: processing following {next_event.get('type')} event {next_idx}")
+                                current_replay_index[session_id] += 1
+                                event_count += 1
+                                
+                                processed_following_event = await handle_event_image(session_id, next_event)
+                                if processed_following_event:
+                                    await websocket.send_json(processed_following_event)
+                                    
+                                    # Handle speech completion if required
+                                    if processed_following_event.get('needs_speech_complete'):
+                                        await state_manager.start_speech_wait()
+                                        speech_success = await state_manager.wait_for_speech_complete()
+                                        if not speech_success:
+                                            pass
+                                    
+                                    # Store character details
+                                    await post_process_event(session_id, processed_following_event)
+                                    
+                                    # Add delay for the event
+                                    following_delay = await state_manager.get_event_delay(processed_following_event.get('type', 'default'))
+                                    await asyncio.sleep(following_delay)
+                            else:
+                                # Next event is not speech or character_update, break out of both loops
+                                logger.info("run_replay_loop: no more following events, breaking after visual event")
+                                break
+                        
+                        # Break out of main loop after processing visual + speech events
+                        logger.info("run_replay_loop: breaking due to page end (after processing speech)")
                         break
+            
+            logger.info(f"run_replay_loop ending normally, final state={state_manager.state.value}")
 
         except asyncio.CancelledError:
-            pass
+            logger.info("run_replay_loop cancelled (likely due to pause)")
+            logger.info(f"Final state after cancellation: {state_manager.state.value}")
+            raise
 
     try:
         while True:
             try:
-                data = json.loads(await websocket.receive_text())
+                raw_message = await websocket.receive_text()
+                data = json.loads(raw_message)
+                logger.info(f"Websocket message received: {data.get('type')} - {data.get('action')} - {data.get('command')}")
             except Exception as e:
                 print(f"Error receiving or parsing websocket data: {e}")
                 break  # Exit the loop to trigger cleanup
@@ -381,27 +446,58 @@ Contact bruce@tuuyi.com for more info.
                     continue
 
                 elif data.get('action') == 'step':
+                    logger.info(f"Step command received, current state: {state_manager.state.value}")
                     if not await state_manager.start_operation('step'):
+                        logger.warning(f"Failed to start step operation, state: {state_manager.state.value}")
                         continue
                         
-                    # Start the task using safe transition
-                    await state_manager.safe_task_transition(
-                        await run_replay_loop(session_id, break_on_page_end=True)
+                    logger.info(f"Starting step replay loop, state: {state_manager.state.value}")
+                    # Start the task using safe transition - use async completion for consistent state management
+                    task = await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, break_on_page_end=True)
                     )
-                    await state_manager.complete_operation('step')                   
+                    # Add completion callback to handle when step task finishes
+                    def on_step_complete(finished_task):
+                        if not finished_task.cancelled():
+                            logger.info("Step task completed, transitioning to idle state")
+                            # Use asyncio.create_task to properly handle the async completion
+                            async def complete_async():
+                                await state_manager.complete_operation('step')
+                            asyncio.create_task(complete_async())
+                        else:
+                            logger.info("Step task was cancelled")
+                    task.add_done_callback(on_step_complete)                   
 
                 elif data.get('action') == 'run':
+                    logger.info(f"Run command received, current state: {state_manager.state.value}")
                     if not await state_manager.start_operation('run'):
+                        logger.warning(f"Failed to start run operation, state: {state_manager.state.value}")
                         continue
                         
-                    # Start the task using safe transition
-                    await state_manager.safe_task_transition(
-                        await run_replay_loop(session_id, break_on_page_end=False)
+                    logger.info(f"Starting run replay loop, state: {state_manager.state.value}")
+                    # Start the task using safe transition - DON'T await it so pause can work
+                    task = await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, break_on_page_end=False)
                     )
-                    await state_manager.complete_operation('run')
+                    logger.info(f"Run task created and stored: {task}, state manager task: {state_manager._replay_task}")
+                    
+                    # Add completion callback to handle when task finishes
+                    def on_run_complete(finished_task):
+                        if not finished_task.cancelled():
+                            logger.info("Run task completed, transitioning to idle state")
+                            # Use asyncio.create_task to properly handle the async completion
+                            async def complete_async():
+                                await state_manager.complete_operation('run')
+                            asyncio.create_task(complete_async())
+                        else:
+                            logger.info("Run task was cancelled (likely due to pause)")
+                    task.add_done_callback(on_run_complete)
 
                 elif data.get('action') == 'pause':
+                    logger.info(f"Pause command received, current state: {state_manager.state.value}")
+                    logger.info(f"Active task exists: {state_manager._replay_task is not None and not state_manager._replay_task.done()}")
                     await state_manager.pause_operation()
+                    logger.info(f"Pause operation completed, new state: {state_manager.state.value}")
                     
                 elif data.get('action') == 'toggle_speech':
                     speech_enabled[session_id] = not speech_enabled[session_id]

@@ -257,6 +257,15 @@ function App() {
 
   const handlePause = () => {
     recordEvent('pause', 'simulation');
+    
+    // Stop any currently playing audio and send speech_complete to unblock backend
+    if (persistentAudioRef.current) {
+      persistentAudioRef.current.pause();
+      persistentAudioRef.current.currentTime = 0;
+      console.log('Audio stopped due to pause, sending speech_complete');
+      sendCommand('speech_complete');
+    }
+    
     sendCommand('pause');
   };
 

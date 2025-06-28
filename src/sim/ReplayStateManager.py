@@ -85,18 +85,31 @@ class ReplayStateManager:
     async def complete_operation(self, operation: str):
         if self._current_operation != operation:
             logger.warning(f"Operation mismatch: expected {self._current_operation}, got {operation}")
+            # Continue anyway - the operation is completing regardless of the mismatch
             
         await self._transition_state(ReplayState.IDLE)
         await self._send_command_ack(operation)
         
     async def pause_operation(self):
+        logger.info(f"pause_operation called, current state: {self._state.value}, task: {self._replay_task}, task done: {self._replay_task.done() if self._replay_task else 'N/A'}")
+        
+        # If we're waiting for speech, signal completion to unblock
+        if self._state == ReplayState.WAITING_SPEECH:
+            logger.info("Interrupting speech wait for pause")
+            self._speech_complete_event.set()
+        
         if self._replay_task and not self._replay_task.done():
+            logger.info(f"Cancelling active task: {self._replay_task}")
             self._replay_task.cancel()
             try:
+                logger.info("Waiting for task cancellation to complete...")
                 await self._replay_task
+                logger.info("Task cancellation completed successfully")
             except asyncio.CancelledError:
-                pass
+                logger.info("Task was cancelled as expected")
             self._replay_task = None
+        else:
+            logger.warning(f"No active task to cancel (task: {self._replay_task})")
             
         await self._transition_state(ReplayState.PAUSED)
         await self._send_command_ack("pause")
@@ -120,8 +133,14 @@ class ReplayStateManager:
         await self._transition_state(ReplayState.IDLE)
         
     async def start_speech_wait(self):
-        if self._state != ReplayState.PROCESSING:
+        if self._state not in [ReplayState.PROCESSING, ReplayState.WAITING_SPEECH]:
             logger.warning(f"Cannot start speech wait from state {self._state.value}")
+            return
+        
+        # If already waiting for speech, just clear the event and continue
+        if self._state == ReplayState.WAITING_SPEECH:
+            logger.info("Already in speech wait state, clearing event")
+            self._speech_complete_event.clear()
             return
             
         await self._transition_state(ReplayState.WAITING_SPEECH)
@@ -132,19 +151,35 @@ class ReplayStateManager:
             return True
             
         try:
-            await asyncio.wait_for(
-                self._speech_complete_event.wait(), 
-                timeout=self._speech_timeout
-            )
-            return True
-        except asyncio.TimeoutError:
-            logger.warning("Speech timeout occurred")
+            # Wait for speech with shorter timeout chunks to be more responsive to cancellation
+            total_wait = 0
+            chunk_timeout = 1.0  # Check every 1 second
+            
+            while total_wait < self._speech_timeout:
+                try:
+                    await asyncio.wait_for(
+                        self._speech_complete_event.wait(), 
+                        timeout=chunk_timeout
+                    )
+                    return True  # Speech completed
+                except asyncio.TimeoutError:
+                    total_wait += chunk_timeout
+                    # Check if we've been cancelled or state changed
+                    if self._state not in [ReplayState.WAITING_SPEECH, ReplayState.PROCESSING]:
+                        logger.info(f"Speech wait interrupted by state change to {self._state.value}")
+                        return False
+                    
+            # If we get here, we've timed out completely
+            logger.warning("Speech timeout occurred, resetting to PROCESSING state")
             await self.websocket_send({
                 "type": "speech_timeout",
                 "message": "Audio playback timed out"
             })
+            # Reset to PROCESSING state so the replay can continue and pause can work
+            await self._transition_state(ReplayState.PROCESSING)
             return False
         except asyncio.CancelledError:
+            logger.info("Speech wait cancelled")
             return False
             
     async def signal_speech_complete(self):
@@ -153,14 +188,18 @@ class ReplayStateManager:
             await self._transition_state(ReplayState.PROCESSING)
             
     async def safe_task_transition(self, new_task_coro):
+        logger.info(f"safe_task_transition called, existing task: {self._replay_task}, done: {self._replay_task.done() if self._replay_task else 'N/A'}")
+        
         if self._replay_task and not self._replay_task.done():
+            logger.info(f"Cancelling existing task before creating new one: {self._replay_task}")
             self._replay_task.cancel()
             try:
                 await self._replay_task
             except asyncio.CancelledError:
-                pass
+                logger.info("Previous task cancelled successfully")
                 
         self._replay_task = asyncio.create_task(new_task_coro)
+        logger.info(f"Created new task: {self._replay_task}")
         return self._replay_task
         
     async def get_event_delay(self, event_type: str) -> float:
