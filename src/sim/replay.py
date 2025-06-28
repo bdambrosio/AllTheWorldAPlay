@@ -192,7 +192,7 @@ async def handle_event_image(session_id, event):
 async def create_session():
     global image_cache
     session_id = str(uuid.uuid4())
-    init_session_state(session_id, None)
+    init_session_state(session_id)
     return {"session_id": session_id}
 
 
@@ -277,18 +277,23 @@ Contact bruce@tuuyi.com for more info.
 """})
     await asyncio.sleep(.1)
     
-    async def run_replay_loop(session_id, break_on_page_end=True):
+    async def run_replay_loop(session_id, websocket, break_on_page_end=True):
         state_manager = state_managers[session_id]
+        print(f"DEBUG: run_replay_loop started for session {session_id}, break_on_page_end={break_on_page_end}")
+        print(f"DEBUG: current_replay_index={current_replay_index[session_id]}, total_events={len(replay_events[session_id])}")
+        print(f"DEBUG: state_manager.state={state_manager.state}")
         try:
             while (current_replay_index[session_id] < len(replay_events[session_id]) and 
                    state_manager.state in [ReplayState.PROCESSING, ReplayState.WAITING_SPEECH]):
                 
+                print(f"DEBUG: Processing event {current_replay_index[session_id]}")
                 # Fetch event and advance pointer immediately to avoid duplicates if the loop
                 # is cancelled during awaits after sending.
                 idx = current_replay_index[session_id]
                 current_replay_index[session_id] += 1
 
                 event = await handle_event_image(session_id, replay_events[session_id][idx])
+                print(f"DEBUG: Event processed: {event.get('type') if event else 'None'}")
                 if event:
                     await websocket.send_json(event)
 
@@ -309,6 +314,9 @@ Contact bruce@tuuyi.com for more info.
                     # user sees one "screen" per Step click.
                     if break_on_page_end and event.get('type') in ('show_update', 'world_update'):
                         break
+            
+            if state_manager._current_operation in ['step', 'run']:
+                await state_manager.complete_operation(state_manager._current_operation)
 
         except asyncio.CancelledError:
             pass
@@ -385,20 +393,20 @@ Contact bruce@tuuyi.com for more info.
                         continue
                         
                     # Start the task using safe transition
-                    await state_manager.safe_task_transition(
-                        run_replay_loop(session_id, break_on_page_end=True)
+                    task = await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, websocket, break_on_page_end=True)
                     )
-                    await state_manager.complete_operation('step')                   
+                    await task                   
 
                 elif data.get('action') == 'run':
                     if not await state_manager.start_operation('run'):
                         continue
                         
                     # Start the task using safe transition
-                    await state_manager.safe_task_transition(
-                        run_replay_loop(session_id, break_on_page_end=False)
+                    task = await state_manager.safe_task_transition(
+                        run_replay_loop(session_id, websocket, break_on_page_end=False)
                     )
-                    await state_manager.complete_operation('run')
+                    await task
 
                 elif data.get('action') == 'pause':
                     await state_manager.pause_operation()
