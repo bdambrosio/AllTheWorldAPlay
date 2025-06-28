@@ -286,7 +286,7 @@ End your response with:
 """)]
 
         # 2. Call LLM and parse response
-        llm_response = self.llm.ask({'name': self.name, 'description': self.character}, prompt, tag='voice_traits', max_tokens=100)
+        llm_response = self.llm.ask({'name': self.name, 'description': self.character}, prompt, tag='voice_traits', stops=['</end>'], max_tokens=100)
         if llm_response is None:
             return None
         self.gender = hash_utils.find('gender', llm_response)
@@ -3014,16 +3014,16 @@ End your response with:
             return False
         prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
-<transcript>
+#Transcript
 {{$transcript}}
-</transcript>
+##
                               
-For example, if the last entry in the transcript is a question that expects an answer (as opposed to merely musing), ending at this point is likely not natural.
+For example, if the last entry in the transcript is a question that expects an answer (as opposed to merely musing), ending at this point is likely not expected.
 On the other hand, if the last entry is an agreement to an earlier suggestion, this is a natural end.
 Dialogs are short, and should be resolved quickly.
 Respond only with a rating between 0 and 10, where
- - 0 requires continuation of the dialog (ie termination at this point would be unnatural)
- - 10 indicates continuation is highly unexpected, unnatural, or repetitious.   
+0 expects continuation of the dialog (i.e., termination at this point would be unnatural)
+10 expects termination at this point (i.e., continuation is highly unexpected, unnatural, or repetitious).   
                                                   
 Do not include any introductory, explanatory, or discursive text.
 End your response with:

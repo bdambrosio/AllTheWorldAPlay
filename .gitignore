@@ -70,7 +70,7 @@ images/*.png
 
 sim/simulation.log
 src/plays/replays/*.json
-!src/plays/replays/lost_test.json
+!src/plays/replays/AesopBear.json
 
 # Private pitch deck and business materials
 pitch-deck/
