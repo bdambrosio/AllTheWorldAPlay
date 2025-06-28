@@ -386,7 +386,7 @@ Contact bruce@tuuyi.com for more info.
                         
                     # Start the task using safe transition
                     await state_manager.safe_task_transition(
-                        run_replay_loop(session_id, break_on_page_end=True)
+                        await run_replay_loop(session_id, break_on_page_end=True)
                     )
                     await state_manager.complete_operation('step')                   
 
@@ -396,7 +396,7 @@ Contact bruce@tuuyi.com for more info.
                         
                     # Start the task using safe transition
                     await state_manager.safe_task_transition(
-                        run_replay_loop(session_id, break_on_page_end=False)
+                        await run_replay_loop(session_id, break_on_page_end=False)
                     )
                     await state_manager.complete_operation('run')
 
