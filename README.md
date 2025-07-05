@@ -1,7 +1,9 @@
 ## ImprovAI[^1] Version 2.1
 *rename will migrate to all other appearances of label, and reflects slight project refocus.*
 ### A playground for cognitive software and other beings.
-### Vision update
+### minor update - installing scaffolding to prevent characters from delaying decisions indefinitely.
+
+### long-term plan update
 ImprovAI provides a stage for mixed human / AI-improv performances.
 Given a short scenario, it:
 - generates a cast of cognitively-deep AI actors (my primary research interest)
