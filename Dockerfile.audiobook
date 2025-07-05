@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy only the allowed directories from src
 COPY src/sim/replay.py /app/src/sim/replay.py
+COPY src/sim/ReplayStateManager.py /app/src/sim/ReplayStateManager.py
 COPY src/plays /app/src/plays
 
 # Copy the built UI files from the ui stage

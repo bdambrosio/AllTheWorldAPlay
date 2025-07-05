@@ -8,3 +8,4 @@ src/*
 webworld/node_modules/
 webworld/build/
 !src/constraints.txt
+src/plays/replays/Bellona*

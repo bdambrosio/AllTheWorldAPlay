@@ -108,7 +108,7 @@ The current situation in the play
         lastAct = task.acts[-1].mode + ' ' + task.acts[-1].action
         lastActResult = task.result
     else:
-        lastAct = character.focus_action if character.focus_action else ''
+        lastAct = character.focus_action if character.focus_action else None
         if hasattr(character, 'lastActResult'):
             lastActResult = character.lastActResult if character.lastActResult else ''
         else:
@@ -132,11 +132,9 @@ The current situation in the play
                 "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in character.goal_history]) if character.goal_history else 'None to report',
                 "memories": memory_text,
                 "history": "", #character.history, include heading if decide to re-add,
-                "lastAct": lastAct,
-                "lastActResult": lastActResult,
-                "emotional_stance":emotionalState.to_definition(),
-                "lastAct":lastAct if lastAct else 'None to report',
-                "lastActResult":lastActResult if lastActResult else 'None to report'}
+                "lastAct": lastAct.action if hasattr(lastAct, 'action') else lastAct,
+                "lastActResult": lastActResult if lastActResult else 'None to report',
+                "emotional_stance":emotionalState.to_definition()}
     for key, value in addl_bindings.items():
         bindings[key]=value
     

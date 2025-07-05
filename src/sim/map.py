@@ -13,11 +13,157 @@ from dataclasses import dataclass
 from typing import Dict, Any, Type, List, Tuple
 import numpy as np
 from scipy.ndimage import gaussian_filter
+import re
 
 # Initialize colorama
 init()
 
+class ResourceType:
+    """Represents a single resource type, compatible with Enum interface"""
+    def __init__(self, name: str, value: int, description: str = ""):
+        self.name = name
+        self.value = value
+        self.description = description
+    
+    def __eq__(self, other):
+        if isinstance(other, ResourceType):
+            return self.value == other.value
+        if hasattr(other, 'value'):  # Enum compatibility
+            return self.value == other.value
+        return False
+    
+    def __hash__(self):
+        return hash(self.value)
+    
+    def __repr__(self):
+        return f"ResourceType.{self.name}"
+    
+    def __str__(self):
+        return self.name
 
+class ResourceTypeRegistry:
+    """Dynamic registry for resource types, maintains Enum interface compatibility"""
+    def __init__(self, base_enum=None):
+        self._members = {}
+        self._counter = 1000  # Start high to avoid conflicts with existing enums
+        self._descriptions = {}
+        
+        # Import existing enum members if provided
+        if base_enum:
+            for name, member in base_enum.__members__.items():
+                self._members[name] = ResourceType(name, member.value)
+                self._descriptions[name] = getattr(member, 'description', '')
+    
+    def __getattr__(self, name):
+        if name.startswith('_'):  # Don't interfere with private attributes
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        if name in self._members:
+            return self._members[name]
+        raise AttributeError(f"No resource type: {name}")
+    
+    def __hasattr__(self, name):
+        return name in self._members
+    
+    def add_type(self, name: str, description: str = "") -> 'ResourceType':
+        """Add a new resource type dynamically"""
+        if name not in self._members:
+            new_type = ResourceType(name, self._counter, description)
+            self._members[name] = new_type
+            self._descriptions[name] = description
+            self._counter += 1
+            return new_type
+        return self._members[name]
+    
+    @property 
+    def __members__(self):
+        """Maintain compatibility with Enum.__members__"""
+        return dict(self._members)
+    
+    def get_description(self, name: str) -> str:
+        """Get description for a resource type"""
+        return self._descriptions.get(name, "")
+
+def normalize_name_for_enum_lookup(name: str) -> str:
+    """
+    Convert any case format to PascalCase with underscores for enum lookup.
+    Examples: 
+    - "apple tree" -> "Apple_Tree"
+    - "fallen branch" -> "Fallen_Branch" 
+    - "bus stop" -> "Bus_Stop"
+    - "coffee maker" -> "Coffee_Maker"
+    - "AppleTree" -> "Apple_Tree" (handles camelCase)
+    - "APPLE_TREE" -> "Apple_Tree" (handles UPPER_CASE)
+    """
+    if not name or not isinstance(name, str):
+        return ""
+    
+    # Clean and normalize the input
+    name = name.strip()
+    
+    # Handle camelCase by inserting spaces before capitals
+    # e.g. "AppleTree" -> "Apple Tree"
+    name = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+    
+    # Replace non-alphanumeric characters with spaces
+    name = re.sub(r'[^a-zA-Z0-9\s]', ' ', name)
+    
+    # Split into words and filter out empty strings
+    words = [word for word in name.split() if word]
+    
+    # Capitalize each word and join with underscores
+    return '_'.join(word.capitalize() for word in words)
+
+def find_enum_member_by_name(enum_class, name: str):
+    """
+    Find enum member by name, handling various case formats.
+    Works with both traditional Enums and ResourceTypeRegistry.
+    
+    Args:
+        enum_class: The enum class or ResourceTypeRegistry to search in
+        name: String name to find (in any case format)
+        
+    Returns:
+        Enum member or ResourceType if found, None otherwise
+    """
+    if not name or not isinstance(name, str):
+        return None
+        
+    # First normalize the input name
+    normalized_name = normalize_name_for_enum_lookup(name)
+    
+    # Handle ResourceTypeRegistry
+    if isinstance(enum_class, ResourceTypeRegistry):
+        # Try direct match first with normalized name
+        try:
+            return getattr(enum_class, normalized_name)
+        except AttributeError:
+            pass
+            
+        # Try case-insensitive search through all members
+        for member_name, member in enum_class.__members__.items():
+            if member_name.lower() == normalized_name.lower():
+                return member
+            # Also try direct comparison with original name
+            if member_name.lower() == name.lower().strip():
+                return member
+    else:
+        # Handle traditional Enums
+        # Try direct match first with normalized name
+        if hasattr(enum_class, normalized_name):
+            return getattr(enum_class, normalized_name)
+        
+        try:
+            for member in enum_class:
+                if member.name.lower() == normalized_name.lower():
+                    return member
+                # Also try direct comparison with original name
+                if member.name.lower() == name.lower().strip():
+                    return member
+        except TypeError:
+            # enum_class is not iterable, fall back to hasattr check
+            pass
+    
+    return None
 
 class RuralInfrastructure(Enum):
     Road = 1         # All roads/paths combined
@@ -309,10 +455,11 @@ class WorldMap:
                     min_elev = terrain_def.get('min', -float('inf'))
                     max_elev = terrain_def.get('max', float('inf'))
                     if min_elev <= elev <= max_elev:
-                        terrain_name = terrain_def['type'].strip().capitalize()
-                        self.patches[x][y].terrain_type = getattr(self.terrain_types, terrain_name)
-                        terrain_set = True
-                        break
+                        terrain_type = find_enum_member_by_name(self.terrain_types, terrain_def['type'])
+                        if terrain_type:
+                            self.patches[x][y].terrain_type = terrain_type
+                            terrain_set = True
+                            break
                 
                 # If no elevation-based terrain set, use distribution
                 if not terrain_set:
@@ -321,9 +468,10 @@ class WorldMap:
                     for terrain_name, chance in lowland_distribution.items():
                         cumulative += chance
                         if r < cumulative:
-                            terrain_name = terrain_name.strip().capitalize()
-                            self.patches[x][y].terrain_type = getattr(self.terrain_types, terrain_name)
-                            break
+                            terrain_type = find_enum_member_by_name(self.terrain_types, terrain_name)
+                            if terrain_type:
+                                self.patches[x][y].terrain_type = terrain_type
+                                break
 
         # Modify the smoothing code to remove HILL references
         for _ in range(3):  # 3 smoothing passes
@@ -385,12 +533,107 @@ class WorldMap:
         Returns:
             The matching resource type if found, None otherwise
         """
-        # Normalize the input string
-        resource_name = resource_name.strip().capitalize()
-        for resource_type in self.resource_types:
-            if resource_type.name == resource_name:
-                return resource_type
-        return None
+        return find_enum_member_by_name(self.resource_types, resource_name)
+    
+    def add_dynamic_resource_type(self, name: str, description: str = "") -> ResourceType:
+        """Add a new resource type dynamically to the registry.
+        
+        Args:
+            name: Name of the new resource type
+            description: Optional description
+            
+        Returns:
+            The created ResourceType object
+        """
+        if isinstance(self.resource_types, ResourceTypeRegistry):
+            return self.resource_types.add_type(name, description)
+        else:
+            raise ValueError("Dynamic resource types require ResourceTypeRegistry, not static Enum")
+    
+    def place_dynamic_resource(self, resource_type_name: str, description: str = "", 
+                             terrain_weights: dict = None, requires_property: bool = False,
+                             count: int = 1) -> list:
+        """Place a dynamic resource on the map.
+        
+        Args:
+            resource_type_name: Name of the resource type to place
+            description: Description of the resource instance
+            terrain_weights: Dict mapping terrain types to placement weights
+            requires_property: Whether the resource requires a property
+            count: Number of instances to place
+            
+        Returns:
+            List of placed resource IDs
+        """
+        resource_type = self.get_resource_type(resource_type_name)
+        if not resource_type:
+            resource_type = self.add_dynamic_resource_type(resource_type_name, description)
+        
+        # Convert string terrain names to actual terrain types
+        converted_weights = {}
+        if terrain_weights:
+            for terrain_name, weight in terrain_weights.items():
+                terrain_type = self.get_terrain_type(terrain_name)
+                if terrain_type:
+                    converted_weights[terrain_type] = weight
+        
+        # Find valid locations based on terrain weights and property requirements
+        candidates = []
+        for x in range(self.width):
+            for y in range(self.height):
+                patch = self.patches[x][y]
+                if patch.resources:  # Skip if patch already has resources
+                    continue
+                    
+                if requires_property and patch.property_id is None:
+                    continue
+                    
+                weight = converted_weights.get(patch.terrain_type, 0)
+                if weight > 0:
+                    candidates.append((x, y, weight))
+        
+        # Place resources using weighted random selection
+        placed_resources = []
+        for _ in range(min(count, len(candidates))):
+            if not candidates:
+                break
+                
+            # Weighted random selection
+            total_weight = sum(c[2] for c in candidates)
+            if total_weight <= 0:
+                break
+                
+            rand_val = random.random() * total_weight
+            cumulative = 0
+            selected_idx = 0
+            
+            for i, (x, y, weight) in enumerate(candidates):
+                cumulative += weight
+                if rand_val <= cumulative:
+                    selected_idx = i
+                    break
+            
+            x, y, _ = candidates.pop(selected_idx)
+            
+            # Create and place the resource
+            resource_id = self._generate_resource_id(resource_type)
+            resource_data = {
+                'id': resource_id,
+                'type': resource_type,
+                'name': f"{resource_type_name}{self._resource_counters.get(resource_type, 1)}",
+                'description': description or f"A {resource_type_name.lower()}",
+                'location': (x, y),
+                'properties': {}
+            }
+            
+            self.resource_registry[resource_id] = resource_data
+            self.patches[x][y].resources[resource_id] = resource_data
+            placed_resources.append(resource_id)
+            
+            # Update counter
+            self._resource_counters[resource_type] = self._resource_counters.get(resource_type, 0) + 1
+            
+        return placed_resources
     
     def random_location_by_resource(self, resource_name):
         """Get a random location of a given resource type"""
@@ -422,8 +665,9 @@ class WorldMap:
         return random.choice(candidates)
     
     def generate_properties(self):
-        valid_terrain = [getattr(self.terrain_types, t.strip().capitalize()) 
+        valid_terrain = [find_enum_member_by_name(self.terrain_types, t) 
                         for t in self._property_rules['valid_terrain']]
+        valid_terrain = [t for t in valid_terrain if t is not None]  # Filter out None values
         
         for x in range(self.width):
             for y in range(self.height):
@@ -467,7 +711,7 @@ class WorldMap:
     def is_near_path(self, x: int, y: int, max_distance: int) -> bool:
         # Get path type from infrastructure rules
         path_type_name = self._infrastructure_rules.get('path_type', next(iter(self.infrastructure_types.__members__)))
-        path_type = getattr(self.infrastructure_types, path_type_name)
+        path_type = find_enum_member_by_name(self.infrastructure_types, path_type_name)
         
         for dx in range(-max_distance, max_distance + 1):
             for dy in range(-max_distance, max_distance + 1):
@@ -553,9 +797,9 @@ class WorldMap:
             terrain_weights = {}
             for terrain_type, weight in allocation['terrain_weights'].items():
                 if isinstance(terrain_type, str):
-                    terrain_name = terrain_type.strip().capitalize()
-                    terrain_type = getattr(self.terrain_types, terrain_name)
-                terrain_weights[terrain_type] = weight
+                    terrain_type = find_enum_member_by_name(self.terrain_types, terrain_type)
+                if terrain_type is not None:
+                    terrain_weights[terrain_type] = weight
             
             # Find valid locations
             candidates = []
@@ -907,14 +1151,14 @@ class WorldMap:
         # Convert terrain cost rules to enum values
         self.terrain_costs = {}
         for terrain_name, cost in self._infrastructure_rules['terrain_costs'].items():
-            terrain_name = terrain_name.strip().capitalize()
-            terrain_type = getattr(self.terrain_types, terrain_name)
-            self.terrain_costs[terrain_type] = cost
+            terrain_type = find_enum_member_by_name(self.terrain_types, terrain_name)
+            if terrain_type:
+                self.terrain_costs[terrain_type] = cost
         
         # Get the path type from scenario (default to the first infrastructure type if not specified)
         path_type_name = self._infrastructure_rules.get('path_type', 
-            next(iter(self.infrastructure_types.__members__))).strip().capitalize()
-        path_type = getattr(self.infrastructure_types, path_type_name)
+            next(iter(self.infrastructure_types.__members__)))
+        path_type = find_enum_member_by_name(self.infrastructure_types, path_type_name)
         
         # Initialize road graph
         self.road_graph = nx.Graph()
@@ -989,7 +1233,7 @@ class WorldMap:
         """Build road between points"""
         # Get path type from infrastructure rules
         path_type_name = self._infrastructure_rules.get('path_type', next(iter(self.infrastructure_types.__members__)))
-        path_type = getattr(self.infrastructure_types, path_type_name)
+        path_type = find_enum_member_by_name(self.infrastructure_types, path_type_name)
         
         current = (start_x, start_y)
         self.patches[start_x][start_y].has_path = True
@@ -1030,14 +1274,7 @@ class WorldMap:
         Returns:
             The matching terrain type if found, None otherwise
         """
-        # Normalize the input string
-        terrain_name = terrain_name.strip().capitalize()
-        
-        # Check if the string matches any terrain type
-        for terrain_type in self.terrain_types:
-            if terrain_type.name == terrain_name:
-                return terrain_type
-        return None
+        return find_enum_member_by_name(self.terrain_types, terrain_name)
 
     def get_map_summary(self) -> str:
         """

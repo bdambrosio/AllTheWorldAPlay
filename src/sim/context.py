@@ -11,6 +11,7 @@ import re
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, cast
 import sim.map as map
+from sim.cognitive.driveSignal import Drive
 from sim.referenceManager import ReferenceManager
 from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
@@ -131,6 +132,11 @@ class Context():
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
         self.embedding_model = None
+        
+        # Initialize narrative staleness detection
+        from sim.narrative_staleness import NarrativeStalnessDetector
+        self.staleness_detector = NarrativeStalnessDetector(self, window_size=5)
+        self.previous_interventions = []
 
         for actor in self.actors + self.extras + self.npcs:
             #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
@@ -1052,12 +1058,12 @@ Ensure your response reflects this change.
         if local_only:
             self.last_update_time = self.simulation_time
             return
+        changes = self.identify_state_changes(previous_state, new_situation)
         if not changes_only:
             self.show = new_situation
             self.message_queue.put({'name':'', 'text':self.show})
             self.transcript.append(f'{self.show}')
         else:
-            changes = self.identify_state_changes(previous_state, new_situation)
             self.message_queue.put({'name':'', 'text':changes})
             self.transcript.append(f'{new_situation}')
 
@@ -1073,8 +1079,120 @@ Ensure your response reflects this change.
         for actor in self.actors+self.extras:
             actor.add_to_history(f"you notice {updates}\n")
             actor.update()  # update history, etc
+            
+        # Record character states for staleness detection - moved to run_scene
+        #if hasattr(self, 'staleness_detector'):
+        #    # Run staleness analysis periodically
+        #    try:
+        #        staleness_analysis = await self.staleness_detector.analyze_staleness(changes)
+        #        if staleness_analysis and self.staleness_detector.should_trigger_intervention(staleness_analysis):
+        #            await self.inject_staleness_intervention(staleness_analysis)
+        #    except Exception as e:
+        #        traceback.print_exc()
+        #        print(f"Staleness detection error: {e}")
+                
         return response
 
+
+    async def inject_staleness_intervention(self, analysis: Dict[str, Any]):
+        """Inject an intervention to combat narrative staleness"""
+        intervention_type = analysis.get('intervention_type', 'environmental')
+        intervention_description = analysis.get('intervention_description', 'A sudden change occurs')
+        staleness_score = analysis.get('staleness_score', 0)
+        primary_factors = analysis.get('primary_factors', [])
+        
+        print(f"\n🎭 STALENESS DETECTED (Score: {staleness_score})")
+        print(f"   Factors: {', '.join(primary_factors)}")
+        print(f"   Injecting {intervention_type} intervention: {intervention_description}")
+
+        for character in analysis['entities']['new_character']:
+            #<new_character name="Storm Chaser" 
+            # description="A mysterious outsider caught in the storm, bringing urgent news." 
+            # motivation="To seek shelter and reveal critical information." 
+            # drives="Revelation"/>
+            character_name = map.normalize_name_for_enum_lookup(character['name'])
+            character_description = character['description'] + '. '+character['motivation']
+            new_character = self.get_npc_by_name(character_name, character_description, x=0, y=0, create_if_missing=True)
+            new_character.drives = [Drive(drive.strip()) for drive in character['motivation'].split('.')]
+            self.extras.append(new_character)
+
+        for state_change in analysis['entities']['state_change']:
+            print(f"State change: {state_change['name']} - {state_change['drive']} - {state_change['value']}")
+            #find drive by text drive_text
+            drive = Drive.get_by_text(state_change['drive'])
+            drive_character = None
+            if drive is not None:
+                for character in self.actors + self.extras:
+                    if drive in character.drives:
+                        drive_character = character
+                        break
+                if drive_character and '-' in state_change['value']:
+                    drive_character.demote_drive(drive)
+                elif drive_character:
+                    drive_character.promote_drive(drive)
+            else:
+                print(f"Drive {state_change['drive']} not found")
+
+        # Inject the intervention into the world state
+        self.current_state += f"\n\n{intervention_description}"
+            
+        # Notify all characters about the intervention
+        for actor in self.actors + self.extras:
+            actor.add_perceptual_input(intervention_description, mode='environmental')
+            
+        # Send to UI
+        self.message_queue.put({
+            'name': 'Narrative Director', 
+            'text': f'🎭 Staleness Intervention: {intervention_description}'
+        })
+            
+        await asyncio.sleep(0.1)
+        self.previous_interventions.append(intervention_description)
+        return intervention_description
+    
+    async def generate_environmental_intervention(self):
+        """Generate an environmental intervention event"""
+        # Get current location context
+        location_context = ""
+        for actor in self.actors:
+            if hasattr(actor, 'mapAgent'):
+                terrain = actor.mapAgent.world.patches[actor.mapAgent.x][actor.mapAgent.y].terrain_type
+                location_context = f"Characters are in {terrain.name.lower()} terrain"
+                break
+        
+        environmental_events = [
+            f"The weather suddenly changes, bringing unexpected {random.choice(['rain', 'wind', 'fog', 'sunlight'])}",
+            f"A distant {random.choice(['sound', 'light', 'smoke', 'movement'])} catches everyone's attention",
+            f"The ground {random.choice(['trembles slightly', 'shifts', 'reveals something hidden'])}",
+            f"An unexpected {random.choice(['door opens', 'path appears', 'structure becomes visible'])}",
+            f"The environment {random.choice(['grows quieter', 'becomes more active', 'changes temperature'])}"
+        ]
+        
+        return random.choice(environmental_events)
+    
+    async def generate_character_intervention(self):
+        """Generate a character-based intervention event"""
+        character_events = [
+            f"A stranger approaches the area, their intentions unclear",
+            f"One of the characters suddenly remembers something important",
+            f"Someone receives unexpected news or information",
+            f"A character experiences a sudden emotional shift",
+            f"An urgent need or problem suddenly arises for someone"
+        ]
+        
+        return random.choice(character_events)
+    
+    async def generate_resource_intervention(self):
+        """Generate a resource-based intervention event"""
+        resource_events = [
+            f"Something valuable is discovered nearby",
+            f"An important tool or resource becomes available",
+            f"A useful object is found in an unexpected place",
+            f"Access to a needed resource suddenly becomes possible",
+            f"A new opportunity or option becomes apparent"
+        ]
+        
+        return random.choice(resource_events)
 
     def advance_time(self):
         """Advance simulation clock by time_step"""
@@ -1165,6 +1283,50 @@ Ensure your response reflects this change.
             if allocation['resource_type'] == resource['type']:
                 return allocation.get('has_npc', False)
         return False
+
+    def add_dynamic_resource(self, resource_type_name: str, description: str = "", 
+                           terrain_weights: dict = None, requires_property: bool = False,
+                           count: int = 1, auto_place: bool = True) -> list:
+        """Add a new dynamic resource type and optionally place instances.
+        
+        This is the main interface for the staleness detection system to add new resources.
+        
+        Args:
+            resource_type_name: Name of the new resource type (e.g., "ArtInstallation")
+            description: Description of the resource
+            terrain_weights: Dict mapping terrain names to placement weights (e.g., {"Plaza": 2.0})
+            requires_property: Whether the resource requires a property to be placed
+            count: Number of instances to place
+            auto_place: Whether to automatically place the resource instances
+            
+        Returns:
+            List of placed resource IDs if auto_place=True, empty list otherwise
+        """
+        # Add the resource type to the registry
+        resource_type = self.map.add_dynamic_resource_type(resource_type_name, description)
+        
+        placed_resources = []
+        if auto_place and count > 0:
+            # Place the resources on the map
+            placed_resources = self.map.place_dynamic_resource(
+                resource_type_name=resource_type_name,
+                description=description,
+                terrain_weights=terrain_weights,
+                requires_property=requires_property,
+                count=count
+            )
+            
+            # Log the placement
+            if placed_resources:
+                print(f"Dynamic resource system: Placed {len(placed_resources)} {resource_type_name}(s)")
+                for resource_id in placed_resources:
+                    resource = self.map.resource_registry[resource_id]
+                    location = resource['location']
+                    print(f"  {resource['name']} at ({location[0]}, {location[1]})")
+            else:
+                print(f"Dynamic resource system: Failed to place {resource_type_name} - no suitable locations found")
+        
+        return placed_resources
 
     def map_actor(self, actor):
         mapped_actor = f"""{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}"""
@@ -1331,6 +1493,7 @@ Ensure your response reflects this change.
             await asyncio.sleep(1.0)
             self.scene_integrated_task_plan_index += 1
         
+        true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
             true_outcomes = '\n'.join([outcome.get('outcome') for outcome in outcomes if outcome.get('test') == True])
@@ -1351,6 +1514,7 @@ Ensure your response reflects this change.
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
+        return true_outcomes
 
 
     async def run_narrative_act(self, act, act_number):
@@ -1364,11 +1528,36 @@ Ensure your response reflects this change.
         print(f'Running act: {act["act_title"]}')
         self.message_queue.put({'name':'', 'text':f'\n----- ACT {act_number} ----- {act["act_title"]}'})
         await asyncio.sleep(0.1)
-        for scene in act['scenes']:
+        scene_number = 0
+        while scene_number < len(scenes):
+            scene = scenes[scene_number]
+            world_state_start_scene = self.current_state
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             print(f'Running scene: {scene["scene_title"]}')
-            await self.run_scene(scene)
+            true_outcomes = await self.run_scene(scene)
+            decisions = await self.check_decision_required(act, scene)
+            if decisions:
+                for decision in decisions:
+                    character = decision.get('character', '')
+                    choices = decision.get('choices', '')
+                    print(f'Decision required for {character}: {choices}')
+
+            world_state_end_scene = self.current_state
+            if hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 2: # allow one intervention in middle of act 2
+                # Run staleness analysis
+                try:
+                    changes = self.identify_state_changes(world_state_start_scene, world_state_end_scene)
+                    staleness_analysis = await self.staleness_detector.analyze_staleness(changes, scenes[scene_number+1])
+                    if staleness_analysis and self.staleness_detector.should_trigger_intervention(staleness_analysis):
+                        intervention = await self.inject_staleness_intervention(staleness_analysis)
+                    if intervention and scene_number < len(scenes)-2: # at least one more scene to go
+                        scene = await self.replan_scene(scenes[scene_number+1], scene_number+1, act, act_number, intervention)
+                        scenes[scene_number+1] = scene
+                except Exception as e:
+                    traceback.print_exc()
+                    print(f"Staleness detection error: {e}")
+            scene_number += 1
             self.step = False
         # now ensure post_narrative
         if act.get('act_post_state'):
@@ -1406,6 +1595,7 @@ Ensure your response reflects this change.
 
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} characters introduced -----'})
         await asyncio.sleep(0.1)
+
     async def create_character_narratives(self, play_file, map_file=None):
         """called from the simulation server to create narratives for all characters"""
 
@@ -1560,7 +1750,8 @@ End your response with </end>
         if act_number == 1:
             act_directives = f""" 
 In performing this integration:
-    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 6 scenes maximum. This may require omitting some scenes that have lesser importance to the act narrative.
+    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 4 scenes maximum, except for act 2, which should have a maximum of 5 scenes. 
+          This may require omitting or combining some scenes that have lesser importance to the act narrative.
     2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}
@@ -1630,6 +1821,8 @@ In performing this integration:
             updated_narrative_plan = self.repair_json(response, e)
         if updated_narrative_plan is not None:
             self.validate_dates_in_plan(updated_narrative_plan)
+        else:
+            return None
         self.narrative = updated_narrative_plan
         self.message_queue.put({'name':self.name, 'text':f'------ integrated narratives -----'})
         await asyncio.sleep(0.1)
@@ -1810,8 +2003,100 @@ be careful to insert line breaks only where shown, separating a value from the n
             return outcomes
         return []
 
+    def validate_decision(self, form):
+        """Validate a decision form"""
+        decision = hash_utils.find('Decision', form)
+        try:
+            choices = hash_utils.find('Choices', form).split(',')
+        except:
+            choices = []
+        character = hash_utils.find('Character', form)
+        if decision and choices and len(choices) > 0 and character:
+            return {'decision': decision, 'choices': choices, 'character': character}
+        else:
+            return None
 
-    async def run_coda(self, final_act, final=False):
+    async def check_decision_required(self, act, scene=None):
+        """Check if the a decision is required in this act or scene"""
+        system_prompt = """You are a skilled playwright analyzing a planned act or scene.
+Your task is to determine if a decision is required by one or more of the characters in the act or scene.
+If so, return a list of the characters who require a decision, and a brief description of the decision each needs to make.
+If no decision is required, return an empty list.
+
+The current state of the play is:
+"""
+        suffix = """
+
+#Planned Act or Scene just completed
+{{$act_or_scene}}
+##
+
+#Planned Act or Scene Pre-state
+{{$pre_state}}
+##
+
+#Planned Post-state of the act or scene just completed
+{{$post_state}}
+##
+
+#Planned Act central narrative
+{{$act_central_narrative}}
+##
+
+#Goals for this act or scene
+{{$goals}}
+##
+
+Your task is to determine if a decision is required by one or more of the characters in the act or scene.
+If no decision is required, return an empty list.
+The most important decisions are those that are required to resolve a tension point in this act or scene, or to achieve a goal, or to resolve a conflict.
+The current Act is {{$act_number}}. Except in Act 1, do not include 'delay the decision' or any other choice that simply postpones the decision.
+A decision that is key to resolving the central dramatic question can be deferred till act 3, but not later, so if 'delay the decision' is a choice, and it is not act three, omit the decision.
+
+The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
+the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
+
+Return a succint name for each decision required, together with a comma separated list of the choices available to the character and the name of the character.
+Use hash-formatted text for your response, as shown below. 
+the required tags are Outcome and Test. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+
+#Decision succint name for the decision required 
+#Choices comma separated list of the choices available to the character
+#Character character name
+##
+
+end your response with:
+</end>
+"""
+        act_number = act.get('act_number', 1)
+        if scene:
+            pre_state = scene.get('pre_narrative', '')
+            post_state = scene.get('post_narrative', '')
+            act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
+            goals = '\n\t'.join([f'{key}: {value["goal"]}' for key, value in scene['characters'].items()])
+        else:
+            pre_state = act.get('act_pre_state', '')
+            post_state = act.get('act_post_state', '')
+            act_or_scene = json.dumps(act, indent=2, default=datetime_handler)
+            goals = json.dumps(act.get('act_goals', []), indent=2, default=datetime_handler)
+        response = await self.context_ask(system_prompt=system_prompt, suffix=suffix, addl_bindings={"act_or_scene": act_or_scene, 
+        "act_number": act_number,
+        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
+        "goals": goals}, 
+        max_tokens=100, tag='check_post_state_ambiguity')
+        if response:
+            decisions = []
+            forms = hash_utils.findall_forms(response)
+            for form in forms:
+                decision = self.validate_decision(form)
+                if decision:
+                    decisions.append(decision)
+            return decisions
+        return []
+
+    async def run_coda(self, final_act, scene=None, final=False):
         """Establish outcome and wrap up the play.
         establish unambiguous post state
         update everyone
@@ -1832,6 +2117,13 @@ be careful to insert line breaks only where shown, separating a value from the n
         else:
             print(f'Ambiguous post state: {outcomes}')
             return
+
+        decisions = await self.check_decision_required(final_act, scene)
+        if decisions:
+            for decision in decisions:
+                character = decision.get('character', '')
+                choices = decision.get('choices', '')
+                print(f'Decision required for {character}: {choices}')
 
         for character in cast(List[NarrativeCharacter], self.actors):
             character.reason_over(act_post_state)
@@ -2447,3 +2739,220 @@ End your response with </end>
             else:
                 return 'NOISE'
         return 'NOISE'
+
+    def repair_xml(self, response, error):
+        """Repair XML if it is invalid"""
+        
+        # Try to extract XML from common wrapper patterns
+        if not response.strip().startswith('<') and '<' in response:
+            # Look for XML in code blocks or other wrapping
+            import re
+            xml_pattern = r'```xml\s*\n(.*?)\n```'
+            xml_match = re.search(xml_pattern, response, re.DOTALL | re.IGNORECASE)
+            if xml_match:
+                response = xml_match.group(1).strip()
+            else:
+                # Look for first < to last >
+                start = response.find('<')
+                end = response.rfind('>')
+                if start != -1 and end != -1 and end > start:
+                    response = response[start:end+1]
+
+        # Try to fix common XML issues
+        # Remove newlines that break attribute parsing
+        lines = response.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Keep line if it's whitespace or starts with <
+            if line.strip() == '' or line.strip().startswith('<'):
+                cleaned_lines.append(line)
+            else:
+                # If previous line doesn't end with >, append to it
+                if cleaned_lines and not cleaned_lines[-1].strip().endswith('>'):
+                    cleaned_lines[-1] += ' ' + line.strip()
+                else:
+                    cleaned_lines.append(line)
+        
+        response = '\n'.join(cleaned_lines)
+        
+        # Try parsing the cleaned XML
+        try:
+            import xml.etree.ElementTree as ET
+            # Wrap in root element to handle multiple top-level elements
+            wrapped_xml = f"<root>{response.strip()}</root>"
+            root = ET.fromstring(wrapped_xml)
+            return response  # Return original if parsing succeeds
+        except ET.ParseError as e:
+            error = e
+
+        # OK, ask LLM to repair
+        prompt = [UserMessage(content="""You are an XML repair tool.
+Your task is to repair the following XML:
+
+<xml>
+{{$xml}}
+</xml> 
+
+The reported error is:
+{{$error}}
+
+Respond with the repaired XML string. Make sure the string is well-formed XML that can be parsed by xml.etree.ElementTree.fromstring. No commentary, no code fences. Just the raw XML.
+""")]
+        
+        repaired = self.llm.ask({"xml": response, "error": error}, prompt, tag='repair_xml', temp=0.2, max_tokens=3500)
+        
+        # Clean up any remaining code fences or commentary
+        repaired = repaired.replace("```xml", "").replace("```", "").strip()
+        
+        # Test the repair
+        try:
+            import xml.etree.ElementTree as ET
+            wrapped_xml = f"<root>{repaired.strip()}</root>"
+            ET.fromstring(wrapped_xml)
+            return repaired
+        except ET.ParseError as e:
+            print(f'Error parsing repaired XML: {e}')
+            return None
+        
+    
+
+    async def replan_scene(self, scene, scene_number, act, act_number, intervention):
+        """Rewrite the act with the latest shared information"""
+
+        system_prompt = """You are a seasoned writer rewriting scene {{$scene_number}} in act {{$act_number}}.
+This scene is about to be performed, an unexpected event has suddenly occurred, and you need to rewrite the scene to reflect this.
+
+#The previous plan for this scene is:
+
+{{$scene}}
+##
+
+#This scene was to occur in act {{$act_number}}:
+
+{{$act}}
+##
+
+#This act was part of a performance focusing on the following overall dramatic question:
+
+{{$central_narrative}}
+##
+
+#This new unexpected event has just occurred:
+
+{{$intervention}}
+##
+
+The scene should be rewritten to reflect the event.
+
+"""
+        mission = """ 
+#The actual scenes performed so far are:
+
+{{$previous_scene}}
+##
+"""
+        suffix = """
+
+Pay special attention to the goals you have already attempted and their completion status in replanning your scene. 
+Do not repeat goals that have already been attempted and completed, unless you have a new reason to attempt them again or it is important for dramatic tension.
+
+Note that in the current situation any assumptions or preconditions on which your original act and plan were based may no longer be valid given the event that has occurred.
+However, the new scene should be consistent with the overall narrative arc of the performance, and represent an authentic response to the event that has occurred.
+
+The following act-specific guidelines supplement the general guidelines above. 
+These act-specific guidelines provide additional constraints in rewriting the scene about to be performed.
+Again, the current act number is {{$act_number}} and the scene number is {{$scene_number}}:
+
+** For act 1:
+    1. This act should be short and to the point..
+    2. Sequence scenes to introduce characters and create unresolved tension.
+    3. Establish the central dramatic question clearly: {{$central_narrative}}
+    4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.
+    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
+    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+ 
+** For act 2 (midpoint act):
+    1. Each scene must advance the central dramatic question: {{$central_narrative}}
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
+    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
+    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
+    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
+    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
+    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
+    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+
+** For act 3 (final act):
+    1. Directly answer the central dramatic question: {{$central_narrative}}
+    2. No scene should avoid engaging with the question's resolution.
+    3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)
+    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
+    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
+    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
+    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+
+** For act 4 (coda):
+    1. Show the immediate aftermath and consequences of Act 3's resolution of: {{$central_narrative}}
+    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.
+    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
+    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
+    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
+    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
+    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
+    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
+
+
+Respond with the updated scene, using the following format:
+
+```json
+updated scene
+```
+
+Scene format is as follows:
+{ "scene_number": int, // sequential within the play 
+ "scene_title": string, // concise descriptor 
+ "location": string, // pick from resource or terrain names in the map file
+ "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
+ "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
+ "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ // OPTIONAL: 
+ "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
+ }
+
+
+"""
+
+        scene_number = scene.get('scene_number',0)
+        response = await self.context_ask(system_prompt=system_prompt, prefix=mission, suffix=suffix,
+                              addl_bindings={"name": self.name, "scene": json.dumps(scene, indent=1, default=datetime_handler), 
+                                    "scene_number": scene_number,
+                                    "act_number": act_number,
+                                    "act": json.dumps(act, indent=1, default=datetime_handler),
+                                    "intervention": intervention,
+                                    "act_central_narrative": self.act_central_narrative,
+                                    "central_narrative": self.central_narrative,
+                                    "previous_scenes": '\n'.join([json.dumps(scene, default=datetime_handler) for scene in self.previous_scenes]) if self.previous_scenes else ''},
+                              max_tokens=800, tag='NarrativeCharacter.replan_scene')
+        try:
+            updated_scene = None
+            scene_id = scene.get('scene_number',0)
+            if not response:
+                return None
+            response = response.replace("```json", "").replace("```", "").strip()
+            updated_scene = json.loads(response)
+        except Exception as e:
+            print(f'Error parsing updated scene: {e}')
+            logger.error(f'Error parsing updated act: {e}')
+            logger.error(traceback.format_exc())
+            updated_scene = self.repair_json(response, e)
+        if updated_scene:
+            print(f'{self.name} updates scene {scene_id}')
+        else:
+            print(f'{self.name} failed to update scene {scene_id}')
+            updated_scene = scene
+        self.current_scene = updated_scene
+        self.current_scene_index = scene_number
+        return updated_scene    

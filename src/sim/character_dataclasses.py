@@ -151,6 +151,7 @@ class Task:
         self.result = ''
         self.acts = []
         self.completion_statement = ''
+        self.progress = 0
 
     def __eq__(self, other):
         if not isinstance(other, Task):

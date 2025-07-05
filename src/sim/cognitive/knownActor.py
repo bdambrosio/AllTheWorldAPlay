@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 from venv import create
 from sim.cognitive.DialogManager import Dialog
+from src.utils import hash_utils
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ class KnownActor:
         self.dialog: Dialog = Dialog(self.owner, self.actor_agh)
         self.relationship: str = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
         self.tensions: List[str] = []
+        self.recent_relationship_update: bool = False
 
     def to_json(self):
         """Convert KnownActor state to JSON-serializable dict, excluding runtime references"""
@@ -113,7 +115,14 @@ Describe their current relationship in a brief statement that captures:
 3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
 4. Any recent changes in their relationship with you?
 
-Respond with a concise updated relationship description of up to 120 tokens, no additional text.
+Respond with a concise updated relationship description of up to 160 tokens plus a single True / False assement of whether the self-model has changed significantly"
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#Change True / False
+#Relationship updated relationship paragraph of up to 160 tokens with no newline characters
+##
+
 End with:
 </end>
 """)]
@@ -134,15 +143,24 @@ Describe their current self-model in a brief statement that captures:
 3. Any recent changes in their self-model
 4. Ongoing dynamics
 
-Respond with a concise updated self-model description of up to 160 tokens, no additional text.
+Respond with a concise updated self-model description of up to 160 tokens plus a single True / False assement of whether the self-model has changed significantly"
+Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+be careful to insert line breaks only where shown, separating a value from the next tag:
+
+#Change True / False
+#Relationship updated self-model paragraph of up to 160 tokens with no newline characters
+##
+
 End with:
 </end>
 """)]
 
         new_relation = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=200, stops=["</end>"])
         if new_relation:
-            self.relationship = new_relation.strip()
+            self.relationship = hash_utils.find('Relationship', new_relation)   
             self.clear_tensions()
+            if not self.recent_relationship_update:
+                self.recent_relationship_update = hash_utils.find('Change', new_relation).strip() == 'True'
         return self.relationship
 
     def short_update_relationship(self, all_texts, use_all_texts=False):      
@@ -175,7 +193,8 @@ Create a short (6-10 word) update to the relationship estimate above that captur
 3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
 4. Any recent changes in their relationship with you?
 
-Respond with a concise updated relationship description of up to 10 words, no additional text.
+Respond with a concise change in the relationship estimate of up to 10 words. Do not include any, reasoning, introductory, explanatory or markdown formatting.
+If there are no changes, no response is needed.
 End with:
 </end>
 """)]
@@ -194,16 +213,19 @@ Create a short (6-10 word) update to the relationship estimate above that captur
 1. Character's perception of his/her own nature
 2. Character's current emotional comfort level with his/her own nature
 3. Any recent changes in their self-model
-4. Ongoing dynamics
+4. Ongoing dynamics            
 
-Respond with a concise updated self-model description of up to 10 words, no additional text.
+Respond with a concise change in the self-model description of up to 10 words. Do not include any, reasoning, introductory, explanatory or markdown formatting.
+If there are no changes, no response is needed.
 End with:
 </end>
 """)]
 
         relation_update = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=24, stops=["</end>"])
-        if relation_update:
+        if relation_update and relation_update.strip() != '':
             self.relationship +=relation_update.strip()
+            self.recent_relationship_update = True
+
 
     def add_tension(self, item):
         """add an item to the relationship"""

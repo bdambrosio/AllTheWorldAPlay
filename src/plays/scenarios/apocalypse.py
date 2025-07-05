@@ -2,6 +2,9 @@ from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Dict, List
 
+# Import the new dynamic resource system
+from sim.map import ResourceTypeRegistry
+
 # All enums for apocalypse scenario
 class ApocalypseTerrain(Enum):
     Water = 1       # Required by map.py
@@ -70,7 +73,7 @@ property_rules = {
 terrain_types = ApocalypseTerrain
 infrastructure_types = ApocalypseInfrastructure
 property_types = ApocalypseProperty
-resource_types = ApocalypseResources
+resource_types = ResourceTypeRegistry(ApocalypseResources)  # Use dynamic registry
 
 # Add at top with other interface names
 required_resource = resource_types.Park  # or Market, etc.

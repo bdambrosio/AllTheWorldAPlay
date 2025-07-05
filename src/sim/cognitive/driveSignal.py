@@ -79,6 +79,13 @@ class Drive:
             return cls._instances[id]
         else:
             return None
+        
+    @classmethod
+    def get_by_text(cls, text: str):
+        for drive in cls._instances.values():
+            if drive.text == text:
+                return drive
+        return None
     
     def __post_init__(self):
         Drive._id_counter += 1
@@ -574,8 +581,8 @@ be careful to insert line breaks only where shown, separating a value from the n
 #type issue or opportunity
 #description 4-6 words max explicitly identifying the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
-#importance 0.0-1.0
-#urgency 0.0-1.0
+#importance 1.0-10.0 (importance of the signal to the character - log scale: 1.0 is not important, 10.0 is life-or-death important.  Most signals are in the 2.0-4.0 range.)
+#urgency 1.0-10.0 (urgency of the signal to the character - 1.0 is not urgent, 10.0 demands response within a few seconds. Most signals are in the 2.0-4.0 range.)
 ##
 
 Only respond if you find a clear and strong signal. Report only the single most urgent importantsignal.
@@ -737,8 +744,8 @@ End your response with:
                     recency = 100
                 else:
                     recency = 100-80*(min_cluster_signal_age-min_age)/ age_range
-                urgency = 100*cluster.get_urgency(current_time=current_time, min_age=min_age, age_range=age_range)
-                importance = 100*cluster.get_importance(current_time=current_time, min_age=min_age, age_range=age_range)
+                urgency = 10*cluster.get_urgency(current_time=current_time, min_age=min_age, age_range=age_range)
+                importance = 10*cluster.get_importance(current_time=current_time, min_age=min_age, age_range=age_range)
                 score = math.pow(urgency * importance * signal_ratio * recency, 0.25)
                 cluster.score = score
                 cluster.signals.sort(key=lambda x: x.timestamp, reverse=True)

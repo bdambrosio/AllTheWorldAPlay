@@ -2,6 +2,9 @@ from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Dict, List
 
+# Import the new dynamic resource system
+from sim.map import ResourceTypeRegistry
+
 # All enums for rural scenario
 class RuralTerrain(Enum):
     Water = 1
@@ -63,7 +66,7 @@ property_rules = {
 terrain_types = RuralTerrain
 infrastructure_types = RuralInfrastructure
 property_types = RuralProperty
-resource_types = RuralResources
+resource_types = ResourceTypeRegistry(RuralResources)  # Use dynamic registry
 
 # Add at top with other interface names
 required_resource = resource_types.Mill  # or Market, etc.
