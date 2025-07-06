@@ -126,6 +126,19 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
               ))}
             </div>
 
+            <h4>Character Decisions</h4>
+            <div className="decisions-list">
+              {explorerState.decisions?.length > 0 ? (
+                explorerState.decisions.map((decision, i) => (
+                  <div key={i} className="decision-item">
+                    {decision}
+                  </div>
+                ))
+              ) : (
+                <div className="no-decisions">No decisions made yet</div>
+              )}
+            </div>
+
             <h4>Current Perceptions</h4>
             <div className="perceptions-list">
               {explorerState.emotional_state?.map((percept, i) => (

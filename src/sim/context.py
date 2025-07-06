@@ -1379,7 +1379,7 @@ Ensure your response reflects this change.
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 
-    async def run_scene(self, scene):
+    async def run_scene(self, scene, act=None):
         """Run a scene"""
         print(f'Running scene: {scene["scene_title"]}')
         new_scene = await self.request_scene_choice(scene)
@@ -1493,6 +1493,30 @@ Ensure your response reflects this change.
             await asyncio.sleep(1.0)
             self.scene_integrated_task_plan_index += 1
         
+        decisions = await self.check_decision_required(act, scene)
+        if decisions:
+            for decision in decisions:
+                character_name = decision.get('character', '')
+                choices = decision.get('choices', '')
+                print(f'Decision required for {character_name}: {choices}')
+                self.message_queue.put({'name':character_name, 'text':f'must decide: {choices}'})
+                character: NarrativeCharacter = self.get_actor_by_name(character_name)
+                if character:
+                    choice_dict = await character.decide(decision, act=act, scene=scene)
+                    if choice_dict:
+                        choice = choice_dict.get('choice', '')
+                        reason = choice_dict.get('reason', '')
+                        character.add_perceptual_input(f'{choice}\n\treason: {reason}', mode = 'internal') # do we actually need either this or next line? Just to try to nail it home.
+                        character.reason_over(f'{choice}\n\treason:{reason}')
+                        character.character += f'\nI have decided to {choice}\n\treason: {reason}'
+                        character.decisions.append(f'{choice}\n\treason: {reason}')
+                        self.message_queue.put({'name':character_name, 'text':f'decided: {choice}\n\treason: {reason}'})
+                    else:
+                        self.message_queue.put({'name':character_name, 'text':f'no decision made'})
+                    self.message_queue.put({'name':character_name, 'text':f'character_update', 'data':character.to_json(gen_image=True)})
+                    await asyncio.sleep(0.1)
+                else:
+                    print(f'Character {character_name} not found in scene {scene["scene_title"]}')                  
         true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
@@ -1535,13 +1559,7 @@ Ensure your response reflects this change.
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             print(f'Running scene: {scene["scene_title"]}')
-            true_outcomes = await self.run_scene(scene)
-            decisions = await self.check_decision_required(act, scene)
-            if decisions:
-                for decision in decisions:
-                    character = decision.get('character', '')
-                    choices = decision.get('choices', '')
-                    print(f'Decision required for {character}: {choices}')
+            true_outcomes = await self.run_scene(scene, act)
 
             world_state_end_scene = self.current_state
             if hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 2: # allow one intervention in middle of act 2
@@ -2058,12 +2076,12 @@ the situation assumed before the act or scene starts, and the act or scene plann
 
 Return a succint name for each decision required, together with a comma separated list of the choices available to the character and the name of the character.
 Use hash-formatted text for your response, as shown below. 
-the required tags are Outcome and Test. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
+the required tags are Decision, Choices, and Character. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 
 #Decision succint name for the decision required 
-#Choices comma separated list of the choices available to the character
+#Choices choice1 ..., choice2 ..., choice3 ... comma separated list of the choices available to the character
 #Character character name
 ##
 
@@ -2085,7 +2103,7 @@ end your response with:
         "act_number": act_number,
         "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
         "goals": goals}, 
-        max_tokens=100, tag='check_post_state_ambiguity')
+        max_tokens=400, tag='check_post_state_ambiguity')
         if response:
             decisions = []
             forms = hash_utils.findall_forms(response)

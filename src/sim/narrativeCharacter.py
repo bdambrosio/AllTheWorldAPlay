@@ -1176,3 +1176,48 @@ Make each action specific enough for an actor to embody, but flexible enough to 
                     tag='NarrativeCharacter.generate_do_actions')
     
         return response
+    
+
+    async def decide(self, decision, act=None, scene=None):
+        """Decide on a choice for a decision"""
+        system_prompt = """You are {{$name}}, a character in an improvisational play.
+You are given a decision to make, and a list of choices.
+Your task is to decide which choice to make, and why.
+"""
+        prefix = """The decision to make is:
+#Decision
+{{$decision}}
+##
+
+The choices are:
+#Choices
+{{$choices}}
+##
+"""
+        suffix = """    
+Respond ONLY with the choice you have decided on, and why.
+Use the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
+Each choice should be closed by a ## tag on a separate line.
+Be careful to insert line breaks only where shown, separating a value from the next tag.
+
+#choice choice
+#reason terse (6-8 wordsstatement why you have decided on this choice
+##
+
+Do not include any introductory, explanatory, or discursive text.
+End your response with:
+</end>
+"""
+        response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
+                               addl_bindings={"decision": decision.get('decision', ''), "choices": '\n\t'+'\n\t'.join(decision.get('choices', ''))}, 
+                               tag = 'NarrativeCharacter.decide',
+                               max_tokens=400, log=True)
+        if response is not None:
+            response = response.strip()
+        choice = hash_utils.find('choice', response)
+        reason = hash_utils.find('reason', response)
+        if choice and reason:
+            return {'choice': choice, 'reason': reason}
+        else:
+            return None
+        return response
