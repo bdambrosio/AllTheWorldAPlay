@@ -155,7 +155,6 @@ class Context():
         self.reference_manager.discover_relationships()
         for actor in self.actors + self.extras + self.npcs:
             print(f"Context checking{actor.name} speech_stylizer: {actor.speech_stylizer}")
-            #actor.driveSignalManager.analyze_text(actor.character, actor.drives, self.simulation_time)
             actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
             actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
@@ -1463,6 +1462,7 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':character.to_json(gen_image=True)})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await asyncio.sleep(0.4)
+            character.update(now=True)
 
         # ok, actors - live!
         scene_integrated_task_plan = await self.integrate_task_plans(scene)
@@ -1509,7 +1509,6 @@ Ensure your response reflects this change.
                         character.add_perceptual_input(f'{choice}\n\treason: {reason}', mode = 'internal') # do we actually need either this or next line? Just to try to nail it home.
                         character.reason_over(f'{choice}\n\treason:{reason}')
                         character.character += f'\nI have decided to {choice}\n\treason: {reason}'
-                        character.decisions.append(f'{choice}\n\treason: {reason}')
                         self.message_queue.put({'name':character_name, 'text':f'decided: {choice}\n\treason: {reason}'})
                     else:
                         self.message_queue.put({'name':character_name, 'text':f'no decision made'})
@@ -2179,6 +2178,12 @@ end your response with:
 You are given a list of central narratives for a play, one from each of the characters in the play. 
 These narratives were created by each character independently, negotiating with the others.
 You are integrating multiple character-negotiated dramatic proposals into a single, cohesive central dramatic question that will drive the play.
+The dramatic question usually revolves around how one or more characters will resolve a conflict, either internal (among conflicting drives or desires) or external (between or among characters).
+Rarely, conflict can be achieved through compromise. More often, it must be resolved through making a choice between starkly defined alternatives and living with the resulting gains and losses. 
+In integrating character-proposed narratives, you may have to choose among conflicting proposals about the central dramatic question. 
+It is your job to decide which conflict or question is primary for the play.
+It is NOT your job to decide now how that conflict will be resolved. That will emerge from the play.
+
 
 ## Character Proposals
 {{$character_central_narratives}}

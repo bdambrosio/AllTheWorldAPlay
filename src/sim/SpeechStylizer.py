@@ -176,7 +176,7 @@ class SpeechStylizer:
 {{$drives}}
 
 Based on these descriptions, analyze the character's speech style and provide a JSON response with these exact keys:
-- tone: most dominant, stable, tones (e.g. gruff, warm, polite, casual, thoughtful) likely present in character's speech (limit to 1 -2 tones)
+- tone: most dominant, stable, tones (e.g. gruff, warm, polite, casual, thoughtful, comic, etc.) likely present in character's speech (limit to 1 -2 tones)
 - formality: float between 0-1 (0 being very informal, 1 being very formal)
 - lexical_quirks: dictionary containing:
   - slang: float 0-1 indicating likelihood of using slang
@@ -478,9 +478,9 @@ You are a dialogue style-transfer module.
 Your job is to rewrite a text so that it:
 
 1. Obeys every instruction in the `<STYLE>` block provided below. For probabilities, randomly choose an expression form based on the probability specified.
-2. Preserves the original semantic intent.
+2. Preserves the original semantic intent, which may be to inform, persuade, deceive, entertain, etc.
 3. Sounds like natural spoken dialogue (use contractions, real cadence).
-4. Fits the character's voice and current emotional stance.
+4. Fits the character's voice and current emotional stance. Source text will usually be relatively flat, so the rewrite should be more expressive.
 5. Avoids repetition of past speech unless needed for dramatic effect.
 6. Stays at most same length as original.
 7. Avoids repetition of words or phrases in recent history, especially of short 'social' phrases (e.g. "I'm on it!") or words that would alternated with variants in normal conversational speech (e.g. "loyalty").

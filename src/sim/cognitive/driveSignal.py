@@ -3,6 +3,8 @@ from itertools import tee
 import json
 from reprlib import Repr
 import sys, os
+
+from src.sim.cognitive.perceptualState import SensoryMode
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from datetime import datetime
@@ -546,11 +548,11 @@ class DriveSignalManager:
         return signal
 
         
-    def analyze_text(self, text: str, drives: List[Drive], current_time: datetime) -> List[DriveSignal]:
+    def analyze_text(self, text: str, drives: List[Drive], current_time: datetime, mode: SensoryMode = SensoryMode.INTERNAL) -> List[DriveSignal]:
         """Analyze text for drive-related signals"""
 
-        #if True:
-        #    return []
+        if mode != SensoryMode.AUDITORY and mode != SensoryMode.INTERNAL:
+            return []
         self.current_time = current_time
         try:
             signals = []
@@ -585,7 +587,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #urgency 1.0-10.0 (urgency of the signal to the character - 1.0 is not urgent, 10.0 demands response within a few seconds. Most signals are in the 2.0-4.0 range.)
 ##
 
-Only respond if you find a clear and strong signal. Report only the single most urgent importantsignal.
+Only respond if you find a clear and strong signal. Report only the single most urgent important signal.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
                           

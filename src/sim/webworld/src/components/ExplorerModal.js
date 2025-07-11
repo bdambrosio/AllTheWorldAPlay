@@ -131,7 +131,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
               {explorerState.decisions?.length > 0 ? (
                 explorerState.decisions.map((decision, i) => (
                   <div key={i} className="decision-item">
-                    {decision}
+                    {typeof decision === 'object' ? JSON.stringify(decision) : decision}
                   </div>
                 ))
               ) : (

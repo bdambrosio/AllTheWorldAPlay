@@ -156,9 +156,10 @@ End your response with </end>
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Attempts at compromise often results in loss of both possibilities. 
+Survival chores are background unless they expose or escalate the core mystery.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve —or intentionally leave poised— the protagonist’s primary drive.
+By the final act, resolve — or intentionally leave poised — the protagonist’s primary drive.
         """
 
         mission = """ 
@@ -730,8 +731,9 @@ Again, the act central narrative is:
     async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content=None):
         """Negotiate the central dramatic question with other characters"""
 
-        mission="""You are {{$name}} engaging in collaborative story development with other characters to establish the central dramatic question that will drive the upcoming narrative.
-"""
+        mission="""You are {{$name}} engaging in collaborative story development with other characters to establish the central dramatic question that will drive the upcoming improvisational play.
+The dramatic question usually revolves around how one or more characters will resolve a conflict, either internal (among conflicting drives or desires) or external (between or among characters).
+Rarely, conflict can be achieved through compromise. More often, it must be resolved through making a choice between starkly defined alternatives and living with the resulting gains and losses. """
 
         suffix = """
 # Your Character Profile
@@ -743,7 +745,6 @@ Again, the act central narrative is:
 
 **Setting & Context:**
 {{$setting_background}}
-
 
 ## Negotiation Round {{round_number}} of 2
 
@@ -814,7 +815,7 @@ be careful to insert line breaks only where shown, separating a value from the n
             raise ValueError(f'No focus goal for {self.name}')
         """generate task alternatives to achieve a focus goal"""
         goal = self.focus_goal        
-        system_prompt = """You are an actor in an improvisational play. Review the following planned task in light of recent events. 
+        system_prompt = """You are an actor in an improvisational play. Review the following planned task for the character you are playing {{$name}} in light of recent events. 
 
 ##Previously Planned Task
 {{$planned_task}}
@@ -1193,15 +1194,31 @@ The choices are:
 #Choices
 {{$choices}}
 ##
+
+Making one of the choices above may well involve denying one of you drives listed below. 
+Denying a drive means the choice you are making is incompatible with hope of achieving that drive in the future.
+You will be asked to identify the drive you are denying in the choice you are making.
+
 """
         suffix = """    
-Respond ONLY with the choice you have decided on, and why.
+#this is act {{act_number}}. your avoidance count is {{avoidance_cnt}}. 
+
+#your previous decisions have been:
+{{$previous_decisions}}
+##
+
+Any decision you make must be consisten with previous irrevocable decisions. 
+If act is greater than 2 or avoidance is greater than 5 you must make an irrevocable decision, rather than choose to delay, avoid, or persue compromise.
+Don't be fooled: a 'firm commitment to balanced future' is avoidance / compromise, not a hard irrevocable decision. Make the hard choice, and don't be afraid to be ruthless.
+Respond ONLY with the choice you have decided on, and why. The why should be terse, and will be revealed to no-one but yourself.
 Use the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each choice should be closed by a ## tag on a separate line.
 Be careful to insert line breaks only where shown, separating a value from the next tag.
 
 #choice choice
-#reason terse (6-8 wordsstatement why you have decided on this choice
+#delay True / False - you made a choice to delay or to pursue compromise.
+#deny drive denied to make this choice
+#motivation terse (6-8 words statement why you have decided on this choice
 ##
 
 Do not include any introductory, explanatory, or discursive text.
@@ -1209,15 +1226,26 @@ End your response with:
 </end>
 """
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
-                               addl_bindings={"decision": decision.get('decision', ''), "choices": '\n\t'+'\n\t'.join(decision.get('choices', ''))}, 
+                               addl_bindings={"decision": decision.get('decision', ''), "choices": '\n\t'+'\n\t'.join(decision.get('choices', '')),
+                                               "act_number": act['act_number'] if act else 0, "avoidance_cnt": self.avoidance_cnt,
+                                               "previous_decisions": '\n'.join(json.dumps(d) for d in self.decisions if d['delay'] == False)}, 
                                tag = 'NarrativeCharacter.decide',
                                max_tokens=400, log=True)
         if response is not None:
             response = response.strip()
         choice = hash_utils.find('choice', response)
-        reason = hash_utils.find('reason', response)
+        avoidance = hash_utils.find('delay', response)
+        drive_denied = hash_utils.find('deny', response)
+        if avoidance and avoidance.strip().lower() == 'true':
+            avoidance = True
+            self.avoidance_cnt += 1
+        else:
+            avoidance = False
+            self.avoidance_cnt = 0 # reset avoidance counter
+        reason = hash_utils.find('motivation', response)
         if choice and reason:
-            return {'choice': choice, 'reason': reason}
+            decision = {'choice': choice, 'delay': avoidance, 'drive_denied': drive_denied, 'reason': reason}
+            self.decisions.append(decision)
+            return decision
         else:
             return None
-        return response

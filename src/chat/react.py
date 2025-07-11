@@ -263,7 +263,7 @@ class Actor (agh.Character):
         full_msg = f"{sender.name} {act} {self.name} {task_text}"
         self.add_to_history(full_msg)
         self.current_state = self._generate_current_state()  # Update Actor's state
-        self.generate_goal_alternatives()
+        self.generate_goals()
         self.focus_goal = self.goals[0]
         self.generate_task_plan()
         
