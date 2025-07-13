@@ -181,7 +181,7 @@ class CognitiveToolInterface:
     def get_recentMemories(self,count: int = 8, topic_filter: str = None):
         """Get recent memories, optionally filtered by topic/relevance"""
         recent_memories = self.character.structured_memory.get_recent(count)
-        return '\n'.join(memory.text for memory in recent_memories) if recent_memories else "No recent memories"
+        return '\n'.join(memory.to_string() for memory in recent_memories) if recent_memories else "No recent memories"
 
     def get_locationMemories(self,location: str):
         """Get memories and knowledge about specific location"""

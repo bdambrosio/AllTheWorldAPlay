@@ -191,7 +191,7 @@ After processing the above information and in light of the following information
 
 Consider the following guidelines:
 ** For act 1:
-    1. This act should be short and to the point..
+    1. This act should be short and to the point. Your target is 3 scenes maximum.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {{$central_narrative}}
     4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
@@ -200,7 +200,7 @@ Consider the following guidelines:
  
 ** For act 2:
     1. Each scene must advance the central dramatic question: {{$central_narrative}}
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.
     3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
@@ -211,7 +211,7 @@ Consider the following guidelines:
 
 ** For act 3:
     1. Directly answer the central dramatic question: {{$central_narrative}}
-    2. No scene should avoid engaging with the question's resolution.
+    2. No scene should avoid engaging with the question's resolution. Your target is 3 scenes maximum.
     3. Sequence scenes for maximum tension (alternate trust/mistrust beats)
     4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
     5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
@@ -239,8 +239,8 @@ Return exactly one JSON object with these keys:
   - "act_title"   (string)  
   - "act_description" (string, concise (15-20 word) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
   - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
+  - "act_pre_state" (string, description of the situation / goals / tensions as the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
+  - "act_post_state" (string, description of the situation / goals / tensions as the act ends. concise, about 10 words)
   - "tension_points": [
       {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
       ...
@@ -401,7 +401,7 @@ Return exactly one JSON object with these keys:
   - "act_title"   (string)  
   - "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
   - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
   - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
   - "tension_points": [
       {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
@@ -417,7 +417,7 @@ Each **scene** object must have:
  "duration": int, // in minutes
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I am going to the park', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
@@ -448,7 +448,7 @@ Each **scene** object must have:
       "location": "Location 1",
       "characters": { "Character 1": { "goal": "Goal 1" }, ... },
       "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
-      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'", 
       "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
        // OPTIONAL: 
       "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
@@ -579,7 +579,7 @@ However, the original short-term plan above should still be used to locate your 
 The following act-specific guidelines supplement the general guidelines above, and override them where necessary. Again, the current act number is {{$act_number}}:
 
 ** For act 1:
-    1. This act should be short and to the point..
+    1. This act should be short and to the point. Your target is 3 scenes maximum.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {{$central_narrative}}
     4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.
@@ -588,7 +588,7 @@ The following act-specific guidelines supplement the general guidelines above, a
  
 ** For act 2 (midpoint act):
     1. Each scene must advance the central dramatic question: {{$central_narrative}}
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.
     3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
@@ -599,7 +599,7 @@ The following act-specific guidelines supplement the general guidelines above, a
 
 ** For act 3 (final act):
     1. Directly answer the central dramatic question: {{$central_narrative}}
-    2. No scene should avoid engaging with the question's resolution.
+    2. No scene should avoid engaging with the question's resolution. Your target is 3 scenes maximum.
     3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)
     4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
     5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
@@ -615,7 +615,7 @@ The following act-specific guidelines supplement the general guidelines above, a
     6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
     7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
     8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
-    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
+    9. No ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
 
 
 Respond with the updated act, using the following format:
@@ -634,7 +634,7 @@ Return exactly one JSON object with these keys:
 - "act_title"   (string, copied from the original act or rewritten as appropriate)  
 - "act_description" (string, concise (about 15 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words)
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words). Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'
 - "act_post_state": (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
 - "tension_points": [
     {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
@@ -649,10 +649,10 @@ Each **scene** object must have:
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Laura doesnt love you', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
+ "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.3*len(characters) for scenes with complex goals or interactions.
  }
 
  === Example ===
@@ -663,7 +663,7 @@ Each **scene** object must have:
   "act_title": "rewritten act title",
   "act_description": "concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
   "act_goals" {"primary": "primary goal", "secondary": "secondary goal"},
-  "act_pre_state": "description of the situation / goals / tensions before the act starts. concise, about 10 words",
+  "act_pre_state": "description of the situation / goals / tensions before the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'",
   "act_post_state": "description of the situation / goals / tensions after the act ends. concise, about 10 words",
   "tension_points": [
     {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
@@ -677,7 +677,7 @@ Each **scene** object must have:
       "location": "Location 1",
       "characters": { "Character 1": { "goal": "Goal 1" }, ... },
       "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
-      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I killed Joe', not 'there is a secret.'", 
       "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
       // OPTIONAL: 
       "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 

@@ -24,7 +24,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from weakref import WeakValueDictionary
-#from sim.prompt import ask
+#from sim.prompt import ask as default_ask
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -326,17 +326,18 @@ class DriveSignal:
     """Represents a detected issue or opportunity related to a drive"""
     text: str                # The text that triggered this signal
     drives: List[Drive]      # Reference to the related drives
-    is_opportunity: bool    # True if opportunity, False if issue
-    importance: float       # 0-1 scale of importance
-    urgency: float         # 0-1 scale of urgency
+    type: str    # Issue, Opportunity, or Surprise
+    importance: float       # 0-1.0 scale of importance
+    urgency: float         # 0-1.0 scale of urgency
+    surprise: float        # 0-1.0 scale of surprise
     timestamp: datetime    # When this was last detected
     embedding: np.ndarray  # Vector embedding of the text
 
     def to_string(self):
-        return f'{self.text}: {"opportunity" if self.is_opportunity else "issue"} {[d.text for d in self.drives]} {self.importance:.2f} {self.urgency:.2f} {self.timestamp}'
+        return f'{self.text}: {self.type}. {[d.text for d in self.drives]} {self.importance:.2f} {self.urgency:.2f} {self.surprise:.2f} {self.timestamp}'
     
     def to_full_string(self):
-        return f"""{self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"} Importance: {self.importance:.2f} Urgency: {self.urgency:.2f}
+        return f"""{self.text}. {self.type} Importance: {self.importance:.2f} Urgency: {self.urgency:.2f} Surprise: {self.surprise:.2f}
 {'\n    '.join(['Drive: ' + d.text for d in self.drives])}"""
 
 
@@ -344,7 +345,7 @@ class DriveSignal:
         """Get age factor for signal"""
         if age_range > 0:
             try:
-                return math.pow(0.5, min(0.0, max(10.0, ((current_time - self.timestamp).total_seconds()-min_age)/ (age_range * 3600))))
+                return math.pow(0.5, min(0.0, max(1.0, ((current_time - self.timestamp).total_seconds()-min_age)/ (age_range * 3600))))
             except:
                 return 0.5
         else:
@@ -355,12 +356,12 @@ class SignalCluster:
     _id_counter: ClassVar[int] = 0
     _instances: ClassVar[WeakValueDictionary] = WeakValueDictionary()
 
-    def __init__(self, manager: 'DriveSignalManager', centroid: np.ndarray, signals: List[DriveSignal], drives: List[Drive], is_opportunity: bool, text: str):
+    def __init__(self, manager: 'DriveSignalManager', centroid: np.ndarray, signals: List[DriveSignal], drives: List[Drive], type: str, text: str):
         self.manager = manager
         self.centroid = centroid
         self.signals = signals
         self.drives = drives
-        self.is_opportunity = is_opportunity
+        self.type = type
         self.text = text.lstrip(":")
         self.history = []
         self.score = 0.0
@@ -378,10 +379,10 @@ class SignalCluster:
             return None
 
     def to_string(self):
-        return f"""{self.id} {self.text}: {"opportunity" if self.is_opportunity else "issue"}; {len(self.signals)} signals; score: {self.score}"""
+        return f"""{self.id}: {self.type}; {self.text}. {len(self.signals)} signals; score: {self.score}"""
     
     def to_full_string(self):
-        return f'{self.id} Name: {self.text}. Issue or Opportunity: {"opportunity" if self.is_opportunity else "issue"};  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n'
+        return f'{self.id}: {self.type}; Name: {self.text}.  score {self.score}\n    Emotions: {self.emotional_stance.to_string()}\n'
     
     def add_signal(self, signal: DriveSignal) -> None:
         """Add a signal to the cluster and update centroid"""
@@ -485,7 +486,7 @@ class DriveSignalManager:
             if cluster.text.strip().lower() == name:
                 return cluster
         if create_if_missing:
-            return SignalCluster(manager=self, centroid=np.zeros(self.embedding_dim), signals=[], drives=set(), is_opportunity=False, text=name)
+            return SignalCluster(manager=self, centroid=np.zeros(self.embedding_dim), signals=[], drives=set(), type='issue', text=name)
         return None
         
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
@@ -494,11 +495,11 @@ class DriveSignalManager:
         
     def _find_closest_cluster(self, signal: DriveSignal) -> Tuple[int, float]:
         """Find index and similarity of closest cluster"""
-        if not self.clusters or len([c for c in self.clusters if c.is_opportunity == signal.is_opportunity]) == 0:
+        if not self.clusters or len([c for c in self.clusters if c.type == signal.type]) == 0:
             return -1, 0.0
             
         similarities = [self._cosine_similarity(signal.embedding, c.centroid) 
-                       for c in self.clusters if c.is_opportunity == signal.is_opportunity]
+                       for c in self.clusters if c.type == signal.type]
         closest_idx = np.argmax(similarities)
         return closest_idx, similarities[closest_idx]
         
@@ -507,6 +508,7 @@ class DriveSignalManager:
         desc = hash_utils.find('description', signal_hash).strip()
         signal_text = hash_utils.find('signal', signal_hash).strip()
         drive_ids = hash_utils.find('drive_ids', signal_hash).strip()
+        surprise = hash_utils.find('surprise', signal_hash).strip()
         if desc is None or desc == '':
             return None
         try:
@@ -517,6 +519,14 @@ class DriveSignalManager:
             urgency = float(hash_utils.find('urgency', signal_hash).strip())
         except:
             return None
+        try:
+            surprise = float(hash_utils.find('surprise', signal_hash).strip())
+        except:
+            try:
+                surprise = surprise.split(' ')[0].strip()
+                surprise = float(surprise)
+            except:
+                surprise = 0.2
                     
         embedding = self._get_embedding(desc)
         
@@ -539,9 +549,10 @@ class DriveSignalManager:
         signal = DriveSignal(
             text=f'{signal_text}: {desc}',
             drives=signal_drives,
-            is_opportunity=signal_type == 'opportunity',
+            type = signal_type,
             importance=importance,
             urgency=urgency,
+            surprise=surprise,
             timestamp=current_time,
             embedding=embedding
         )
@@ -557,54 +568,51 @@ class DriveSignalManager:
         try:
             signals = []
 
-            prompt = [SystemMessage(content="""Analyze the following text for issues or opportunities related to these drives: 
-
-<Drives>
-{{$drives}}
-</Drives>
-
-<Text>
+            system_prompt = """"You are an intelligence analyst. Analyze the following text for issues, opportunities, or surprises.
+#Text
 {{$text}}
-</Text>
+##
 
-<Surroundings>
-{{$surroundings}}
-</Surroundings>
+#Issues and opportunities might arise related to these drives: 
 
-Consider <Surroundings> carefully for additional context. 
-Signals can originate from elements explicitly mentioned there, especially those related to safety, survival, or immediate opportunities.
+{{$drives}}
+
+Signals can also arise from the text in the context of the situation below and one or more of the above drives.
+Surprise, if any, arises from the unexpectedness of the text wrt the following information about the current situation, irregardless of the drives above:
+
+"""
+
+            suffix = """
+
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-The valid tags in this response are signal, type, description, drive_ids, importance, urgency.
+The valid tags in this response are signal, type, description, drive_ids, importance, urgency, and surprise.
 The type tag takes a single work as its content, either issue or opportunity.
 be careful to insert line breaks only where shown, separating a value from the next tag, as in the following example:
 
 #signal 3-4 words max tersely naming the key theme or essence (e.g., "Food Source Discovered")
 #type issue or opportunity
 #description 4-6 words max explicitly identifying the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
-#drive_ids a @ separated list of drive ids this signal is related to. A drive id is a string of the form 'd123'
-#importance 1.0-10.0 (importance of the signal to the character - log scale: 1.0 is not important, 10.0 is life-or-death important.  Most signals are in the 2.0-4.0 range.)
-#urgency 1.0-10.0 (urgency of the signal to the character - 1.0 is not urgent, 10.0 demands response within a few seconds. Most signals are in the 2.0-4.0 range.)
+#drive_ids a @ separated list of drive ids this signal is related to. May be an empty list. A drive id is a string of the form 'd123'
+#importance 0.0-1.0 (importance of the signal to the character - log scale: 0.0 is not important, 1.0 is life-or-death important.  Most signals are in the 0.2-0.4 range.)
+#urgency 0.0-1.0 (urgency of the signal to the character - 0.0 is not urgent, 1.0 demands response within a few seconds. Most signals are in the 0.2-0.4 range.)
+#surprise 0.0-1.0 (surprise level of the signal to the character - 0.0 is not surprising, 1.0 is extremely surprising. Most signals are in the 0.2-0.4 range.)
 ##
 
 Only respond if you find a clear and strong signal. Report only the single most urgent important signal.
-Do not include any introductory, explanatory, or discursive text.
-End your response with:
-                          
-</s>
-
-""")]
+Do not include any reasoning, introductory, explanatory, or discursive text.
+"""
             
-            response = self.llm.ask({"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives]), 
-                                     "surroundings": self.owner.look_percept}, 
-                                     prompt, tag='DriveSignal.analyze_text', temp=0.1, stops=['</s>'], max_tokens=180)
+            response = self.ask(self.owner, system_prompt=system_prompt, suffix=suffix, 
+                                              addl_bindings={"text": text, "drives": '\n'.join([f'{d.id} {d.text}' for d in drives])}, 
+                                                tag='DriveSignal.analyze_text', max_tokens=180)
             if not response:
                 return []
             print(f'\npercept {text}')        
             for signal_hash in hash_utils.findall_forms(response):
                 signal = self.construct_signal(signal_hash, drives, current_time)
                 if signal:
-                    print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
+                    print(f'    {signal.type} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f}, {signal.surprise:.2f})')
                     signals.append(signal)
                    
             self.process_signals(signals)
@@ -631,16 +639,17 @@ Report any issues or opportunities you expect the owner is aware of with respect
 {drive.id}: {drive.text}
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-The valid tags in this response are signal, type, description, drive_ids, importance, urgency.
+The valid tags in this response are signal, type, description, drive_ids, importance, urgency, and surprise.
 The type tag takes a single work as its content, either issue or opportunity.
 be careful to insert line breaks only where shown, separating a value from the next tag, as in the following example:
 
 #signal 3-4 words briefly naming the key theme or essence (e.g., "Food Source Discovered")
-#type issue or opportunity
+#type issue / opportunity / surprise
 #description 4-7 words explicitly identifying or elaborating the specific detail or actionable aspect of the signal (e.g., "Apple trees nearby provide food").
 #drive_ids {drive.id}
 #importance 0.0-1.0
 #urgency 0.0-1.0
+#surprise 0.0-1.0
 ##
 
 Only respond if you find a clear and strong signal. Multiple signals can be on separate lines. Report at most 2 signals.
@@ -650,7 +659,7 @@ End your response with:
 """
             
         try:
-            response = self.ask(self.owner, prefix=mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=120)
+            response = self.ask(self.owner, prefix=mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=200)
         except Exception as e:
             traceback.print_exc()
             print(f"Error checking drive signal: {e}")
@@ -665,7 +674,7 @@ End your response with:
                 raw_signal_importance = signal.importance
                 signal.importance = drive.activation*signal.importance
                 drive.activation = .5*drive.activation + .5*max(raw_signal_importance, signal.urgency)
-                print(f'    {"opportunity" if signal.is_opportunity else "issue"} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
+                print(f'    {signal.type} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
                 signals.append(signal)
                    
         self.process_signals(signals)
@@ -696,7 +705,7 @@ End your response with:
                     centroid=signal.embedding,
                     signals=[signal],
                     drives=signal.drives,
-                    is_opportunity=signal.is_opportunity,
+                    type=signal.type,
                     text=signal.text
                 )
                 self.clusters.append(new_cluster)
@@ -805,7 +814,7 @@ End your response with:
                     centroid=signals[0].embedding,
                     signals=[signals[0]],
                     drives=signals[0].drives,
-                    is_opportunity=signals[0].is_opportunity,
+                    type=signals[0].type,
                     text=signals[0].text.lstrip(':')
                 )
                 # Add remaining signals
@@ -836,7 +845,7 @@ End your response with:
                     centroid=outlier_signal.embedding,
                     signals=[outlier_signal],
                     drives=outlier_signal.drives,
-                    is_opportunity=outlier_signal.is_opportunity,
+                    type=outlier_signal.type,
                     text='outlier_'+outlier_signal.text.lstrip(':')
                 )
                 self.clusters.append(outlier_cluster)

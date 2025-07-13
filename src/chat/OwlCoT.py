@@ -461,7 +461,7 @@ End your response with: </END>
         memories = self.owl.structured_memory.get_recent(10)
         
         # Filter for relevance to selected_text using the extract_relevant function
-        memory_text = '\n'.join(memory.text for memory in memories)
+        memory_text = '\n'.join(memory.to_string() for memory in memories)
         relevant_memories = self.extract_relevant(
             selected_text,  # Use selected_text as query
             memory_text,    # Search through recent memories

@@ -96,7 +96,7 @@ The current situation in the play
     focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
 
     recent_memories = character.structured_memory.get_recent(16)
-    memory_text = '\n'.join(memory.text for memory in recent_memories)
+    memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
     
     emotionalState = character.emotionalStance        
 

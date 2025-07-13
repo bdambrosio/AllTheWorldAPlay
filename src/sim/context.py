@@ -279,7 +279,7 @@ class Context():
 
     def format_character_for_context_ask(self, character:NarrativeCharacter):
         recent_memories = character.structured_memory.get_recent(8)
-        memory_text = '\n\t\t'.join(memory.text for memory in recent_memories)
+        memory_text = '\n\t\t'.join(memory.to_string() for memory in recent_memories)
         goal_history = '\n\t\t'.join([f'{g.name} - {g.description}; {g.completion_statement}' for g in character.goal_history]) if character.goal_history else f'None to report'
         return f'\n\n##Name: {character.name}' + \
             f'\n\tDescription: {character.character}' + \
@@ -534,7 +534,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             # Get recent memories from structured memory
             recent_memories = actor.structured_memory.get_recent(5)
             for memory in recent_memories:
-                history.append(f"{actor.name}: {memory.text}")
+                history.append(f"{actor.name}: {memory.to_string()}")
                 
         return '\n'.join(history) if history else ""
 
@@ -648,7 +648,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         
         # Check active actors first
         first_name = reference_text.strip().split(' ')[0]
-        for actor in self.actors+self.extras:
+        for actor in self.actors+self.extras+self.npcs:
             if actor.name == reference_text or actor.name == first_name:
                 return (actor, reference_text)
             
@@ -837,7 +837,7 @@ End your response with:
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map, "target": target,
-                                     "history": "\n".join([m.text for m in actor.structured_memory.get_recent(16)]),
+                                     "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, 
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
@@ -1237,7 +1237,7 @@ Ensure your response reflects this change.
             task_actor_names = hash_utils.find('actors', task).split(',')
             task_memories = set()  
             for actor_name in task_actor_names:
-                actor = self.get_actor_by_name(actor_name.strip())
+                actor, actor_name = self.resolve_character(actor_name.strip())
                 if actor is None:
                     print(f'\n** Context format_tasks: Actor {actor_name.strip()} not found**')
                     continue
@@ -1250,7 +1250,7 @@ Ensure your response reflects this change.
                     )
                 # More explicit memory text collection
                 for memory in memories:
-                    task_memories.add(memory.text)  # Add each memory text individually
+                    task_memories.add(memory.to_string())  # Add each memory text individually
 
             task_memories = '\n\t'.join(task_memories)
             task_list.append(task_dscp + '\n\t' + task_memories)
@@ -1270,7 +1270,7 @@ Ensure your response reflects this change.
         {'\n        '.join([hash_utils.find('name', task) for task in actor.focus_goal.task_plan]) if actor.focus_goal else ''}   
     </tasks>
     <memories>
-        {'\n        '.join([memory.text for memory in actor.structured_memory.get_recent(6)])}
+        {'\n        '.join([memory.to_string() for memory in actor.structured_memory.get_recent(6)])}
     </memories>
 </actor>"""
         return mapped_actor
@@ -1415,13 +1415,15 @@ Ensure your response reflects this change.
         #construct a list of characters in the scene in the order in which they appear
         characters_in_scene: List[Character] = []
         for character_name in scene['action_order']:
+            if character_name == 'Context':
+                continue
             character_name = character_name.capitalize().strip()
-            character = self.get_actor_by_name(character_name)
+            character, canonical_character_name = self.resolve_character(character_name)
             if character is None:
                 print(f'Character {character_name} not found in scene {scene["scene_title"]}')
                 character = self.get_npc_by_name(character_name, create_if_missing=True)
-            if character_name == 'Context':
-                continue
+            else:
+                character_name = canonical_character_name
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
@@ -1500,7 +1502,7 @@ Ensure your response reflects this change.
                 choices = decision.get('choices', '')
                 print(f'Decision required for {character_name}: {choices}')
                 self.message_queue.put({'name':character_name, 'text':f'must decide: {choices}'})
-                character: NarrativeCharacter = self.get_actor_by_name(character_name)
+                character, character_name = self.resolve_character(character_name)
                 if character:
                     choice_dict = await character.decide(decision, act=act, scene=scene)
                     if choice_dict:
@@ -1561,14 +1563,14 @@ Ensure your response reflects this change.
             true_outcomes = await self.run_scene(scene, act)
 
             world_state_end_scene = self.current_state
-            if hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 2: # allow one intervention in middle of act 2
+            if hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 1: # allow one intervention in middle of act 2
                 # Run staleness analysis
                 try:
                     changes = self.identify_state_changes(world_state_start_scene, world_state_end_scene)
                     staleness_analysis = await self.staleness_detector.analyze_staleness(changes, scenes[scene_number+1])
                     if staleness_analysis and self.staleness_detector.should_trigger_intervention(staleness_analysis):
                         intervention = await self.inject_staleness_intervention(staleness_analysis)
-                    if intervention and scene_number < len(scenes)-2: # at least one more scene to go
+                    if intervention: # at least one more scene to go
                         scene = await self.replan_scene(scenes[scene_number+1], scene_number+1, act, act_number, intervention)
                         scenes[scene_number+1] = scene
                 except Exception as e:
@@ -1673,7 +1675,7 @@ Ensure your response reflects this change.
             drives = '\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives])
             narrative = character.narrative.get_summary('medium')
             surroundings = character.look_percept
-            memories = '\n'.join(memory.text for memory in character.structured_memory.get_recent(8))
+            memories = '\n'.join(memory.to_string() for memory in character.structured_memory.get_recent(8))
             emotionalState = EmotionalStance.from_signalClusters(character.driveSignalManager.clusters, character)        
             emotional_stance = emotionalState.to_definition()
             character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
@@ -1731,7 +1733,7 @@ Return exactly one JSON object with these keys:
 - "act_title"   (string, copied from the original act or rewritten as appropriate)  
 - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
-- "act_pre_state": (string, description of the situation / goals / tensions before the act starts)
+- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
 - "act_post_state": (string, description of the situation / goals / tensions after the act ends)
 - "tension_points": [
     {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
@@ -1747,7 +1749,7 @@ Each **scene** object must have:
  "duration": mm, // the duration of the scene, in minutes
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
+ "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
@@ -1767,7 +1769,7 @@ End your response with </end>
         if act_number == 1:
             act_directives = f""" 
 In performing this integration:
-    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 4 scenes maximum, except for act 2, which should have a maximum of 5 scenes. 
+    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 3 scenes maximum.
           This may require omitting or combining some scenes that have lesser importance to the act narrative.
     2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
     2. Sequence scenes to introduce characters and create unresolved tension.
@@ -1779,14 +1781,13 @@ In performing this integration:
         elif act_number == 2:
             act_directives = f""" 
 In performing this integration:
-    1. Each scene must advance the central dramatic question: {central_dramatic_question}
-    2. Midpoint scene should fundamentally and dramaticallycomplicate the question (make it harder to answer or change its nature).
+    1. Each scene must advance the central dramatic question: {central_dramatic_question}. Your target is 4 scenes maximum.
+    2. Midpoint scene should fundamentally and dramatically complicate the question (make it harder to answer or change its nature).
     3. Minimize lateral exploration - every scene should move closer to OR further from resolution.
     4. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
     7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
     9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
     10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
 """
@@ -1794,7 +1795,7 @@ In performing this integration:
             act_directives = f""" 
 In performing this integration:
     1. Directly answer the central dramatic question: {central_dramatic_question}. Decide how the central dramatic question will be answered now, before generating the act, and stick to it.
-    2. No scene should avoid engaging with the question's resolution you have chosen.
+    2. No scene should avoid engaging with the question's resolution you have chosen. Your target is 3 scenes maximum.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     4. Sequence scenes for maximum tension (alternate tension/relief beats)
     5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
@@ -1808,14 +1809,14 @@ In performing this integration:
             act_directives = f""" 
 In performing this integration:
     1. Show the immediate aftermath and consequences of Act 3's resolution of: {central_dramatic_question}
-    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.
+    2. Maximum of 2 scenes - focus on essential closure only, avoid extended exploration.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
     5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
     6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
     7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
     8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
-    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
+    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution..
 """
 
         response = self.llm.ask({"time": self.simulation_time.isoformat(), 
@@ -1936,6 +1937,20 @@ In performing this integration:
 
             await self.run_coda(next_act, final=True)
 
+            act_central_narrative = "Reflect on the aftermath - Show consequences, character transformation, new equilibrium" 
+            for character in cast(List[NarrativeCharacter], self.actors):
+                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, previous_act, act_central_narrative, previous_act_post_state)
+                character_narrative_blocks.append([character, updated_act])  
+            next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative, previous_act_post_state)
+            new_act = await self.request_act_choice(next_act)
+            #outcomes = await self.check_post_state_ambiguity(next_act) # testing
+
+            await asyncio.sleep(0.1)
+            if new_act is None:
+                logger.error('No act to run')
+                return
+            await self.run_narrative_act(next_act, i+1)
+            
         except Exception as e:
             logger.error(f'Error running integrated narrative: {e}')
             traceback.print_exc()
@@ -2623,11 +2638,11 @@ re""")]
                     self.embed_task(task)
 
         prune_level = 0
-        if total_input_task_count > 1.5*total_actor_beats:
+        if total_input_task_count > 1.3*total_actor_beats:
             prune_level = 1
-        if total_input_task_count > 2*total_actor_beats:
+        if total_input_task_count > 1.5*total_actor_beats:
             prune_level = 2
-        if total_input_task_count > 3*total_actor_beats:
+        if total_input_task_count > 2*total_actor_beats:
             prune_level = 3
         scene_task_clusters = self.cluster_tasks(self.scene_task_embeddings)
 
@@ -2860,12 +2875,12 @@ This scene is about to be performed, an unexpected event has suddenly occurred, 
 {{$central_narrative}}
 ##
 
-#This new unexpected event has just occurred:
+#This new unexpected event has just occurred and should be central to the rewritten scene:
 
 {{$intervention}}
 ##
 
-The scene should be rewritten to reflect the event.
+The scene should be rewritten to reflect this event.
 
 """
         mission = """ 

@@ -411,9 +411,9 @@ class Actor (agh.Character):
     def show_memories(self, short=True):
         for memory in self.memory_stream.memories:
             if short:
-                print(f'Memory: {memory.text[:32]}')
-            else:
-                print(f'\nMemory: {memory.text}')
+                            print(f'Memory: {memory.to_string()[:32]}')
+        else:
+            print(f'\nMemory: {memory.to_string()}')
                 
 
     # should this shorten memories, or should that be done at remember time? And maybe worry about losing full mem there?
@@ -432,7 +432,7 @@ class Actor (agh.Character):
             )
             
             for mem in structured_memories:
-                memories.append(f"Recent Memory: {mem.text}")
+                memories.append(f"Recent Memory: {mem.to_string()}")
         except Exception as e:
             print(f"Warning: concrete memory retrieval failed: {e}")
         
@@ -445,7 +445,7 @@ class Actor (agh.Character):
             )
             
             for mem in abstract_memories:
-                memories.append(f"Life Experience: {mem.text}")
+                memories.append(f"Life Experience: {mem.to_string()}")
         except Exception as e:
             print(f"Warning: abstract memory retrieval failed: {e}")
             

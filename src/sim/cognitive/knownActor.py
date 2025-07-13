@@ -110,10 +110,11 @@ Recent Interactions:
 {chr(10).join(f"- {text}" for text in char_memories)}
 
 Describe their current relationship in a brief statement that captures:
-1. Character's perception of the other character's nature
-2. Character's current emotional state towards the other character
-3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
-4. Any recent changes in their relationship with you?
+1. Character's perception of the other character's nature: predictability, honesty, trustworthiness, reliability.
+2. Character's assessment of the other character's capabilities and motivations.
+3. Character's assessment of other character's emotional state.
+4. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
+5. Character's assessment of evidence for recent changes in relationship with other character?
 
 Respond with a concise updated relationship description of up to 160 tokens plus a single True / False assement of whether the self-model has changed significantly"
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.

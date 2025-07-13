@@ -121,9 +121,6 @@ class MemoryStream():
             print(f"created {self.faiss_filename}")
 
     def clear(self):
-        ok = pyqt_utils.confirmation_popup("Really? Not recoverable!", '   ')
-        if not ok:
-            return
         self._stream = {}
         with open(self.filename, 'wb') as file:
             pickle.dump(self._stream, file)
@@ -141,69 +138,3 @@ class MemoryStream():
         else:
             raise ValueError("Not all keys are integers.")
             
-
-    def remember(self, text, salience=0):
-        """ add a memory to the memory stream
-            note that memories are synopses, not full faith memories of long items
-        """
-        memory_sections = {"Synopsis":{"instruction":'A concise summary.'},
-                           }
-        if len(text)> 240:
-            synopsis = text[:240].strip()
-        else:
-            synopsis = text.strip()
-        id = self.generate_new_key()
-        # synopsis has only one section for now, but may add ltr. Should pbly add headings
-        text_embedding = self.embedding_request('\n'.join(synopsis), 'search_document: ')
-        self._stream[id] = self.Memory(synopsis, salience)
-        ids_np = np.array([id], dtype=np.int64)
-        embeds_np = np.array([text_embedding], dtype=np.float32)
-        self.memory_indexIDMap.add_with_ids(embeds_np, ids_np)
-        self.unsaved_memories += 1
-
-        if self.unsaved_memories > 10:
-            self.save()
-            self.unsaved_memories = 0
-
-    def recall(self, thought, recent=8, top_k=8):
-        text_embedding = self.embedding_request(thought, 'query_document: ')
-        embeds_np = np.array([text_embedding], dtype=np.float32)
-        scores, ids = self.memory_indexIDMap.search(embeds_np, 20) # get plenty of candidates!
-        if len(ids) < 1:
-            print(f'No items found')
-            return [],[]
-        age_normalizer = math.log(600.0+(datetime.now() - self.earliest_memory_date).total_seconds())
-        rescored_tuples = []
-        recent = self.n_most_recent(recent)
-        for id, score in zip(ids[0], scores[0]):
-            if id < 0:
-                break
-            memory = self._stream[id]
-            if memory in recent: # we're going to include the top n anyway, skip those
-                continue
-            #age and recency are normalized to total age of memory stream
-            age = math.log((datetime.now() - memory.created).total_seconds()+600.0) /age_normalizer 
-            recency = math.log((datetime.now() - memory.accessed).total_seconds()+600.0) /age_normalizer
-            overall = age*0.05+recency*0.05+score
-            #print(id, score, age, recency, overall)
-            rescored_tuples .append((overall, id))
-        #sort by score and pick top 8
-        scored_memory_tuples = sorted(rescored_tuples, key=lambda x: x[0])[:8]
-        scored_memories = [self._stream[m_tuple[1]] for m_tuple in scored_memory_tuples]
-        #now resort by date
-        recalled = sorted(scored_memories, key=lambda m: m._created)
-
-        final = recalled+recent
-        #print (f'\n{self.host_name} recall returning:')
-        #for memory in final:
-        #    print(f'{memory._created} {memory._text}')
-
-        return final
-        
-if __name__ == '__main__':
-    ms = MemoryStream('xxx')
-    ms.remember('xxx thinks I wonder what time it is?')
-    ms.remember('xxx wonders I wonder where I am?')
-    ms.remember('xxx says who are you ?')
-    print(ms.recall('wonder'))
-    print(ms.recall('time'))

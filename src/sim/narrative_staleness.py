@@ -564,7 +564,7 @@ Tthe following interventions have already been implemented. Do not repeat any, l
 #primary_factors [comma-separated list]
 #intervention_needed [yes/no]
 #intervention_type [environmental/character/resource/temporal/moral]
-#intervention_description [1-2 sentence description of the event]
+#intervention_description [1-2 sentence description of the event. Must be concrete and specific. e.g., 'A fire breaks out', not 'there is a secret.' Be specific: who (e.g. who sees the fire), what, when (now? past?), where (eg, where is the fire), impact.]
 
 ## Entity Spawning or drive state change (if needed), in XML format - name is required, and is the name of the entity or state change. A state_change can only be used to change the activation of a drive:
 ```xml

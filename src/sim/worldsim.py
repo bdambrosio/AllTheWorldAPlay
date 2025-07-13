@@ -81,7 +81,7 @@ class HoverWidget(QWidget):
             print(f' enter under mouse! {event}')
             self.text_widget.clear()
             recent_memories = self.character.structured_memory.get_recent(5)
-            memory_text = '\n'.join(memory.text for memory in recent_memories)
+            memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
             add_text_ns(self.text_widget, memory_text)
             self.text_widget.setVisible(True)
         super().enterEvent(event)

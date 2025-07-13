@@ -6,6 +6,7 @@ from sklearn import tree
 
 from src.sim.SpeechStylizer import SpeechStylizer
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,9 +29,6 @@ from utils import llm_api
 from utils.llm_api import generate_image
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
-from sim.memoryStream import MemoryStream
-import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import sim.map as map
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
@@ -476,7 +474,7 @@ End your response with:
         memory_text = []
         
         if recent_memories:
-            concrete_text = '\n'.join(f"- {memory.text}" for memory in recent_memories)
+            concrete_text = '\n'.join(f"- {memory.to_string()}" for memory in recent_memories)
             memory_text.append("Recent Events:\n" + concrete_text)
         
         # Get current activity if any
@@ -535,8 +533,9 @@ End your response with:
 
     def update(self, now=False):
         """Move time forward, update state"""
-        # Consolidate memories if we have drives
-        if hasattr(self, 'drives'):
+        # Enhanced consolidation (semantic clustering, LLM summaries) if we have drives
+        # Note: Basic abstraction now happens automatically on add_entry
+        if hasattr(self, 'drives') and hasattr(self, 'memory_consolidator'):
             self.memory_consolidator.consolidate(self.structured_memory)
 
         # Add narrative update
@@ -554,10 +553,12 @@ End your response with:
         self.step += 1 # skip next update
         if self.step < 5 and not now:
             return
+        self.driveSignalManager.recluster() 
         self.step = 0
         system_prompt = """You are an actor with deep insight into human psychology and the character you are playing, {{$name}}, in an ongoing improvisational play.
 Your task is to review the original and current descriptions of your character, and generate a new description of your character accurately reflecting your character's development.
-Carry forward a record of your character's decisions and commitments from the current description if they are still relevant.
+Carry forward your character's fundamental personality and commitments, including your character's decisions and commitments from the current description if they are still relevant.
+Preserve your character's fundamental decision-making capability - acknowledge doubt, but don't allow it to become dominant.
 This description will inform the next scene of the play.
 """
         mission = """
@@ -914,7 +915,7 @@ adjective, adjective, adjective
             concerns = self.focus_task.peek().to_string() if self.focus_task.peek() else ''
             state = description + '.\n '+concerns +'\n'+ context
             recent_memories = self.structured_memory.get_recent(8)
-            recent_memories = '\n'.join(memory.text for memory in recent_memories)
+            recent_memories = '\n'.join(memory.to_string() for memory in recent_memories)
             #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=10)
             if response:
@@ -1037,7 +1038,7 @@ Respond only with a single choice of mode. Do not include any introductory, disc
     def format_history_for_UI(self, n=2):
         """Get n most recent memories"""
         recent_memories = self.structured_memory.get_recent(n)
-        return ' \n '.join(memory.text for memory in recent_memories)
+        return ' \n '.join(memory.to_string() for memory in recent_memories)
     
     def map_goals(self, goal=None):
         """ map goals for llm input """
@@ -1078,7 +1079,7 @@ End your response with:
         """Check if response is repetitive considering wider context"""
         # Get more historical context from structured memory
         recent_memories = self.structured_memory.get_recent(8)  # Increased window
-        history = '\n'.join(mem.text for mem in recent_memories)
+        history = '\n'.join(mem.to_string() for mem in recent_memories)
         
         prompt = [UserMessage(content="""Given recent history and a new proposed action, 
 determine if the new action is pointlessly repetitive and unrealistic. 
@@ -1577,7 +1578,7 @@ End response with:
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in self.goal_history]) if self.goal_history else 'None to report',
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.text for m in self.structured_memory.get_recent(16)]),
+                                 "recent_memories": "\n".join([m.to_string() for m in self.structured_memory.get_recent(16)]),
                                  "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
@@ -1980,7 +1981,7 @@ End your response with:
 
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(8)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
+        memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
 
         if consequences == '':
             consequences = self.context.last_consequences
@@ -2056,7 +2057,7 @@ End your response with:
 
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(8)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
+        memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
 
         if consequences == '':
             consequences = self.context.last_consequences
@@ -2397,6 +2398,8 @@ End your response with:
 
         if not goal:
             goal = self.focus_goal
+        if not goal and task and task.goal:
+            goal = task.goal
         if not goal:
             raise ValueError(f'No goal for {self.name}')
         goal_memories = []
@@ -3280,7 +3283,7 @@ End your response with:
             activity = f'You are currently actively engaged in an internal dialog'
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(10)
-        memory_text = '\n'.join(memory.text for memory in recent_memories)
+        memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
         
         #print("Hear",end=' ')
         duplicative_insert = ''
@@ -3406,7 +3409,7 @@ End your response with:
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
                                          'achievments': '\n'.join(self.achievments[:5]),
-                                         'recent_memories': '\n'.join([memory.text for memory in self.structured_memory.get_recent(8)]), 
+                                         'recent_memories': '\n'.join([memory.to_string() for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
                                          prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
@@ -4004,7 +4007,7 @@ End your response with:
             target = self
         elif act_mode == 'Say':
             if target_name != None and target is None:
-                target = self.context.get_actor_by_name(target_name)
+                target = self.context.resolve_character(target_name)[0]
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
@@ -4147,7 +4150,7 @@ end your response with:
             ],
             'memories': [
                 {
-                    'text': memory.text or '',
+                    'text': memory.to_string() or '',
                     'timestamp': memory.timestamp.isoformat() if memory.timestamp else self.context.simulation_time.isoformat()
                 } 
                 for memory in (self.structured_memory.get_recent(8) or [])
@@ -4195,7 +4198,7 @@ end your response with:
                 {
                     'text': cluster_pair[0].text,
                     'drives': [d.text for d in cluster_pair[0].drives],  # Changed from single drive to list
-                    'is_opportunity': cluster_pair[0].is_opportunity,
+                    'type': cluster_pair[0].type,
                     'signals': [s.text for s in cluster_pair[0].signals],
                     'score': cluster_pair[1],
                     'last_seen': cluster_pair[0].get_latest_timestamp().isoformat()

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sim.cognitive.knownActor import KnownActorManager
 from utils.Messages import UserMessage
 from .core import StructuredMemory, MemoryEntry, AbstractMemory, NarrativeSummary
+from sim.utility.semantic_clustering import SemanticClusterManager, SemanticCluster
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,12 +19,34 @@ class MemoryConsolidator:
         self.owner = owner
         self.llm = llm
         self.context = context
+        # Add semantic clustering manager
+        self.semantic_manager = SemanticClusterManager(
+            similarity_threshold=0.6,  # Slightly lower threshold for memories
+            clustering_eps=0.35
+        )
+        self.last_semantic_clustering = None
 
     def set_llm(self, llm):
         self.llm = llm
 
     def consolidate(self, memory: StructuredMemory):
-        """Periodic memory maintenance and optimization"""
+        """Periodic memory maintenance and optimization with semantic clustering"""
+        current_time = self.owner.context.simulation_time
+        
+        # Original drive-based consolidation
+        self._consolidate_by_drives(memory)
+        
+        # New semantic clustering consolidation
+        self._consolidate_by_semantics(memory, current_time)
+        
+        # Enhanced summaries and cleanup
+        self._enhance_summaries(memory)
+        self._merge_related_abstractions(memory)
+        self._cleanup_abstractions(memory)
+        self._cleanup_concrete_memories(memory)
+
+    def _consolidate_by_drives(self, memory: StructuredMemory):
+        """Original drive-based consolidation"""
         # Get memories by drive using retrieval system
         drive_memories = {}
         for drive in self.owner.drives:  # Now using Drive objects
@@ -38,15 +61,131 @@ class MemoryConsolidator:
         
         # Create abstractions from drive-related memories
         for drive, memories in drive_memories.items():
-            if len(memories) >= 2:  # Need at least 2 memories to form pattern
+            if len(memories) >= 4:  # Need at least 2 memories to form pattern
                 self._create_abstraction(memory, memories, drive)
+
+    def _consolidate_by_semantics(self, memory: StructuredMemory, current_time: datetime):
+        """New semantic clustering consolidation"""
+        # Only run semantic clustering periodically to avoid overhead
+        if (self.last_semantic_clustering is None or 
+            (current_time - self.last_semantic_clustering).total_seconds() > 600):  # Every 15 minutes
+            
+            # Get recent memories for clustering (last 48 hours)
+            recent_cutoff = current_time - timedelta(hours=12)
+            recent_memories = [
+                mem for mem in memory.concrete_memories 
+                if mem.timestamp >= recent_cutoff
+            ]
+            
+            if len(recent_memories) >= 3:  # Need minimum memories for clustering
+                self._semantic_cluster_memories(memory, recent_memories, current_time)
+                self.last_semantic_clustering = current_time
+
+    def _semantic_cluster_memories(self, memory: StructuredMemory, memories: List[MemoryEntry], current_time: datetime):
+        """Perform semantic clustering on memories"""
+        # Prepare memories with embeddings
+        items_with_embeddings = []
+        for mem in memories:
+            # Get or create embedding for memory text
+            if not hasattr(mem, 'embedding') or mem.embedding is None:
+                embedding = self.semantic_manager.get_embedding(mem.to_string())
+                mem.embedding = embedding
+            else:
+                embedding = mem.embedding
+            items_with_embeddings.append((mem, embedding))
+        
+        # Perform clustering
+        self.semantic_manager.recluster(
+            items_with_embeddings=items_with_embeddings,
+            current_time=current_time,
+            min_samples=2  # At least 2 memories per cluster
+        )
+        
+        # Create abstractions from semantic clusters
+        scored_clusters = self.semantic_manager.score_clusters(current_time)
+        
+        for cluster, score in scored_clusters:
+            if len(cluster.items) >= 2 and score > 1.0:  # Significant clusters only
+                self._create_semantic_abstraction(memory, cluster, current_time)
+
+    def _create_semantic_abstraction(self, memory: StructuredMemory, cluster: SemanticCluster, current_time: datetime):
+        """Create abstraction from semantic cluster"""
+        cluster_memories = cluster.items
+        
+        # Generate semantic summary using LLM
+        memory_texts = [mem.to_string() for mem in cluster_memories]
+        
+        prompt = [UserMessage(content=f"""Analyze this sequence of related memories and create a concise activity summary.
+
+Related Memories:
+{chr(10).join(f"- {text}" for text in memory_texts)}
+
+Create a brief summary 5-15 words) that captures:
+1. The common theme or activity
+2. The progression or pattern
+3. The significance to the character
+
+Focus on what the character was doing and why it forms a coherent pattern.
+Respond with just the summary, no reasoning, introductory, or additional text.
+End with:
+</end>
+""")]
+        
+        summary = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.semantic_summary')
+        if not summary:
+            summary = f"Related activity involving {len(cluster_memories)} events"
+        else:
+            summary = summary.strip()
+        
+        # Determine if this is cross-drive or single-drive
+        memory_drives = set()
+        for mem in cluster_memories:
+            if hasattr(mem, 'related_drives'):
+                memory_drives.update(mem.related_drives)
+        
+        drive_text = "cross-drive activity" if len(memory_drives) > 1 else memory_drives.pop() if memory_drives else "general activity"
+        
+        # Create abstraction
+        abstraction = AbstractMemory(
+            summary=summary,
+            start_time=min(mem.timestamp for mem in cluster_memories),
+            end_time=max(mem.timestamp for mem in cluster_memories),
+            instances=[mem.memory_id for mem in cluster_memories],
+            drive=drive_text,
+            is_active=False
+        )
+        
+        # Add semantic metadata
+        abstraction.cluster_score = cluster.score
+        abstraction.cluster_size = len(cluster_memories)
+        abstraction.abstraction_type = "semantic"
+        
+        # Check if this abstraction overlaps with existing ones
+        if not self._overlaps_existing_abstraction(memory, abstraction):
+            memory.abstract_memories.append(abstraction)
+            # Mark concrete memories for potential cleanup
+            memory.pending_cleanup.extend([mem.memory_id for mem in cluster_memories])
+
+    def _overlaps_existing_abstraction(self, memory: StructuredMemory, new_abstraction: AbstractMemory) -> bool:
+        """Check if new abstraction significantly overlaps with existing ones"""
+        new_instances = set(new_abstraction.instances)
+        
+        for existing in memory.abstract_memories:
+            existing_instances = set(existing.instances)
+            overlap = len(new_instances & existing_instances)
+            
+            # If more than 50% overlap, consider it duplicate
+            if overlap / len(new_instances) > 0.5:
+                return True
+                
+        return False
 
     def _enhance_summaries(self, memory: StructuredMemory):
         """Improve summaries of abstract memories using LLM"""
         for abstract in memory.get_recent_abstractions():
             if len(abstract.instances) >= 5:  # Enough instances for better summary
                 concrete_instances = [
-                    memory.get_by_id(mid).text 
+                    memory.get_by_id(mid).to_string() 
                     for mid in abstract.instances 
                     if memory.get_by_id(mid)
                 ]
@@ -108,12 +247,16 @@ End your response with:
         memory.abstract_memories.remove(abs2)
         memory.abstract_memories.append(merged)
 
+    def _merge_summaries(self, abs1: AbstractMemory, abs2: AbstractMemory) -> str:
+        """Merge summaries of two abstractions"""
+        return f"{abs1.summary}; {abs2.summary}"
+
     def _cleanup_abstractions(self, memory: StructuredMemory):
         """Remove or archive old/unimportant abstract memories"""
         cutoff = self.owner.context.simulation_time - timedelta(days=7)  # Keep week of abstractions
         memory.abstract_memories = [
             mem for mem in memory.abstract_memories
-            if mem.end_time > cutoff or mem.is_active
+            if mem.is_active or (mem.end_time is not None and mem.end_time > cutoff)
         ]
 
     def _cleanup_concrete_memories(self, memory: StructuredMemory):
@@ -150,6 +293,7 @@ End your response with:
         if not narrative.needs_update(current_time):
             return
         
+        narrative.last_update = current_time
         # Update ongoing activities
         active_abstract = memory.get_active_abstraction()
         prompt = [UserMessage(content=f"""Given a character's current state, summarize their ongoing activities and immediate goals.
@@ -164,10 +308,10 @@ Active Activity:
 {active_abstract.summary if active_abstract else "No current activity"}
 
 Recent Abstractions:
-{chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(3))}
+{chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(4))}
 
 Recent Concrete Memories:
-{chr(10).join(f"- {mem.text}" for mem in memory.get_recent(8))}
+        {chr(10).join(f"- {mem.to_string()}" for mem in memory.get_recent(20))}
 
 Create a concise summary (about 100 words) that describes:
 1. What the character is currently doing
@@ -189,12 +333,12 @@ End with:
         
         # Update recent events
         recent_window = current_time - timedelta(hours=2)  # Last 4 hours
-        recent_abstracts = [abs for abs in memory.get_recent_abstractions(7)
+        recent_abstracts = [abs for abs in memory.get_recent_abstractions(20)
                            if abs.start_time >= recent_window]
-        recent_concretes = [mem for mem in memory.get_recent(16)
+        recent_concretes = [mem for mem in memory.get_recent(40)
                            if mem.timestamp >= recent_window]
         
-        prompt = [UserMessage(content=f"""Create a detailed narrative of recent events (last 4 hours) for this character.
+        prompt = [UserMessage(content=f"""Create a detailed narrative of recent events (last 2 hours) for this character.
 
 Character Description:
 {character_desc}
@@ -203,7 +347,7 @@ Current Activity:
 {active_abstract.summary if active_abstract else "No current activity"}
 
 Recent Event Sequence:
-{chr(10).join(f"- {mem.text}" for mem in sorted(recent_concretes, key=lambda x: x.timestamp))}
+{chr(10).join(f"- {mem.to_string()}" for mem in sorted(recent_concretes, key=lambda x: x.timestamp))}
 
 Recent Activity Patterns:
 {chr(10).join(f"- {abs.summary}" for abs in recent_abstracts)}
@@ -230,11 +374,10 @@ End with:
                       if a.name != self.owner.name]
         
         # Extract character names from memory text
-        all_abstracts = memory.get_recent_abstractions(10)
-        recent_window = current_time - timedelta(hours=2)  # Look back 24 hours
-        recent_memories = [mem for mem in memory.get_recent(20) 
+        recent_window = current_time - timedelta(hours=2)  # Look back 2 hour
+        recent_memories = [mem for mem in memory.get_recent_concrete(40) 
                           if mem.timestamp >= recent_window]
-        all_texts = [mem.text for mem in recent_memories] + [abs.summary for abs in all_abstracts]
+        all_texts = [mem.to_string() for mem in recent_memories]
         
         # Find character names in recent texts (simple approach)
         # Look for capitalized words that aren't at start of sentence
@@ -260,7 +403,7 @@ End with:
         avg_importance = sum(m.importance for m in memories) / len(memories)
         
         # Create summary using first memory as template
-        summary = f"Activity related to {drive.text}: {memories[0].text}"
+        summary = f"Activity related to {drive.text}: {memories[0].to_string()}"
         
         # Create new abstraction
         abstraction = AbstractMemory(
@@ -271,6 +414,9 @@ End with:
             drive=drive.text,
             is_active=False
         )
+        
+        # Mark as drive-based abstraction
+        abstraction.abstraction_type = "drive-based"
         
         # Add to memory
         memory.abstract_memories.append(abstraction)

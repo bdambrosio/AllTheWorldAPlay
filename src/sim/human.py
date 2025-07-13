@@ -20,7 +20,7 @@ class Human(Character):
     def format_history(self, n=2):
             """Get n most recent memories"""
             recent_memories = self.structured_memory.get_recent(n)
-            return '\n\n'.join(memory.text for memory in recent_memories)
+            return '\n\n'.join(memory.to_string() for memory in recent_memories)
 
 
     def add_to_history(self, message):
