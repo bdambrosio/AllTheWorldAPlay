@@ -1935,15 +1935,20 @@ In performing this integration:
                 previous_act = next_act
                 previous_act_post_state = await self.run_coda(next_act, final=False)
 
-            await self.run_coda(next_act, final=True)
+            #await self.run_coda(next_act, final=True)
 
-            act_central_narrative = "Reflect on the aftermath - Show consequences, character transformation, new equilibrium" 
+            coda_central_narrative = []
             for character in cast(List[NarrativeCharacter], self.actors):
-                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, previous_act, act_central_narrative, previous_act_post_state)
+                if character.decisions and len(character.decisions) > 0:
+                    coda_central_narrative.append(f'{character.decisions[-1].get('choice', '')}: {character.decisions[-1].get('reason','')}')
+            coda_central_narrative.append("Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
+            coda_central_narrative = '\n'.join(coda_central_narrative)
+
+            for character in cast(List[NarrativeCharacter], self.actors):
+                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, previous_act, coda_central_narrative, previous_act_post_state)
                 character_narrative_blocks.append([character, updated_act])  
-            next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative, previous_act_post_state)
+            next_act = await self.integrate_narratives(i, character_narrative_blocks, coda_central_narrative, previous_act_post_state)
             new_act = await self.request_act_choice(next_act)
-            #outcomes = await self.check_post_state_ambiguity(next_act) # testing
 
             await asyncio.sleep(0.1)
             if new_act is None:
