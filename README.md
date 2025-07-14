@@ -1,4 +1,9 @@
-## ImprovAI[^1] Version 2.1
+## ImprovAI[^1] Version 3.0
+This is probably the final major version, I believe I've reached near end of cognitive character development using the current architecture.
+I'll probably continue to make minor fixes, esp to the UI.
+Also, the containers still need an upgrade, I'll work on that soon
+cheers - Bruce
+
 *rename will migrate to all other appearances of label, and reflects slight project refocus.*
 ### A playground for cognitive software and other beings.
 #### minor update - installing scaffolding to prevent characters from delaying decisions indefinitely.
