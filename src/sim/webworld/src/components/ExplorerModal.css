@@ -551,3 +551,13 @@ h5 {
   font-style: italic;
   padding: 8px;
 } 
+
+.character-description {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+  color: #fff;
+  margin-bottom: 20px;
+  line-height: 1.4;
+  font-style: italic;
+} 

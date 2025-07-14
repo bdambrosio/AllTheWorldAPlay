@@ -235,6 +235,38 @@
   z-index: 999;
 }
 
+.character-description {
+  background-color: #444;
+  padding: 12px;
+  border-radius: 4px;
+  color: #fff;
+  margin-bottom: 20px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.decisions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.decision-item {
+  background-color: #444;
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 3px solid #ffa500; /* Orange accent for decisions */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.no-decisions {
+  color: #aaa;
+  font-style: italic;
+  padding: 10px;
+}
+
 .drives-list {
   display: flex;
   flex-direction: column;

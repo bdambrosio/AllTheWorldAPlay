@@ -104,6 +104,11 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
       <div className="modal-content">
         {activeTab === 'core' && explorerState && (
           <div className="core-state">
+            <h4>Character Description</h4>
+            <div className="character-description">
+              {explorerState.character}
+            </div>
+
             <h4>Current Task</h4>
             <div className="task-details">
               {explorerState.currentTask}
@@ -120,6 +125,19 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
                   </div>
                 </div>
               ))}
+            </div>
+
+            <h4>Character Decisions</h4>
+            <div className="decisions-list">
+              {explorerState.decisions?.length > 0 ? (
+                explorerState.decisions.map((decision, i) => (
+                  <div key={i} className="decision-item">
+                    {typeof decision === 'object' ? JSON.stringify(decision) : decision}
+                  </div>
+                ))
+              ) : (
+                <div className="no-decisions">No decisions made yet</div>
+              )}
             </div>
 
             <h4>Current Perceptions</h4>

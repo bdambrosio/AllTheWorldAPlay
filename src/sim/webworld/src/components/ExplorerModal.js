@@ -108,6 +108,11 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
       <div className="modal-content">
         {activeTab === 'core' && explorerState && (
           <div className="core-state">
+            <h4>Character Description</h4>
+            <div className="character-description">
+              {explorerState.character}
+            </div>
+
             <h4>Current Task</h4>
             <div className="task-details">
               {explorerState.currentTask}

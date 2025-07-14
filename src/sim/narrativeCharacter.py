@@ -191,32 +191,27 @@ After processing the above information and in light of the following information
 
 Consider the following guidelines:
 ** For act 1:
-    1. This act should be short and to the point. Your target is 3 scenes maximum.
+    1. This act should be short and to the point.
     2. Sequence scenes to introduce characters and create unresolved tension.
-    3. Establish the central dramatic question clearly: {{$central_narrative}}
+    3. Establish the central dramatic question clearly.
     4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
-    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
+    5. Final act post-state must show characters making a concrete commitment or decision about their shared challenge.
     6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
  
 ** For act 2:
-    1. Each scene must advance the central dramatic question: {{$central_narrative}}
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.
+    1. Each scene must advance the central dramatic question.
+    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
     3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
-    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
-    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
-    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
-    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
-    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+    4. Allow characters to develop their characters.
+    5. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
+    6. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
+    7. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
+    8. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
 
 ** For act 3:
-    1. Directly answer the central dramatic question: {{$central_narrative}}
-    2. No scene should avoid engaging with the question's resolution. Your target is 3 scenes maximum.
-    3. Sequence scenes for maximum tension (alternate trust/mistrust beats)
-    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
-    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
-    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
-    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+    1. Directly answer the central dramatic question.
+    2. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
+    3. Final act post-state must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
 
 """
 
@@ -652,7 +647,7 @@ Each **scene** object must have:
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Laura doesnt love you', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.3*len(characters) for scenes with complex goals or interactions.
+ "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or slightly higer for scenes with complex goals or interactions.
  }
 
  === Example ===
@@ -680,7 +675,7 @@ Each **scene** object must have:
       "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I killed Joe', not 'there is a secret.'", 
       "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
       // OPTIONAL: 
-      "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
+      "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order or slightly higher for scenes with complex goals or interactions. 
     },
     ...
   ]

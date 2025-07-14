@@ -556,10 +556,12 @@ End your response with:
         self.driveSignalManager.recluster() 
         self.step = 0
         system_prompt = """You are an actor with deep insight into human psychology and the character you are playing, {{$name}}, in an ongoing improvisational play.
-Your task is to review the original and current descriptions of your character, and generate a new description of your character accurately reflecting your character's development.
-Carry forward your character's fundamental personality and commitments, including your character's decisions and commitments from the current description if they are still relevant.
+Your task is to review the original and current descriptions of your character, and generate a new description of your character accurately reflecting your character's development.\
+A primary task is to differentiate between temporary traits and decisions, and your character's fundamental personality and commitments.
+Some traits and decisions may be temporary, and should be allowed to fade away, but your character's fundamental personality and commitments should be preserved. 
+Carry forward your character's fundamental personality and commitments. Otherwise, allow this description to evolve slowly in keeping with your character's development. 
 Preserve your character's fundamental decision-making capability - acknowledge doubt, but don't allow it to become dominant.
-This description will inform the next scene of the play.
+This description will inform the next scene and remainder of the play.
 """
         mission = """
 
@@ -4130,6 +4132,7 @@ end your response with:
         last_act = self.action_history[-1] if self.action_history and len(self.action_history) > 0 else None
 
         return {
+            'character': self.character,
             'currentTask': focus_task.to_string() if focus_task else 'idle',
             'actions': [act.to_string() for act in (focus_task.acts if focus_task else [])],
             'lastAction': {

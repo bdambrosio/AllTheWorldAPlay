@@ -673,6 +673,11 @@ End your response with:
         
         # Parse hash fields as before
         staleness_score = hash_utils.find('staleness_score', response)
+        try:
+            staleness_score = float(staleness_score.strip())
+        except ValueError:
+            staleness_score = 5.0
+        
         primary_factors = hash_utils.find('primary_factors', response)
         intervention_needed = hash_utils.find('intervention_needed', response)
         intervention_type = hash_utils.find('intervention_type', response)
@@ -683,7 +688,7 @@ End your response with:
         entities = self.extract_entity_spawning(response)
         
         result = {
-            'staleness_score': int(staleness_score.strip()) if staleness_score else 0,
+            'staleness_score': staleness_score,
             'primary_factors': primary_factors.split(',') if primary_factors else [],
             'intervention_needed': intervention_needed.strip().lower() == 'yes' if intervention_needed else False,
             'intervention_type': intervention_type.strip() if intervention_type else None,

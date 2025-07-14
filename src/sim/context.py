@@ -1752,7 +1752,7 @@ Each **scene** object must have:
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
  // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
+ "task_budget": 3 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
  }
 
 Never break JSON validity.  Ensure the returned form is parseable by the json.loads function.

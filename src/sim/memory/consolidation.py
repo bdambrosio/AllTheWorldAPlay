@@ -208,12 +208,15 @@ End your response with:
     def _merge_related_abstractions(self, memory: StructuredMemory):
         """Merge abstract memories that represent the same ongoing activity"""
         recent = memory.get_recent_abstractions()
-        for i, abs1 in enumerate(recent):
-            if not abs1.is_active:  # Only merge completed abstractions
-                for abs2 in recent[i+1:]:
-                    if not abs2.is_active:
+        recent_copy = list(recent)  # Iterate over a copy to safely modify the original
+        
+        for i, abs1 in enumerate(recent_copy):
+            if not abs1.is_active and abs1 in memory.abstract_memories:  # Only merge completed abstractions that still exist
+                for abs2 in recent_copy[i+1:]:
+                    if not abs2.is_active and abs2 in memory.abstract_memories:
                         if self._should_merge(abs1, abs2):
                             self._merge_abstractions(memory, abs1, abs2)
+                            break  # Break inner loop since abs1 has been merged/removed
 
     def _should_merge(self, abs1: AbstractMemory, abs2: AbstractMemory) -> bool:
         """Check if two abstract memories should be merged"""
@@ -242,9 +245,11 @@ End your response with:
             is_active=False
         )
         
-        # Remove old abstractions and add merged one
-        memory.abstract_memories.remove(abs1)
-        memory.abstract_memories.remove(abs2)
+        # Remove old abstractions and add merged one - check if they're still in the list first
+        if abs1 in memory.abstract_memories:
+            memory.abstract_memories.remove(abs1)
+        if abs2 in memory.abstract_memories:
+            memory.abstract_memories.remove(abs2)
         memory.abstract_memories.append(merged)
 
     def _merge_summaries(self, abs1: AbstractMemory, abs2: AbstractMemory) -> str:
