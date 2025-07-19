@@ -562,6 +562,7 @@ class DriveSignalManager:
     def analyze_text(self, text: str, drives: List[Drive], current_time: datetime, mode: SensoryMode = SensoryMode.INTERNAL) -> List[DriveSignal]:
         """Analyze text for drive-related signals"""
 
+        return []
         if mode != SensoryMode.AUDITORY and mode != SensoryMode.INTERNAL:
             return []
         self.current_time = current_time
@@ -652,14 +653,14 @@ be careful to insert line breaks only where shown, separating a value from the n
 #surprise 0.0-1.0
 ##
 
-Only respond if you find a clear and strong signal. Multiple signals can be on separate lines. Report at most 2 signals.
+Only respond if you find a clear and strong signal. Multiple signals can be on separate lines.
 Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """
             
         try:
-            response = self.ask(self.owner, prefix=mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=200)
+            response = self.ask(self.owner, prefix=mission, suffix=suffix, addl_bindings= {}, tag = 'DriveSignal.check_drive_signal', max_tokens=300)
         except Exception as e:
             traceback.print_exc()
             print(f"Error checking drive signal: {e}")
@@ -677,13 +678,14 @@ End your response with:
                 print(f'    {signal.type} {signal.text} ({signal.importance:.2f}, {signal.urgency:.2f})')
                 signals.append(signal)
                    
-        self.process_signals(signals)
+        #self.process_signals(signals)
         # print(f"Found {len(signals)} signals")
         return signals
             
             
     def check_drive_signals(self):
         """Check all drives for signals"""
+        self.clusters = []
         for drive in self.owner.drives:
             self.check_drive_signal(drive)
             
@@ -709,9 +711,6 @@ End your response with:
                     text=signal.text
                 )
                 self.clusters.append(new_cluster)
-                # below not needed - singleton clusters already have a name
-                #if not any(new_cluster is cluster for cluster in updated_clusters):
-                #    updated_clusters.append(new_cluster)
 
                 
     def get_active_signals(self, max_age_hours: int = 24) -> List[SignalCluster]:
