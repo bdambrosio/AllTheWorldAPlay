@@ -1916,7 +1916,10 @@ In performing this integration:
                 character_narrative_blocks = []
                 for character in cast(List[NarrativeCharacter], self.actors):
                     if i < len(character.plan['acts']): # what about coda?
-                        updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative, previous_act_post_state)
+                        if i == 0:
+                            updated_act = character.plan['acts'][i] # no need to replan act 1
+                        else:
+                            updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative, previous_act_post_state)
                         character_narrative_blocks.append([character, updated_act])  
                 next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative, previous_act_post_state)
                 new_act = await self.request_act_choice(next_act)
@@ -1954,7 +1957,7 @@ In performing this integration:
             if new_act is None:
                 logger.error('No act to run')
                 return
-            await self.run_narrative_act(next_act, i+1)
+            await self.run_narrative_act(next_act, i+2)
             
         except Exception as e:
             logger.error(f'Error running integrated narrative: {e}')
@@ -2220,16 +2223,16 @@ Create a unified central dramatic question that:
 5. **Creates character interdependence** - No one can resolve it alone
 
 ## Output elements
-1. Central Dramatic Question: [One clear sentence framing the core conflict]
-2. Stakes: [What happens if this question isn't resolved - consequences that matter to all]
-3. Character Roles: [for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 1-2 sentence role description]
-4. Dramatic Tension Sources: [The main opposing forces]
-5. Success Scenario: [Brief description of what "winning" looks like]
-6. Failure Scenario: [Brief description of what "losing" looks like] 
+1. Central Dramatic Question: [One clear concise sentence framing the core conflict]
+2. Stakes: [What happens if this question isn't resolved - consequences that matter to all. Be terse, no more than 10 words.]
+3. Character Roles: [for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 4-6 word description]
+4. Dramatic Tension Sources: [The main opposing forces. Be terse, no more than 8 words.]
+5. Success Scenario: [Brief description of what "winning" looks like. Be terse, no more than 8 words.]
+6. Failure Scenario: [Brief description of what "losing" looks like. Be terse, no more than 8 words.] 
 
 ## Output Format
 
-*Write your response as one or two paragraphs totalling no more than 200 words, with no introductory text, code fences or markdown formatting.
+*Write your response as one paragraph totalling no more than 100 words, with no introductory text, code fences or markdown formatting.
 
 What unified central dramatic question emerges from these proposals?         
                               """)]

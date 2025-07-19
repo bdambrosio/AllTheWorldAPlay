@@ -1138,9 +1138,9 @@ relationships, and current dramatic situation would manifest in physical behavio
 
 For each action type, provide:
 - A concise name (2-4 words)
-- Brief description focusing on the physical specifics
-- When/why this character would use this action
-- How it serves the dramatic tension
+- Terse (4-5 words) statement focusing on the physical specifics
+- Terse (4-5 words) statement of when/why this character would use this action
+- Terse (4-5 words) statement of how it serves the dramatic tension
 
 Consider:
 - This character's profession, background, and physical capabilities
