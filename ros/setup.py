@@ -24,6 +24,9 @@ setup(
             'sense_node = cognitive_framework.sense_node:main',
             'memory_node = cognitive_framework.memory_node:main',
             'action_node = cognitive_framework.action_node:main',
+            'llm_service_node = cognitive_framework.llm_service_node:main',
+            'action_node_with_llm = cognitive_framework.action_node_with_llm:main',
+            'simple_llm_action_example = cognitive_framework.simple_llm_action_example:main',
         ],
     },
 ) 

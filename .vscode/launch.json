@@ -198,6 +198,60 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "name": "Debug LLM Service Node",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/llm_service_node.py",
+            "python": "${workspaceFolder}/src/owl/bin/python3",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros:${workspaceFolder}:${workspaceFolder}/src",
+                "PATH": "/opt/ros/jazzy/bin:${workspaceFolder}/src/owl/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+                "VIRTUAL_ENV": "${workspaceFolder}/src/owl"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Enhanced Action Node",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/action_node_with_llm.py",
+            "python": "${workspaceFolder}/src/owl/bin/python3",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros:${workspaceFolder}:${workspaceFolder}/src",
+                "PATH": "/opt/ros/jazzy/bin:${workspaceFolder}/src/owl/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+                "VIRTUAL_ENV": "${workspaceFolder}/src/owl"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Simple LLM Action Example",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/simple_llm_action_example.py",
+            "python": "${workspaceFolder}/src/owl/bin/python3",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros:${workspaceFolder}:${workspaceFolder}/src",
+                "PATH": "/opt/ros/jazzy/bin:${workspaceFolder}/src/owl/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+                "VIRTUAL_ENV": "${workspaceFolder}/src/owl"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "name": "Test Cognitive System",
             "type": "debugpy",
             "request": "launch",
@@ -227,6 +281,35 @@
                 "hidden": false,
                 "group": "cognitive",
                 "order": 1
+            }
+        },
+        {
+            "name": "Debug All Nodes + LLM",
+            "configurations": [
+                "Debug Sense Node",
+                "Debug Memory Node", 
+                "Debug LLM Service Node",
+                "Debug Enhanced Action Node"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "cognitive_llm",
+                "order": 2
+            }
+        },
+        {
+            "name": "Text-to-LLM-Action Example",
+            "configurations": [
+                "Debug Sense Node",
+                "Debug LLM Service Node",
+                "Debug Simple LLM Action Example"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "examples",
+                "order": 3
             }
         }
     ]

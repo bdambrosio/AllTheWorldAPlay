@@ -130,6 +130,42 @@
                 "panel": "dedicated"
             },
             "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Start Simple LLM Action Example",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 run cognitive_framework simple_llm_action_example",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Test TextSensor-LLM-Action Pattern",
+            "type": "shell",
+            "command": "python3 ros/test_textsensor_llm_action.py",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "ROS_DISTRO": "jazzy",
+                    "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                    "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                    "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                    "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+                }
+            },
+            "problemMatcher": []
         }
     ]
 } 

@@ -1,12 +1,13 @@
 {
-    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.defaultInterpreterPath": "${workspaceFolder}/src/owl/bin/python3",
     "python.terminal.activateEnvironment": true,
     "terminal.integrated.env.linux": {
         "ROS_DISTRO": "jazzy",
         "ROS_VERSION": "2",
         "ROS_PYTHON_VERSION": "3",
-        "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages",
-        "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+        "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros:${workspaceFolder}/src",
+        "PATH": "/opt/ros/jazzy/bin:${workspaceFolder}/src/owl/bin:${env:PATH}",
+        "VIRTUAL_ENV": "${workspaceFolder}/src/owl",
         "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
         "PKG_CONFIG_PATH": "/opt/ros/jazzy/lib/pkgconfig",
         "CMAKE_PREFIX_PATH": "/opt/ros/jazzy",
@@ -16,12 +17,14 @@
     "python.analysis.extraPaths": [
         "/opt/ros/jazzy/lib/python3.12/site-packages",
         "/opt/ros/jazzy/local/lib/python3.12/dist-packages",
-        "${workspaceFolder}/ros"
+        "${workspaceFolder}/ros",
+        "${workspaceFolder}/src"
     ],
     "python.autoComplete.extraPaths": [
         "/opt/ros/jazzy/lib/python3.12/site-packages",
         "/opt/ros/jazzy/local/lib/python3.12/dist-packages",
-        "${workspaceFolder}/ros"
+        "${workspaceFolder}/ros",
+        "${workspaceFolder}/src"
     ],
     "files.associations": {
         "*.launch": "xml",

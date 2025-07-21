@@ -136,7 +136,8 @@ class CognitiveNodeLauncher:
         nodes = [
             ("SENSE", base_path / "sense_node.py"),
             ("MEMORY", base_path / "memory_node.py"), 
-            ("ACTION", base_path / "action_node.py")
+            ("ACTION", base_path / "action_node.py"),
+            ("LLM_SERVICE", base_path / "llm_service_node.py")
         ]
         
         # Start all nodes
