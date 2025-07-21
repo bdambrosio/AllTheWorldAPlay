@@ -1,0 +1,36 @@
+{
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.env.linux": {
+        "ROS_DISTRO": "jazzy",
+        "ROS_VERSION": "2",
+        "ROS_PYTHON_VERSION": "3",
+        "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages",
+        "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+        "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+        "PKG_CONFIG_PATH": "/opt/ros/jazzy/lib/pkgconfig",
+        "CMAKE_PREFIX_PATH": "/opt/ros/jazzy",
+        "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+        "COLCON_PREFIX_PATH": "/opt/ros/jazzy"
+    },
+    "python.analysis.extraPaths": [
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/local/lib/python3.12/dist-packages",
+        "${workspaceFolder}/ros"
+    ],
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/local/lib/python3.12/dist-packages",
+        "${workspaceFolder}/ros"
+    ],
+    "files.associations": {
+        "*.launch": "xml",
+        "*.launch.py": "python",
+        "*.urdf": "xml",
+        "*.xacro": "xml"
+    },
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.formatting.provider": "black"
+} 

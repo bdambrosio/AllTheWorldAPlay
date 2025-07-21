@@ -1,0 +1,52 @@
+#!/bin/bash
+# ROS2 Cognitive Framework Environment Setup
+# Source this file to set up your development environment
+# Usage: source ros/.rosrc
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}Setting up ROS2 Cognitive Framework environment...${NC}"
+
+# Source ROS2 Jazzy
+if [ -f "/opt/ros/jazzy/setup.bash" ]; then
+    source /opt/ros/jazzy/setup.bash
+    echo -e "${GREEN}✓ ROS2 Jazzy environment sourced${NC}"
+else
+    echo -e "${RED}✗ ROS2 Jazzy not found at /opt/ros/jazzy/setup.bash${NC}"
+    return 1
+fi
+
+# Set up workspace if it exists
+WORKSPACE_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../../cognitive_ws"
+if [ -d "$WORKSPACE_DIR" ] && [ -f "$WORKSPACE_DIR/install/setup.bash" ]; then
+    source "$WORKSPACE_DIR/install/setup.bash"
+    echo -e "${GREEN}✓ Cognitive workspace sourced${NC}"
+else
+    echo -e "${YELLOW}⚠ Cognitive workspace not built yet. Run 'colcon build' first.${NC}"
+fi
+
+# Set useful environment variables
+export ROS_DOMAIN_ID=42  # Avoid conflicts with other ROS2 systems
+export RCUTILS_LOGGING_USE_STDOUT=1
+export RCUTILS_COLORIZED_OUTPUT=1
+
+# Add helpful aliases
+alias ros2-cognitive-launch='ros2 launch cognitive_framework cognitive_system.launch.py'
+alias ros2-cognitive-test='python3 ros/test_cognitive_system.py'
+alias ros2-topics='ros2 topic list | grep cognitive'
+alias ros2-sense='ros2 topic echo /cognitive/sense_data'
+alias ros2-memory='ros2 topic echo /cognitive/memory_data'
+alias ros2-action='ros2 topic echo /cognitive/action_data'
+
+echo -e "${GREEN}✓ ROS2 Cognitive Framework environment ready!${NC}"
+echo -e "${YELLOW}Available aliases:${NC}"
+echo -e "  ${GREEN}ros2-cognitive-launch${NC} - Launch the cognitive system"
+echo -e "  ${GREEN}ros2-cognitive-test${NC}   - Run system tests"
+echo -e "  ${GREEN}ros2-topics${NC}          - List cognitive topics"
+echo -e "  ${GREEN}ros2-sense${NC}           - Monitor sense data"
+echo -e "  ${GREEN}ros2-memory${NC}          - Monitor memory data"
+echo -e "  ${GREEN}ros2-action${NC}          - Monitor action data" 

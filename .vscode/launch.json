@@ -133,5 +133,101 @@
                 "CUDA_VISIBLE_DEVICES": "1"
             }
         },
+        {
+            "name": "Debug Sense Node",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/sense_node.py",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Memory Node",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/memory_node.py",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug Action Node",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/cognitive_framework/action_node.py",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Launch All Cognitive Nodes",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/launch_all_nodes.py",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Test Cognitive System",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ros/test_cognitive_system.py",
+            "console": "integratedTerminal",
+            "env": {
+                "ROS_DISTRO": "jazzy",
+                "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages:/opt/ros/jazzy/local/lib/python3.12/dist-packages:${workspaceFolder}/ros",
+                "PATH": "/opt/ros/jazzy/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/opt/ros/jazzy/lib",
+                "AMENT_PREFIX_PATH": "/opt/ros/jazzy"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug All Cognitive Nodes",
+            "configurations": [
+                "Debug Sense Node",
+                "Debug Memory Node", 
+                "Debug Action Node"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "hidden": false,
+                "group": "cognitive",
+                "order": 1
+            }
+        }
     ]
 }

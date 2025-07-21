@@ -1,0 +1,135 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "ROS2: Source Environment",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && echo 'ROS2 environment sourced'",
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Build Cognitive Framework",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && cd ${workspaceFolder} && mkdir -p cognitive_ws/src && cd cognitive_ws/src && ln -sf ../../ros ./cognitive_framework && cd .. && colcon build --packages-select cognitive_framework",
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Launch Cognitive System",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && cd ${workspaceFolder}/cognitive_ws && source install/setup.bash && ros2 launch cognitive_framework cognitive_system.launch.py",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Test Cognitive System",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && cd ${workspaceFolder} && python3 ros/test_cognitive_system.py",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: List Topics",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 topic list",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Monitor Sense Data",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 topic echo /cognitive/sense_data",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Monitor Memory Data",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 topic echo /cognitive/memory_data",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Monitor Action Data",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 topic echo /cognitive/action_data",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Test Console Input",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && cd ${workspaceFolder} && python3 ros/test_console_input.py",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ROS2: Start Sense Node Only",
+            "type": "shell",
+            "command": "source /opt/ros/jazzy/setup.bash && ros2 run cognitive_framework sense_node",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        }
+    ]
+} 
