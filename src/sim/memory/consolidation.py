@@ -60,8 +60,12 @@ class MemoryConsolidator:
                 drive_memories[drive] = memories
         
         # Create abstractions from drive-related memories
+        existing = {(a.drive, frozenset(a.instances)) for a in memory.abstract_memories
+                    if getattr(a, 'abstraction_type', None) == 'drive-based'}
         for drive, memories in drive_memories.items():
-            if len(memories) >= 4:  # Need at least 2 memories to form pattern
+            # Need at least 4 memories to form pattern; the same drive over the same memories
+            # was re-added as a new abstraction on every consolidation
+            if len(memories) >= 4 and (drive.text, frozenset(m.memory_id for m in memories)) not in existing:
                 self._create_abstraction(memory, memories, drive)
 
     def _consolidate_by_semantics(self, memory: StructuredMemory, current_time: datetime):
@@ -183,7 +187,10 @@ End with:
     def _enhance_summaries(self, memory: StructuredMemory):
         """Improve summaries of abstract memories using LLM"""
         for abstract in memory.get_recent_abstractions():
-            if len(abstract.instances) >= 5:  # Enough instances for better summary
+            # Enough instances for better summary, and new ones since the last LLM summary
+            # (each consolidation re-summarised the same abstractions)
+            if len(abstract.instances) >= 5 and getattr(abstract, 'enhanced_at_n', 0) != len(abstract.instances):
+                abstract.enhanced_at_n = len(abstract.instances)
                 concrete_instances = [
                     memory.get_by_id(mid).to_string() 
                     for mid in abstract.instances 
@@ -201,7 +208,7 @@ End your response with:
 </end>
 """)]
                 
-                summary = self.llm.ask({}, prompt, stops=["</end>"])
+                summary = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.enhance_summary')
                 if summary:
                     abstract.summary = summary.strip()
 
