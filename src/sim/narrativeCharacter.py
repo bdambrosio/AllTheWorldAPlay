@@ -311,12 +311,12 @@ End your response with </end>
                                  "plan": json.dumps(self.plan, default=datetime_handler)}, 
                                  max_tokens=240, tag='NarrativeCharacter.share_narrative')
                 try:
-                    say_arg = hash_utils.find('share', response)
+                    say_arg = (hash_utils.find('share', response) or '').strip()
                     if say_arg:
-                        #say_arg = say_arg.replace(f'information', '').strip()
-                        if say_arg and say_arg != '':
-                            print(f'{self.name} says to {character.name}: {say_arg}')
-                            act = Act(mode='Say', action=say_arg, actors=[self, character], reason=say_arg, duration=1, source=None, target=[character])
+                        # (act_on_action was outside this test: a character with nothing to share
+                        # raised NameError, or re-sent the previous character's message)
+                        print(f'{self.name} says to {character.name}: {say_arg}')
+                        act = Act(mode='Say', action=say_arg, actors=[self, character], reason=say_arg, duration=1, source=None, target=[character])
                         await self.act_on_action(act, None)
                 except Exception as e:
                     print(f'Error parsing shared narrative: {e}')
