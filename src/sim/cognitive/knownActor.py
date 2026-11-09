@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 from venv import create
 from sim.cognitive.DialogManager import Dialog
-from src.utils import hash_utils
+from utils import hash_utils
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:

@@ -4,7 +4,7 @@ import json
 from reprlib import Repr
 import sys, os
 
-from src.sim.cognitive.perceptualState import SensoryMode
+from sim.cognitive.perceptualState import SensoryMode
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from datetime import datetime
@@ -31,11 +31,8 @@ if TYPE_CHECKING:
     from sim.agh import Character, Goal  # Only imported during type checking
     from sim.cognitive.EmotionalStance import EmotionalStance
 
-try:
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
-except Exception as e:
-    print(f"Warning: Could not load embedding model locally: {e}")
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+from utils.embedding_model import get_embedding_model
+_embedding_model = get_embedding_model()
 
 
 def noisy_add(a: float, b: float) -> float:

@@ -7,8 +7,8 @@ from typing import Optional, Dict, List, Any
 import os, sys, re, traceback, requests, json
 
 from sim.character_dataclasses import Act, Goal, Task, CentralNarrative, datetime_handler
-from src.sim.cognitive.EmotionalStance import EmotionalStance
-from src.utils.Messages import UserMessage
+from sim.cognitive.EmotionalStance import EmotionalStance
+from utils.Messages import UserMessage
 from utils import hash_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path

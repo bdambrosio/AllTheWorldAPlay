@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from collections import deque, defaultdict
 import random
-from src.utils import hash_utils
+from utils import hash_utils
 from utils.Messages import UserMessage, SystemMessage
 import re
 import xml.etree.ElementTree as ET

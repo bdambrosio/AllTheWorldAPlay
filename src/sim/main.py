@@ -120,7 +120,7 @@ class SimulationManager:
         
         # Start simulation process
         sim_path = Path(__file__).parent / "simulation.py"
-        self.process = subprocess.Popen(["python", "-Xfrozen_modules=off", str(sim_path)],
+        self.process = subprocess.Popen([sys.executable, "-Xfrozen_modules=off", str(sim_path)],
                                         stdout=None, stderr=None)
         
         # Wait briefly for process to start
@@ -375,6 +375,6 @@ def load_replay_file(file_path: Path) -> list:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("BACKEND_PORT", "8000")))
 
 

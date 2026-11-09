@@ -11,19 +11,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.sim.replay import SPEECH_TIMEOUT
-from src.utils.VoiceService import VoiceService
+from utils.VoiceService import VoiceService
 
-from src.sim.mapview import MapVisualizer
-from src.sim.character_dataclasses import Act, Goal, Task
+from sim.mapview import MapVisualizer
+from sim.character_dataclasses import Act, Goal, Task
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sim.agh import Act, Character, Goal, Task
     from sim.context import Context  # Only imported during type checking
-    from src.sim.cognitive.knownActor import KnownActorManager
+    from sim.cognitive.knownActor import KnownActorManager
     from sim.context import Context
 
-from src.sim.mapview import MapVisualizer
 import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
 import base64
@@ -38,27 +36,21 @@ import matplotlib.pyplot as plt
 
 home = str(Path.home())
 logs_dir = os.path.join(home, '.local', 'share', 'alltheworldaplay', 'logs/')
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
 log_path = os.path.join(logs_dir, 'simulation.log')
 
-# Create the logger
-sim_logger = logging.getLogger('simulation_core')
-sim_logger.setLevel(logging.DEBUG)
 
-# Create file handler and set level
-file_handler = logging.FileHandler(log_path, mode='w')
-file_handler.setLevel(logging.DEBUG)
-
-# Create formatter
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-
-# Add handler to logger
-sim_logger.addHandler(file_handler)
-
-# Test write using the named logger
-sim_logger.info("Test message")
+def setup_logging():
+    """Attach the simulation.log file handler. Called only when this file runs as the
+    engine process: doing it at import time truncated the live log of a running engine
+    whenever anything else imported this module."""
+    os.makedirs(logs_dir, exist_ok=True)
+    sim_logger = logging.getLogger('simulation_core')
+    sim_logger.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    sim_logger.addHandler(file_handler)
+    sim_logger.info("simulation engine starting")
 
 logger = logging.getLogger('simulation_core')
 
@@ -217,7 +209,7 @@ class SimulationServer:
                 llm_api.set_model(self.model_name)
 
             # Clear any cached modules that might cause issues
-            modules_to_clear = [key for key in sys.modules.keys() if 'webworld_play' in key or 'lost' in key]
+            modules_to_clear = [key for key in sys.modules.keys() if key == 'webworld_play']
             for mod in modules_to_clear:
                 del sys.modules[mod]
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
@@ -785,5 +777,6 @@ class SimulationServer:
                 logger.error(f"Traceback:\n{traceback.format_exc()}")
 
 if __name__ == "__main__":
+    setup_logging()
     server = SimulationServer()
     asyncio.run(server.run())

@@ -4,16 +4,12 @@ from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from src.utils import hash_utils
-from src.utils.Messages import UserMessage
+from utils import hash_utils
+from utils.Messages import UserMessage
 
 # At module level
-try:
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
-except Exception as e:
-    print(f"Warning: Could not load embedding model locally: {e}")
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-#_embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+from utils.embedding_model import get_embedding_model
+_embedding_model = get_embedding_model()
 
 class SensoryMode(Enum):
     VISUAL = "visual"
@@ -58,7 +54,7 @@ class PerceptualState:
         }
         self.attention_focus: Optional[SensoryMode] = None
         self.attention_threshold = 0.0  # Minimum intensity to notice
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embedding_model = _embedding_model  # shared; was a fresh load per character
         self.information_items: List[InformationItem] = []
         
     def add_input(self, sensory_input: PerceptualInput) -> None:

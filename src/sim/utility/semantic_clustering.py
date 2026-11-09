@@ -12,11 +12,8 @@ from sklearn.cluster import DBSCAN
 from collections import defaultdict
 from sentence_transformers import SentenceTransformer
 
-try:
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
-except Exception as e:
-    print(f"Warning: Could not load embedding model locally: {e}")
-    _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+from utils.embedding_model import get_embedding_model
+_embedding_model = get_embedding_model()
 
 
 class SemanticCluster:

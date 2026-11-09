@@ -15,8 +15,8 @@ from sim.cognitive.driveSignal import Drive
 from sim.referenceManager import ReferenceManager
 from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
-from src.sim.memory.core import NarrativeSummary
-from src.utils.VoiceService import VoiceService
+from sim.memory.core import NarrativeSummary
+from utils.VoiceService import VoiceService
 from utils import hash_utils, llm_api
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 import utils.choice as choice
 from typing import List
 import asyncio
-from prompt import ask as default_ask
+from sim.prompt import ask as default_ask
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler
 
 if TYPE_CHECKING:
@@ -2491,12 +2491,8 @@ What unified central dramatic question emerges from these proposals?
 
     async def generate_act_central_narrative(self, act_number ):
         if self.embedding_model is None:
-            from sentence_transformers import SentenceTransformer
-            try:
-                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
-            except Exception as e:
-                print(f"Warning: Could not load embedding model locally: {e}")
-                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            from utils.embedding_model import get_embedding_model
+            self.embedding_model = get_embedding_model()
         """Generate a central narrative for the act"""
         prompt = [UserMessage(content="""You are creating a focused dramatic framework for Act {{$act_number}} based on the overall central narrative and character planning.
 

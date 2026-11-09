@@ -2,7 +2,7 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import importlib
 import sim.context as context
-from src.sim.narrativeCharacter import NarrativeCharacter
+from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.driveSignal import Drive
 importlib.reload(configuration)# force reload in case cached version

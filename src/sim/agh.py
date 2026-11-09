@@ -4,7 +4,7 @@ import os, json, math, time, requests, sys
 
 from sklearn import tree
 
-from src.sim.SpeechStylizer import SpeechStylizer
+from sim.SpeechStylizer import SpeechStylizer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -24,7 +24,7 @@ from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
-from src.sim.cognitive.EmotionalStance import EmotionalStance
+from sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
 from utils.llm_api import generate_image
 from utils.Messages import UserMessage, SystemMessage
@@ -46,7 +46,7 @@ from weakref import WeakValueDictionary
 import logging
 from sim.prompt import ask as default_ask
 from sim.cognitivePrompt import CognitiveToolInterface
-from src.sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy, datetime_handler     
+from sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy, datetime_handler     
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
 
@@ -192,6 +192,11 @@ class Character:
         return self.mapAgent.y
 
     def set_context(self, context: Context):
+        if getattr(self, 'context', None) is context and getattr(self, 'speech_stylizer', None) is not None:
+            # Already initialized for this context (owner NPCs are set up in get_npc_by_name and
+            # again in Context.__init__'s actor loop); redoing it rebuilds the managers and
+            # repeats three LLM calls.
+            return
         self.context = context
         self.actor_models = KnownActorManager(self, context)
         self.resource_models = KnownResourceManager(self, context)
