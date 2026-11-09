@@ -270,14 +270,39 @@ class KnownActorManager:
     def __init__(self, owner, context):
         self.owner = owner
         self.context = context
+        # one model per character, keyed by the character's own name; other spellings that
+        # resolved to it live in aliases (storing each model under both names made every
+        # iteration over known_actors -- prompts' name lists, relationship updates, dialogs,
+        # the Explore panel -- see that character twice)
         self.known_actors: Dict[str, KnownActor] = {}
+        self.aliases: Dict[str, str] = {}  # normalised other name -> key in known_actors
         self.resolution_cache: Dict[str, Tuple[Character, str]] = {}  # reference_text -> (character, canonical_name)
+
+    def _model(self, name) -> Optional[KnownActor]:
+        """The model for a name or one of its aliases, or None."""
+        if not name:
+            return None
+        name = name.strip()
+        for candidate in (name, name.capitalize()):
+            if candidate in self.known_actors:
+                return self.known_actors[candidate]
+        key = self.aliases.get(name.capitalize())
+        return self.known_actors.get(key) if key else None
+
+    def _store(self, alias, actor_agh) -> KnownActor:
+        """The model for actor_agh (created if new), with alias pointing at it."""
+        model = self.known_actors.get(actor_agh.name)
+        if model is None:
+            model = self.known_actors[actor_agh.name] = KnownActor(self.owner, actor_agh)
+        if alias and alias != actor_agh.name:
+            self.aliases[alias] = actor_agh.name
+        return model
 
     def create_character(self, reference_text):
         """create a new character - used only after resolve_reference fails to find an existing character"""
         actor_name = reference_text.strip().capitalize()
         actor_agh = self.context.get_npc_by_name(actor_name, description=reference_text, x=self.owner.mapAgent.x, y=self.owner.mapAgent.y, create_if_missing=True)
-        self.known_actors[actor_name] = KnownActor(self.owner, actor_agh)
+        self._store(actor_name, actor_agh)
         self.resolution_cache[actor_name] = (actor_agh, actor_name)
         if self.context.current_scene:
             # we are in a scene, so char should have a goal
@@ -302,8 +327,9 @@ class KnownActorManager:
             return self.resolution_cache[reference_text]
             
         # Check if it's a direct reference to a known actor
-        if reference_text in self.known_actors:
-            result = (self.known_actors[reference_text].actor_agh, reference_text)
+        model = self._model(reference_text)
+        if model is not None:
+            result = (model.actor_agh, reference_text)
             self.resolution_cache[reference_text] = result
             return result
             
@@ -319,9 +345,7 @@ class KnownActorManager:
         return [actor.canonical_name for actor in self.known_actors.values()]
     
     def known(self, name):
-        if name.strip().capitalize() in self.known_actors:
-            return True
-        return False
+        return self._model(name) is not None
         
     def actor_models(self):
         return self.known_actors.values()
@@ -330,23 +354,16 @@ class KnownActorManager:
         actor_name = actor_name.strip().capitalize()
         actor_agh,_ = self.context.resolve_character(actor_name)
         if actor_agh and (actor_agh.__class__.__name__ == 'NarrativeCharacter' or actor_agh.__class__.__name__ == 'Character'):
-            # Always store under both names to be safe
-            self.known_actors[actor_agh.name] = KnownActor(self.owner, actor_agh, )
-            self.known_actors[actor_name] = self.known_actors[actor_agh.name]
-        else:
-            print(f"{actor_name} not found")
-        return self.known_actors.get(actor_name)
+            return self._store(actor_name, actor_agh)
+        print(f"{actor_name} not found")
+        return None
 
     def get_actor_model(self, actor_name: str, create_if_missing: bool=False) -> Optional[KnownActor]:
-        actor_name = actor_name.strip().capitalize()
-        if actor_name not in self.known_actors:
-            if create_if_missing:
-                print(f"{self.owner.name} creating model for {actor_name}")
-                self.add_actor_model(actor_name)
-            else:
-                return None
-        # None when creation failed (no such character): this raised KeyError
-        return self.known_actors.get(actor_name)
+        model = self._model(actor_name)
+        if model is None and create_if_missing:
+            print(f"{self.owner.name} creating model for {actor_name.strip().capitalize()}")
+            model = self.add_actor_model(actor_name)  # None when there is no such character
+        return model
 
     def set_all_actors_invisible(self):
         for actor in self.known_actors.values():
@@ -389,10 +406,8 @@ class KnownActorManager:
         Returns:
             str: The known actor model if it exists, empty string otherwise
         """
-        actor_name = actor_name.strip().capitalize()
-        if actor_name in self.known_actors:
-            return self.known_actors[actor_name].relationship
-        return ''
+        model = self._model(actor_name)
+        return model.relationship if model is not None else ''
 
     def resolve_or_create_character(self, reference_text):
         """
@@ -443,6 +458,7 @@ class KnownActorManager:
                 name: actor.to_json() 
                 for name, actor in self.known_actors.items()
             },
+            'aliases': dict(self.aliases),
             'resolution_cache': {
                 key: (value[0].name, value[1])  # Store just the names
                 for key, value in self.resolution_cache.items()
@@ -470,7 +486,12 @@ class KnownActorManager:
         for name, actor_data in data['known_actors'].items():
             actor = KnownActor.from_json(actor_data, owner, manager)
             if actor:
-                manager.known_actors[name] = actor
+                # files saved before aliases existed hold the same actor under two names
+                key = actor.canonical_name or name
+                manager.known_actors.setdefault(key, actor)
+                if name != key:
+                    manager.aliases[name] = key
+        manager.aliases.update(data.get('aliases', {}))
                 
         # Restore resolution_cache
         for key, (char_name, canon_name) in data['resolution_cache'].items():
