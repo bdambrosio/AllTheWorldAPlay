@@ -1071,7 +1071,7 @@ End response with:
             type='task'
         )
 
-        weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode == Mode.Say])
+        weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode in ('Say', Mode.Say)])
         if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
             satisfied = True # force completion
             if task == self.focus_task.peek():
