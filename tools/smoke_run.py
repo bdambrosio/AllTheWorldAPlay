@@ -104,6 +104,22 @@ class Run:
             for i in range(1, a.steps + 1):
                 await cmd("step")
                 timings[f"step{i}"] = await self.quiesce(f"step {i}")
+            if a.run_secs:
+                acks_before = sum(1 for _, t, c in self.msgs if t == "command_ack" and c == "step")
+                print(f"run for {a.run_secs:.0f}s")
+                await cmd("run")
+                await asyncio.sleep(a.run_secs)
+                await cmd("pause")
+                timings["run"] = await self.quiesce("pause")
+                self.step_acks_during_run = sum(
+                    1 for _, t, c in self.msgs if t == "command_ack" and c == "step") - acks_before
+                print(f"  step acks while running: {self.step_acks_during_run}")
+            if a.reload_play:
+                print(f"load_play {a.reload_play} (second play in same engine)")
+                await cmd("load_play", play=a.reload_play)
+                timings["reload"] = await self.quiesce("reload", min_secs=10)
+                await cmd("step")
+                timings["reload_step"] = await self.quiesce("reload step")
             reader.cancel()
         self.timings = timings
 
@@ -141,6 +157,7 @@ class Run:
             "tracebacks": collections.Counter(tracebacks).most_common(),
             "errorish_lines": errorish.most_common(40),
             "engine_problems": self.problems,
+            "step_acks_during_run": getattr(self, "step_acks_during_run", None),
             "ws_message_types": collections.Counter(t for _, t, _ in self.msgs).most_common(),
         }
         out = ROOT / "logs" / f"smoke-{self.args.label}.json"
@@ -164,6 +181,8 @@ def parse():
     p.add_argument("--quiet-secs", type=float, default=15, help="idle time that counts as 'done'")
     p.add_argument("--max-step-secs", type=float, default=900)
     p.add_argument("--speech", action="store_true", help="leave TTS on (default: toggle it off)")
+    p.add_argument("--run-secs", type=float, default=0, help="after stepping, 'run' for this long then 'pause'")
+    p.add_argument("--reload-play", help="then load this second play in the same engine and step once")
     return p.parse_args()
 
 

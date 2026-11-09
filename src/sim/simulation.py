@@ -180,8 +180,38 @@ class SimulationServer:
                 'error': f'Failed to list plays: {str(e)}'
             })
 
+    async def _stop_play_tasks(self):
+        """Cancel the previous play's background tasks so they stop driving a stale context."""
+        self.running = False
+        self.paused = False
+        for attr in ('narrative_task', 'run_task'):
+            task = getattr(self, attr, None)
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            setattr(self, attr, None)
+        self.narrative_play = False
+        self.initialized = False
+
+    def _on_narrative_done(self, task: asyncio.Task):
+        """Surface a crashed narrative task to the UI instead of letting it die silently."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Narrative task failed", exc_info=exc)
+            traceback.print_exception(exc)
+            asyncio.ensure_future(self.send_result({
+                'type': 'play_error',
+                'error': f'Narrative stopped: {type(exc).__name__}: {exc}'
+            }))
+
     async def load_play(self, command):
-        self.image_cache = {}   
+        await self._stop_play_tasks()
+        self.image_cache = {}
         play_name = command.get('play')
         main_dir = Path(__file__).parent
         config_path = (main_dir / '../plays/config.py').resolve()
@@ -260,11 +290,15 @@ class SimulationServer:
                 self.narrative_play = True
                 #await self.sim_context.run_character_narratives()
                 self.narrative_task = asyncio.create_task(self.sim_context.run_integrated_narrative())
+                self.narrative_task.add_done_callback(self._on_narrative_done)
             else:
                 print(f'narrative=False or map file name not found for {play_name}, running unplanned')
                 await self.sim_context.introduce_characters(play_name, map_file_name)
         except Exception as e:
             traceback.print_exc()
+            # don't leave a half-built play looking loaded
+            self.initialized = False
+            self.narrative_play = False
             await self.send_result({
                 'type': 'play_error',
                 'error': f'Failed to load play: {str(e)}'
@@ -309,8 +343,7 @@ class SimulationServer:
             traceback.print_exc()
             logger.error(f"Error in simulation step: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
-            self.is_running = False
-            raise  # Re-raise to maintain existing error handling
+            raise  # run_loop / process_command report it
         finally:
             self.processing = False  # Clear processing flag
             
@@ -348,10 +381,13 @@ class SimulationServer:
         self.running = True
         self.paused = False
         if self.narrative_play:
+            # the narrative task free-runs on sim_context.run; no step loop needed
+            # (falling through started run_loop, which re-sent 'step' every ~0.3s)
             self.sim_context.run = True
             await self.send_command_ack('run')
+            return
         # Cancel existing run task if any
-        elif self.run_task:
+        if self.run_task:
             self.run_task.cancel()
             try:
                 await self.run_task
@@ -368,8 +404,9 @@ class SimulationServer:
         # Signal the run loop to stop at next safe point
         self.paused = True
         self.running = False
-        self.sim_context.step = False
-        self.sim_context.run = False
+        if self.sim_context:
+            self.sim_context.step = False
+            self.sim_context.run = False
         
         # Wait for run task to complete its current step and exit
         if self.run_task:
@@ -396,10 +433,9 @@ class SimulationServer:
         try:
             return self.sim_context.load_world(filename)
         except Exception as e:
-            logger.error(f"Error in simulation step: {e}")
+            logger.error(f"Error loading world: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
-            self.is_running = False
-            raise  # Re-raise to maintain existing error handling
+            raise  # process_command reports it
          
     async def inject_cmd(self, command):
         """Route inject command using watcher pattern from worldsim"""
@@ -425,9 +461,25 @@ class SimulationServer:
         except Exception as e:
             logger.error(f"Error in simulation inject: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
-            self.is_running = False
-            raise  # Re-raise to maintain existing error handling
+            raise  # process_command reports it
         
+
+    async def _show_map(self):
+        """Show the map in a matplotlib window, pumping its GUI events cooperatively."""
+        try:
+            viz = MapVisualizer(self.sim_context.map)
+            viz.draw_terrain_and_infrastructure()
+            plt.ion()
+            plt.show(block=False)
+            while plt.get_fignums():
+                plt.pause(0.05)
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Error showing map: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+        finally:
+            plt.close('all')
+            plt.ioff()
 
     def get_character_details_cmd(self, char_name):
         """Get detailed character state"""
@@ -487,7 +539,7 @@ class SimulationServer:
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'load_world':
-                await self.load_world_cmd()
+                await self.load_world_cmd(command.get('filename'))
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'inject':
@@ -499,7 +551,8 @@ class SimulationServer:
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'get_character_states':
-                await self.get_character_states_cmd()
+                await self.send_result({'type': 'character_states',
+                                        'states': self.get_character_states_cmd()})
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'choice_response':
@@ -530,26 +583,10 @@ class SimulationServer:
                 await asyncio.sleep(0.1)
                 return
             elif cmd_name == 'showMap':
-                try:
-                    viz = MapVisualizer(self.sim_context.map)
-                    viz.draw_terrain_and_infrastructure()
-                    
-                    # Use non-blocking mode and handle window closing
-                    plt.ion()  # Turn on interactive mode
-                    plt.show(block=False)  # Show without blocking
-                    
-                    # Wait for window to be closed
-                    while plt.get_fignums():
-                        plt.pause(0.1)  # Small pause to prevent CPU spinning
-                    
-                    plt.close('all')  # Clean up all figures
-                    plt.ioff()  # Turn off interactive mode
-                    
-                except Exception as e:
-                    logger.error(f"Error showing map: {e}")
-                    logger.error(f"Traceback:\n{traceback.format_exc()}")
-                    plt.close('all')  # Ensure cleanup even on error
-                    plt.ioff()
+                if self.sim_context:
+                    # run the window's event pump as its own task; the old inline
+                    # `while fignums: plt.pause()` froze the engine until the window closed
+                    asyncio.create_task(self._show_map())
                 await asyncio.sleep(0.1)
             elif cmd_name == 'toggle_speech':
                 self.speech_enabled = not self.speech_enabled
@@ -613,7 +650,7 @@ class SimulationServer:
                         except Exception as e:
                             logger.error(f"Error in world update: {e}")
                             logger.error(f"Traceback:\n{traceback.format_exc()}")
-                            if self.image_cache['world']:
+                            if self.image_cache.get('world'):
                                 world_data['image'] = self.image_cache['world']
                 
                         await self.send_result({
@@ -650,18 +687,26 @@ class SimulationServer:
                                 text = message.get('text')
                                 if text.startswith("..."):
                                     text = text[3:-3]
-                                    to_speak = f"<prosody volume='x-soft' rate='90%'>{text}</prosody>"
-                                else:
-                                    to_speak = text
+                                # (an SSML <prosody> wrapper was added for whispered lines; ElevenLabs
+                                # doesn't support SSML prosody, so it is no longer sent)
+                                to_speak = text
                                 speech_params = message.get('elevenlabs_params', {})
                                 try:
                                     speech_paramsj = json.loads(speech_params)
                                     print(f"Synthesizing speech: {to_speak} with params: {speech_params}")
                                     audio_path = await self.sim_context.voice_service.synthesize(to_speak, speech_paramsj)
+                                    self.speech_failures = 0
                                 except Exception as e:
                                     print(f"Error synthesizing speech: {e}")
-                                    print(f"Traceback:\n{traceback.format_exc()}")
                                     audio_path = None
+                                    self.speech_failures = getattr(self, 'speech_failures', 0) + 1
+                                    if self.speech_failures >= 3:
+                                        # stop paying a failed round trip per line; tell the UI
+                                        self.speech_enabled = False
+                                        await self.send_result({'type': 'speech_toggle', 'enabled': False})
+                                        await self.send_result({'type': 'show_update', 'message': {
+                                            'name': 'SimulationServer',
+                                            'text': f'----- speech disabled after repeated TTS errors: {e} -----'}})
                                 
                                 # Read the generated audio file and add it to the event
                                 if audio_path and os.path.exists(audio_path):

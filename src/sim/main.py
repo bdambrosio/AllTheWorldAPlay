@@ -10,10 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 import base64
 from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from utils.llm_api import generate_image
 from pathlib import Path
-from utils.llm_api import LLM
-from utils.llm_api import IMAGE_PATH
 import asyncio
 from contextlib import asynccontextmanager
 import zmq
@@ -30,24 +27,12 @@ replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'logs'
 replay_dir.mkdir(parents=True, exist_ok=True)
 replay_file = None
 capture_file = None
-# Small grey image (1x1 pixel) in base64
-MINI_IMAGE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-
 # Add near the top with other globals
 replay_events = []
 current_replay_index = 0
 is_replay_mode = False
 
 # used to control the speed of the replay
-EVENT_DELAYS = {
-    'replay_event': 0.5,      # UI events
-    'show_update': 0.3,       # Text updates
-    'world_update': 0.5,      # World state changes
-    'character_update': 0.4,  # Character updates
-    'command_ack': 0.1,       # Command acknowledgments
-    'default': 0.2           # Any other event type
-}
-
 def cleanup():
     global replay_file, capture_file
     if replay_file:
@@ -144,9 +129,22 @@ class SimulationManager:
             try:
                 result = await self.result_socket.recv_json()
                 yield result
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
+                # keep forwarding: breaking here silently cut the UI off from the engine for good
                 print(f"Error receiving results: {e}")
-                break
+                await asyncio.sleep(0.5)
+
+    async def watch_process(self):
+        """Tell the UI if the engine subprocess dies (it was previously unnoticed)."""
+        while self.process is not None and self.process.poll() is None:
+            await asyncio.sleep(5)
+        if self.process is not None:
+            code = self.process.returncode
+            print(f"Simulation engine exited with code {code}")
+            ws_manager.queue_message({'type': 'error',
+                                      'error': f'Simulation engine exited (code {code}); restart the backend'})
 
 
 sim_manager = SimulationManager()
@@ -218,10 +216,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             if data.get('type') == 'command':
                     await sim_manager.send_command(data)
                 
-            elif data['action'] == 'load_known_actors':
+            elif data.get('action') == 'load_known_actors':
                 await sim_manager.send_command(data)
                 
-            elif data['action'] == 'save_known_actors':
+            elif data.get('action') == 'save_known_actors':
                 await sim_manager.send_command(data)
                 
     except WebSocketDisconnect:
@@ -244,24 +242,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             del sessions[session_id]
 
 
-def process_ws_message(message):
-    # Convert websocket message to simulation command format
-    try:
-        data = json.loads(message)
-        # Assuming the websocket message already has the correct format
-        # Adjust this conversion based on your specific message formats
-        return data
-    except json.JSONDecodeError:
-        return {
-            'type': 'error',
-            'error': 'Invalid JSON message'
-        }
-
-async def handle_websocket(websocket, sim_manager):  # Add sim_manager parameter
-    async for message in websocket:
-        command = process_ws_message(message)
-        await sim_manager.send_command(command)
-
 # Add startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
@@ -274,35 +254,42 @@ async def startup_event():
     async def handle_simulation_results():
         global image_cache
         async for result in sim_manager.receive_results():
-            ws_message = convert_sim_to_ws_message(result)
-            ws_manager.queue_message(ws_message)
-                        # Minimize images in the copy
-            capture_file_result = copy.deepcopy(ws_message)
-            # let first image through for both world and characters
-            if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
-                actor_name = capture_file_result['data']['name']
-                if actor_name in image_cache:
-                    del capture_file_result['data']['image']
-                else:
-                    image_cache[actor_name] = capture_file_result['data']['image']
-            elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
-                if 'world' in image_cache:
-                    #del capture_file_result['data']['image']
-                    pass
-                else:
-                    image_cache['world'] = capture_file_result['data']['image']
+            try:
+                ws_message = convert_sim_to_ws_message(result)
+                ws_manager.queue_message(ws_message)
+                            # Minimize images in the copy
+                capture_file_result = copy.deepcopy(ws_message)
+                # let first image through for both world and characters
+                if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
+                    actor_name = capture_file_result['data']['name']
+                    if actor_name in image_cache:
+                        del capture_file_result['data']['image']
+                    else:
+                        image_cache[actor_name] = capture_file_result['data']['image']
+                elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
+                    if 'world' in image_cache:
+                        #del capture_file_result['data']['image']
+                        pass
+                    else:
+                        image_cache['world'] = capture_file_result['data']['image']
 
-            # Record the ws_message instead of the raw result
-            capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")
+                # Record the ws_message instead of the raw result
+                capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")
+            except Exception as e:
+                # one bad message must not end result forwarding
+                print(f"Error forwarding simulation result: {e}")
+                traceback.print_exc()
             await asyncio.sleep(0.1)
     
     app.state.result_task = asyncio.create_task(handle_simulation_results())
+    app.state.watch_task = asyncio.create_task(sim_manager.watch_process())
 
 @app.on_event("shutdown")
 async def shutdown_event():
     global capture_file
-    if hasattr(app.state, 'result_task'):
-        app.state.result_task.cancel()
+    for name in ('result_task', 'watch_task'):
+        if hasattr(app.state, name):
+            getattr(app.state, name).cancel()
     cleanup()
     await sim_manager.stop()
 
