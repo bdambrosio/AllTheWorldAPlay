@@ -5,7 +5,7 @@
 #   UI           : React dev server, :3000
 # Logs go to ./logs/. Ctrl+C stops everything.
 #
-# Env overrides: BACKEND_PORT, IMAGE_GPU (nvidia-smi index, default 0),
+# Env overrides: BACKEND_PORT, IMAGE_GPU (nvidia-smi index for images + embeddings, default 0),
 #                NO_IMAGES=1 (grey placeholders instead of Klein), NO_TTS=1 (no voices)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -20,6 +20,12 @@ LOGS="$ROOT/logs"; mkdir -p "$LOGS"
 [ "${NO_TTS:-0}" = 1 ] && unset ELEVENLABS_API_KEY
 
 export PATH="$ROOT/.venv/bin:$PATH"
+# Keep everything except vLLM off the RTX PRO 6000 (nvidia-smi 1): vLLM runs at
+# --gpu-memory-utilization 0.96, and the engine's embedding model defaulting to torch's
+# cuda:0 (which is the 6000 in torch's default FASTEST_FIRST order) took ~850 MB of that
+# headroom; vLLM's EngineCore crashed twice. All our CUDA users get the spare GPU.
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
+export CUDA_VISIBLE_DEVICES="${IMAGE_GPU:-0}"
 # Unbuffered so logs/*.log are written in real time (also used by tools/smoke_run.py).
 export PYTHONUNBUFFERED=1
 
