@@ -3334,8 +3334,8 @@ End your response with:
                                          'time': self.context.simulation_time}, 
                                          prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
                 if response:
-                    admissible = xml.find('admissible', response)
-                    impossible = xml.find('impossible', response)
+                    admissible = (xml.find('admissible', response) or '').strip()
+                    impossible = (xml.find('impossible', response) or '').strip()
                     if admissible.lower() == 'true' and impossible.lower() == 'false':
                         admissible_goals.append(goal)
                     elif admissible.lower() == 'false' and impossible.lower() == 'true':
