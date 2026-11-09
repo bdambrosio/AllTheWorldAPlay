@@ -10,6 +10,8 @@ error-ish lines, embedding-model loads, and per-tag LLM call counts/timings.
     .venv/bin/python tools/smoke_run.py --play lost.py --steps 3 --label baseline
 
 Writes logs/smoke-<label>.json. Exit code 1 if the run saw tracebacks or play errors.
+--hw also samples nvidia-smi every 5 s and takes vLLM /metrics deltas over the run; the
+summary names the run's trace file (sim/trace.py) for tools/score_play.py.
 Note: the engine is a single process shared by all sessions, so this replaces
 whatever play is loaded in an open browser tab.
 """
@@ -29,6 +31,50 @@ ROOT = Path(__file__).resolve().parent.parent
 TAG_LINE = re.compile(r"^([A-Za-z_][\w.]*)\.\.\.([0-9]+\.[0-9]+)\s*$")
 ERRORISH = re.compile(r"error|exception|failed|not found|invalid|unbound|cannot|could not", re.I)
 NOISE = re.compile(r"elevenlabs|text-to-speech|^\s+(File|raise|~|\^)|Loading weights", re.I)
+TRACE_DIR = Path.home() / ".local/share/alltheworldaplay/logs/traces"
+VLLM_COUNTERS = ("prompt_tokens_total", "generation_tokens_total", "prefix_cache_queries_total",
+                 "prefix_cache_hits_total", "spec_decode_num_draft_tokens_total",
+                 "spec_decode_num_accepted_tokens_total", "request_success_total")
+
+
+def vllm_counters(url):
+    """vLLM /metrics counters summed over labels, keyed by name (request_success by finish_reason)."""
+    out = collections.Counter()
+    try:
+        text = requests.get(f"{url}/metrics", timeout=5).text
+    except requests.RequestException:
+        return {}
+    for ln in text.splitlines():
+        if not ln.startswith("vllm:"):
+            continue
+        m = re.match(r"vllm:(\w+)(\{[^}]*\})?\s+([0-9.eE+-]+)$", ln)
+        if not m or m.group(1) not in VLLM_COUNTERS:
+            continue
+        key = m.group(1)
+        if key == "request_success_total":
+            reason = re.search(r'finished_reason="(\w+)"', m.group(2) or "")
+            key = f"finished_{reason.group(1) if reason else 'unknown'}"
+        out[key] += float(m.group(3))
+    return dict(out)
+
+
+async def gpu_sampler(samples, interval=5.0):
+    """Append one nvidia-smi reading per GPU every interval seconds until cancelled."""
+    query = "index,name,utilization.gpu,memory.used,power.draw"
+    while True:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nvidia-smi", f"--query-gpu={query}", "--format=csv,noheader,nounits",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            out, _ = await proc.communicate()
+            t = time.time()
+            for row in out.decode().strip().splitlines():
+                idx, name, util, mem, power = [c.strip() for c in row.split(",")]
+                samples.append({"t": round(t, 1), "gpu": int(idx), "name": name, "util": float(util),
+                                "mem_mib": float(mem), "power_w": float(power)})
+        except (OSError, ValueError):
+            pass
+        await asyncio.sleep(interval)
 
 
 class Run:
@@ -84,6 +130,10 @@ class Run:
         a = self.args
         self.log_offset = self.log_size()
         self.t0 = time.time()
+        self.gpu_samples, sampler = [], None
+        if a.hw:
+            self.vllm_start = vllm_counters(a.vllm)
+            sampler = asyncio.create_task(gpu_sampler(self.gpu_samples))
         sid = requests.get(f"{a.backend}/api/session/new", timeout=10).json()["session_id"]
         ws_url = a.backend.replace("http", "ws", 1) + f"/ws/{sid}"
         timings = {}
@@ -99,7 +149,7 @@ class Run:
             if not a.speech:
                 await cmd("toggle_speech")   # engine default is speech on; toggle flips it
             print(f"load_play {a.play}")
-            await cmd("load_play", play=a.play)
+            await cmd("load_play", play=a.play, **({"ablate": a.ablate} if a.ablate else {}))
             timings["load"] = await self.quiesce("load_play", min_secs=10)
             for i in range(1, a.steps + 1):
                 await cmd("step")
@@ -121,7 +171,15 @@ class Run:
                 await cmd("step")
                 timings["reload_step"] = await self.quiesce("reload step")
             reader.cancel()
+        if sampler:
+            sampler.cancel()
+            self.vllm_end = vllm_counters(a.vllm)
         self.timings = timings
+
+    def trace_path(self):
+        """The trace file this run wrote: the newest one started after the run began."""
+        traces = [p for p in TRACE_DIR.glob("*.jsonl") if p.stat().st_mtime >= self.t0] if TRACE_DIR.exists() else []
+        return str(max(traces, key=lambda p: p.stat().st_mtime)) if traces else None
 
     def summarise(self):
         with open(self.log, "rb") as f:
@@ -159,7 +217,12 @@ class Run:
             "engine_problems": self.problems,
             "step_acks_during_run": getattr(self, "step_acks_during_run", None),
             "ws_message_types": collections.Counter(t for _, t, _ in self.msgs).most_common(),
+            "trace": self.trace_path(),
         }
+        if self.args.hw:
+            start, end = getattr(self, "vllm_start", {}), getattr(self, "vllm_end", {})
+            summary["hw"] = {"gpu_samples": self.gpu_samples,
+                             "vllm_delta": {k: end[k] - start.get(k, 0) for k in end}}
         out = ROOT / "logs" / f"smoke-{self.args.label}.json"
         out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(summary, indent=2, default=str))
@@ -183,6 +246,9 @@ def parse():
     p.add_argument("--speech", action="store_true", help="leave TTS on (default: toggle it off)")
     p.add_argument("--run-secs", type=float, default=0, help="after stepping, 'run' for this long then 'pause'")
     p.add_argument("--reload-play", help="then load this second play in the same engine and step once")
+    p.add_argument("--hw", action="store_true", help="sample GPUs and vLLM /metrics during the run")
+    p.add_argument("--ablate", help="comma-separated features to disable (src/sim/ablation.py)")
+    p.add_argument("--vllm", default="http://localhost:5000", help="vLLM server for --hw")
     return p.parse_args()
 
 
