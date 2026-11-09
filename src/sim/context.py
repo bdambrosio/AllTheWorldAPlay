@@ -1894,13 +1894,13 @@ In performing this integration:
             stop('no character has any narrative acts')
             return
         previous_act_post_state = ''
+        previous_act = None  # the act just performed; replan_narrative_act adapts the next act to it
         try:
             for i in range(integrated_act_count):
                 act_central_narrative = await self.generate_act_central_narrative(i+1)
                 if act_central_narrative is None:
                     stop('could not generate the act central narrative')
                     return
-                previous_act = None
                 character_narrative_blocks = []
                 for character in cast(List[NarrativeCharacter], self.actors):
                     if i < len(character.plan['acts']): # what about coda?
@@ -1932,6 +1932,7 @@ In performing this integration:
             coda_central_narrative.append("Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
             coda_central_narrative = '\n'.join(coda_central_narrative)
 
+            character_narrative_blocks = []  # fresh: this list still held the last act's plans
             for character in cast(List[NarrativeCharacter], self.actors):
                 updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, previous_act, coda_central_narrative, previous_act_post_state)
                 character_narrative_blocks.append([character, updated_act])  
@@ -1942,7 +1943,7 @@ In performing this integration:
             if new_act is None:
                 stop('no coda act to run')
                 return
-            await self.run_narrative_act(next_act, i+2)
+            await self.run_narrative_act(new_act, i+2)  # was next_act, discarding Director's-chair edits
             
         except Exception as e:
             stop(f'error running integrated narrative: {type(e).__name__}: {e}')
