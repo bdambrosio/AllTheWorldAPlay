@@ -1452,7 +1452,13 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':character.to_json()})
             await asyncio.sleep(0.4)
             # now generate initial task plan
-            await character.generate_task_plan(character.focus_goal, ntasks=(scene['action_order']).count(character.name)+1)
+            if character.focus_goal:
+                await character.generate_task_plan(character.focus_goal, ntasks=(scene['action_order']).count(character.name)+1)
+            else:
+                # instantiate_narrative_goal returns no goal when its LLM call fails; that raised
+                # ValueError here and ended the whole narrative
+                logger.warning(f'{character.name}: no scene goal (LLM failure?), no task plan this scene')
+                self.message_queue.put({'name':'', 'text':f'{character.name} has no goal for this scene'})
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await asyncio.sleep(0.4)
@@ -2633,7 +2639,7 @@ re""")]
                 if not actor.focus_goal: # generate goals if necessary
                     await actor.generate_goals()
                     await actor.request_goal_choice()
-                if not actor.focus_goal.task_plan:
+                if actor.focus_goal and not actor.focus_goal.task_plan:
                     await actor.generate_task_plan(ntasks=(scene['action_order']).count(actor.name))
                 actor_tasks[actor.name]['task_plan'] = actor.focus_goal.task_plan if actor.focus_goal and actor.focus_goal.task_plan else []
                 total_input_task_count += len(actor_tasks[actor.name]['task_plan'])
