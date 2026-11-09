@@ -361,6 +361,3 @@ class VoiceService:
     async def synthesize(self, text: str, options: Dict = None) -> str:
         """Generate speech and return the path to the audio file without playing it."""
         return await self.providers[self.current_provider].synthesize(text, options or {})
-
-# Create singleton instance
-voice_service = VoiceService()

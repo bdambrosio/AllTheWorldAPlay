@@ -156,17 +156,7 @@ class Context():
             #actor.generate_goal_alternatives()
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
-
-        self.voice_service = VoiceService()
-        self.voice_service.set_provider('elevenlabs')
-        try:
-            api_key = os.getenv('ELEVENLABS_API_KEY')
-            if not api_key:
-                print("Please set ELEVENLABS_API_KEY environment variable and restart for voiced output")
-            self.voice_service.set_api_key('elevenlabs', api_key)
-        except Exception as e:
-            print(f"Error setting up voice service: {e}")
-            self.voice_service.set_provider('coqui')
+        # (the voice service set up above was rebuilt here, refetching the voice list)
 
         
     def parse_scenario(self, scenario_lines: List[str]) -> dict:

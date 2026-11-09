@@ -11,7 +11,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 # Add parent directory to path to access existing simulation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.VoiceService import VoiceService
 
 from sim.mapview import MapVisualizer
 from sim.character_dataclasses import Act, Goal, Task
@@ -86,8 +85,7 @@ class SimulationServer:
         self.speech_complete_event = asyncio.Event()  #  speech completion event 
         self.speech_enabled = True  # speech enabled flag
         self.waiting_speech_complete = False # flag to prevent speech overrun
-        self.voice_service = VoiceService()
-        self.voice_service.set_provider('elevenlabs')
+        # voices: self.sim_context.voice_service (one per play)
 
     async def start(self):
         self.command_socket.connect("tcp://127.0.0.1:5555")
