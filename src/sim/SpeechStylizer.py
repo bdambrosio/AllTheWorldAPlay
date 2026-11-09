@@ -214,11 +214,11 @@ Format your response as valid JSON only, no other text.
         style = {"tone": [], "syntactic_oddity": 0.0}
         
         # Map arousal to syntactic oddity
-        if emotionalState.arousal == "Agitated":
+        if emotionalState.arousal == Arousal.Agitated:
             style["syntactic_oddity"] = 0.4
-        elif emotionalState.arousal == "Vigilant":
+        elif emotionalState.arousal == Arousal.Vigilant:
             style["syntactic_oddity"] = 0.25
-        elif emotionalState.arousal == "Exhausted":
+        elif emotionalState.arousal == Arousal.Exhausted:
             style["syntactic_oddity"] = 0.15
             
         # Map tone to emotional qualities
