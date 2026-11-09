@@ -229,11 +229,17 @@ class Direction(Enum):
         if text in direction_map:
             return direction_map[text]
             
-        # Try matching parts of input against direction names
-        for name, direction in direction_map.items():
-            if name == text:
-                return direction
-                
+        # A direction phrased in a few words ('head north', 'a few steps north-east'):
+        # the direction must be the only meaningful word, so 'the north side of the hut'
+        # is left to the resource lookup. (This loop used to repeat the exact match.)
+        filler = {'go', 'head', 'walk', 'move', 'run', 'step', 'steps', 'to', 'the', 'toward',
+                  'towards', 'a', 'few', 'bit', 'little', 'further', 'slightly', 'quickly',
+                  'carefully', 'slowly', 'direction', 'of', 'ward', 'wards'}
+        words = [w for w in re.findall(r'[a-z]+', text.replace('-', '')) if w not in filler]
+        if words and len(words) <= 2:
+            joined = ''.join(words)
+            if len(joined) > 2 and joined in direction_map:  # full names only, not 'n'/'s'/...
+                return direction_map[joined]
         return None
 
 def get_direction_offset(direction):
