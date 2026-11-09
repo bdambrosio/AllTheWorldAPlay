@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import utils.choice as choice
 from typing import List
 import asyncio
+import time
 from sim.prompt import ask as default_ask
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler
 
@@ -31,6 +32,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('simulation_core')
+
+# World images: one render costs seconds of GPU time, and look/do acts come every few seconds.
+WORLD_IMAGE_SECS = float(os.environ.get('WORLD_IMAGE_SECS', '60'))
+WORLD_IMAGE_FILES = 8
 
 
 class Context():
@@ -105,6 +110,10 @@ class Context():
         self.last_update_time = self.simulation_time
         self.narrative = None
         self.current_scene = None
+        # world-image throttle (see act_image_json): last render time, scene and file index
+        self._world_image_at = 0.0
+        self._world_image_scene = None
+        self._world_image_n = 0
         self.scene_pre_narrative = '' # setting up the scene
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
@@ -558,12 +567,33 @@ If absolutely no information is available for any field, use "unknown" for that 
             traceback.print_exc()
         return filepath
     
-    def to_act_image_json(self, actor:Character, act:Act, consequences:str):
-        """Return JSON-serializable dict of context state"""
-        return {
-            'show': ' \n\n'+self.current_state,
-            'image': self.act_image(actor, act, consequences, 'worldsim.png')
-        }
+    def _next_world_image_file(self):
+        """Rotating world-image filenames: a path already queued to the UI is not overwritten
+        by the next render before simulation.py reads it, and the image dir does not grow."""
+        self._world_image_n = (self._world_image_n + 1) % WORLD_IMAGE_FILES
+        return f'worldsim_{self._world_image_n}.png'
+
+    def _world_image_due(self):
+        """A new world image at most every WORLD_IMAGE_SECS, or when the scene changes."""
+        scene_changed = self.current_scene is not self._world_image_scene
+        return scene_changed or time.monotonic() - self._world_image_at >= WORLD_IMAGE_SECS
+
+    async def act_image_json(self, actor:Character, act:Act, consequences:str):
+        """world_update payload after an act. 'image' is a file path, or None when throttled
+        (simulation.py then resends the cached image). Rendering runs off the event loop."""
+        image = None
+        if self._world_image_due():
+            self._world_image_at = time.monotonic()
+            self._world_image_scene = self.current_scene
+            image = await asyncio.to_thread(self.act_image, actor, act, consequences, self._next_world_image_file())
+        return {'show': ' \n\n'+self.current_state, 'image': image}
+
+    async def world_image_json(self):
+        """world_update payload with a fresh image (play load, situation updates), off the event loop."""
+        self._world_image_at = time.monotonic()
+        self._world_image_scene = self.current_scene
+        image = await asyncio.to_thread(self.image, self._next_world_image_file())
+        return {'show': ' \n\n'+self.current_state, 'image': image}
 
     def get_actor_by_name(self, name):
         """Helper to find actor by name"""
@@ -827,7 +857,7 @@ End your response with:
         #self.last_updates = character_updates
         print(f'\nContext Do consequences:\n {consequences}')
         #print(f' Context Do world_update:\n {world_updates}\n')
-        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_act_image_json(actor, act, consequences)})
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, consequences)})
         await asyncio.sleep(0.1)
         return consequences
 
@@ -904,7 +934,7 @@ End your response with:
         self.last_updates = character_updates
         print(f'\nContext Do consequences:\n {consequences}')
         print(f' Context Do world_update:\n {world_updates}\n')
-        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_act_image_json(actor, act, consequences)})
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, consequences)})
         await asyncio.sleep(0.1)
         return consequences, world_updates, character_updates
 
@@ -1045,7 +1075,7 @@ Ensure your response reflects this change.
             self.transcript.append(f'{new_situation}')
 
         self.show = '' # has been added to message queue!
-        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.to_json()})
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.world_image_json()})
         await asyncio.sleep(0.1)
 
         await asyncio.sleep(0.1)
@@ -1200,12 +1230,6 @@ Ensure your response reflects this change.
         """Get widget reference for entity"""
         return self.widget_refs.get(entity)
 
-    def to_json(self):
-        """Return JSON-serializable dict of context state"""
-        return {
-            'show': ' \n\n'+self.current_state,
-            'image': self.image('worldsim.png')
-        }
 
     def format_tasks(self, tasks, labels):
         task_list = []

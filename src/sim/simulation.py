@@ -117,9 +117,11 @@ class SimulationServer:
 
         try:
             if actor.name not in self.image_cache or new_image:
-                description = actor.generate_image_description()
+                # LLM description + render take seconds; keep the event loop (UI forwarding) running
+                description = await asyncio.to_thread(actor.generate_image_description)
                 if description:
-                    image_path = generate_image(self.sim_context.llm, description, filepath=actor.name+'.png')
+                    image_path = await asyncio.to_thread(generate_image, self.sim_context.llm, description,
+                                                         filepath=actor.name+'.png')
                     with open(image_path, 'rb') as f:
                         image_data = base64.b64encode(f.read()).decode()
                         actor_data['image'] = image_data
@@ -148,11 +150,14 @@ class SimulationServer:
 
     async def send_world_update(self):
         """send world update to UI"""
-        update = self.sim_context.to_json()
-        image_path = update['image']
-        with open(image_path, 'rb') as f:
-            image_data = base64.b64encode(f.read()).decode()
-        update['image'] = image_data
+        update = await self.sim_context.world_image_json()
+        try:
+            with open(update['image'], 'rb') as f:
+                update['image'] = base64.b64encode(f.read()).decode()
+            self.image_cache['world'] = update['image']
+        except Exception as e:
+            logger.error(f"world image unreadable: {e}")
+            update['image'] = self.image_cache.get('world')
         await self.send_result({
             'type': 'world_update',
             'world': update
@@ -641,17 +646,15 @@ class SimulationServer:
                     elif message['text'] == 'world_update':
                         # async character update messages include the actor data in the message
                         world_data = message['data']
-                        image_path = world_data['image']
+                        image_path = world_data.get('image')   # None: throttled, resend the cached one
                         try:
-                            with open(image_path, 'rb') as f:
-                                image_data = base64.b64encode(f.read()).decode()
-                                world_data['image'] = image_data
-                                self.image_cache['world'] = image_data
+                            if image_path:
+                                with open(image_path, 'rb') as f:
+                                    self.image_cache['world'] = base64.b64encode(f.read()).decode()
                         except Exception as e:
                             logger.error(f"Error in world update: {e}")
                             logger.error(f"Traceback:\n{traceback.format_exc()}")
-                            if self.image_cache.get('world'):
-                                world_data['image'] = self.image_cache['world']
+                        world_data['image'] = self.image_cache.get('world')
                 
                         await self.send_result({
                             'type': 'world_update',

@@ -3700,7 +3700,7 @@ End your response with:
                 pass # need to figure out out to force UI to no sho old image
             if delay > 15.0:
                 self.context.update(changes_only=True)
-                self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':self.context.to_json()})
+                self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.context.world_image_json()})
                 await asyncio.sleep(0)
         except Exception as e:
             print(f'{self.name} cognitive_cycle error: {e}')
