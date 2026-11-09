@@ -92,9 +92,22 @@ End your response with:
     compressed_prompt = description
     cwd = os.getcwd()
     url = 'http://127.0.0.1:5008/generate_image'
-    response =  requests.get(url, params={"prompt":"photorealistic style: "+compressed_prompt, "size":size})
-    if response.status_code == 200:
-        image_content = response.content
+    image_content = None
+    try:
+        response = requests.get(url, params={"prompt":"photorealistic style: "+compressed_prompt, "size":size}, timeout=60)
+        if response.status_code == 200:
+            image_content = response.content
+    except requests.RequestException as e:
+        print(f'image server unavailable ({e}); using placeholder image')
+    if image_content is None:
+        # fall back to a plain grey placeholder so the sim never dies for lack of eye candy
+        try:
+            w, h = (int(v) for v in size.lower().split('x'))
+        except Exception:
+            w, h = 256, 256
+        buf = BytesIO()
+        Image.new('RGB', (w, h), color='#808080').save(buf, format='PNG')
+        image_content = buf.getvalue()
     # Save the image to a file
     with open(IMAGE_PATH / filepath, "wb") as file:
         file.write(image_content)
@@ -209,13 +222,26 @@ class LLM():
         else:
             if options.stops is None: options.stops = []
             if 'vllm' in self.server_name:
+                # chat endpoint so the model's chat template is applied; thinking disabled because
+                # callers use small max_tokens budgets that reasoning would otherwise consume.
                 headers = {"Content-Type": "application/json"}
-                url = 'http://localhost:5000/v1/completions'
-                content = '\n'.join([msg['content'] for msg in substituted_prompt])
-                response =  requests.post(url, headers= headers,
-                                          json={"model":self.model, 
-                                                "prompt":content, "temperature":0.0,
-                                               "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
+                url = 'http://localhost:5000/v1/chat/completions'
+                # Qwen chat templates reject requests with no user turn ("No user query found"),
+                # and some engine prompts are a lone SystemMessage: send the last one as the user turn.
+                messages = substituted_prompt
+                if not any(m['role'] == 'user' for m in messages):
+                    messages = [dict(m) for m in messages]
+                    for m in reversed(messages):
+                        if m['role'] == 'system':
+                            m['role'] = 'user'
+                            break
+                response =  requests.post(url, headers= headers, timeout=600,
+                                          json={"model":self.model,
+                                                "messages":messages,
+                                                "temperature":options.temperature,
+                                                "top_p":options.top_p, "max_tokens":options.max_tokens,
+                                                "stop":options.stops or None,
+                                                "chat_template_kwargs": {"enable_thinking": False}})
             else:
                 url = 'http://localhost:5000/v1/chat/completions'
                 response =  requests.post(url, headers={"Content-Type":"application/json"},
@@ -223,7 +249,7 @@ class LLM():
                                         "top_p":options.top_p, "max_tokens":options.max_tokens, "stop":options.stops})
         if response.status_code == 200:
             if 'vllm' in self.server_name:
-                text = response.json()['choices'][0]['text']
+                text = response.json()['choices'][0]['message']['content'] or ''
                 if (index := text.find('</think>')) > -1:
                     text = text[index+8:].strip()
                 return text
@@ -250,7 +276,7 @@ class LLM():
             # assume tabby or other open-ai like return
         else:
             traceback.print_exc()
-            raise Exception(response)
+            raise Exception(f'{response.status_code} from LLM server: {response.text[:500]}')
 
     def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None, stop_on_json=False, model=None, log=True, trace=False):
         global elapsed_times, iteration_count
