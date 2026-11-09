@@ -1111,9 +1111,11 @@ End response with:
             self.goal_history.append(goal)
             if goal.name != 'preconditions':
                 # remove preconditions goal if it is satisfied
-                for goal in self.goals.copy():
-                    if goal.name == 'preconditions' and goal.description == self.focus_goal.preconditions:
-                        self.goals.remove(goal)
+                # (this loop reused 'goal', so the rest of the method recorded, removed and
+                # un-focused whichever goal the loop ended on instead of the satisfied one)
+                for g in self.goals.copy():
+                    if g.name == 'preconditions' and g.description == goal.preconditions:
+                        self.goals.remove(g)
             self.context.current_state += f"\nFollowing goal has been satisfied. This may invalidate parts of the above:\n{goal.to_string()}"
             #self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
             self.achievments.append(goal.termination)
