@@ -3,11 +3,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sim.agh import Act, Character, Goal, Task
     from sim.context import Context  # Only imported during type checking
-from sympy import re
-from utils.Messages import UserMessage
-from utils.llm_api import LLM
-from utils.hash_utils import find
-import utils.xml_utils as xml
 from sim.prompt import ask
 
 class ResourceReferenceManager:

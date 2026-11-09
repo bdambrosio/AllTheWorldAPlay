@@ -71,10 +71,6 @@ class Dialog:
         else:
             self.transcript.append(f"...{message}...")
 
-    def is_fatigued(self) -> bool:
-        """Check if conversation has become fatiguing"""
-        return self.fatigue >= self.fatigue_threshold
-        
     def duration(self) -> float:
         """Get how long dialog has been active"""
         return time.time() - self.start_time

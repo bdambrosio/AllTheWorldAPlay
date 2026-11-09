@@ -143,28 +143,6 @@ class PerceptualState:
             return self.current_inputs[self.attention_focus]
         return []
     
-    def clear_old_percepts(self, max_age_seconds: float = 300) -> None:
-        """Remove percepts older than specified age"""
-        current_time = self.owner.context.simulation_time
-        for mode in SensoryMode:
-            self.current_inputs[mode] = [
-                p for p in self.current_inputs[mode]
-                if (current_time - p.timestamp).total_seconds() <= max_age_seconds
-            ]
-            
-    def shift_attention(self, mode: Optional[SensoryMode] = None) -> None:
-        """Explicitly shift attention to specified mode or let attention flow naturally"""
-        if mode:
-            self.attention_focus = mode
-        else:
-            # Find mode with highest intensity recent input
-            highest_intensity = 0
-            for mode in SensoryMode:
-                recent = self.get_current_percepts(mode)
-                if recent and recent[0].intensity > highest_intensity:
-                    highest_intensity = recent[0].intensity
-                    self.attention_focus = mode
-                    
     def get_state_summary(self) -> str:
         """Generate summary of current perceptual state"""
         summary_parts = []
@@ -185,85 +163,6 @@ class PerceptualState:
             summary_parts.append(f"Attention: {self.attention_focus.value}")
             
         return "\n".join(summary_parts)
-
-    # everything below is unused junk, afaik
-
-
-    def integrate_with_memory(self) -> None:
-        """Integrate significant percepts into agent's memory system"""
-        if not self.owner:
-            return
-            
-        # Get all current percepts above memory threshold
-        significant = [
-            p for p in self.get_current_percepts()
-            if p.intensity > 0.5
-        ]
-        
-        # Group related percepts
-        grouped = {}
-        for percept in significant:
-            if percept.source in grouped:
-                grouped[percept.source].append(percept)
-            else:
-                grouped[percept.source] = [percept]
-                
-        # Create consolidated memories for groups
-        for source, percepts in grouped.items():
-            if len(percepts) > 1:
-                # Combine related percepts into single memory
-                combined = f"You perceive from {source}: " + ", ".join(
-                    f"({p.mode.value}) {p.content}"
-                    for p in sorted(percepts, key=lambda x: x.intensity, reverse=True)
-                )
-                self.owner.add_to_history(combined)
-            else:
-                # Single percept gets added individually
-                p = percepts[0]
-                self.owner.add_to_history(
-                    f"You perceive from {p.source} ({p.mode.value}): {p.content}"
-                )
-
-    def recent_significant_change(self, 
-                            time_window: float = 5.0,
-                            intensity_threshold: float = 0.7) -> bool:
-        """
-        Check if there have been any significant perceptual changes recently.
-    
-        Args:
-            time_window: Number of seconds to look back
-            intensity_threshold: Minimum intensity to consider significant
-        
-        Returns:
-            bool: True if significant changes detected
-        """
-        current_time = self.owner.context.simulation_time
-        window_start = current_time - timedelta(seconds=time_window)
-    
-        # Check each sensory mode
-        for mode in SensoryMode:
-            recent_inputs = [
-                input for input in self.current_inputs[mode]
-                if input.timestamp >= window_start
-            ]
-        
-            # Look for high intensity inputs
-            for input in recent_inputs:
-                if input.intensity >= intensity_threshold:
-                    return True
-                
-            # Check for pattern changes
-            if len(recent_inputs) >= 2:
-                # Get average intensity before and after midpoint
-                midpoint = len(recent_inputs) // 2
-                early_avg = sum(i.intensity for i in recent_inputs[:midpoint]) / midpoint
-                late_avg = sum(i.intensity for i in recent_inputs[midpoint:]) / (len(recent_inputs) - midpoint)
-            
-                # Check if intensity pattern changed significantly 
-                if abs(late_avg - early_avg) >= intensity_threshold/2:
-                    return True
-    
-        return False
 
     def _compute_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Compute cosine similarity between embeddings"""

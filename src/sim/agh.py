@@ -2,7 +2,6 @@ from __future__ import annotations
 import base64
 import os, json, math, time, requests, sys
 
-from sklearn import tree
 
 from sim.SpeechStylizer import SpeechStylizer
 
@@ -45,19 +44,12 @@ import asyncio
 from weakref import WeakValueDictionary
 import logging
 from sim.prompt import ask as default_ask
-from sim.cognitivePrompt import CognitiveToolInterface
 from sim.character_dataclasses import Mode, Stack, Act, Goal, Task, Autonomy, datetime_handler     
 if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
 
 logger = logging.getLogger('simulation_core')
 
-
-def find_first_digit(s):
-    for char in s:
-        if char.isdigit():
-            return char
-    return None  # Return None if no digit is found
 
 
 from datetime import timedelta
@@ -101,6 +93,12 @@ class Character:
         self.character = character_description
         self.original_character = character_description
         self.llm = llm_api.LLM(server_name)
+        # voice/appearance traits, filled by set_character_traits(); defaults so prompts that
+        # read them don't crash when that LLM call fails
+        self.gender = ''
+        self.age = ''
+        self.accent = ''
+        self.personality = []
         if len(reference_description) > 0:
             self.reference_dscp = reference_description
         else:
@@ -157,7 +155,8 @@ class Character:
         self.always_respond = True
         
         # Initialize memory systems
-        self.cognitive_llm = CognitiveToolInterface(self)
+        # (CognitiveToolInterface was constructed here but never used; it built an OpenAI client
+        # that required OPENAI_API_KEY even for local vLLM)
         self.structured_memory:StructuredMemory = StructuredMemory(owner=self)
         self.memory_consolidator:MemoryConsolidator = MemoryConsolidator(self, self.llm, self.context)
         self.memory_retrieval:MemoryRetrieval = MemoryRetrieval()
@@ -511,31 +510,6 @@ End your response with:
             self.drives.remove(drive)
         self.drives.insert(0, drive)    
 
-    def _find_related_drives(self, message: str) -> List[Drive]:
-        """Find drives related to a memory message"""
-        related_drives = []
-        
-        # Create temporary memory entry to compare against drives
-        temp_memory = MemoryEntry(
-            text=message,
-            timestamp=self.context.simulation_time,
-            importance=0.5,
-            confidence=1.0
-        )
-        temp_memory.embedding = self.memory_retrieval.embedding_model.encode(message)
-        
-        # Check each drive for relevance
-        for drive in self.drives:
-            similarity = self.memory_retrieval._compute_similarity(
-                temp_memory.embedding,
-                drive.embedding if drive.embedding is not None 
-                else self.memory_retrieval.embedding_model.encode(drive.text)
-            )
-            if similarity >= 0.1:  # Use same threshold as retrieval
-                related_drives.append(drive)
-                
-        return related_drives
-
     def update(self, now=False):
         """Move time forward, update state"""
         # Enhanced consolidation (semantic clustering, LLM summaries) if we have drives
@@ -669,20 +643,6 @@ End your response with:
         return None
     # World interaction methods
 
-    def format_hash_percept(self, percept_hash):
-        """Format a perceptual hash into a string"""
-        percept = ''
-        if len(percept_hash) > 1:
-            print('surprise')
-        percept_hash = percept_hash[0]
-        if type(percept_hash) != str:
-            print('surprise2')
-        for form in percept_hash.split('\n'):
-            form = form[1:].strip()+'; '
-            percept += form
-        percept = percept[:-2]
-        return percept
-
     def process_consequences(self, act_arg, reason, consequences):
         """Determine if the consequences of an action are relevant to the character's goals"""
         prompt=[UserMessage(content="""{{$name}} does {{$act_arg}} and notices 
@@ -750,22 +710,6 @@ End response with:
         self.look_percept = percept_summary
         return percept_summary
 
-    def format_look(self):
-        """Format the agent's current map view"""
-        obs = self.my_map[(self.mapAgent.x, self.mapAgent.y)]
-        # Fix empty map check
-        if obs is None or not obs or all(not v for v in obs.values()):
-            return "You see nothing special."
-        
-        return f"""A look from the current orientation and in each of 8 compass points. 
-terrain: environment type perceived.
-slope:ground slope in the given direction
-resources:a list of resource type detected and distance in the given direction from the current location
-others: the other actors visible
-water: the water resources visible
-{json.dumps(obs, indent=2).replace('\'"{}', '').replace('\'"', '')}
-"""
-
     # Utility methods
     def other(self):
         """Get the other actor in the context"""
@@ -773,10 +717,6 @@ water: the water resources visible
             if actor != self:
                 return actor
         return None
-
-    def synonym_check(self, term, candidate):
-        """Check if two task names are synonymous - simple equality by default"""
-        return term == candidate
 
     # Initialization and persistence
     def initialize(self, ui=None):
@@ -817,39 +757,9 @@ water: the water resources visible
             if actor != self:
                 self.add_perceptual_input(f'You see {actor.name}', mode='visual')
 
-    def save(self, filepath):
-        """Save character state"""
-        allowed_types = (int, float, str, list, dict)
-        filtered_data = {}
-        for attr, value in self.__dict__.items():
-            if isinstance(value, allowed_types):
-                if isinstance(value, list) and all(isinstance(item, str) for item in value):
-                    filtered_data[attr] = value
-                elif isinstance(value, dict):
-                    filtered_data[attr] = {k: v for k, v in value.items() if isinstance(v, allowed_types)}
-                else:
-                    filtered_data[attr] = value
-        with open(filepath, 'w') as fp:
-            json.dump(filtered_data, fp, indent=4)
-
-    def load(self, filepath):
-        """Load character state"""
-        try:
-            filename = self.name + '.json'
-            with open(filepath / filename, 'r') as jf:
-                data = json.load(jf)
-                for attr, value in data.items():
-                    setattr(self, attr, value)
-        except Exception as e:
-            print(f' error restoring {self.name}, {str(e)}')
-
     def set_drives(self, drive_texts: List[str]) -> None:
         """Initialize character drives with embeddings"""
         self.drives = [Drive(text) for text in drive_texts]
-
-    def get_drive_texts(self) -> List[str]:
-        """Get drive texts for backward compatibility"""
-        return [drive.text for drive in self.drives]
 
 
 
@@ -889,6 +799,7 @@ water: the water resources visible
         """Generate a description of the character for image generation
             character_description, current activity, emotional state, and environment"""
 
+        description = f'Portrait of {self.name}'  # fallback if anything below fails
         try:
             context = ''
             i = 0
@@ -935,6 +846,7 @@ adjective, adjective, adjective
         return description
 
     def update_actor_image(self):
+        image_path = None
         try:
             description = self.generate_image_description()
             prompt = description
@@ -1017,31 +929,6 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         self.new_memory_cnt += 1
         #self.add_perceptual_input(message)
        
-    def _find_related_drives(self, message: str) -> List[Drive]:
-        """Find drives related to a memory message"""
-        related_drives = []
-        
-        # Create temporary memory entry to compare against drives
-        temp_memory = MemoryEntry(
-            text=message,
-            timestamp=self.context.simulation_time,
-            importance=0.5,
-            confidence=1.0
-        )
-        temp_memory.embedding = self.memory_retrieval.embedding_model.encode(message)
-        
-        # Check each drive for relevance
-        for drive in self.drives:
-            similarity = self.memory_retrieval._compute_similarity(
-                temp_memory.embedding,
-                drive.embedding if drive.embedding is not None 
-                else self.memory_retrieval.embedding_model.encode(drive.text)
-            )
-            if similarity >= 0.1:  # Use same threshold as retrieval
-                related_drives.append(drive)
-                
-        return related_drives
-
     def format_history_for_UI(self, n=2):
         """Get n most recent memories"""
         recent_memories = self.structured_memory.get_recent(n)
@@ -1062,25 +949,6 @@ Here are this character's goals:
         return '\n'.join(mapped)
 
 
-    def make_task_name(self, reason):
-        instruction=[UserMessage(content="""Generate a concise, 2-5 word task name from the motivation to act provided below.
-Respond using this XML format:
-
-<name>task-name</name>
-
-<motivation>
-{{$reason}}
-</motivation>
-
-Respond only with your task-name using the above XML
-Do not include your reasoning in your response.
-Do not include any introductory, discursive, or explanatory text.
-End your response with:
-</end>
-""")]
-        response = self.llm.ask({"reason":reason}, instruction, tag='task_name', temp=0.3, stops=['</end>'], max_tokens=12)
-        return xml.find('<name>', response)
-                    
 
     def repetitive(self, new_response, last_response, source):
         """Check if response is repetitive considering wider context"""
@@ -1229,7 +1097,7 @@ End response with:
             self.mapAgent.move(target_string.strip())
             return True
         resource = self.context.map.get_resource_by_id(target_string.strip())
-        if resource:
+        if isinstance(resource, dict):  # it returns the string "path" for the path type, which crashed below
             self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
             return True
         else:
@@ -2961,11 +2829,6 @@ End your response with:
                     print('No focus goal, no new task from conversation')
         return intensions
 
-    def random_string(self, length=8):
-        """Generate a random string of fixed length"""
-        letters = string.ascii_lowercase
-        return self.name+''.join(random.choices(letters, k=length))
-
     def tell(self, to_actor, message, source=None, respond=True):
         """Initiate or continue dialog with dialog context tracking"""
         if source.name.startswith('dialog'):
@@ -3471,7 +3334,7 @@ End your response with:
                     'description': goal.description,
                     'termination': goal.termination,
                     'context': {
-                        'signal_cluster': goal.signalCluster.to_string(),
+                        'signal_cluster': goal.signalCluster.to_string() if goal.signalCluster else '',
                         'emotional_stance': {
                             'arousal': str(goal.signalCluster.emotional_stance.arousal.value),
                             'tone': str(goal.signalCluster.emotional_stance.tone.value),
@@ -3905,6 +3768,10 @@ End your response with:
         while act_count < 2 and self.focus_task.peek():
             #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
+            if not action_alternatives:
+                # generate_acts returns [] when the LLM call fails; pick_weighted([]) raised
+                logger.warning(f'{self.name} step_task: no actions generated for {task.name}')
+                break
             await self.request_action_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
@@ -3936,6 +3803,9 @@ End your response with:
                 subtask = self.focus_task.peek()
                 #self.look(task.name+': '+task.description)
                 action_alternatives: List[Act] = self.generate_acts(task)
+                if not action_alternatives:
+                    logger.warning(f'{self.name} step_task: no actions generated for subtask of {task.name}')
+                    break
                 await self.request_action_choice(action_alternatives) # sets self.focus_action
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')

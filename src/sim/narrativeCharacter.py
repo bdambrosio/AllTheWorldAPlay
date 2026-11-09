@@ -16,7 +16,6 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from sim.prompt import ask as default_ask
 from sim.agh import Character
-from sim.cognitivePrompt import CognitiveToolInterface
 
 if TYPE_CHECKING:
     from sim.memory.core import NarrativeSummary
@@ -42,7 +41,6 @@ class NarrativeCharacter(Character):
         self.current_proposal = None
         self.round_number = 0 # central narrative negotiation round number
         self.central_narrative = None
-        self.cognitive_tools = CognitiveToolInterface(self)
 
     def validate_scene_time(self, scene) -> Optional[datetime]:
         """
@@ -85,11 +83,6 @@ class NarrativeCharacter(Character):
                     scene["time"] = self.context.simulation_time
         return reserialized
     
-    def reserialize_act_to_string(self, act: Dict[str, Any]) -> str:
-        """Reserialize the act to a string"""
-        serialized_str = self.reserialize_narrative_json({"acts":[act]})
-        return json.dumps(serialized_str['acts'][0], indent=2, default=datetime_handler)
-
     async def introduce_myself(self, play_file_content, map_file_content=None):
 
         system_prompt = """Imagine you are addressing the audience of a play. 
@@ -790,8 +783,11 @@ be careful to insert line breaks only where shown, separating a value from the n
                                "play_file_content": play_file_content,
                                "map_file_content": map_file_content if map_file_content else ''},
                               max_tokens=200, tag='NarrativeCharacter.negotiate_central_narrative')
-        if response:
-            central_narrative = CentralNarrative.parse_from_hash(response)
+        central_narrative = CentralNarrative.parse_from_hash(response) if response else None
+        if central_narrative is None and response:
+            # parse_from_hash returns None on a malformed reply; .to_string() below crashed play load
+            logger.warning(f'{self.name}: unparseable central narrative proposal in round {round}')
+        if central_narrative is not None:
             self.previous_proposal = self.current_proposal
             self.current_proposal = central_narrative
             self.central_narrative = central_narrative.to_string() # store as string, since that is how global central narrative is stored
@@ -977,10 +973,6 @@ End response with:
                 print(f'{self.name} generate_plan: no new task')
         return task
     
-    def refresh_scene_goal(self, goal, scene_task_plan):
-        """ just completed a goal, generate the next focus goal to work on"""
-        pass
-
     def closing_acts(self, situation: str, task: Task, goal: Goal=None):
 
         system_prompt = """You are {{$name}}, a character at the end of an improvisational play. 

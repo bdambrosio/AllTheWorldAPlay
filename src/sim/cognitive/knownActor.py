@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
-from venv import create
 from sim.cognitive.DialogManager import Dialog
 from utils import hash_utils
 from utils.Messages import UserMessage
@@ -30,7 +29,6 @@ class KnownActor:
             'name': self.name,
             'visible': self.visible,
             'goal': self.goal,
-            'model': self.model,
             'distance': self.distance,
             'relationship': self.relationship,
             'dialog': self.dialog.to_json() if self.dialog else None,
@@ -438,8 +436,10 @@ class KnownActorManager:
     def save_to_file(self, filepath):
         """Save state to file"""
         import json
+        # serialize first: opening for write before a failing to_json() truncated the file
+        data = json.dumps(self.to_json())
         with open(filepath, 'w') as f:
-            json.dump(self.to_json(), f)
+            f.write(data)
 
     def dialogs(self):
         """return a list of dialogs"""
