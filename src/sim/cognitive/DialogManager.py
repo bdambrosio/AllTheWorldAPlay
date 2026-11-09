@@ -6,8 +6,7 @@ from typing import List, Optional, Set
 from sim.memory.core import MemoryEntry
 import utils.xml_utils as xml
 
-@dataclass
-class Dialog:
+class Dialog:  # (was a field-less @dataclass: every Dialog compared equal, none hashable)
     
     def __init__(self, owner, other_actor):
         """Tracks the context of an ongoing dialog"""
