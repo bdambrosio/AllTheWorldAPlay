@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
+from sim.trace import trace, TraceErrorHandler, llm_call_listener
+import sim.ablation as ablation
 import base64
 import asyncio
 from typing import Dict, Any
@@ -49,9 +51,31 @@ def setup_logging():
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     sim_logger.addHandler(file_handler)
+    # run trace for tools/score_play.py: engine errors and every LLM call
+    error_handler = TraceErrorHandler()
+    error_handler.setLevel(logging.ERROR)
+    sim_logger.addHandler(error_handler)
+    llm_api.add_call_listener(llm_call_listener)
     sim_logger.info("simulation engine starting")
 
 logger = logging.getLogger('simulation_core')
+
+def transcript_fields(message):
+    """speaker / kind / text of a UI line, for the run trace. The engine's line forms:
+    "'...'" speech, "...x..." thought, "does x" / "moves x" action, no speaker: narration."""
+    name = (message.get('name') or '').strip()
+    text = str(message.get('text') or '').strip()
+    if not name:
+        kind = 'narration'
+    elif text.startswith("'"):
+        kind = 'speech'
+    elif text.startswith('...'):
+        kind = 'thought'
+    elif text.startswith(('does ', 'moves ', 'goes ', 'looks ')):
+        kind = 'action'
+    else:
+        kind = 'other'
+    return {'speaker': name, 'line_kind': kind, 'text': text[:2000]}
 
 def datetime_handler(obj):
     """Handle datetime serialization for JSON"""
@@ -198,6 +222,7 @@ class SimulationServer:
             setattr(self, attr, None)
         self.narrative_play = False
         self.initialized = False
+        trace.close()
 
     def _on_narrative_done(self, task: asyncio.Task):
         """Surface a crashed narrative task to the UI instead of letting it die silently."""
@@ -245,6 +270,9 @@ class SimulationServer:
             modules_to_clear = [key for key in sys.modules.keys() if key == 'webworld_play']
             for mod in modules_to_clear:
                 del sys.modules[mod]
+            ablation.set_disabled(command.get('ablate'))
+            # opened before the play module runs: building its characters makes LLM calls
+            trace.open(play_name, None)
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
             #print(f'DEBUG: spec created: {spec}')
             #print(f'DEBUG: creating module from spec...')
@@ -262,6 +290,12 @@ class SimulationServer:
                 self.world_name = 'World'
             
             self.sim_context = module.W
+            trace.context = self.sim_context
+            trace.event('play_loaded', characters=[{'name': c.name, 'description': c.character,
+                                                    'drives': [d.text for d in (c.drives or [])]}
+                                                   for c in self.sim_context.actors + self.sim_context.extras],
+                        narrative=bool(getattr(module, 'narrative', False)), ablated=ablation.disabled(),
+                        setting=str(getattr(self.sim_context, 'current_state', ''))[:3000])
             await self.send_command_ack('load_play')
             self.initialized = True
 
@@ -676,7 +710,7 @@ class SimulationServer:
                             'details': message['data']
                         })
                     else:
-
+                        trace.event('transcript_line', **transcript_fields(message))
                         await self.send_result({
                             'type': 'show_update',
                             'message': {'name': message['name'], 'text': message['text']}  # Send the text directly instead of wrapping in message

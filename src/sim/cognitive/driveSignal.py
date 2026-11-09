@@ -367,12 +367,21 @@ End your response with:
     def check_drive_signals(self):
         """Check every drive (updates drive.activation). One failing check no longer aborts the
         scene setup that calls this."""
+        import sim.ablation as ablation
+        if not ablation.enabled('drive_checks'):
+            return
         for drive in self.owner.drives:
             try:
                 self.check_drive_signal(drive)
             except Exception as e:
                 print(f'{self.owner.name} drive check failed for {drive.id}: {e}')
                 traceback.print_exc()
+        from sim.trace import trace
+        trace.event('drives', character=self.owner.name,
+                    activations={d.text: round(d.activation, 3) for d in self.owner.drives},
+                    signals=[{'drive': d.text if d else None, 'text': sg.text, 'type': sg.type,
+                              'importance': round(sg.importance, 3), 'urgency': round(sg.urgency, 3)}
+                             for d, sg in self.recent_signals()])
 
     def recent_signals(self):
         """(drive, signal) pairs from each drive's latest check, for the Explore panel."""

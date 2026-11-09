@@ -4,6 +4,8 @@ import os, json, math, time, requests, sys
 
 
 from sim.SpeechStylizer import SpeechStylizer
+from sim.trace import trace
+import sim.ablation as ablation
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -93,6 +95,7 @@ class Character:
         self.character = character_description
         self.original_character = character_description
         self.llm = llm_api.LLM(server_name)
+        self.llm.owner = self.name  # for the run trace (sim.trace)
         # voice/appearance traits, filled by set_character_traits(); defaults so prompts that
         # read them don't crash when that LLM call fails
         self.gender = ''
@@ -350,6 +353,8 @@ End your response with:
                         termination=termination.replace('##','').strip(),
                         drives=[]
             )
+            trace.event('goal_created', character=self.name, goal_id=goal.id, goal=goal.name,
+                        description=goal.description, termination=goal.termination)
             return goal
         else:
             print(f"Warning: Invalid goal generation response for {goal_hash}") 
@@ -1059,7 +1064,12 @@ End response with:
         )
 
         weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode in ('Say', Mode.Say)])
+        trace.event('task_check', character=self.name, task_id=task.id, task=task.name,
+                    satisfied=bool(satisfied), progress=progress, acts=len(task.acts))
         if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
+            trace.event('task_end', character=self.name, task_id=task.id, task=task.name,
+                        outcome='satisfied' if satisfied else 'timeout', acts=len(task.acts), progress=progress,
+                        goal_id=task.goal.id if task.goal else None)
             satisfied = True # force completion
             if task == self.focus_task.peek():
                 self.focus_task.pop()
@@ -1094,6 +1104,8 @@ End response with:
             type='goal'
         )
 
+        trace.event('goal_check', character=self.name, goal_id=goal.id, goal=goal.name,
+                    satisfied=bool(satisfied), progress=progress)
         if satisfied:
             self.goal_history.append(goal)
             if goal.name != 'preconditions':
@@ -1243,7 +1255,9 @@ End response with:
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
-            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
+            elevenlabs_params = {}
+            if ablation.enabled('stylizer'):
+                style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
             self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
@@ -1265,8 +1279,10 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             self.show += f"{act_arg}'"
-            style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(target)
-            act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
+            elevenlabs_params = {}
+            if ablation.enabled('stylizer'):
+                style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(target)
+                act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
@@ -2590,11 +2606,13 @@ End your response with:
             significance = None
             if in_scene:
                 significance = self.context.evaluate_commitment_significance(owners[0], other if owners[0] is self else self, task)
+            owner_tasks = []
             for i, owner in enumerate(owners):
                 # a joint commitment becomes a task for each party (it ran for one party only)
                 owner_task = task if i == 0 else Task(task.name, task.description, task.reason, task.actors, None,
                                                       termination=task.termination,
                                                       start_time=self.context.simulation_time, duration=task.duration)
+                owner_tasks.append((owner.name, owner_task.id))
                 if in_scene:
                     if self.context.place_commitment(owner, owner_task, significance):
                         added.append(owner_task)
@@ -2603,6 +2621,9 @@ End your response with:
                     added.append(owner_task)
                 else:
                     print(f'{owner.name}: no focus goal, commitment {owner_task.name} dropped')
+            trace.event('commitment_extracted', task=task.name, description=task.description,
+                        speaker=other.name, listener=self.name, joint=len(owners) > 1,
+                        significance=significance, in_scene=bool(in_scene), owner_tasks=owner_tasks)
         return added
 
     def tell(self, to_actor, message, source=None, respond=True):
@@ -2738,6 +2759,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         """ called from acts when a character says something to this character """
         # Initialize dialog manager if needed
         print(f'\n{self.name} hears from {from_actor.name}: {message}')
+        trace.event('dialog_turn', speaker=from_actor.name, listener=self.name, text=str(message)[:1000])
        
         # Special case for Owl-Doc interactions
         if self.name == 'Owl' and from_actor.name == 'Doc':
@@ -2752,6 +2774,8 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         if (self.name == 'Viewer') or self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end, or hearer is viewer.
             # close the dialog
             dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+            trace.event('dialog_end', speaker=from_actor.name, listener=self.name,
+                        turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
             self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
             dialog_as_list = dialog.split('\n') 
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
@@ -2767,7 +2791,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor._pop_dialog_task(self)
 
-            if self.name != 'Viewer' and from_actor.name != 'Viewer':
+            if self.name != 'Viewer' and from_actor.name != 'Viewer' and ablation.enabled('commitments'):
                 # once both dialog tasks are off the stacks: one pass for both parties' commitments
                 await self.extract_commitments_following_conversation(from_actor, dialog)
                 await asyncio.sleep(0)
@@ -3645,6 +3669,10 @@ End your response with:
         act_arg = action.action
         print(f'\n{self.name} act_on_action: {act_mode} {act_arg}')
         logger.info(f'{self.name} act_on_action: {act_mode} {act_arg}')
+        trace.event('act', character=self.name, mode=act_mode, action=act_arg, reason=action.reason,
+                    targets=[t.name for t in (action.target or []) if hasattr(t, 'name')],
+                    task_id=task.id if task else None, task=task.name if task else None,
+                    goal_id=task.goal.id if task and task.goal else None)
         self.reason = action.reason
         source = action.source
         #print(f'{self.name} choose {action}')

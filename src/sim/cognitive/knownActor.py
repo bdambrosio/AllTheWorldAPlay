@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 from sim.cognitive.DialogManager import Dialog
 from utils import hash_utils
+from sim.trace import trace
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -89,6 +90,9 @@ End with:
         response = self.owner.llm.ask({}, prompt, tag='KnownActor.infer_goal', max_tokens=20, stops=["</end>"])
         if response:
             self.goal = response.strip()
+            target_goal = getattr(self.actor_agh, 'focus_goal', None)
+            trace.event('inferred_goal', observer=self.owner.name, target=self.canonical_name, inferred=self.goal,
+                        actual=target_goal.short_string() if target_goal else None)
 
     def format_transcript(self, include_transcript=False):
         return self.dialog.get_transcript(8) if include_transcript else ''

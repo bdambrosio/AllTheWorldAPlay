@@ -25,6 +25,7 @@ from typing import List
 import asyncio
 import time
 from sim.prompt import ask as default_ask
+from sim.trace import trace
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class Context():
         self.run = False # Boolean run indicator from simulation server
         self.name = ''
         self.llm = llm_api.LLM(server_name, model_name)
+        self.llm.owner = 'Context'  # for the run trace (sim.trace)
         self.simulation_time = datetime.now()  # Starting time
         self.time_step = '0 hours'  # Amount to advance each step
         # Add new fields for UI independence
@@ -1402,6 +1404,10 @@ Ensure your response reflects this change.
             self.simulation_time = scene['time']
         await asyncio.sleep(0.1)
         self.current_scene = scene
+        trace.event('scene_start', title=scene.get('scene_title'), location=scene.get('location'),
+                    pre_narrative=scene.get('pre_narrative'), planned_post=scene.get('post_narrative'),
+                    goals={name: (c or {}).get('goal') for name, c in (scene.get('characters') or {}).items()},
+                    action_order=scene.get('action_order'))
         self.scene_pre_narrative = ''
         if scene.get('pre_narrative'):
             self.current_state += '\n\n'+scene['pre_narrative']
@@ -1478,6 +1484,8 @@ Ensure your response reflects this change.
         self.scene_history = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.scene_task_budget = len(self.scene_integrated_task_plan)  # see place_commitment
+        trace.event('scene_plan', entries=[{'actor': e['actor'].name, 'task_id': e['task'].id, 'task': e['task'].name}
+                                           for e in self.scene_integrated_task_plan])
         while self.scene_integrated_task_plan_index < len(self.scene_integrated_task_plan):
             scene_task = self.scene_integrated_task_plan[self.scene_integrated_task_plan_index]
             pending = len(self.scene_integrated_task_plan) - self.scene_integrated_task_plan_index
@@ -1485,6 +1493,7 @@ Ensure your response reflects this change.
                 # an optional (RELEVANT) commitment, and the scene is already over budget
                 logger.info(f"optional commitment skipped ({pending} pending > budget {self.scene_task_budget}): "
                             f"{scene_task['actor'].name} {scene_task['task'].name}")
+                trace.event('optional_skipped', character=scene_task['actor'].name, task_id=scene_task['task'].id)
                 self.scene_integrated_task_plan_index += 1
                 continue
             character = scene_task['actor']
@@ -1498,6 +1507,9 @@ Ensure your response reflects this change.
             #await character.request_task_choice([task]) #not needed, cog_cycle will do it
             character.focus_task = Stack()
             character.focus_task.push(task)
+            trace.event('scene_task', character=character.name, task_id=task.id, task=task.name,
+                        planned_task_id=scene_task['task'].id, index=self.scene_integrated_task_plan_index,
+                        inserted=scene_task.get('inserted_at') is not None, optional=bool(scene_task.get('optional')))
             self.scene_history.append(f'{character.name} {task.to_string()}') # should this be after cognitive cycle? But what if spontaneous subtasks are generated?
             #self.message_queue.put({'name':'', 'text':f''})
             await asyncio.sleep(0.2)
@@ -1548,6 +1560,15 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
 
+        staleness = None
+        if hasattr(self, 'staleness_detector'):
+            try:
+                from dataclasses import asdict
+                staleness = asdict(self.staleness_detector.compute_staleness_metrics())
+            except Exception:
+                pass
+        trace.event('scene_end', outcomes=outcomes, post_narrative=self.current_scene.get('post_narrative'),
+                    staleness=staleness)
         scene_duration = self.current_scene.get('duration', 0)
         if scene_duration > 0:
             self.simulation_time += timedelta(minutes=scene_duration)
@@ -1566,6 +1587,9 @@ Ensure your response reflects this change.
             logger.error(f'No scenes in act: {act["act_title"]}')
             return
         print(f'Running act: {act["act_title"]}')
+        trace.event('act_start', number=act_number, title=act.get('act_title'),
+                    planned_pre=act.get('act_pre_state'), planned_post=act.get('act_post_state'),
+                    scenes=len(scenes))
         self.message_queue.put({'name':'', 'text':f'\n----- ACT {act_number} ----- {act["act_title"]}'})
         await asyncio.sleep(0.1)
         scene_number = 0
@@ -1604,6 +1628,7 @@ Ensure your response reflects this change.
             self.current_state += f'\n{act["act_post_state"]}\n'
             for character in cast(List[NarrativeCharacter], self.actors+self.extras):
                 character.add_perceptual_input(act["act_post_state"], mode = 'internal') # this is a hack to get the post state into the character's memory
+        trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
         self.previous_acts.append(act)
         self.previous_scenes.extend(scenes)
         self.current_act = None
@@ -2833,6 +2858,8 @@ End your response with </end>
                 why = f'{significance} but {remaining} tasks remain (limit {limit:g})'
         if why:
             logger.info(f'commitment dropped ({why}): {character.name} {task.name}')
+            trace.event('commitment', character=character.name, task_id=task.id, task=task.name,
+                        description=task.description, significance=significance, placed=False, reason=why)
             print(f'{character.name} commitment dropped ({why}): {task.name}')
             return False
         index = self.scene_integrated_task_plan_index
@@ -2846,6 +2873,9 @@ End your response with </end>
         label = 'optional ' if entry.get('optional') else ''
         print(f'{character.name} new {label}committed task ({significance}): {task.name}')
         logger.info(f'commitment placed ({significance}{", optional" if label else ""}): {character.name} {task.name}')
+        trace.event('commitment', character=character.name, task_id=task.id, task=task.name,
+                    description=task.description, significance=significance, placed=True,
+                    optional=bool(entry.get('optional')), position=pos)
         return True
 
     def repair_xml(self, response, error):

@@ -96,12 +96,18 @@ class EmotionalStance:
         description changes (it grows with decisions); this ran on every task plan, act
         generation and dialog start. (It took drive-signal clusters, which were always empty;
         that machinery was removed.)"""
+        import sim.ablation as ablation
+        if not ablation.enabled('stance'):
+            return EmotionalStance()
         key = hash(character.character)
         cached = getattr(character, '_stance_cache', None)
         if cached and cached[0] == key:
             return cached[1]
         stance = EmotionalStance._stance_from_llm(character)
         character._stance_cache = (key, stance)
+        from sim.trace import trace
+        trace.event('stance', character=character.name, arousal=stance.arousal.value,
+                    tone=stance.tone.value, orientation=stance.orientation.value)
         return stance
 
     @staticmethod

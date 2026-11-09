@@ -27,6 +27,10 @@ MODEL = ''  # set by simulation from config.py
 logger = logging.getLogger('simulation_core')
 
 LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://localhost:5000/v1')
+# Fireworks-hosted GLM-5.3-Flash, used as an external judge (tools/judges.py); route and
+# settings follow Cognitive_workbench measure/models/fw_glm53flash.yaml. Key: FIREWORKS_API_KEY.
+FIREWORKS_URL = 'https://api.fireworks.ai/inference/v1'
+FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
 IMAGE_URL = os.environ.get('IMAGE_URL', 'http://127.0.0.1:5008/generate_image')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -70,6 +74,14 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
 
 
 RECENT_CALLS = 30
+
+# Called after every LLM.ask with tag, owner, tokens, finish_reason, secs, ok, error
+# (sim.trace registers one; utils does not import sim).
+_call_listeners = []
+
+def add_call_listener(fn):
+    if fn not in _call_listeners:
+        _call_listeners.append(fn)
 
 
 @lru_cache(maxsize=None)
@@ -118,12 +130,17 @@ class LLM():
         self.context_size = 16384  # conservative local default
         # last calls through this instance (each Character owns one), for the Explore panel
         self.recent_calls = deque(maxlen=RECENT_CALLS)
+        self.owner = None        # name of the character (or 'Context') making the calls
+        self._last_usage = None  # (usage dict, finish_reason) of the last OpenAI-compatible reply
         self.model = model_name if model_name is not None else MODEL
         if self.server_name == 'openai':
             from utils.OpenAIClient import OpenAIClient
             self.openai_client = OpenAIClient(model_name=self.model)
         if self.server_name == 'vllm':
             self.model = _served_model_id(LLM_BASE_URL)
+        if self.server_name == 'fireworks':
+            self.model = model_name or FIREWORKS_MODEL
+            self.reasoning_effort = 'low'   # 'medium' for whole-play rubrics
 
     def _provider_name(self, options):
         s = self.server_name
@@ -164,6 +181,8 @@ class LLM():
 
         if 'openai' in self.server_name:
             return self.openai_client.executeRequest(prompt=substituted_prompt, options=options)
+        if self.server_name == 'fireworks':
+            return self._fireworks_request(substituted_prompt, options)
         provider = self._provider_name(options)
         if provider is not None:
             return _provider(provider).executeRequest(prompt=substituted_prompt, options=options)
@@ -194,12 +213,41 @@ class LLM():
         if response.status_code != 200:
             raise Exception(f'{response.status_code} from LLM server: {response.text[:500]}')
         try:
-            text = response.json()['choices'][0]['message']['content'] or ''
+            reply = response.json()
+            text = reply['choices'][0]['message']['content'] or ''
+            self._last_usage = (reply.get('usage') or {}, reply['choices'][0].get('finish_reason'))
         except (ValueError, KeyError, IndexError):
             return response.content.decode('utf-8')
         if (index := text.find('</think>')) > -1:
             text = text[index + 8:].strip()
         return text
+
+    def _fireworks_request(self, messages, options, retries=6):
+        """Fireworks chat completion with backoff on 429/5xx (the account's rate limit, not the
+        model's, is what throttles; see the workbench yaml)."""
+        key = os.environ.get('FIREWORKS_API_KEY')
+        if not key:
+            raise RuntimeError('FIREWORKS_API_KEY is not set (source ~/.config/secrets.env)')
+        body = {"model": self.model, "messages": messages, "temperature": options.temperature,
+                "top_p": options.top_p, "max_tokens": options.max_tokens,
+                "stop": options.stops or None, "reasoning_effort": getattr(self, 'reasoning_effort', 'low')}
+        delay = 2.0
+        for attempt in range(retries):
+            response = requests.post(f'{FIREWORKS_URL}/chat/completions', json=body, timeout=300,
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+            if response.status_code == 200:
+                reply = response.json()
+                choice = reply['choices'][0]
+                self._last_usage = (reply.get('usage') or {}, choice.get('finish_reason'))
+                text = choice['message'].get('content') or ''
+                if (index := text.find('</think>')) > -1:
+                    text = text[index + 8:].strip()
+                return text
+            if response.status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                time.sleep(delay)
+                delay = min(delay * 2, 60)
+                continue
+            raise Exception(f'{response.status_code} from Fireworks: {response.text[:300]}')
 
     def _record_call(self, tag, start, response, error=None):
         calls = getattr(self, 'recent_calls', None)
@@ -209,6 +257,20 @@ class LLM():
                       'secs': round(time.time() - start, 2), 'ok': error is None,
                       'response': (response or '')[:160] if error is None else '',
                       'error': (error or '')[:300]})
+        if _call_listeners:
+            usage, finish = getattr(self, '_last_usage', None) or ({}, None)
+            self._last_usage = None
+            details = usage.get('prompt_tokens_details') or {}
+            fields = dict(tag=tag or 'default', owner=getattr(self, 'owner', None),
+                          secs=round(time.time() - start, 3), ok=error is None, error=(error or '')[:300],
+                          prompt_tokens=usage.get('prompt_tokens'), completion_tokens=usage.get('completion_tokens'),
+                          cached_tokens=details.get('cached_tokens'), finish_reason=finish,
+                          response_chars=len(response or ''))
+            for listener in _call_listeners:
+                try:
+                    listener(**fields)
+                except Exception:
+                    pass
 
     def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None,
             stop_on_json=False, model=None, log=True, trace=False):
