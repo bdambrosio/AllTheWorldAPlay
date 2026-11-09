@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from sim.agh import Character, Goal, Task  # Only imported during type checking
     from sim.cognitive.driveSignal import Drive
     from sim.cognitive.EmotionalStance import EmotionalStance
-    from sim.cognitive.driveSignal import SignalCluster
 
 # At module level
 from utils.embedding_model import get_embedding_model
@@ -519,7 +518,6 @@ class NarrativeSummary:
     update_interval: timedelta = field(default_factory=lambda: timedelta(hours=0.5))
     
     # Supporting information
-    focus_signalClusters: List[SignalCluster] = field(default_factory=list) # history of focusSignalClusters driving the narrative
     active_drives: List[Drive] = field(default_factory=list)  # Current motivating drives
     key_events: List[Dict] = field(default_factory=list)  # Important memories that shaped character
     

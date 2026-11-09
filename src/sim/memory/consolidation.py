@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sim.cognitive.driveSignal import Drive
     from sim.cognitive.EmotionalStance import EmotionalStance
-    from sim.cognitive.driveSignal import SignalCluster
 import numpy as np
 
 class MemoryConsolidator:

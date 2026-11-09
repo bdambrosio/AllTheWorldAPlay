@@ -151,9 +151,7 @@ class Context():
         self.reference_manager.discover_relationships()
         for actor in self.actors + self.extras + self.npcs:
             print(f"Context checking{actor.name} speech_stylizer: {actor.speech_stylizer}")
-            actor.driveSignalManager.analyze_text(self.current_state, actor.drives, self.simulation_time)
             actor.look()
-            actor.driveSignalManager.recluster() # recluster drive signals after actor initialization
             #actor.generate_goal_alternatives()
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
@@ -1695,7 +1693,7 @@ Ensure your response reflects this change.
             narrative = character.narrative.get_summary('medium')
             surroundings = character.look_percept
             memories = '\n'.join(memory.to_string() for memory in character.structured_memory.get_recent(8))
-            emotionalState = EmotionalStance.from_signalClusters(character.driveSignalManager.clusters, character)        
+            emotionalState = EmotionalStance.for_character(character)        
             emotional_stance = emotionalState.to_definition()
             character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
         character_backgrounds = '\n'.join(character_backgrounds)

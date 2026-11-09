@@ -92,8 +92,6 @@ The current situation in the play
     if suffix:
         prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     
-    ranked_signalClusters = character.driveSignalManager.get_scored_clusters()
-    focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
 
     recent_memories = character.structured_memory.get_recent(16)
     memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
@@ -122,7 +120,6 @@ The current situation in the play
                 "drives":'\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives]),
                 "central_narrative": character.central_narrative if character.central_narrative else 'None yet established',
                 "narrative":character.narrative.get_summary('medium'),
-                "signals": "\n".join([sc.to_string() for sc in focus_signalClusters]),
                 "surroundings":character.look_percept,
                 "time": character.context.simulation_time.isoformat(),
                 "situation":character.context.current_state if character.context else "",

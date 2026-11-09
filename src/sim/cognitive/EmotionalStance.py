@@ -7,7 +7,7 @@ from typing import Any
 from utils import hash_utils
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
-from sim.cognitive.driveSignal import Drive, SignalCluster
+from sim.cognitive.driveSignal import Drive
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -91,121 +91,24 @@ class EmotionalStance:
         return f'{str(self.arousal.value)} ({stance_definitions[self.arousal.value]}), {str(self.tone.value)} ({stance_definitions[self.tone.value]}), {str(self.orientation.value)} ({stance_definitions[self.orientation.value]})'
 
     @staticmethod
-    def from_signalCluster(signalCluster: SignalCluster, character: Character):
-        prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
-You are given a signal cluster that represents the interaction between the basic drives of a character and recent events.
-Your task is to extract the arousal, tone and orientation of the character resulting from the signal cluster and the character's awareness of it.
- 
-Signal Cluster:
-{{$signalCluster}}
-
-Character:
-{{$character}} 
-
-There are three dimensions to your response:
-
-1. Arousal: The arousal of the character. This takes values from the following list:
-    Vigilant
-    Anticipatory
-    Agitated
-    Relaxed
-    Exhausted
-    Compelled
-    Neutral
-
-2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
-    Angry
-    Fearful
-    Anxious
-    Sad
-    Disgusted
-    Surprised
-    Curious
-    Joyful
-    Content
-    Neutral
-
-3. Orientation: The orientation of the character resulting from the signal cluster and the character's awareness of it.
-    Controlling
-    Challenging
-    Appeasing
-    Avoiding
-    Supportive
-    Seekingsupport
-    Connecting
-    Performing
-    Observing
-    Defending
-    Neutral
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#arousal arousal
-#tone tone
-#orientation orientation
-##
-
-Respond only with the hash-formatted text, nothing else.
-End your response with the:
-<end/>
-""")]
-        
-        response = character.llm.ask({"signalCluster": signalCluster.to_string(), 
-                                      "character": character.character
-                                      }, prompt, tag='EmotionalStance.from_signalCluster', stops=["<end/>"], max_tokens = 100)
-        response = hash_utils.clean(response)
-
-        tone = Tone.Neutral
-        orientation = Orientation.Neutral
-        response_arousal = (hash_utils.find('arousal', response) or '').strip().capitalize()
-        if response_arousal in Arousal.__members__:
-            arousal = Arousal(response_arousal)
-        else:
-            arousal = Arousal.Neutral
-        response_tone = (hash_utils.find('tone', response) or '').strip().capitalize()
-        if response_tone in Tone.__members__:
-            tone = Tone(response_tone)
-        else:
-            tone = Tone.Neutral
-
-        response_orientation = (hash_utils.find('orientation', response) or '').strip().capitalize()
-        response_orientation = response_orientation.replace(' ', '') # Seeking support -> Seekingsupport
-        if response_orientation in Orientation.__members__:
-            orientation = Orientation(response_orientation)
-        else:
-            orientation = Orientation.Neutral
-        return EmotionalStance(arousal, tone, orientation)
-
-    def to_string(self):
-        return "Stance:{"+str(self.arousal)+'+, '+str(self.tone)+', '+str(self.orientation)+'}'
-
-    @staticmethod
-    def from_signalClusters(signalClusters: List[SignalCluster], character: Character):
-        """Stance for these clusters and this character. Cached per character: no LLM call when
-        the clusters (and their signal counts) and the character description are unchanged since
-        the last call (it ran on every task plan, act generation and dialog start). With drive
-        signal analysis off the clusters are empty, and the stance comes from the description
-        alone, so the description is part of the key."""
-        key = (tuple((c.id, len(c.signals)) for c in signalClusters), hash(character.character))
+    def for_character(character: Character):
+        """The character's stance, inferred from its description. Cached per character until the
+        description changes (it grows with decisions); this ran on every task plan, act
+        generation and dialog start. (It took drive-signal clusters, which were always empty;
+        that machinery was removed.)"""
+        key = hash(character.character)
         cached = getattr(character, '_stance_cache', None)
         if cached and cached[0] == key:
             return cached[1]
-        stance = EmotionalStance._stance_from_llm(signalClusters, character)
+        stance = EmotionalStance._stance_from_llm(character)
         character._stance_cache = (key, stance)
         return stance
 
     @staticmethod
-    def _stance_from_llm(signalClusters: List[SignalCluster], character: Character):
+    def _stance_from_llm(character: Character):
         prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
-You are given a set of signalClusters that represents the interaction between the basic drives of a character and recent events.
-Your task is to extract the arousal, tone and orientation of the character resulting from the signalClusters and the character's awareness of it.
-Note that each signalCluster has a score. The score is a measure of the importance of the signalCluster to the character.
-You should seek to identify the dominant arousal, tone, and orientation of the character. Do not merely average the values implied by various signalClusters.
-Rather, imagine a quasi-stable emotional equilibrium that is being perturbed by the signalClusters, and is more or less labile and volatile according to the character.
- 
-Signal Clusters:
-{{$signalClusters}}
+Your task is to infer the current arousal, tone and orientation of the character described below, from the description and the situation and decisions it records.
+Identify the dominant arousal, tone, and orientation of the character: imagine a quasi-stable emotional equilibrium, more or less labile and volatile according to the character.
 
 Character:
 {{$character}} 
@@ -221,7 +124,7 @@ There are three dimensions to your response:
     Compelled
     Neutral
                               
-2. Tone: The tone of the character resulting from the signal cluster and the character's awareness of it.
+2. Tone: The emotional tone of the character.
     Angry
     Fearful
     Anxious
@@ -232,7 +135,7 @@ There are three dimensions to your response:
     Joyful
     Content
 
-3. Orientation: The orientation of the character resulting from the signal cluster and the character's awareness of it.
+3. Orientation: The social orientation of the character.
     Controlling
     Challenging
     Appeasing
@@ -257,9 +160,8 @@ End your response with the:
 <end/>
 """)]
         
-        response = character.llm.ask({"signalClusters": '\n'.join([signalCluster.to_string() for signalCluster in signalClusters]), 
-                                      "character": character.character
-                                      }, prompt, tag='EmotionalStance.from_signalClusters', stops=["<end/>"], max_tokens = 100)
+        response = character.llm.ask({"character": character.character},
+                                     prompt, tag='EmotionalStance.for_character', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
         response_arousal = (hash_utils.find('arousal', response) or '').strip().capitalize()

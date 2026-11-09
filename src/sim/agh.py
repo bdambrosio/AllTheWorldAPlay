@@ -19,7 +19,7 @@ import time
 from typing import List, Dict, Optional, TYPE_CHECKING, cast
 from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
-from sim.cognitive.driveSignal import Drive, DriveSignalManager, SignalCluster
+from sim.cognitive.driveSignal import Drive, DriveSignalManager
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
@@ -229,9 +229,7 @@ class Character:
             self.driveSignalManager.context = context
         if self.memory_consolidator:
             self.memory_consolidator.context = context
-        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
-        self.emotionalStance = EmotionalStance.from_signalClusters(focus_signalClusters, self)
+        self.emotionalStance = EmotionalStance.for_character(self)
         self.set_character_traits()
         self.speech_stylizer = SpeechStylizer(self) 
  
@@ -328,23 +326,18 @@ End your response with:
             description = ''
         return description
     
-    def validate_and_create_goal(self, goal_hash, signalCluster=None):
+    def validate_and_create_goal(self, goal_hash):
         """Validate a goal hash and create a goal object
-        
+
         Args:
             goal_hash: Hash-formatted goal definition
-            signalCluster: SignalCluster this goal is for
         """
         name = hash_utils.find('goal', goal_hash)
         description = hash_utils.find('description', goal_hash)
         other_actor_name = hash_utils.find('otherActorName', goal_hash)
-        signalCluster_id = hash_utils.find('signalCluster_id', goal_hash)
         preconditions = hash_utils.find('preconditions', goal_hash)
         termination = hash_utils.find('termination', goal_hash)
 
-        signalCluster = None
-        if signalCluster_id:
-            signalCluster = SignalCluster.get_by_id(signalCluster_id.strip())
         other_actor = None
         if other_actor_name and other_actor_name.strip().lower() != 'none':
             other_actor,_ = self.actor_models.resolve_or_create_character(other_actor_name)
@@ -354,9 +347,8 @@ End your response with:
                         actors=[self, other_actor] if other_actor else [self],
                         description=description, 
                         preconditions=preconditions,
-                        termination=termination.replace('##','').strip(), 
-                        signalCluster=signalCluster, 
-                        drives=signalCluster.drives if signalCluster else []
+                        termination=termination.replace('##','').strip(),
+                        drives=[]
             )
             return goal
         else:
@@ -566,7 +558,6 @@ End your response with:
         self.step += 1 # skip next update
         if self.step < 5 and not now:
             return
-        self.driveSignalManager.recluster() 
         self.step = 0
         system_prompt = """You are an actor with deep insight into human psychology and the character you are playing, {{$name}}, in an ongoing improvisational play.
 Your task is to review the original and current descriptions of your character, and generate a new description of your character accurately reflecting your character's development.\
@@ -947,11 +938,6 @@ Respond only with a single choice of mode. Do not include any introductory, disc
             intensity=intensity
         )
         self.perceptual_state.add_input(perceptual_input, remember=remember)
-        if self.context:
-            input_time = self.context.simulation_time
-        else:
-            input_time = datetime.now()+timedelta(seconds=10)
-        self.driveSignalManager.analyze_text(message, self.drives, input_time, mode=mode)
         return perceptual_input
 
     def add_to_history(self, message: str):
@@ -1315,9 +1301,7 @@ End response with:
                     if target.focus_task.peek() and target.focus_task.peek().name.startswith('dialog with '+self.name):
                         target.focus_task.pop()
                     # create a new dialog task
-                    target_ranked_signalClusters = target.driveSignalManager.get_scored_clusters()
-                    target_focus_signalClusters = [rc[0] for rc in target_ranked_signalClusters[:3]] # first 3 in score order
-                    target.emotionalStance = EmotionalStance.from_signalClusters(target_focus_signalClusters, target)
+                    target.emotionalStance = EmotionalStance.for_character(target)
                     target_dialog_task = Task('dialog with '+self.name, 
                                     description='dialog with '+self.name, 
                                     reason=act_arg+'; '+reason, 
@@ -1348,15 +1332,7 @@ End response with:
 
     def instantiate_narrative_goal(self, goal_statement, generate_conditions=True):
         """instantiate a goal from a narrative"""
-        self.driveSignalManager.check_drive_signals()
-        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
-        signal_memories = []
-        for sc in focus_signalClusters:
-            sc.emotional_stance = EmotionalStance.from_signalCluster(sc, self)
-            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
-            signal_memories.extend(perceptual_memories)
+        self.driveSignalManager.check_drive_signals()  # updates drive.activation, shown in the prompt below
 
         prompt = [UserMessage(content="""You are an actor playing the character {{$name}}.
 Instantiate a goal object for the following directive. Depending on the situation and your character, you may choose to be direct, indirect, or even devious in your approach.
@@ -1395,30 +1371,6 @@ Character's relationships with other actors
 ##
 
 
-Following are a few signalClusters ranked by impact. These are issues or opportunities nagging at the periphery of the character's consciousness.
-These clusters may overlap.
-                              
-#SignalClusters
-{{$signalClusters}}
-##
-
-Following are memories relevant to the signalClusters above. Consider them in your goal generation:
-
-#Signal memories
-{{$signal_memories}}
-##
-Following are a few signalClusters ranked by impact. These are issues or opportunities nagging at the periphery of the character's consciousness.
-These clusters may overlap.
-                              
-#SignalClusters
-{{$signalClusters}}
-##
-
-Following are memories relevant to the signalClusters above. Consider them in your goal generation:
-
-#Signal memories
-{{$signal_memories}}
-##
 
 Following are the central dramatic question of the play, the act-specific narrative, and the scene your character is in.
 
@@ -1458,7 +1410,6 @@ Respond with the instantiated goal consistent with the goal directive, in the fo
     goal - a terse (5-8 words) name for the goal, 
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
-    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
     preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
     termination  - a condition (5-6 words) that would mark satisficing achievement of the goal.
 
@@ -1469,7 +1420,6 @@ be careful to insert line breaks only where shown, separating a value from the n
 #goal terse (5-8) words) name for this goal
 #description concise (8-14) words) further details of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
-#signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
@@ -1486,7 +1436,6 @@ End response with:
                                  "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                  "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
                                  "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
-                                 "signalClusters": "\n".join([sc.to_full_string() for sc in focus_signalClusters]),
                                  "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
@@ -1495,7 +1444,6 @@ End response with:
                                  "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in self.goal_history]) if self.goal_history else 'None to report',
                                  "relationships": self.actor_models.format_relationships(include_transcript=True),
                                  "recent_memories": "\n".join([m.to_string() for m in self.structured_memory.get_recent(16)]),
-                                 "signal_memories": "\n".join([m.content for m in signal_memories]),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
         goals = []
@@ -1551,11 +1499,10 @@ Respond with up to three highest priority, most encompassing, next goal alternat
     goal - a terse (5-8 words) name for the goal, 
     description - concise (8-14 words) further details of the goal, intended to guide task generation, 
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
-    signalCluster_id - the signalCluster id ('scn..') of the signalCluster that is most associated with this goal
     preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
         These should be necessary pre-conditions for the expected initial tasks of this goal.
 
-Be sure to include a goal that responds to the character's primary drive in the context of the central narrative, the drive signals, and the information above.
+Be sure to include a goal that responds to the character's primary drive in the context of the central narrative and the information above.
 Do NOT duplicate or significantly overlap the completed goal or generate a goal for objectives duplicating the completion statement of the completed goal.
 Other goals must not duplicate or significantly overlap this goal or the completed goal. 
 Nothing in this or other instructions limits your use of deception or surprise.
@@ -1564,9 +1511,6 @@ Nothing in this or other instructions limits your use of deception or surprise.
 {{$primary_drive}}
 ##
 
-#drive signals
-{{$primary_drive_signals}}
-##
                               
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
@@ -1575,7 +1519,6 @@ be careful to insert line breaks only where shown, separating a value from the n
 #goal terse (5-8) words) name for this goal
 #description concise (8-14) words) further details of this goal
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
-#signalCluster_id id ('scn..') of the signalCluster that is the primary source for this goal  
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
 ##
@@ -1588,13 +1531,6 @@ End response with:
 
 
         goal_memories = []
-        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:5]] # first 3 in score order
-        for sc in focus_signalClusters:
-            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
-            for pm in perceptual_memories:
-                if pm not in goal_memories:
-                    goal_memories.append(pm)
         for g in self.goals:
             memories = self.perceptual_state.get_information_items(g.short_string(), threshold=0.01, max_results=3)
             for gm in memories:
@@ -1611,7 +1547,6 @@ End response with:
                                suffix=suffix, 
                                addl_bindings={
                                    "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
-                                   "primary_drive_signals": "\n".join([f'{sc.id}: {sc.text}' for sc in self.driveSignalManager.get_signals_for_drive(self.drives[0])]),
                                    "my_narrative": self.central_narrative if self.central_narrative else '',
                                    "previous_goal": previous_goal.to_string()+f'\n\n completion statement: {previous_goal.completion_statement}' if previous_goal else '',
                                    "goal_related_memories": "\n".join([m.content for m in goal_memories])},
@@ -1631,7 +1566,6 @@ End response with:
         if len(goals) < 2:
             print(f'Warning: Only {len(goals)} goals generated for {self.name}')
         self.goals = goals
-        self.driveSignalManager.clear_clusters(goals)
         print(f'{self.name} generated {len(goals)} goals')
         return goals
 
@@ -1759,15 +1693,7 @@ Place tasks least important to the dramatic context early in the plan when possi
 
 """
 
-        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        #focus_signalClusters = choice.pick_weighted(ranked_signalClusters, weight=4.5, n=5) if len(ranked_signalClusters) > 0 else []
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         goal_memories = []
-        for sc in focus_signalClusters:
-            perceptual_memories = self.perceptual_state.get_information_items(sc.text, threshold=0.01, max_results=3)
-            for pm in perceptual_memories:
-                if pm not in goal_memories:
-                    goal_memories.append(pm)
         for g in self.goals:
             memories = self.perceptual_state.get_information_items(g.short_string(), threshold=0.01, max_results=3)
             for gm in memories:
@@ -2323,9 +2249,7 @@ End your response with:
         for actor in self.context.actors+self.context.extras:
             actor_genders += f'\t{actor.name}: {actor.gender}\n'
         #generate emotional state for this task
-        ranked_signalClusters = self.driveSignalManager.get_scored_clusters()
-        focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
-        self.emotionalStance = EmotionalStance.from_signalClusters(focus_signalClusters, self)
+        self.emotionalStance = EmotionalStance.for_character(self)
         memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.1, max_results=3)
         for t in goal.task_plan:
             memories = self.perceptual_state.get_information_items(t.short_string(), threshold=0.1, max_results=3)
@@ -3158,7 +3082,7 @@ End your response with:
                     for goal in goals.copy():
                         if goal.preconditions:
                             subgoal = Goal(name='preconditions', actors=[self], description=goal.preconditions, preconditions=None, 
-                                        termination=goal.preconditions, signalCluster=goal.signalCluster, drives=goal.drives)
+                                        termination=goal.preconditions, drives=goal.drives)
                             self.goals.append(subgoal)
                             admissible_goals.append(subgoal)
 
@@ -3180,11 +3104,11 @@ End your response with:
                     'description': goal.description,
                     'termination': goal.termination,
                     'context': {
-                        'signal_cluster': goal.signalCluster.to_string() if goal.signalCluster else '',
+                        'signal_cluster': '',  # (signal clusters removed; this raised when it was None)
                         'emotional_stance': {
-                            'arousal': str(goal.signalCluster.emotional_stance.arousal.value),
-                            'tone': str(goal.signalCluster.emotional_stance.tone.value),
-                            'orientation': str(goal.signalCluster.emotional_stance.orientation.value)
+                            'arousal': str(self.emotionalStance.arousal.value),
+                            'tone': str(self.emotionalStance.tone.value),
+                            'orientation': str(self.emotionalStance.orientation.value)
                         }
                     }
                     } for i, goal in enumerate(goals)]
@@ -3212,9 +3136,8 @@ End your response with:
                                 if custom_data.get('name') and custom_data.get('description') and custom_data.get('actors') and custom_data.get('termination'):
                                     actors = [self.actor_models.resolve_character(actor_name)[0] for actor_name in custom_data['actors']]
                                     actors = [actor for actor in actors if actor] # strip actors that could not be found
-                                    self.driveSignalManager.recluster()
                                     self.focus_goal = Goal(name=custom_data['name'], description=custom_data['description'], 
-                                                           actors=actors, termination=custom_data['termination'], signalCluster=None, 
+                                                           actors=actors, termination=custom_data['termination'], 
                                                            drives=[], preconditions='')
                                 return self.focus_goal
                             elif response and response.get('selected_id') is not None:
@@ -3254,11 +3177,11 @@ End your response with:
                         'reason': task.reason,
                         'termination': task.termination,
                         'context': {
-                            'signal_cluster': task.goal.signalCluster.to_string() if task.goal and task.goal.signalCluster else '',
+                            'signal_cluster': '',
                             'emotional_stance': {
-                                'arousal': str(task.goal.signalCluster.emotional_stance.arousal.value) if task.goal and task.goal.signalCluster else '',
-                                'tone': str(task.goal.signalCluster.emotional_stance.tone.value) if task.goal and task.goal.signalCluster else '',
-                                'orientation': str(task.goal.signalCluster.emotional_stance.orientation.value) if task.goal and task.goal.signalCluster else ''
+                            'arousal': str(self.emotionalStance.arousal.value),
+                            'tone': str(self.emotionalStance.tone.value),
+                            'orientation': str(self.emotionalStance.orientation.value)
                             }
                         }
                     } for i, task in enumerate(tasks)]
@@ -3346,8 +3269,8 @@ End your response with:
         if len(actions) < 2:
                 print(f'{self.name} request_action_choice: not enough acts')
         for action in actions:
-            if not action.source or not action.source.goal or not action.source.goal.signalCluster:
-                print(f'{self.name} request_action_choice: act {action.mode} {action.action} has no source or goal or signal cluster')
+            if not action.source or not action.source.goal:
+                print(f'{self.name} request_action_choice: act {action.mode} {action.action} has no source or goal')
         if len(actions) > 0: # debugging
                 # Send choice request to UI
             choice_request = {
@@ -4005,16 +3928,18 @@ end your response with:
                 ],
                 'intensions': [intension.name for intension in self.intensions]  # List[str]
             },
+            # each drive's latest awareness check (DriveSignalManager.check_drive_signals); this
+            # listed signal clusters, which were always empty
             'signals': [
                 {
-                    'text': cluster_pair[0].text,
-                    'drives': [d.text for d in cluster_pair[0].drives],  # Changed from single drive to list
-                    'type': cluster_pair[0].type,
-                    'signals': [s.text for s in cluster_pair[0].signals],
-                    'score': cluster_pair[1],
-                    'last_seen': cluster_pair[0].get_latest_timestamp().isoformat()
+                    'text': signal.text,
+                    'drives': [d.text for d in signal.drives],
+                    'type': signal.type,
+                    'signals': [f'importance {signal.importance:.2f}, urgency {signal.urgency:.2f}, surprise {signal.surprise:.2f}'],
+                    'score': signal.importance,
+                    'last_seen': signal.timestamp.isoformat()
                 }
-                for cluster_pair in self.driveSignalManager.get_scored_clusters()
+                for drive, signal in self.driveSignalManager.recent_signals()
             ],
             'debug': self._explorer_debug(),
         }

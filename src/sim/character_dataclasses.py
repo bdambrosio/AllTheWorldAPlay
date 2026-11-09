@@ -62,7 +62,7 @@ class Goal:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
     
-    def __init__(self, name, actors, description, preconditions=None, termination=None, signalCluster=None, drives=None):
+    def __init__(self, name, actors, description, preconditions=None, termination=None, drives=None):
         Goal._id_counter += 1
         self.id = f"g{Goal._id_counter}"
         Goal._instances[self.id] = self
@@ -72,7 +72,6 @@ class Goal:
         self.termination = termination
         self.preconditions = preconditions
         self.drives = drives
-        self.signalCluster = signalCluster
         self.progress = 0
         self.task_plan = []
         self.tasks = []
