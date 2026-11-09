@@ -899,56 +899,6 @@ class WorldMap:
 
 
             
-    def get_visibility_cached(self, x, y, observer_height):
-        """Optimized visibility calculation with caching"""
-        cache_key = (x, y, observer_height)
-        
-        # Check if we have a recent cache entry
-        current_time = time.time()
-        if hasattr(self, '_visibility_cache'):
-            cache_entry = self._visibility_cache.get(cache_key)
-            if cache_entry and (current_time - cache_entry['time'] < 1.0):  # 1 second cache
-                return cache_entry['visible_patches']
-        else:
-            self._visibility_cache = {}
-
-        # Calculate visibility using quadrants for better performance
-        visible_patches = []
-        
-        # Split into quadrants for better performance
-        quadrants = [
-            (range(x, min(x + 21, self.width)), range(y, min(y + 21, self.height))),    # NE
-            (range(x, max(x - 21, 0), -1), range(y, min(y + 21, self.height))),         # NW
-            (range(x, min(x + 21, self.width)), range(y, max(y - 21, 0), -1)),          # SE
-            (range(x, max(x - 21, 0), -1), range(y, max(y - 21, 0), -1))                # SW
-        ]
-        
-        for x_range, y_range in quadrants:
-            for curr_x in x_range:
-                for curr_y in y_range:
-                    if self.is_visible(x, y, curr_x, curr_y, observer_height):
-                        visible_patches.append(self.patches[curr_x][curr_y])
-        
-        # Cache the result
-        self._visibility_cache[cache_key] = {
-            'visible_patches': visible_patches,
-            'time': current_time
-        }
-        
-        return visible_patches
-
-    def get_visible_agents(self, x, y, observer_height):
-        """Get list of agents visible from given position"""
-        visible_patches = self.get_visibility_cached(x, y, observer_height)
-        visible_agents = []
-        
-        for agent in self.agents:
-            agent_patch = self.patches[agent.x][agent.y]
-            if agent_patch in visible_patches:
-                visible_agents.append(agent)
-                
-        return visible_agents
-    
     def get_visibility(self, x, y, observer_height):
         """Get list of patches visible from given position"""
         visible_patches = []
