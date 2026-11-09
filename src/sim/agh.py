@@ -3973,16 +3973,22 @@ End your response with:
     #def format_history(self):
     #    return '\n'.join([xml.find('<text>', memory) for memory in self.history])
 
-    def to_json(self, gen_image=False):
-        """Return JSON-serializable representation"""
-        image_data = None
-        if gen_image:
+    async def to_json_with_image(self):
+        """to_json plus a fresh portrait. The description (an LLM call, reading character state)
+        runs here like any other call; only the render goes to a thread."""
+        data = self.to_json()
+        try:
             description = self.generate_image_description()
             if description:
-                image_path = generate_image(self.llm, description, filepath=self.name+'.png')
+                image_path = await asyncio.to_thread(generate_image, self.llm, description, filepath=self.name+'.png')
                 with open(image_path, 'rb') as f:
-                    image_data = base64.b64encode(f.read()).decode()
+                    data['image'] = base64.b64encode(f.read()).decode()
+        except Exception as e:
+            logger.error(f'{self.name} portrait failed: {e}')
+        return data
 
+    def to_json(self):
+        """Return JSON-serializable representation (portrait: to_json_with_image)"""
         data = {
             'name': self.name,
             'show': self.show.strip(),  # Current visible state
@@ -3999,8 +4005,6 @@ End your response with:
             'current_act': self.get_current_act_info(),
             'current_scene': self.get_current_scene_info()
         }
-        if image_data:
-            data['image'] = image_data
         return data
 
     def find_say_result(self) -> str:

@@ -115,8 +115,8 @@ class SimulationServer:
 
         try:
             if actor.name not in self.image_cache or new_image:
-                # LLM description + render take seconds; keep the event loop (UI forwarding) running
-                description = await asyncio.to_thread(actor.generate_image_description)
+                description = actor.generate_image_description()
+                # the render takes seconds; keep the event loop (UI forwarding) running
                 if description:
                     image_path = await asyncio.to_thread(generate_image, self.sim_context.llm, description,
                                                          filepath=actor.name+'.png')

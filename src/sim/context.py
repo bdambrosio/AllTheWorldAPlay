@@ -1453,7 +1453,7 @@ Ensure your response reflects this change.
             await asyncio.sleep(0.4)
             # now generate initial task plan
             await character.generate_task_plan(character.focus_goal, ntasks=(scene['action_order']).count(character.name)+1)
-            self.message_queue.put({'name':character.name, 'text':'character_update', 'data':character.to_json(gen_image=True)})
+            self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await asyncio.sleep(0.4)
             character.update(now=True)
@@ -1506,7 +1506,7 @@ Ensure your response reflects this change.
                         self.message_queue.put({'name':character_name, 'text':f'decided: {choice}\n\treason: {reason}'})
                     else:
                         self.message_queue.put({'name':character_name, 'text':f'no decision made'})
-                    self.message_queue.put({'name':character_name, 'text':f'character_update', 'data':character.to_json(gen_image=True)})
+                    self.message_queue.put({'name':character_name, 'text':f'character_update', 'data':await character.to_json_with_image()})
                     await asyncio.sleep(0.1)
                 else:
                     print(f'Character {character_name} not found in scene {scene["scene_title"]}')                  
@@ -1520,7 +1520,7 @@ Ensure your response reflects this change.
             for character in characters_in_scene:
                 character.add_perceptual_input(self.current_scene['post_narrative'], mode = 'internal')
                 character.reason_over(self.current_scene['post_narrative'])
-                self.message_queue.put({'name':'', 'text':'character_update', 'data':character.to_json(gen_image=True)})
+                self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
             await asyncio.sleep(0.1)
