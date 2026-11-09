@@ -75,6 +75,35 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
 
 RECENT_CALLS = 30
 
+# A local server that crashes restarts itself (the vLLM container: ~2-3 minutes to reload the
+# model). Calls made meanwhile wait for it instead of failing, which used to ruin the play.
+LLM_RESTART_WAIT_SECS = float(os.environ.get('LLM_RESTART_WAIT_SECS', '420'))
+
+
+def _post_with_restart_wait(url, body):
+    """POST a completion; on connection failure or a 5xx, wait for the server and retry."""
+    deadline = time.time() + LLM_RESTART_WAIT_SECS
+    delay, announced = 2.0, False
+    while True:
+        try:
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=body, timeout=600)
+            if response.status_code < 500 or time.time() >= deadline:
+                if announced:
+                    print('LLM server is back')
+                    logger.warning('LLM server is back')
+                return response
+            problem = f'{response.status_code}: {response.text[:120]}'
+        except (requests.ConnectionError, requests.Timeout) as e:
+            if time.time() >= deadline:
+                raise
+            problem = type(e).__name__
+        if not announced:
+            announced = True
+            print(f'LLM server unavailable ({problem}); waiting up to {LLM_RESTART_WAIT_SECS:.0f}s for it to restart')
+            logger.warning(f'LLM server unavailable ({problem}); waiting for restart')
+        time.sleep(delay)
+        delay = min(delay * 1.5, 15)
+
 # Called after every LLM.ask with tag, owner, tokens, finish_reason, secs, ok, error
 # (sim.trace registers one; utils does not import sim).
 _call_listeners = []
@@ -209,7 +238,7 @@ class LLM():
         else:
             body = {"messages": substituted_prompt, "temperature": options.temperature,
                     "top_p": options.top_p, "max_tokens": options.max_tokens, "stop": options.stops}
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json=body, timeout=600)
+        response = _post_with_restart_wait(url, body)
         if response.status_code != 200:
             raise Exception(f'{response.status_code} from LLM server: {response.text[:500]}')
         try:
