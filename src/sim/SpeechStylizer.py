@@ -83,11 +83,12 @@ class SpeechStylizer:
             _voice_embeddings = [get_voice_embedding(voice) for voice in _voices if get_voice_embedding(voice) is not None]
         self.voices = _voices
         self.voice_embeddings = _voice_embeddings
-        try:
-            self.voice_id = self.pick_best_voice(_voices)
-        except Exception as e:
-            logger.error(f"Error picking best voice: {e}")
-            self.voice_id = None
+        self.voice_id = None
+        if _voices:  # none without an ElevenLabs key (NO_TTS): not an error
+            try:
+                self.voice_id = self.pick_best_voice(_voices)
+            except Exception as e:
+                logger.error(f"Error picking best voice: {e}")
         self._call_counter = 0
         # Track recent words for overuse detection
         self._recent_words = []  # List of (word, weight) tuples
