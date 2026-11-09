@@ -124,6 +124,7 @@ class Context():
         self.central_narrative: str = ''
         self.act_central_narrative: str = ''
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
+        self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
         self.embedding_model = None
@@ -1478,8 +1479,16 @@ Ensure your response reflects this change.
         scene_integrated_task_plan = await self.integrate_task_plans(scene)
         self.scene_history = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
+        self.scene_task_budget = len(self.scene_integrated_task_plan)  # see place_commitment
         while self.scene_integrated_task_plan_index < len(self.scene_integrated_task_plan):
             scene_task = self.scene_integrated_task_plan[self.scene_integrated_task_plan_index]
+            pending = len(self.scene_integrated_task_plan) - self.scene_integrated_task_plan_index
+            if scene_task.get('optional') and pending > self.scene_task_budget:
+                # an optional (RELEVANT) commitment, and the scene is already over budget
+                logger.info(f"optional commitment skipped ({pending} pending > budget {self.scene_task_budget}): "
+                            f"{scene_task['actor'].name} {scene_task['task'].name}")
+                self.scene_integrated_task_plan_index += 1
+                continue
             character = scene_task['actor']
             character_name = character.name
             task = scene_task['task']
@@ -2769,7 +2778,7 @@ Determine if it is
     a RELEVANT task that can be optionally included.
     a SIGNIFICANT commitment that should be added to the task plan.
     a CRUCIAL commitment, the task plan is incomplete relative to the dramatic context without it.
-Respond with a single word: "NOISE", "REDUNDANT", RELEVANT", "SIGNIFICANT", or "CRUCIAL".
+Respond with a single word: "NOISE", "REDUNDANT", "RELEVANT", "SIGNIFICANT", or "CRUCIAL".
 Do not include any other text in your response.
 
 End your response with </end>
@@ -2786,19 +2795,60 @@ End your response with </end>
                                "scene_history": '\n'.join([history for history in self.scene_history]) if self.scene_history else '',
                                "transcript": character.actor_models.get_actor_model(other_character.name, create_if_missing=True).dialog.get_transcript(8)},
                                 prompt, max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
-        if response:
-            response = response.lower()
-            if 'crucial' in response:
-                return 'CRUCIAL'
-            elif 'significant' in response:
-                return 'SIGNIFICANT'
-            elif 'relevant' in response:
-                return 'RELEVANT'
-            elif 'redundant' in response:
-                return 'REDUNDANT'
-            else:
-                return 'NOISE'
-        return 'NOISE'
+        return self.parse_significance(response)
+
+    SIGNIFICANCE_LEVELS = ('NOISE', 'REDUNDANT', 'RELEVANT', 'SIGNIFICANT', 'CRUCIAL')
+
+    @staticmethod
+    def parse_significance(response):
+        """First word of the reply as a significance level, else NOISE. (Substring tests read
+        'insignificant' as SIGNIFICANT, 'irrelevant' as RELEVANT, any chatty 'crucial' as CRUCIAL.)"""
+        words = re.findall(r'[A-Za-z]+', response or '')
+        level = words[0].upper() if words else ''
+        return level if level in Context.SIGNIFICANCE_LEVELS else 'NOISE'
+
+    def place_commitment(self, character, task, significance, goal=None):
+        """Put a commitment from a dialog into the running scene's task plan. Returns True if
+        placed. The cap counts entries still to run (it counted the whole plan, including tasks
+        already done), against the plan length the scene started with:
+          CRUCIAL      while fewer than 2x that remain
+          SIGNIFICANT  while fewer than 1.5x remain
+          RELEVANT     while fewer than 1x remain, as an optional entry that run_scene skips if
+                       the scene is over budget by the time it comes up
+          REDUNDANT / NOISE  dropped
+        Several commitments from one dialog run in the order given (each was inserted at
+        index+1, so they ran in reverse). Every drop is logged."""
+        plan = self.scene_integrated_task_plan
+        goal = goal or character.focus_goal
+        why = None
+        if plan is None or not self.current_scene:
+            why = 'no running scene'
+        elif goal is None:
+            why = 'no goal to attach it to'
+        elif significance in ('NOISE', 'REDUNDANT'):
+            why = significance
+        if why is None:
+            budget = max(1, self.scene_task_budget or len(plan))
+            remaining = len(plan) - self.scene_integrated_task_plan_index - 1
+            limit = {'CRUCIAL': 2.0, 'SIGNIFICANT': 1.5, 'RELEVANT': 1.0}[significance] * budget
+            if remaining >= limit:
+                why = f'{significance} but {remaining} tasks remain (limit {limit:g})'
+        if why:
+            logger.info(f'commitment dropped ({why}): {character.name} {task.name}')
+            print(f'{character.name} commitment dropped ({why}): {task.name}')
+            return False
+        index = self.scene_integrated_task_plan_index
+        pos = index + 1
+        while pos < len(plan) and plan[pos].get('inserted_at') == index:
+            pos += 1
+        entry = {'actor': character, 'goal': goal, 'task': task, 'inserted_at': index}
+        if significance == 'RELEVANT':
+            entry['optional'] = True
+        plan.insert(pos, entry)
+        label = 'optional ' if entry.get('optional') else ''
+        print(f'{character.name} new {label}committed task ({significance}): {task.name}')
+        logger.info(f'commitment placed ({significance}{", optional" if label else ""}): {character.name} {task.name}')
+        return True
 
     def repair_xml(self, response, error):
         """Repair XML if it is invalid"""
