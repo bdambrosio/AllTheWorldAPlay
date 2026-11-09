@@ -1041,17 +1041,18 @@ class WorldMap:
     def get_resource_by_id(self, resource_id):
         """Get resource data by ID"""
         path_name = self._infrastructure_rules.get('path_type', 'road')
-        resource_id = resource_id.strip().capitalize()
-        if resource_id == path_name:
+        resource_id = resource_id.strip().replace('#', '')
+        if resource_id.lower() == path_name.lower():
             return "path"
-        if resource_id not in self.resource_registry:
-            resource_id_no_hash = resource_id.replace('#', '')
-            if resource_id_no_hash in self.resource_registry:
-                return self.resource_registry[resource_id_no_hash]
-            else:
-                print(f"ERROR: Resource {resource_id} not found")
-                return None
-        return self.resource_registry[resource_id]
+        # exact id first; .capitalize() on every lookup turned 'Apple_Tree5' into 'Apple_tree5'
+        if resource_id in self.resource_registry:
+            return self.resource_registry[resource_id]
+        lowered = resource_id.lower()
+        for rid, resource in self.resource_registry.items():
+            if rid.lower() == lowered:
+                return resource
+        print(f"ERROR: Resource {resource_id} not found")
+        return None
 
     def generate_market_resource(self):
         """Generate central resource (market/hut/etc) before other resources and infrastructure"""
