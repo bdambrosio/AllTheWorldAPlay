@@ -477,12 +477,14 @@ updated act
         try:
             updated_act = None
             act_id = -1
+            if not response:
+                return None
             if "```json" in response:
                 update = response.split("```json")
                 flag = hash_utils.find('update', update[0])
                 act_id_str = hash_utils.find('actId', update[0])
                 act_id=1
-                if flag and flag == 'yes':
+                if flag and flag.strip().lower() == 'yes':
                     try:
                         act_id = int(act_id_str.strip())
                     except Exception as e:
@@ -498,17 +500,18 @@ updated act
             else:
                 flag = hash_utils.find('update', response)
                 act_id=1
-                if flag and flag == 'yes':
+                if flag and flag.strip().lower() == 'yes':
+                    # parse the act first: the actId fallback below read updated_act while it
+                    # was still None, which aborted the whole update
+                    update = response.split("##")
+                    if len(update) > 1:
+                        updated_act = json.loads(update[1].replace("```json", "").replace("```", "").strip())
                     try:
                         act_id = int(hash_utils.find('actId', response).strip())
                     except Exception as e:
                         print(f'Error parsing actId: {e}')
                         logger.error(f'Error parsing actId: {e}')
-                        logger.error(traceback.format_exc())
-                        act_id = updated_act['act_number']
-                    update = response.split("##")    
-                    if len(update) > 1:
-                        updated_act = json.loads(update[1].replace("```json", "").replace("```", "").strip())
+                        act_id = updated_act.get('act_number', -1) if isinstance(updated_act, dict) else -1
             if act_id != -1 and updated_act:
                 print(f'{self.name} updates act {act_id}')
                 self.update_act(updated_act)
