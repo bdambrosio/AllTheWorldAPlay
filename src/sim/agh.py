@@ -2688,9 +2688,12 @@ End your response with:
                       start_time=self.context.simulation_time,
                       duration=0)    
         intension_hashes = hash_utils.findall_forms(response)
+        # returned so hear() can skip the other party's extraction ("only allow one individual
+        # task"); this returned None, so both parties always extracted commitments
+        accepted = []
         if len(intension_hashes) == 0:
             print(f'no new tasks in conversation')
-            return
+            return accepted
         for intension_hash in intension_hashes:
             intension = self.validate_and_create_task(intension_hash)
             if intension:
@@ -2707,11 +2710,13 @@ End your response with:
                         if self.context.scene_integrated_task_plan:
                             insert_index = self.context.scene_integrated_task_plan_index+1
                             self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
+                            accepted.append(intension)
                 elif self.focus_goal:
                     await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
+                    accepted.append(intension)
                 else:
                     print('No focus goal, no new task from conversation')
-        return
+        return accepted
   
     async def update_joint_commitments_following_conversation(self, target:Character, transcript:str):
         if not self.focus_goal or self.check_if_in_dialog_subtask():
