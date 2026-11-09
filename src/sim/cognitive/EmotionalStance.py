@@ -158,21 +158,18 @@ End your response with the:
 
         tone = Tone.Neutral
         orientation = Orientation.Neutral
-        response_arousal = hash_utils.find('arousal', response)
-        response_arousal = response_arousal.strip().capitalize()
+        response_arousal = (hash_utils.find('arousal', response) or '').strip().capitalize()
         if response_arousal in Arousal.__members__:
             arousal = Arousal(response_arousal)
         else:
             arousal = Arousal.Neutral
-        response_tone = hash_utils.find('tone', response)
-        response_tone = response_tone.strip().capitalize()
+        response_tone = (hash_utils.find('tone', response) or '').strip().capitalize()
         if response_tone in Tone.__members__:
             tone = Tone(response_tone)
         else:
             tone = Tone.Neutral
 
-        response_orientation = hash_utils.find('orientation', response)
-        response_orientation = response_orientation.strip().capitalize()
+        response_orientation = (hash_utils.find('orientation', response) or '').strip().capitalize()
         response_orientation = response_orientation.replace(' ', '') # Seeking support -> Seekingsupport
         if response_orientation in Orientation.__members__:
             orientation = Orientation(response_orientation)
@@ -183,7 +180,23 @@ End your response with the:
     def to_string(self):
         return "Stance:{"+str(self.arousal)+'+, '+str(self.tone)+', '+str(self.orientation)+'}'
 
+    @staticmethod
     def from_signalClusters(signalClusters: List[SignalCluster], character: Character):
+        """Stance for these clusters. No LLM call for no clusters (keeps the current stance), or
+        for the same clusters with the same signals as last time for this character (it was
+        recomputed on every task plan, act generation and dialog start)."""
+        if not signalClusters:
+            return getattr(character, 'emotionalStance', None) or EmotionalStance()
+        key = tuple((c.id, len(c.signals)) for c in signalClusters)
+        cached = getattr(character, '_stance_cache', None)
+        if cached and cached[0] == key:
+            return cached[1]
+        stance = EmotionalStance._stance_from_llm(signalClusters, character)
+        character._stance_cache = (key, stance)
+        return stance
+
+    @staticmethod
+    def _stance_from_llm(signalClusters: List[SignalCluster], character: Character):
         prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
 You are given a set of signalClusters that represents the interaction between the basic drives of a character and recent events.
 Your task is to extract the arousal, tone and orientation of the character resulting from the signalClusters and the character's awareness of it.
@@ -249,20 +262,17 @@ End your response with the:
                                       }, prompt, tag='EmotionalStance.from_signalClusters', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 
-        response_arousal = hash_utils.find('arousal', response)
-        response_arousal = response_arousal.strip().capitalize()
+        response_arousal = (hash_utils.find('arousal', response) or '').strip().capitalize()
         if response_arousal in Arousal.__members__:
             arousal = Arousal(response_arousal)
         else:
             arousal = Arousal.Neutral
-        response_tone = hash_utils.find('tone', response)
-        response_tone = response_tone.strip().capitalize()
+        response_tone = (hash_utils.find('tone', response) or '').strip().capitalize()
         if response_tone in Tone.__members__:
             tone = Tone(response_tone)
         else:
             tone = Tone.Neutral
-        response_orientation = hash_utils.find('orientation', response)
-        response_orientation = response_orientation.strip().capitalize()
+        response_orientation = (hash_utils.find('orientation', response) or '').strip().capitalize()
         response_orientation = response_orientation.replace(' ', '') # Seeking support -> Seekingsupport
         if response_orientation in Orientation.__members__:
             orientation = Orientation(response_orientation)
