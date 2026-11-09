@@ -494,7 +494,8 @@ End your response with:
                 mode=mode,
                 action=action,
                 actors=actors,
-                reason=action,
+                # act prompts ask for no reason; this copied the action text into it
+                reason=task.reason if task is not None and getattr(task, 'reason', None) else '',
                 duration=duration,
                 source=task,
                 target=targets
@@ -3010,7 +3011,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
        
         # Special case for Owl-Doc interactions
         if self.name == 'Owl' and from_actor.name == 'Doc':
-            text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek())
+            text, response_source, _ = self.generate_dialog_turn(from_actor, message, self.focus_task.peek())
             self.show = text
             return
         
@@ -3054,12 +3055,12 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             #from_actor.driveSignalManager.recluster()
             return
 
-        text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        text, response_source, reason = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         if not text or not text.strip():
             # no <response> (generate_dialog_turn already deactivated the dialog); an empty Say
             # was performed anyway, shown as '' and heard by from_actor, which kept talking
             return
-        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=[from_actor])
+        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
@@ -3244,7 +3245,7 @@ End your response with:
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            return '', source
+            return '', source, ''
  
         reason = xml.find('<reason>', answer_xml)
         if not source:
@@ -3259,10 +3260,10 @@ End your response with:
             # self.show = response
             if from_actor.name == 'Viewer':
                 self.context.message_queue.put({'name':self.name, 'text':f"'{response}'", 'chat_response': True})
-                return response, response_source
+                return response, response_source, reason
 
-        # Create action for response
-        return response, response_source
+        # (response, source task, the LLM's <reason> -- parsed but dropped before)
+        return response, response_source, reason
     
     def format_tasks(self, tasks, labels):
         task_list = []

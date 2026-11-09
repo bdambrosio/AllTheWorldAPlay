@@ -316,7 +316,7 @@ End your response with </end>
                         # (act_on_action was outside this test: a character with nothing to share
                         # raised NameError, or re-sent the previous character's message)
                         print(f'{self.name} says to {character.name}: {say_arg}')
-                        act = Act(mode='Say', action=say_arg, actors=[self, character], reason=say_arg, duration=1, source=None, target=[character])
+                        act = Act(mode='Say', action=say_arg, actors=[self, character], reason=f'sharing my plans with {character.name}', duration=1, source=None, target=[character])
                         await self.act_on_action(act, None)
                 except Exception as e:
                     print(f'Error parsing shared narrative: {e}')
