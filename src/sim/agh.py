@@ -3050,6 +3050,10 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             return
 
         text, response_source = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
+        if not text or not text.strip():
+            # no <response> (generate_dialog_turn already deactivated the dialog); an empty Say
+            # was performed anyway, shown as '' and heard by from_actor, which kept talking
+            return
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=text, duration=1, source=response_source, target=[from_actor])
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
