@@ -3160,7 +3160,7 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 {{$duplicative_insert}}
 
 Guidance: 
-- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}).
+- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}}.
     Actor genders:
     {{$actor_genders}}
 - The response can occasionally include occasional body language or facial expressions as well as speech

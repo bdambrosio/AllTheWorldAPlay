@@ -289,7 +289,7 @@ Take note of any prior conversations you have already had with {{$name}}."""
                 suffix = """
 
 Your plans at the moment are:
-{{$narrative}}
+{{$plan}}
 
 If you have nothing you want to tell {{$name}}, simply respond with </end>
 Otherwise, respond with the information you would like to share, using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
@@ -734,7 +734,7 @@ Rarely, conflict can be achieved through compromise. More often, it must be reso
 **Setting & Context:**
 {{$setting_background}}
 
-## Negotiation Round {{round_number}} of 2
+## Negotiation Round {{$round_number}} of 2
 
 **Previous Proposals (if Round 2):**
 {{$previous_proposals}}
@@ -1188,7 +1188,7 @@ You will be asked to identify the drive you are denying in the choice you are ma
 
 """
         suffix = """    
-#this is act {{act_number}}. your avoidance count is {{avoidance_cnt}}. 
+#this is act {{$act_number}}. your avoidance count is {{$avoidance_cnt}}. 
 
 #your previous decisions have been:
 {{$previous_decisions}}

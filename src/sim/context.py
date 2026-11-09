@@ -822,7 +822,7 @@ Format your response as one or more simple declarative sentences.
 Include in your response:
 - changes in the physical environment, e.g. '{{$name}} sees the door open', ...
 - sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
-- changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
+- changes in {{$name}}'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 - specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
 Be terse, only report the most significant  state changes. Limit your response to 70 words.
@@ -900,7 +900,7 @@ Include in your response:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
 - sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
 - changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
-- changes in {{$name})'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
+- changes in {{$name}}'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
 - specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
 Do NOT extend the scenario with any follow on actions or effects.
 Be terse, only report the most significant  state changes. Limit your response to 70 words.
