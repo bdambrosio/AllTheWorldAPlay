@@ -345,13 +345,8 @@ class KnownActorManager:
                 self.add_actor_model(actor_name)
             else:
                 return None
-        actor = self.known_actors[actor_name]
-
-        return actor
-
-    def set_all_actors_visible(self):
-        for actor in self.known_actors:
-            self.known_actors[actor.canonical_name].visible = True
+        # None when creation failed (no such character): this raised KeyError
+        return self.known_actors.get(actor_name)
 
     def set_all_actors_invisible(self):
         for actor in self.known_actors.values():
