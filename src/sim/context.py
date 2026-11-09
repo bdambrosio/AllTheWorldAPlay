@@ -527,11 +527,21 @@ If absolutely no information is available for any field, use "unknown" for that 
         return "wide-view photorealistic style. "+self.current_state
         
         
+    @staticmethod
+    def _image_description(entity):
+        """First sentence of a character description without its lead-in: [8:] assumed every
+        description starts 'You are ', so 'Joe, a healthy young man' became 'ealthy young man'."""
+        first = entity.character.split('.')[0].strip()
+        first = re.sub(r'^(you are|i am)\s+', '', first, flags=re.IGNORECASE)
+        if first.lower().startswith(entity.name.lower()):
+            first = first[len(entity.name):]
+        return first.lstrip(' ,:;-').strip()
+
     def image(self, filepath, image_generator='tti_serve'):
         try:
             state = '. '.join(self.current_state.split('.')[:3])
             characters = '\n' + '.\n'.join(
-                [entity.name + ' is ' + entity.character.split('.')[0][8:] for entity in self.actors])
+                [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
             prompt = state + characters
             # (the old image_generator!='tti_serve' branch called a removed generate_dalle_image)
             filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
@@ -543,7 +553,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         try:
             state = '. '.join(self.current_state.split('.')[:4])
             characters = '\n' + '.\n'.join(
-                [entity.name + ' is ' + entity.character.split('.')[0][8:] for entity in self.actors])
+                [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
             actor_dscp_str = actor.character.strip().split('.')[0].strip()
             actor_dscp_str.replace(actor.name, '')
             act_str=f'. {actor.name}. {actor_dscp_str}'
