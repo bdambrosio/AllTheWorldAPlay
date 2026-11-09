@@ -42,9 +42,9 @@ J.set_drives([
     "companionship, community, family, acceptance, trust, intimacy.",
     "immediate physiological needs: survival, shelter, water, food, rest."
 ])
-S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", 'internal')
-J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", 'internal')
-J.add_perceptual_input("You think Whoever she is, she is pretty!", 'internal')
+S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", mode='internal')
+J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", mode='internal')
+J.add_perceptual_input("You think Whoever she is, she is pretty!", mode='internal')
 
 # Create context with forest scenario
 W = context.Context([S, J],

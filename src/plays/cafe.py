@@ -32,7 +32,7 @@ Maya.drives = [
     Drive("find balance between creative solitude and social connection")
 ]
 
-Maya.add_perceptual_input("""The morning light through your studio window is perfect for painting today, but first, you need your morning coffee ritual at Harbor Light Cafe.""", 'internal')
+Maya.add_perceptual_input("""The morning light through your studio window is perfect for painting today, but first, you need your morning coffee ritual at Harbor Light Cafe.""", mode='internal')
 
 # Supporting character with his own craft and routines
 Elijah = NarrativeCharacter("Elijah", """Elijah, a 35-year-old male boat builder, wearing a t-shirt and jeans.
@@ -52,7 +52,7 @@ Elijah.drives = [
     Drive("build meaningful connections with others who appreciate craftsmanship")
 ]
 
-Elijah.add_perceptual_input("""It's almost noon, and you're getting hungry after a morning of sanding a hull. Time to head to Harbor Light Cafe for lunch, where they know exactly how you like your sandwich.""", 'internal')
+Elijah.add_perceptual_input("""It's almost noon, and you're getting hungry after a morning of sanding a hull. Time to head to Harbor Light Cafe for lunch, where they know exactly how you like your sandwich.""", mode='internal')
 
 # Cafe owner with her own goals and place in the community
 Chrys = NarrativeCharacter("Chrys", """Chrys, a 38-year-old female owner of Harbor Light Cafe, wearing informal but stylish clothes.
@@ -71,7 +71,7 @@ Chrys.drives = [
     Drive("find small ways to improve people's days through food and conversation")
 ]
 
-Chrys.add_perceptual_input("""Morning rush is starting to slow down. Maya should be arriving soon for her usual coffee, and Elijah will probably come by for lunch around noon. Better make sure their usual orders are ready to go.""", 'internal')
+Chrys.add_perceptual_input("""Morning rush is starting to slow down. Maya should be arriving soon for her usual coffee, and Elijah will probably come by for lunch around noon. Better make sure their usual orders are ready to go.""", mode='internal')
 
 # Setting up the world context
 W = context.Context([Maya, Elijah, Chrys],

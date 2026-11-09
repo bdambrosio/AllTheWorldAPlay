@@ -55,9 +55,9 @@ Alex is in bed, having just woken up to the alarm. The automatic coffee maker ha
 )
 
 Alex.actor_models.resolve_character('Alex')
-Alex.add_perceptual_input("Your alarm just went off. It's 6:45 AM.",'internal')
-Alex.add_perceptual_input("You have a job interview is at 10:00 AM downtown, at the Office. It's about 30 minutes away by car.", 'internal')
-Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", 'internal')
+Alex.add_perceptual_input("Your alarm just went off. It's 6:45 AM.", mode='internal')
+Alex.add_perceptual_input("You have a job interview is at 10:00 AM downtown, at the Office. It's about 30 minutes away by car.", mode='internal')
+Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", mode='internal')
 Receptionist.mapAgent.move_to_resource('Office1')
 Interviewer.mapAgent.move_to_resource('Office1')
 Susan.mapAgent.x = Alex.mapAgent.x

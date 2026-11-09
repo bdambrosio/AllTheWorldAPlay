@@ -90,10 +90,10 @@ W = context.Context([Hu, Xue, Qiu],
     extras=[Wang, Xiaoyu, Yangho, Ding],
     server_name=server_name,
    )
-Hu.add_perceptual_input("You suspect your husband Ding is having an affair with Wang Xue, his student", 'internal')
-Hu.add_perceptual_input("Xiaoyu is my best and biggest client. I want to keep him happy.", 'internal')
-Hu.add_perceptual_input("Yangho, is a client of Xue and a prime poaching target", 'internal')
-Xue.add_perceptual_input("Xiaoyu, is a client of Hu and a prime poaching target", 'internal')
+Hu.add_perceptual_input("You suspect your husband Ding is having an affair with Wang Xue, his student", mode='internal')
+Hu.add_perceptual_input("Xiaoyu is my best and biggest client. I want to keep him happy.", mode='internal')
+Hu.add_perceptual_input("Yangho, is a client of Xue and a prime poaching target", mode='internal')
+Xue.add_perceptual_input("Xiaoyu, is a client of Hu and a prime poaching target", mode='internal')
 
 
 Hu.mapAgent.move_to_resource('Office1')

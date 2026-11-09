@@ -33,8 +33,8 @@ Maya.drives = [
     #Drive("finding balance between personal fulfillment and meaningful connections.")
 ]
 
-Maya.add_perceptual_input("""Wow - a job offer letter! Chrys, the owner of the gallery in the city wants me as their creative director.""", 'internal') 
-#Maya.add_perceptual_input("""It's everything I've worked for, but accepting means leaving this place... and Elijah.""", 'internal')
+Maya.add_perceptual_input("""Wow - a job offer letter! Chrys, the owner of the gallery in the city wants me as their creative director.""", mode='internal') 
+#Maya.add_perceptual_input("""It's everything I've worked for, but accepting means leaving this place... and Elijah.""", mode='internal')
 
 
 # Supporting character with their own goals that create natural tension
@@ -56,7 +56,7 @@ Elijah.drives = [
     Drive("maintaining the traditions and craft of boat building for future generations.")
 ]
 
-Elijah.add_perceptual_input("Maya has been quiet since yesterday. You suspect something is troubling her, perhaps related to her art career. You've been planning to show her the workshop expansion plans today.", 'internal')
+Elijah.add_perceptual_input("Maya has been quiet since yesterday. You suspect something is troubling her, perhaps related to her art career. You've been planning to show her the workshop expansion plans today.", mode='internal')
 
 # Supporting character with their own goals that create natural tension
 Chrys = NarrativeCharacter("Chrys", """Chrys, a 35-year-old female artist and gallery owner in the city, wearing informal but stylish clothes.
@@ -73,7 +73,7 @@ Chrys.drives = [
     Drive("The physical and emotional pleasures of life."),
 ]
 
-Chrys.add_perceptual_input("Maya hasn't answered my offer yet. I need to follow up.", 'internal')
+Chrys.add_perceptual_input("Maya hasn't answered my offer yet. I need to follow up.", mode='internal')
 
 # Setting up the world context
 W = None

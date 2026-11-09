@@ -59,7 +59,7 @@ Jade.set_drives([
 # Immediate internal thought to kick off tension
 Jade.add_perceptual_input(
     "You spot a hairline crack snaking across the external coolant line weld. You are not sure how soon it will become a problem, but the line could fail in 15 minutes or less.",
-    "internal",
+    mode="internal",
 )
 
 Cmdr = NarrativeCharacter(
@@ -79,7 +79,7 @@ Cmdr.set_drives([
 
 Cmdr.add_perceptual_input(
     "You hear PR back‑channel audio: ‘Go live in fifteen minutes or we lose the vote.’",
-    "internal",
+    mode="internal",
 )
 Novak = NarrativeCharacter(
     "Novak",
@@ -97,7 +97,7 @@ Novak.set_drives([
 
 Novak.add_perceptual_input(
     "You hear PR back‑channel audio: ‘Remember, we need to keep the live feed on schedule: 15 minutes to go.",
-    "internal",
+    mode="internal",
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
