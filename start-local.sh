@@ -6,13 +6,19 @@
 # Logs go to ./logs/. Ctrl+C stops everything.
 #
 # Env overrides: BACKEND_PORT, IMAGE_GPU (nvidia-smi index, default 0),
-#                NO_IMAGES=1 (grey placeholders instead of Klein)
+#                NO_IMAGES=1 (grey placeholders instead of Klein), NO_TTS=1 (no voices)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PORT="${BACKEND_PORT:-8010}"
 LOGS="$ROOT/logs"; mkdir -p "$LOGS"
 
-# main.py launches the engine as plain `python`, so the venv must be first on PATH.
+# API keys come from ~/.config/secrets.env, loaded whole (a value there replaces one already
+# in the environment), as the other local projects do: a shell that is not interactive does
+# not load ~/.bashrc, which is what loads that file for a terminal. None are required for the
+# local vLLM setup; ELEVENLABS_API_KEY enables voices. NO_TTS=1 runs without voices.
+[ -f "$HOME/.config/secrets.env" ] && { set -a; . "$HOME/.config/secrets.env"; set +a; }
+[ "${NO_TTS:-0}" = 1 ] && unset ELEVENLABS_API_KEY
+
 export PATH="$ROOT/.venv/bin:$PATH"
 # Unbuffered so logs/*.log are written in real time (also used by tools/smoke_run.py).
 export PYTHONUNBUFFERED=1
