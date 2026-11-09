@@ -428,10 +428,6 @@ class WorldMap:
         mountain_level = self._terrain_rules.get('mountain_level', 0.8)
         
         print(f"DEBUG: Starting terrain assignment...")
-        none_count_before = sum(1 for x in range(self.width) 
-                              for y in range(self.height) 
-                              if self.patches[x][y].terrain_type is None)
-        print(f"DEBUG: Patches with None terrain before assignment: {none_count_before}")
         
         terrain_by_elevation = self._terrain_rules.get('terrain_by_elevation', {
             'water': {'max': 0.2, 'type': 'Water'},
@@ -514,7 +510,6 @@ class WorldMap:
         none_count_after = sum(1 for x in range(self.width) 
                              for y in range(self.height) 
                              if self.patches[x][y].terrain_type is None)
-        print(f"DEBUG: Patches with None terrain after assignment: {none_count_after}")
         if none_count_after > 0:
             print("WARNING: Some patches still have None terrain!")
             # Print first few None locations for debugging
@@ -901,10 +896,6 @@ class WorldMap:
             if 0 <= nx < self.width and 0 <= ny < self.height:
                 neighbors.append((nx, ny))
         return neighbors
-
-    def generate_paths(self):
-        # Create paths connecting points of interest
-        pass
 
 
             

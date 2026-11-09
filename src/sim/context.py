@@ -1,5 +1,4 @@
 from __future__ import annotations
-from asyncio.log import logger
 import copy
 import json
 import os
@@ -32,19 +31,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger('simulation_core')
-
-def run_sync(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        # If already in an event loop, use create_task and wait
-        import nest_asyncio
-        nest_asyncio.apply()
-        return loop.run_until_complete(coro)
-    else:
-        return asyncio.run(coro)
 
 
 class Context():
@@ -272,9 +258,10 @@ class Context():
 
     async def start(self):
         voices = self.voice_service.get_voices()
-        #print(f"Available voices: {voices}")
-        self.message_queue.put({'name':'', 'text':"play context initialized, creating characters...", 
-                                'elevenlabs_params': json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5}, default=datetime_handler)})
+        message = {'name':'', 'text':"play context initialized, creating characters..."}
+        if voices:  # empty without an ElevenLabs key; voices[0] made plays unloadable then
+            message['elevenlabs_params'] = json.dumps({'voice_id': voices[0]['voice_id'], 'stability':0.5, 'similarityBoost':0.5}, default=datetime_handler)
+        self.message_queue.put(message)
         await asyncio.sleep(1.0)  # Give simulation.py time to process and forward
 
     def format_character_for_context_ask(self, character:NarrativeCharacter):
@@ -394,8 +381,8 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
         reserialized = copy.deepcopy(scene)
         if isinstance(scene["time"], datetime):
             reserialized["time"] = reserialized["time"].isoformat()
-        else:
-            print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
+        elif not isinstance(scene["time"], str):  # str = already serialized, fine
+            print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]!r}')
         return reserialized
     
     def reserialize_acts_times(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -412,8 +399,8 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
             for scene in act["scenes"]:
                 if isinstance(scene["time"], datetime):
                     scene["time"] = scene["time"].isoformat()
-                else:
-                    print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]}')
+                elif not isinstance(scene["time"], str):  # str = already serialized, fine
+                    print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]!r}')
         return reserialized
 
     def reserialize_act_times(self, act: Dict[str, Any]) -> str:
@@ -479,7 +466,6 @@ If absolutely no information is available for any field, use "unknown" for that 
         return {
             'name': self.name,
             'initial_state': self.initial_state,
-            'current_state': self.current_state,
             'current_state': self.current_state,
             'actors': [actor.to_shallow_json() for actor in self.actors],
             'extras': [extra.to_shallow_json() for extra in self.extras],
@@ -548,12 +534,8 @@ If absolutely no information is available for any field, use "unknown" for that 
             characters = '\n' + '.\n'.join(
                 [entity.name + ' is ' + entity.character.split('.')[0][8:] for entity in self.actors])
             prompt = state + characters
-            # print(f'calling generate_dalle_image\n{prompt}')
-            if image_generator == 'tti_serve':
-                filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
-            else:
-                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic style. {prompt}""", size='512x512',
-                                             filepath=filepath)
+            # (the old image_generator!='tti_serve' branch called a removed generate_dalle_image)
+            filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
         except Exception as e:
             traceback.print_exc()
         return filepath
@@ -571,11 +553,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             else:
                 act_str += '. '
             prompt = act_str + consequences + state + characters
-            # print(f'calling generate_dalle_image\n{prompt}')
-            if image_generator == 'tti_serve':
-                filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
-            else:
-                filepath = llm_api.generate_dalle_image(f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
+            filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
         except Exception as e:
             traceback.print_exc()
         return filepath
@@ -1563,14 +1541,16 @@ Ensure your response reflects this change.
             true_outcomes = await self.run_scene(scene, act)
 
             world_state_end_scene = self.current_state
-            if hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 1: # allow one intervention in middle of act 2
+            if (hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 1
+                    and scene_number + 1 < len(scenes)): # allow one intervention in middle of act 2, if a scene follows
                 # Run staleness analysis
                 try:
                     changes = self.identify_state_changes(world_state_start_scene, world_state_end_scene)
                     staleness_analysis = await self.staleness_detector.analyze_staleness(changes, scenes[scene_number+1])
+                    intervention = None
                     if staleness_analysis and self.staleness_detector.should_trigger_intervention(staleness_analysis):
                         intervention = await self.inject_staleness_intervention(staleness_analysis)
-                    if intervention: # at least one more scene to go
+                    if intervention:
                         scene = await self.replan_scene(scenes[scene_number+1], scene_number+1, act, act_number, intervention)
                         scenes[scene_number+1] = scene
                 except Exception as e:
@@ -1905,12 +1885,20 @@ In performing this integration:
             if character_narrative_act_count > integrated_act_count:
                 integrated_act_count = character_narrative_act_count
 
+        def stop(reason):
+            # these early exits used to be log-only: the UI just went quiet
+            logger.error(reason)
+            self.message_queue.put({'name': self.name, 'text': f'----- narrative stopped: {reason} -----'})
+
+        if integrated_act_count == 0:
+            stop('no character has any narrative acts')
+            return
         previous_act_post_state = ''
         try:
             for i in range(integrated_act_count):
                 act_central_narrative = await self.generate_act_central_narrative(i+1)
                 if act_central_narrative is None:
-                    logger.error('No act central narrative')
+                    stop('could not generate the act central narrative')
                     return
                 previous_act = None
                 character_narrative_blocks = []
@@ -1927,13 +1915,10 @@ In performing this integration:
 
                 await asyncio.sleep(0.1)
                 if new_act is None:
-                    logger.error('No act to run')
+                    stop(f'no act {i+1} to run')
                     return
                 else:
                     next_act = new_act
-                if next_act is None:
-                    logger.error('No act to run')
-                    return
                 await self.run_narrative_act(next_act, i+1)
                 previous_act = next_act
                 previous_act_post_state = await self.run_coda(next_act, final=False)
@@ -1955,12 +1940,12 @@ In performing this integration:
 
             await asyncio.sleep(0.1)
             if new_act is None:
-                logger.error('No act to run')
+                stop('no coda act to run')
                 return
             await self.run_narrative_act(next_act, i+2)
             
         except Exception as e:
-            logger.error(f'Error running integrated narrative: {e}')
+            stop(f'error running integrated narrative: {type(e).__name__}: {e}')
             traceback.print_exc()
         
         return
@@ -2430,7 +2415,9 @@ What unified central dramatic question emerges from these proposals?
         time_str = scene.get('time')
         if not time_str:
             return self.simulation_time
-        time_str = time_str.strip().replace('x', '0')
+        if isinstance(time_str, datetime):  # already validated
+            return time_str
+        time_str = str(time_str).strip().replace('x', '0')
         time_str = time_str.replace('00T', '01T') # make sure day is not 00
         try:
             # Parse ISO 8601 format
