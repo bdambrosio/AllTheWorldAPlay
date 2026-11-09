@@ -82,16 +82,22 @@ class PerceptualState:
     # self.extract_information(sensory_input)
     
     def record_information_items_from_look(self, percept_hash: List[str], resources: List[str], characters: List[str]) -> List[InformationItem]:
-        """Extract information items from perceptual hash - currently only resources and characters"""
+        """Record the resources and characters in view. One item per (kind, name): a repeat
+        sighting refreshes its timestamp (every look used to append and re-embed them all)."""
+        now = self.owner.context.simulation_time
+        known = {(i.item, i.content): i for i in self.information_items}
         items = []
-        for resource_name in resources:
-            item = InformationItem('resource', resource_name, 'permanent', self.owner.context.simulation_time)
-            item.embedding = self.embedding_model.encode(item.content)
-            self.information_items.append(item)
-        for character_name in characters:
-            item = InformationItem('character', character_name, 'permanent', self.owner.context.simulation_time)
-            item.embedding = self.embedding_model.encode(item.content)
-            self.information_items.append(item)
+        for kind, names in (('resource', resources), ('character', characters)):
+            for name in names:
+                item = known.get((kind, name))
+                if item is None:
+                    item = InformationItem(kind, name, 'permanent', now)
+                    item.embedding = self.embedding_model.encode(item.content)
+                    self.information_items.append(item)
+                    known[(kind, name)] = item
+                else:
+                    item.timestamp = now
+                items.append(item)
         return items
 
     def get_information_items(self, search_text: str, threshold: float = 0.6, max_results: int = 5) -> List[InformationItem]:

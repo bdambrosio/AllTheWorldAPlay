@@ -712,7 +712,9 @@ End response with:
         # the raw #view dump is the current view (also kept as self.look_percept), not an event
         # worth remembering: storing it filled structured memory with map dumps
         view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL, remember=False)
-        notices = self.process_consequences(act_arg, reason, view_text)
+        # only an actual Look act has an intent to judge relevance against; setup/scene-start
+        # looks passed act_arg None/'' and spent an LLM call on "X does None and notices ..."
+        notices = self.process_consequences(act_arg, reason, view_text) if act_arg else ''
         if notices:
             self.add_perceptual_input(notices, mode='internal')
  
