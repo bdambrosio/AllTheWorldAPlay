@@ -2679,8 +2679,9 @@ re""")]
                 actors_in_scene.append(actor)
                 actor_tasks[actor.name] = {}
                 if not actor.focus_goal: # generate goals if necessary
-                    await actor.generate_goals()
-                    await actor.request_goal_choice()
+                    goals = await actor.generate_goals()
+                    if goals:  # (called without its goals argument: TypeError ended the narrative)
+                        await actor.request_goal_choice(goals)
                 if actor.focus_goal and not actor.focus_goal.task_plan:
                     await actor.generate_task_plan(ntasks=(scene['action_order']).count(actor.name))
                 actor_tasks[actor.name]['task_plan'] = actor.focus_goal.task_plan if actor.focus_goal and actor.focus_goal.task_plan else []

@@ -151,16 +151,23 @@ def main():
     p.add_argument("manifest")
     p.add_argument("--pairwise", choices=["local", "fireworks"])
     p.add_argument("--quality", default="local:play_overall", help="judge metric for the frontier")
+    p.add_argument("--max-llm-errors", type=float, default=0.05,
+                   help="exclude runs whose LLM error rate exceeds this (server outages)")
     a = p.parse_args()
     from scipy.stats import mannwhitneyu
     manifest = json.loads(Path(a.manifest).read_text())
 
     rows = collections.defaultdict(lambda: collections.defaultdict(list))   # condition -> metric -> values
+    excluded = []   # runs whose LLM server failed part-way (vLLM crashes)
     higher_better = {k: hb for k, (hb, _) in METRICS.items()}
     for r in manifest["runs"]:
         card = json.loads(Path(r["scorecard"]).read_text()) if r.get("scorecard") and Path(r["scorecard"]).exists() else None
         jd = json.loads(Path(r["judges"]).read_text()) if r.get("judges") and Path(r["judges"]).exists() else None
         if not card:
+            continue
+        err = get(card, "integrity", "llm_error_rate") or 0
+        if err > a.max_llm_errors:
+            excluded.append({"label": r["label"], "condition": r["condition"], "llm_error_rate": err})
             continue
         for name, (_, fn) in METRICS.items():
             v = fn(card, jd)
@@ -171,7 +178,7 @@ def main():
             if isinstance(v, (int, float)):
                 rows[r["condition"]][name].append(float(v))
 
-    result = {"name": manifest["name"], "conditions": {}}
+    result = {"name": manifest["name"], "conditions": {}, "excluded_runs": excluded}
     base = rows.get("base", {})
     for cond, metrics in rows.items():
         entry, pvals = {}, {}
@@ -217,6 +224,9 @@ def main():
                 cell += f" ({e['diff_vs_base']:+.3g}{' *' if e.get('holm_significant') else ''})"
             cells.append(cell)
         lines.append(f"| {m} | " + " | ".join(cells) + " |")
+    if excluded:
+        lines += ["", f"Excluded (LLM error rate > {a.max_llm_errors}): " +
+                  ", ".join(f"{e['label']} ({e['llm_error_rate']:.0%})" for e in excluded)]
     lines += ["", "\\* Holm-significant at 0.05 vs base. Runs per condition: " +
               ", ".join(f"{c}={max((e['n'] for e in result['conditions'][c].values()), default=0)}" for c in conds)]
     if result.get("pairwise"):
