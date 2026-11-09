@@ -50,7 +50,10 @@ class MemoryConsolidator:
         # Get memories by drive using retrieval system
         drive_memories = {}
         for drive in self.owner.drives:  # Now using Drive objects
-            memories = self.owner.memory_retrieval.get_by_drive(
+            # concrete memories only: get_by_drive also returns abstractions, so drive
+            # abstractions were built from earlier ones ('Activity related to X: Activity
+            # related to X: ...') and listed abstraction ids as their instances
+            memories = self.owner.memory_retrieval.get_concrete_by_drive(
                 memory=memory,
                 drive=drive,
                 threshold=0.1,
