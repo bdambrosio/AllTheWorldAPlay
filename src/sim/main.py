@@ -20,7 +20,6 @@ import websockets
 import matplotlib.pyplot as plt
 import logging
 import signal
-import copy
 
 # Create replay directory if it doesn't exist
 replay_dir = Path.home() / '.local/share' / 'alltheworldaplay' / 'logs'
@@ -149,7 +148,34 @@ class SimulationManager:
 
 sim_manager = SimulationManager()
 ws_manager = WebSocketManager()
-image_cache = {}
+# record.json (replay capture): last image recorded per name, by hash
+recorded_images = {}
+
+def record_line(ws_message):
+    """One compact JSON line for record.json. An image is kept only when it differs from the
+    last one recorded under that name (replay keeps showing the previous one); every message
+    used to be deep-copied and pretty-printed with its base64 images, ~5 MB per 12 minutes."""
+    data = ws_message.get('data')
+    if isinstance(data, dict) and data.get('image') and ws_message.get('type') in ('character_update', 'world_update'):
+        key = ws_message.get('name') or ws_message['type']
+        digest = hash(data['image'])
+        if recorded_images.get(key) == digest:
+            ws_message = {**ws_message, 'data': {k: v for k, v in data.items() if k != 'image'}}
+        else:
+            recorded_images[key] = digest
+            ws_message = {**ws_message, 'data': {**data, 'image': _as_jpeg(data['image'])}}
+    return json.dumps(ws_message, separators=(',', ':')) + "\n"
+
+def _as_jpeg(image_b64):
+    """Recorded images as JPEG (~10x smaller than the PNGs the image server returns; the
+    browser decodes by content, whatever the data: URL says). Unchanged if it will not decode."""
+    try:
+        from PIL import Image
+        buf = BytesIO()
+        Image.open(BytesIO(base64.b64decode(image_b64))).convert('RGB').save(buf, format='JPEG', quality=85)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return image_b64
 # Add a root endpoint for health check
 @app.get("/health")
 async def root():
@@ -252,29 +278,11 @@ async def startup_event():
     capture_file = open(replay_dir / 'record.json', 'w')
     
     async def handle_simulation_results():
-        global image_cache
         async for result in sim_manager.receive_results():
             try:
                 ws_message = convert_sim_to_ws_message(result)
                 ws_manager.queue_message(ws_message)
-                            # Minimize images in the copy
-                capture_file_result = copy.deepcopy(ws_message)
-                # let first image through for both world and characters
-                if capture_file_result.get('type') == 'character_update' and 'image' in capture_file_result.get('data', {}):
-                    actor_name = capture_file_result['data']['name']
-                    if actor_name in image_cache:
-                        del capture_file_result['data']['image']
-                    else:
-                        image_cache[actor_name] = capture_file_result['data']['image']
-                elif capture_file_result.get('type') == 'world_update' and 'image' in capture_file_result.get('data', {}):
-                    if 'world' in image_cache:
-                        #del capture_file_result['data']['image']
-                        pass
-                    else:
-                        image_cache['world'] = capture_file_result['data']['image']
-
-                # Record the ws_message instead of the raw result
-                capture_file.write(json.dumps(capture_file_result, indent=2)+"\n")
+                capture_file.write(record_line(ws_message))
             except Exception as e:
                 # one bad message must not end result forwarding
                 print(f"Error forwarding simulation result: {e}")

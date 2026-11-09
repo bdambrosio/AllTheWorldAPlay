@@ -621,6 +621,13 @@ def load_replay_file(file_path: Path) -> list:
         with open(file_path, 'r') as f:
             for line in f:
                 line = line.strip()
+                if line and not current_event:
+                    # current format: one compact JSON object per line
+                    try:
+                        events.append(json.loads(line))
+                        continue
+                    except json.JSONDecodeError:
+                        pass  # older pretty-printed record: fall through to brace counting
                 if line:
                     current_event.append(line)
                     brace_count += line.count('{') - line.count('}')
