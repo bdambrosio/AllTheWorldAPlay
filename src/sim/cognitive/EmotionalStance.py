@@ -182,12 +182,12 @@ End your response with the:
 
     @staticmethod
     def from_signalClusters(signalClusters: List[SignalCluster], character: Character):
-        """Stance for these clusters. No LLM call for no clusters (keeps the current stance), or
-        for the same clusters with the same signals as last time for this character (it was
-        recomputed on every task plan, act generation and dialog start)."""
-        if not signalClusters:
-            return getattr(character, 'emotionalStance', None) or EmotionalStance()
-        key = tuple((c.id, len(c.signals)) for c in signalClusters)
+        """Stance for these clusters and this character. Cached per character: no LLM call when
+        the clusters (and their signal counts) and the character description are unchanged since
+        the last call (it ran on every task plan, act generation and dialog start). With drive
+        signal analysis off the clusters are empty, and the stance comes from the description
+        alone, so the description is part of the key."""
+        key = (tuple((c.id, len(c.signals)) for c in signalClusters), hash(character.character))
         cached = getattr(character, '_stance_cache', None)
         if cached and cached[0] == key:
             return cached[1]
