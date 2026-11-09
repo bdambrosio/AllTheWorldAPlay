@@ -2538,32 +2538,45 @@ End your response with:
                 print('No focus goal, no new task from say or think')
         return
     
-    async def update_individual_commitments_following_conversation(self, target:Character, transcript:str, joint_tasks=[]):
-        """Update individual commitments after closing a dialog"""
-        if not self.focus_goal or self.check_if_in_dialog_subtask():
-            return []
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a dialog between {{$name}} and {{$target_name}},
-your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
-and identify any new commitment to act individually, now,  made solely by you, {{$name}}, if any. Otherwise respond None.
-Any commitment reported must be definite, immediate, non-hypothetical, and both significant to and not redundant in the scene you are in.
-Be careful to distinguish between hypotheticals and actual commitments. Respond only with an actual commitment. 
-Note that a commitment must come from a clear, firm, statement of intent to act, and not from a question, statement of opinion, statement of fact, or other conversational noise.
-For example, the following transcript contains hypothetical commitments by Alex that should not be reported as new commitments to act:
-                            
-<hypotheticial commitments example>
-Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
-     and the timeline's slashed in half—how would you keep things from unraveling without your usual backup?
-Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down. 
-    I'd be clear about the risks from the start, tackle key features first, and adjust as needed, making sure everyone's on the same page about what's doable without backup.
+    def _pending_task_names(self, other):
+        """Tasks still ahead for self and other: the rest of the scene plan, else their goals' plans."""
+        plan = self.context.scene_integrated_task_plan
+        if self.context.current_scene and plan:
+            ahead = plan[self.context.scene_integrated_task_plan_index + 1:]
+            return '\n'.join(f"{e['actor'].name}: {e['task'].name}" for e in ahead if e['actor'] in (self, other))
+        names = []
+        for c in (self, other):
+            if c.focus_goal:
+                names += [f'{c.name}: {t.name}' for t in c.focus_goal.task_plan]
+        return '\n'.join(names)
 
+    async def extract_commitments_following_conversation(self, other:Character, transcript:str):
+        """One pass over a finished dialog for new commitments by either party, individual or joint.
+        Replaces a joint pass plus up to two individual passes (3 LLM calls, joint tasks recorded
+        for one party only). Each commitment is rated once (Context.evaluate_commitment_significance)
+        and, in a scene, placed for each committing character (Context.place_commitment); outside
+        a scene it is added to that character's goal plan. Returns the tasks added."""
+        if self.check_if_in_dialog_subtask():
+            return []
+        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$other_name}},
+and identify any new commitments to act now made in it, by {{$name}}, by {{$other_name}}, or by both together. Otherwise respond None.
+Any commitment reported must be definite, immediate, non-hypothetical, and remain unfulfilled at the end of the transcript.
+A commitment must come from a clear, firm statement of intent to act, not from a question, an opinion, a statement of fact, or other conversational noise.
+Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments.
+
+<hypothetical commitments example>
+Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
+     and the timeline's slashed in half - how would you keep things from unraveling without your usual backup?
+Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down.
+    I'd be clear about the risks from the start, tackle key features first, and adjust as needed.
 </hypothetical commitments example>
 
-Further, any new commitments should be consistent with the scene you will be acting in, as given below.
-                            
+Any new commitment should be consistent with the scene being played, as given below.
+
 <central_narrative>
 {{$central_narrative}}
 </central_narrative>
-                            
+
 <act_specific_narrative>
 {{$act_specific_narrative}}
 </act_specific_narrative>
@@ -2572,308 +2585,101 @@ Further, any new commitments should be consistent with the scene you will be act
 {{$scene}}
 </scene>
 
-## the conversation up to this point has been:
-# <transcript>
+<transcript>
 {{$transcript}}
 </transcript>
 
-Given the following background information:
+Tasks already planned (a commitment that repeats one of these is not new):
+<pending_tasks>
+{{$pending_tasks}}
+</pending_tasks>
 
-<all_tasks> 
-{{$all_tasks}}
-</all_tasks>
+An action can be physical or verbal. Thought, e.g. 'reflect on my situation', is NOT a commitment to act.
+For each commitment, #actors names who committed to act: one name for an individual commitment, both names for a joint one.
+Report at most 3 commitments, most concrete and immediate first, in the temporal order implied by the transcript.
 
-<focus_task>
-{{$focus_task}}
-</focus_task>
-
-<reason>
-{{$reason}}
-</reason>
-
-<self>
-{{$name}}
-</self>
-
-<other>
-{{$target_name}}
-</other>
-
-<joint_tasks>
-{{$joint_tasks}}
-</joint_tasks>
-
-Extract from this transcript a new commitment to act made by self, {{$name}}, to other, {{$target_name}} relevant to and not redundant in the scene you will are acting in.
-
-Extract only commitments made by {{$name}} that are consistent with the entire transcript and remain unfulfilled at the end of the transcript.
-Note that the joint_tasks listed above, are commitments made by both {{$name}} and {{$target_name}} to work together, and should not be reported as new commitments here.
-                            
-Does the transcript include an intension for {{$name}} to act alone, that is, a new task being committed to individually? 
-An action can be physical or verbal.
-Thought, e.g. 'reflect on my situation', should NOT be reported as an action.
-Consider the all_tasks pending and current task and action reason in determining if a candidate task is in fact new.
-
-Respond only with all intensions in the transcript, in the temporal order implied in the transcript.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-Each intension should be closed by a ## tag on a separate line.
-be careful to insert line breaks only where shown, separating a value from the next tag:
+Close each commitment with ## on a separate line. Be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #name brief (4 words max) task name
 #description terse (6 words max) statement of the action to be taken
-#actors {{$name}}
-#start_time (2 words) expected start time of the action, typically elapsed time from now
-#duration (2 words) expected duration of the action in minutes
-#reason (4 words max) on why this action is important now
-#termination (5 words max) easily satisfied termination test to quickly end this task
-##
-
-In refering to other actors, always use their name, without other labels like 'Agent', 
-and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
-                            
-
-===Example===
-
-<transcript>
-Jean says: Hey Francoise, what needs doin' on the farm today?
-Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched. We should check the wheat too, make sure it's not gettin' too ripe.
-Jean says: Aye, let's get the waterin' done first, then we can take a gander at the wheat. I'll grab the buckets and meet you by the well.
-Francoise says: I'll meet you by the well then, Jean. Don't forget to check the bucket handles, we don't want 'em breakin' on us.
-Jean says: Aye, I'll give 'em a good check. See you by the well, Francoise. I'll bring the ropes too, just in case.
-</transcript>
-
-<self>
-Francoise
-</self>
-
-<other>
-Jean
-</other>
-
-Response:
-
-#name bring ropes
-#description bring ropes to meeting with Jean
-#reason in case the well handle breaks
-#termination Met Jean by the well
-#start_time 0 minutes
-#duration 10 minutes
-#actors Francoise
-#committed True
-##
-
-
-===End Example===
-
-Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the action analysis in hash-formatted text as shown above.
-End your response with:
-</end>
-""")]
-        response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join([task.name for task in self.focus_task.stack]),
-                                 "focus_task":self.focus_task.peek(),
-                                 "joint_tasks":'\n'.join(hash_utils.find('name', task) for task in joint_tasks),
-                                 "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
-                                 "name":self.name, 
-                                 "target_name":target.name,
-                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
-                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''}, 
-                                 prompt, tag='update_individual_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=180)
-        source = Task('dialog with '+target.name, 
-                      description='dialog with '+target.name, 
-                      reason='dialog with '+target.name, 
-                      termination='natural end of dialog', 
-                      goal=self.focus_goal if self.focus_goal else None,
-                      actors=[self, target],
-                      start_time=self.context.simulation_time,
-                      duration=0)    
-        intension_hashes = hash_utils.findall_forms(response)
-        # returned so hear() can skip the other party's extraction ("only allow one individual
-        # task"); this returned None, so both parties always extracted commitments
-        accepted = []
-        if len(intension_hashes) == 0:
-            print(f'no new tasks in conversation')
-            return accepted
-        for intension_hash in intension_hashes:
-            intension = self.validate_and_create_task(intension_hash)
-            if intension:
-                action_order_length = len(self.context.current_scene['action_order']) if self.context.current_scene else 10 # if not in a scene, skip the significance check
-                if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
-                    significance = self.context.evaluate_commitment_significance(self, target, intension)
-                    if significance == 'NOISE':
-                        continue
-                    elif significance == 'RELEVANT' or significance == 'REDUNDANT':
-                        intension.reason = intension.reason + ' (optional)'
-                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*action_order_length) \
-                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*action_order_length):
-                        print(f'\n{self.name} new individual committed task: {intension_hash.replace('\n', '; ')}')
-                        if self.context.scene_integrated_task_plan:
-                            insert_index = self.context.scene_integrated_task_plan_index+1
-                            self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
-                            accepted.append(intension)
-                elif self.focus_goal:
-                    await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
-                    accepted.append(intension)
-                else:
-                    print('No focus goal, no new task from conversation')
-        return accepted
-  
-    async def update_joint_commitments_following_conversation(self, target:Character, transcript:str):
-        if not self.focus_goal or self.check_if_in_dialog_subtask():
-            return []
-        """Update individual commitments after closing a dialog"""
-        
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$target_name}},
-     and identify any new commitment to act now made jointly by {{$name}} and {{$target_name}}, if any. Otherwise respond None.
-Any commitment reported must be definite, immediate, non-hypothetical, and both significant to and not redundant in the scene you are in.
-Note that a commitment must come from a clear, firm, statement of intent, and not from a question, statement of opinion, statement of fact.
-Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments.
-                            
-<hypotheticial commitments example>
-Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
-     and the timeline's slashed in half—how would you keep things from unraveling without your usual backup?
-Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down. 
-    I'd be clear about the risks from the start, tackle key features first, and adjust as needed, making sure everyone's on the same page about what's doable without backup.
-</hypothetical commitments example>
-
-Further, any new commitments should be consistent with and not redundant in the scene you will be acting in, as given below.
-                            
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-                            
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
-<scene>
-{{$scene}}
-</scene>
-
-## the conversation up to this point has been:
-<transcript>
-{{$transcript}}
-</transcript>
-
-Given the following background information:
-
-<all_tasks> 
-{{$all_tasks}}
-</all_tasks>
-
-<focus_task>
-{{$focus_task}}
-</focus_task>
-
-<reason>
-{{$reason}}
-</reason>
-
-
-Extract from this transcript a single most important new commitment to act jointly made by self, {{$name}} and other, {{$target_name}}, if any. Otherwise respond None.
-Extract only an express commitment appear in the transcript and remaining unfulfilled at the end of the transcript.
-If more than one joint action commitment is found, report the most concrete, immediate, prominent one in the transcript.
-                            
-An action can be physical or verbal.
-Thought, e.g. 'reflect on our situation', should NOT be reported as a commitment to act.
-Consider the all_tasks and current task and action reason in determining if there is a new task being committed to.
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#name brief (4 words max) action name
-#description terse (6 words max) statement of the action to be taken
-#actors {{$name}}, {{$target_name}}
+#actors names of the committing character(s), comma separated
 #reason (4 words max) on why this action is important now
 #duration (2 words) expected duration of the action in minutes
 #termination (5 words max) easily satisfied termination test to quickly end this task
 ##
 
-In refering to other actors, always use their name, without other labels like 'Agent', 
-and do not use pronouns or referents like 'he', 'she', 'that guy', 'other', etc.
-                            
+Always refer to characters by name, never by pronoun or label ('he', 'she', 'other', 'Agent').
 
 ===Example===
 
 <transcript>
 Jean says: Hey Francoise, what needs doin' on the farm today?
-Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched. We should check the wheat too, make sure it's not gettin' too ripe.
-Jean says: Aye, let's get the waterin' done first, then we can take a gander at the wheat. I'll grab the buckets and meet you by the well.
-Francoise says: I'll meet you by the well then, Jean. Don't forget to check the bucket handles, we don't want 'em breakin' on us.
-Jean says: Aye, I'll give 'em a good check. See you by the well, Francoise. I'll bring the ropes too, just in case.
+Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched.
+Jean says: Aye, let's get the waterin' done first. I'll grab the buckets and meet you by the well.
+Francoise says: I'll meet you by the well then, Jean.
+Jean says: See you by the well, Francoise. I'll bring the ropes too, just in case.
 </transcript>
-
-<self>
-Francoise
-</self>
-
-<other>
-Jean
-</other>
 
 Response:
 
-#name farm chores
-#description Meet by the well  
-#duration 10 minutes
+#name water south field
+#description Meet by the well, water field
 #actors Jean, Francoise
-#reason get water for the south field
+#reason crops are parched
 #duration 30 minutes
-#termination water bucket is full
+#termination south field watered
+##
+#name bring ropes
+#description bring ropes to the well
+#actors Jean
+#reason in case a handle breaks
+#duration 10 minutes
+#termination ropes at the well
+##
 
 ===End Example===
 
 Do NOT include any introductory, explanatory, or discursive text.
-Respond only with the action analysis in hash-formatted text as shown above.
 End your response with:
 </end>
 """)]
-        response = self.llm.ask({"transcript":transcript, 
-                                 "all_tasks":'\n'.join([task.name for task in self.focus_goal.task_plan]) if self.focus_goal else '',
-                                 "focus_task":self.focus_task.peek().to_string() if self.focus_task.peek() else '',
-                                 "reason":self.focus_task.peek().reason if self.focus_task.peek() else '',
-                                 "name":self.name, 
-                                 "target_name":target.name,
+        response = self.llm.ask({"transcript": transcript,
+                                 "pending_tasks": self._pending_task_names(other),
+                                 "name": self.name,
+                                 "other_name": other.name,
                                  "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                  "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''}, 
-                                 prompt, tag='update_joint_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=240)
-        source = Task('dialog with '+target.name, 
-                      description='dialog with '+target.name, 
-                      reason='dialog with '+target.name, 
-                      termination='natural end of dialog', 
-                      start_time=self.context.simulation_time,
-                      duration=0,
-                      goal=None,
-                      actors=[self, target])    
-        intension_hashes = hash_utils.findall_forms(response)
-        intensions = []
-        if len(intension_hashes) == 0:
-            print(f'no new joint intensions in turn')
-            return []
-        for intension_hash in intension_hashes:
-            intension = self.validate_and_create_task(intension_hash)
-            if intension:
-                if self.__class__.__name__ == 'NarrativeCharacter' and self.current_scene:
-                    action_order_length = len(self.context.current_scene['action_order']) if self.context.current_scene else 10 # if not in a scene, skip the significance check
-                    significance = self.context.evaluate_commitment_significance(self, target, intension)
-                    if significance == 'NOISE':
-                        continue
-                    elif significance == 'RELEVANT' or significance == 'REDUNDANT':
-                        intension.reason = intension.reason + ' (optional)'
-                    elif (significance == 'SIGNIFICANT' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 1.5*action_order_length) \
-                        or (significance == 'CRUCIAL' and self.context.scene_integrated_task_plan and len(self.context.scene_integrated_task_plan) < 2*action_order_length):
-                        print(f'\n{self.name} new joint task: {intension_hash.replace('\n', '; ')}')
-                        if self.context.scene_integrated_task_plan:
-                            insert_index = self.context.scene_integrated_task_plan_index+1
-                            self.context.scene_integrated_task_plan.insert(insert_index, {'actor': self, 'goal': self.focus_goal, 'task': intension})
-                            intensions.append(intension)
-                elif self.focus_goal:
-                    await self.generate_task_plan(self.focus_goal, new_task=intension, replan=True)
+                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''},
+                                prompt, tag='extract_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=300)
+        added = []
+        hashes = hash_utils.findall_forms(response) if response else []
+        if not hashes:
+            print(f'no new commitments in conversation {self.name} / {other.name}')
+            return added
+        in_scene = self.__class__.__name__ == 'NarrativeCharacter' and self.context.current_scene
+        for task_hash in hashes:
+            task = self.validate_and_create_task(task_hash)
+            if not task:
+                continue
+            owners = [c for c in (self, other) if c in (task.actors or [])] or [self]
+            significance = None
+            if in_scene:
+                significance = self.context.evaluate_commitment_significance(owners[0], other if owners[0] is self else self, task)
+            for i, owner in enumerate(owners):
+                # a joint commitment becomes a task for each party (it ran for one party only)
+                owner_task = task if i == 0 else Task(task.name, task.description, task.reason, task.actors, None,
+                                                      termination=task.termination,
+                                                      start_time=self.context.simulation_time, duration=task.duration)
+                if in_scene:
+                    if self.context.place_commitment(owner, owner_task, significance):
+                        added.append(owner_task)
+                elif owner.focus_goal:
+                    await owner.generate_task_plan(owner.focus_goal, new_task=owner_task, replan=True)
+                    added.append(owner_task)
                 else:
-                    print('No focus goal, no new task from conversation')
-        return intensions
+                    print(f'{owner.name}: no focus goal, commitment {owner_task.name} dropped')
+        return added
 
     def tell(self, to_actor, message, source=None, respond=True):
         """Initiate or continue dialog with dialog context tracking"""
@@ -3026,31 +2832,21 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             dialog_as_list = dialog.split('\n') 
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
-            individual_tasks = []
-            if self.name != 'Viewer' and from_actor.name != 'Viewer':
-                joint_tasks = await self.update_joint_commitments_following_conversation(from_actor, dialog)
-                await asyncio.sleep(0)
-                if (not joint_tasks or len(joint_tasks) == 0):
-                    individual_tasks = await self.update_individual_commitments_following_conversation(from_actor, dialog, joint_tasks)
-                await asyncio.sleep(0)
-
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
             self.last_task = self.focus_task.peek()
-            self.focus_task.pop()
+            self._pop_dialog_task(from_actor)
             # it would probably be better to have the other actor deactivate the dialog itself
-            dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
-            from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {dialog}', percept=False, mode='auditory')
-            dialog_as_list = dialog.split('\n') 
-            from_actor.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
-
-            # only allow one individual task to be generated even if there are no joint tasks
-            if from_actor.name != 'Viewer' and self.name != 'Viewer' and (not joint_tasks or len(joint_tasks) == 0) and (not individual_tasks or len(individual_tasks) == 0):
-                await from_actor.update_individual_commitments_following_conversation(self, dialog, joint_tasks)
-                await asyncio.sleep(0)
-
+            other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
+            from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {other_dialog}', percept=False, mode='auditory')
+            from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
-            from_actor.focus_task.pop()
+            from_actor._pop_dialog_task(self)
+
+            if self.name != 'Viewer' and from_actor.name != 'Viewer':
+                # once both dialog tasks are off the stacks: one pass for both parties' commitments
+                await self.extract_commitments_following_conversation(from_actor, dialog)
+                await asyncio.sleep(0)
             #self.driveSignalManager.recluster()
             #from_actor.driveSignalManager.recluster()
             return
@@ -3620,6 +3416,13 @@ End your response with:
             self.focus_action = choice.pick_weighted(list(zip(actions, [self.ActWeight(len(actions), n, action) for n, action in enumerate(actions)])))[0]
             return self.focus_action
 
+
+    def _pop_dialog_task(self, other):
+        """Pop the 'dialog with other' task if it is on top (the pop was unconditional and could
+        remove the scene task when the dialog task was already gone)."""
+        top = self.focus_task.peek()
+        if top is not None and top.name.startswith('dialog with'):
+            self.focus_task.pop()
 
     def check_if_in_dialog_subtask(self):
         if self.focus_task.peek() and not self.focus_task.peek().name.startswith('dialog with '):
