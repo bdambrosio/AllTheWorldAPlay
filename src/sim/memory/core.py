@@ -129,6 +129,16 @@ class StructuredMemory:
         
         return entry.memory_id
     
+    def add_abstraction(self, abstraction: AbstractMemory) -> AbstractMemory:
+        """Append an abstraction made outside add_entry, giving it an id. Consolidation's
+        abstractions had memory_id None, and AbstractMemory equality is by memory_id, so they
+        all compared equal: 'in' and remove() matched (and removed) the wrong ones."""
+        if abstraction.memory_id is None:
+            abstraction.memory_id = self._next_id
+            self._next_id += 1
+        self.abstract_memories.append(abstraction)
+        return abstraction
+
     def _find_matching_abstraction(self, entry: MemoryEntry) -> Optional[AbstractMemory]:
         """Find existing abstraction that matches the new memory"""
         if not self.abstract_memories:

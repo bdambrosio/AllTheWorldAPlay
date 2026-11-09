@@ -166,7 +166,7 @@ End with:
         
         # Check if this abstraction overlaps with existing ones
         if not self._overlaps_existing_abstraction(memory, abstraction):
-            memory.abstract_memories.append(abstraction)
+            memory.add_abstraction(abstraction)
             # Mark concrete memories for potential cleanup
             memory.pending_cleanup.extend([mem.memory_id for mem in cluster_memories])
 
@@ -257,7 +257,7 @@ End your response with:
             memory.abstract_memories.remove(abs1)
         if abs2 in memory.abstract_memories:
             memory.abstract_memories.remove(abs2)
-        memory.abstract_memories.append(merged)
+        memory.add_abstraction(merged)
 
     def _merge_summaries(self, abs1: AbstractMemory, abs2: AbstractMemory) -> str:
         """Merge summaries of two abstractions"""
@@ -431,7 +431,7 @@ End with:
         abstraction.abstraction_type = "drive-based"
         
         # Add to memory
-        memory.abstract_memories.append(abstraction)
+        memory.add_abstraction(abstraction)
 
     class Pattern:
         """Future: Represent learned patterns"""
