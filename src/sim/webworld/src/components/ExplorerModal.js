@@ -144,9 +144,12 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
               )}
             </div>
 
-            <h4>Current Perceptions</h4>
+            <h4>Emotional Stance</h4>
+            <div className="action-details">{explorerState.emotional_stance || 'None'}</div>
+
+            <h4>Recent Perceptions</h4>
             <div className="perceptions-list">
-              {explorerState.emotional_state?.map((percept, i) => (
+              {explorerState.percepts?.map((percept, i) => (
                 <div key={i} className="percept-item">
                   <div className="percept-header">
                     <span className="percept-mode">{percept.mode}</span>
@@ -159,14 +162,14 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
 
             <h4>Last Action</h4>
             <div className="action-details">
-              <div>Name: {explorerState.lastAction?.name || 'None'}</div>
+              <div>Action: {explorerState.lastAction?.mode ? `${explorerState.lastAction.mode}: ${explorerState.lastAction.action}` : 'None'}</div>
               <div>Result: {explorerState.lastAction?.result || 'None'}</div>
               <div>Reason: {explorerState.lastAction?.reason || 'None'}</div>
             </div>
 
             <h4>Recent Actions</h4>
             <div className="actions-list">
-              {explorerState.cognitive?.actions?.map((action, i) => (
+              {explorerState.actions?.map((action, i) => (
                 <div key={i} className="action-item">{action}</div>
               ))}
             </div>

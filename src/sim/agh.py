@@ -190,6 +190,24 @@ class Character:
     def y(self):
         return self.mapAgent.y
 
+    def _restamp_pre_context_entries(self, start_time):
+        """Percepts and memories added before the character joined a Context (e.g. a play's
+        opening add_perceptual_input calls) were stamped with the wall clock, which is years
+        after the play's simulation clock, so they sorted as 'most recent' for the whole play.
+        Anything stamped later than the play's start is such an entry: move it to the start."""
+        for mem in self.structured_memory.concrete_memories:
+            if mem.timestamp and mem.timestamp > start_time:
+                mem.timestamp = start_time
+        for mem in self.structured_memory.abstract_memories:
+            if mem.start_time and mem.start_time > start_time:
+                mem.start_time = start_time
+            if mem.end_time and mem.end_time > start_time:
+                mem.end_time = start_time
+        for inputs in self.perceptual_state.current_inputs.values():
+            for percept in inputs:
+                if percept.timestamp and percept.timestamp > start_time:
+                    percept.timestamp = start_time
+
     def set_context(self, context: Context):
         if getattr(self, 'context', None) is context and getattr(self, 'speech_stylizer', None) is not None:
             # Already initialized for this context (owner NPCs are set up in get_npc_by_name and
@@ -197,6 +215,7 @@ class Character:
             # repeats three LLM calls.
             return
         self.context = context
+        self._restamp_pre_context_entries(context.simulation_time)
         self.actor_models = KnownActorManager(self, context)
         self.resource_models = KnownResourceManager(self, context)
         self.resourceRefManager = ResourceReferenceManager(self, context, self.llm)
@@ -436,10 +455,24 @@ End your response with:
             duration = timedelta(minutes=duration)
 
         name_stop_list = ['none', 'no', 'one', 'self', 'me', 'i', 'my', 'mine', 'ours', 'us', 'we', 'our', 'ourselves']
-        target_names = hash_utils.findList('target', hash_string)
-        targets = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in target_names if name.strip().lower() not in name_stop_list]
-        actor_names = hash_utils.findList('actors', hash_string)
-        actors = [self.actor_models.resolve_or_create_character(name.strip().capitalize())[0] for name in actor_names if name.strip().lower() not in name_stop_list]
+        # Split targets on commas / ' and ' only: findList splits on whitespace, so a Look at
+        # "tree line" created two NPC characters, "Tree" and "Line".
+        target_form = hash_utils.find('target', hash_string) or ''
+        target_names = [n.strip() for part in target_form.split(',') for n in part.split(' and ')]
+        target_names = [n for n in target_names if n and n.lower() not in name_stop_list]
+        is_say = bool(mode) and mode.strip().capitalize() == 'Say'
+        targets = []
+        for name in target_names:
+            if is_say:
+                # speech implies a listener: an unknown addressee becomes an NPC
+                target, _ = self.actor_models.resolve_or_create_character(name.capitalize())
+            else:
+                # Look/Move/Do/Think targets are often places or things: resolve existing
+                # characters only, never invent one
+                target, _ = self.actor_models.resolve_character(name.capitalize())
+            if target is not None:
+                targets.append(target)
+        # (an #actors list was parsed here too, possibly creating NPCs, then overwritten below)
 
         # Clean up mode string and validate against Mode enum
         if mode:
@@ -676,7 +709,9 @@ End response with:
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
         view_text, resources, characters, paths, percept_summary = map.hash_direction_info(view, world=self.context.map)
-        view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL)
+        # the raw #view dump is the current view (also kept as self.look_percept), not an event
+        # worth remembering: storing it filled structured memory with map dumps
+        view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL, remember=False)
         notices = self.process_consequences(act_arg, reason, view_text)
         if notices:
             self.add_perceptual_input(notices, mode='internal')
@@ -859,8 +894,9 @@ adjective, adjective, adjective
     def update_world_image(self):
         raise NotImplementedError("Derived classes must implement update_world_image")
     
-    def add_perceptual_input(self, message: str, percept=True, mode=None):
-        """Add a perceptual input to the agent's perceptual state"""
+    def add_perceptual_input(self, message: str, percept=True, mode=None, remember=True):
+        """Add a perceptual input to the agent's perceptual state.
+        remember=False keeps it out of structured memory (e.g. raw #view map dumps)."""
         content = message
         if mode is None or mode not in perceptualState.SensoryMode:
             prompt = [UserMessage(content="""Determine its sensory mode of the following message,
@@ -907,7 +943,7 @@ Respond only with a single choice of mode. Do not include any introductory, disc
             timestamp=self.context.simulation_time if self.context else datetime.now()+timedelta(seconds=10),
             intensity=intensity
         )
-        self.perceptual_state.add_input(perceptual_input)
+        self.perceptual_state.add_input(perceptual_input, remember=remember)
         if self.context:
             input_time = self.context.simulation_time
         else:
@@ -4004,7 +4040,8 @@ end your response with:
     def get_explorer_state(self):
         """Return detailed state for explorer UI"""
         focus_task = self.focus_task.peek()
-        last_act = self.action_history[-1] if self.action_history and len(self.action_history) > 0 else None
+        # act_on_action records self.last_act (action_history was never appended to)
+        last_act = getattr(self, 'last_act', None)
 
         return {
             'character': self.character,
@@ -4018,14 +4055,16 @@ end your response with:
             },
             'decisions': self.decisions or [],  # ADD THIS LINE
             'drives': [{'text': drive.text or '', 'activation': drive.activation} for drive in (self.drives or [])],
-            'emotional_state': [
+            # raw percept log, newest first (this was mislabelled 'emotional_state')
+            'percepts': [
                 {
                     'text': percept.content or '',
                     'mode': percept.mode.name if percept.mode else 'unknown',
                     'time': percept.timestamp.isoformat() if percept.timestamp else self.context.simulation_time.isoformat()
                 }
-                for percept in (self.perceptual_state.get_current_percepts(chronological=True) or [])
+                for percept in (self.perceptual_state.get_current_percepts(chronological=True) or [])[:20]
             ],
+            'emotional_stance': self.emotionalStance.to_string() if getattr(self, 'emotionalStance', None) else '',
             'memories': [
                 {
                     'text': memory.to_string() or '',

@@ -18,7 +18,15 @@ class KnownActor:
         self.goal: str = ''
         self.distance: int = 0
         self.dialog: Dialog = Dialog(self.owner, self.actor_agh)
-        self.relationship: str = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
+        if owner is other_agh or owner.name == other_agh.name:
+            # self-model: the "no interactions yet" seed below made no sense for oneself
+            self._relationship_base = "Self-model not yet formed."
+        else:
+            self._relationship_base = f"No significant interactions with {self.canonical_name} yet. Relationship is neutral."
+        # short updates (and tensions) between full rewrites; capped so the text, which is
+        # embedded in prompts, can't grow without bound
+        self._relationship_notes: List[str] = []
+        self.relationship: str = self._relationship_base
         self.tensions: List[str] = []
         self.recent_relationship_update: bool = False
 
@@ -52,6 +60,8 @@ class KnownActor:
         known_actor.visible = data['visible']
         known_actor.goal = data['goal']
         known_actor.distance = data['distance']
+        known_actor._relationship_base = data['relationship']
+        known_actor._relationship_notes = []
         known_actor.relationship = data['relationship']
         known_actor.tensions = data['tensions']
         # Restore dialog if it exists, passing the resolved characters
@@ -94,7 +104,7 @@ End with:
         if char_memories is None or len(char_memories) == 0:
             return
 
-        if self.owner.name is not self.actor_agh.name:
+        if self.owner.name != self.actor_agh.name:
             prompt = [UserMessage(content=f"""Analyze relationship between these characters based on recent interactions.
 Character: 
 {self.owner.character}
@@ -155,8 +165,11 @@ End with:
 """)]
 
         new_relation = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=200, stops=["</end>"])
-        if new_relation:
-            self.relationship = hash_utils.find('Relationship', new_relation)   
+        rewritten = hash_utils.find('Relationship', new_relation) if new_relation else ''
+        if rewritten:  # a reply without #Relationship used to wipe the relationship to ''
+            self._relationship_base = rewritten.strip()
+            self._relationship_notes = []
+            self._rebuild_relationship()
             self.clear_tensions()
             if not self.recent_relationship_update:
                 self.recent_relationship_update = hash_utils.find('Change', new_relation).strip() == 'True'
@@ -173,7 +186,7 @@ End with:
         if char_memories is None or len(char_memories) == 0:
             return
 
-        if self.owner.name is not self.actor_agh.name:
+        if self.owner.name != self.actor_agh.name:
             prompt = [UserMessage(content=f"""Analyze relationship between these characters based on recent interactions.
 Character: 
 {self.owner.character}
@@ -222,15 +235,25 @@ End with:
 
         relation_update = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=24, stops=["</end>"])
         if relation_update and relation_update.strip() != '':
-            self.relationship +=relation_update.strip()
+            self._add_relationship_note(relation_update.strip())
             self.recent_relationship_update = True
+
+    MAX_RELATIONSHIP_NOTES = 5
+
+    def _add_relationship_note(self, note):
+        self._relationship_notes.append(note)
+        del self._relationship_notes[:-self.MAX_RELATIONSHIP_NOTES]
+        self._rebuild_relationship()
+
+    def _rebuild_relationship(self):
+        self.relationship = '\n'.join([self._relationship_base] + self._relationship_notes)
 
 
     def add_tension(self, item):
         """add an item to the relationship"""
         # tensions field is not used, but keep it for now
         self.tensions.append(item)
-        self.relationship += f'\n{item}'
+        self._add_relationship_note(item)
         
     def get_tensions(self):
         return '\n'.join(self.tensions)
@@ -286,12 +309,10 @@ class KnownActorManager:
             
         # Check if it's a reference to a character in the context
         result = self.context.resolve_character(reference_text)
-        #if result:
-        self.resolution_cache[reference_text] = result # cache everything to avoid repeated lookups
-        if result:
+        if result and result[0] is not None:
+            # cache hits only: caching misses hid characters created later under that name
+            self.resolution_cache[reference_text] = result
             return result
-            
-        # Cache miss, return None
         return (None, None)
 
     def names(self):

@@ -46,6 +46,7 @@ class PerceptualInput:
 
 class PerceptualState:
     """Manages current perceptual state including sensory inputs and attention"""
+    MAX_PER_MODE = 20
     
     def __init__(self, owner = None):
         self.owner = owner  # Reference to owning agent
@@ -57,11 +58,15 @@ class PerceptualState:
         self.embedding_model = _embedding_model  # shared; was a fresh load per character
         self.information_items: List[InformationItem] = []
         
-    def add_input(self, sensory_input: PerceptualInput) -> None:
+    def add_input(self, sensory_input: PerceptualInput, remember: bool = True) -> None:
         """Add new sensory input and manage attention"""
         # Only process inputs above attention threshold
         if sensory_input.intensity >= self.attention_threshold:
-            self.current_inputs[sensory_input.mode].append(sensory_input)
+            inputs = self.current_inputs[sensory_input.mode]
+            inputs.append(sensory_input)
+            # 'current' percepts: keep a recent window per mode (this list was never pruned;
+            # the full history lives in structured memory)
+            del inputs[:-self.MAX_PER_MODE]
             
             # Update attention focus for high intensity inputs
             if (self.attention_focus is None and 
@@ -69,7 +74,7 @@ class PerceptualState:
                 self.attention_focus = sensory_input.mode
                 
             # Add to agent's memory if significant
-            if self.owner:
+            if self.owner and remember:
                 self.owner.add_to_history(
                     f"{sensory_input.mode.value}: {sensory_input.content}"
                 )

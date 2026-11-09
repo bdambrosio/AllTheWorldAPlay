@@ -196,9 +196,13 @@ class StructuredMemory:
         for mem in self.concrete_memories:
             all_memories.append((mem, mem.timestamp))
         
-        # Add abstract memories with their start times
+        # Add an abstraction only where it stands in for concrete memories that cleanup has
+        # removed. Every entry also gets a singleton abstraction with the same text, so
+        # including all abstractions listed each recent memory twice in prompts.
+        present_ids = {mem.memory_id for mem in self.concrete_memories}
         for mem in self.abstract_memories:
-            all_memories.append((mem, mem.start_time))
+            if any(i not in present_ids for i in mem.instances):
+                all_memories.append((mem, mem.timestamp))
         
         # Sort by timestamp and return the most recent n
         all_memories.sort(key=lambda x: x[1], reverse=True)
