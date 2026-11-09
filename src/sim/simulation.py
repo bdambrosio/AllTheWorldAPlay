@@ -172,8 +172,9 @@ class SimulationServer:
             main_dir = Path(__file__).parent
             plays_dir = (main_dir / '../plays').resolve()
                         
-            # List .py files, excluding system files
-            play_files = [f.name for f in plays_dir.glob('*.py') if f.is_file() and not f.name.startswith('__')]
+            # List .py files, excluding system files and LLM config (config.py is not a play)
+            play_files = sorted(f.name for f in plays_dir.glob('*.py')
+                                if f.is_file() and not f.name.startswith('__') and not f.name.startswith('config'))
                         
             await self.send_result({
                 'type': 'play_list',

@@ -75,3 +75,13 @@ src/plays/replays/*.json
 # Private pitch deck and business materials
 pitch-deck/
 logs/
+
+# local environments and editor/tool junk
+.venv/
+venv/
+node_modules/
+*~
+\#*\#
+.idea/
+.vscode/
+*.code-workspace
