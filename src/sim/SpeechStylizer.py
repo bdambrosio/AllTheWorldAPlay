@@ -163,7 +163,7 @@ class SpeechStylizer:
     def _extract_personality_style(self) -> Dict:
         """Extract personality-based speech style using LLM."""
 
-        prompt = [UserMessage(content="""You are analyzing the personality of {self.char.name}.
+        prompt = [UserMessage(content="""You are analyzing the personality of {{$name}}.
 
 #Character Description
 {{$character_description}}
