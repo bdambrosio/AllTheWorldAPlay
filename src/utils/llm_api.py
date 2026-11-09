@@ -11,6 +11,7 @@ import re
 import sys
 import time
 import traceback
+from collections import deque
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
@@ -68,6 +69,9 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
     return IMAGE_PATH / filepath
 
 
+RECENT_CALLS = 30
+
+
 @lru_cache(maxsize=None)
 def _served_model_id(base_url):
     """Model id served by an OpenAI-compatible server. Cached: every Character and NPC builds an LLM."""
@@ -112,6 +116,8 @@ class LLM():
         self.server_name = server_name
         print(f'will use {self.server_name} as llm')
         self.context_size = 16384  # conservative local default
+        # last calls through this instance (each Character owns one), for the Explore panel
+        self.recent_calls = deque(maxlen=RECENT_CALLS)
         self.model = model_name if model_name is not None else MODEL
         if self.server_name == 'openai':
             from utils.OpenAIClient import OpenAIClient
@@ -195,6 +201,15 @@ class LLM():
             text = text[index + 8:].strip()
         return text
 
+    def _record_call(self, tag, start, response, error=None):
+        calls = getattr(self, 'recent_calls', None)
+        if calls is None:
+            calls = self.recent_calls = deque(maxlen=RECENT_CALLS)
+        calls.append({'tag': tag or 'default', 'at': time.strftime('%H:%M:%S', time.localtime(start)),
+                      'secs': round(time.time() - start, 2), 'ok': error is None,
+                      'response': (response or '')[:160] if error is None else '',
+                      'error': (error or '')[:300]})
+
     def ask(self, input, prompt_msgs, template=None, tag='', temp=None, max_tokens=None, top_p=None, stops=None,
             stop_on_json=False, model=None, log=True, trace=False):
         """Returns the response text, or None on any failure (callers must handle None)."""
@@ -228,6 +243,7 @@ class LLM():
                 # callers do string ops on the result, so normalise to None
                 print(f'LLM call {tag} failed: {response!r:.300}')
                 logger.error(f'LLM call {tag} failed: {response!r:.1000}')
+                self._record_call(tag, start, None, error=f'{response!r}')
                 return None
             if stops:  # trim at a stop string the backend echoed (Claude returns eos)
                 for stop in ([stops] if isinstance(stops, str) else stops):
@@ -236,8 +252,10 @@ class LLM():
                         response = response[:eos_index]
             if log:
                 logger.info(f'Response:\n{response}\n')
+            self._record_call(tag, start, response)
             return response
-        except Exception:
+        except Exception as e:
             print(f'LLM call {tag} failed:')
             traceback.print_exc()
+            self._record_call(tag, start, None, error=f'{type(e).__name__}: {e}')
             return None

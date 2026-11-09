@@ -118,6 +118,24 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
               {explorerState.currentTask}
             </div>
 
+            <h4>Focus</h4>
+            <div className="task-details">
+              {(() => {
+                const f = explorerState.debug?.focus || {};
+                const n = explorerState.debug?.narrative || {};
+                return (
+                  <>
+                    <div>Scene: {n.scene ? `${n.scene.number ?? ''} ${n.scene.title || ''}${n.scene.location ? ' @ ' + n.scene.location : ''}` : 'None'}</div>
+                    <div>Act: {n.act ? `${n.act.number ?? ''} ${n.act.title || ''}` : 'None'}</div>
+                    <div>Goal: {f.goal ? `${f.goal.name} (progress ${f.goal.progress})` : 'None'}</div>
+                    <div>Task: {f.task ? `${f.task.name} (progress ${f.task.progress}, ${f.task.acts_done} acts)` : 'None'}</div>
+                    <div>Task stack: {f.task_stack?.length ? f.task_stack.join(' > ') : 'empty'}</div>
+                    <div>Selected action: {f.action || 'None'}</div>
+                  </>
+                );
+              })()}
+            </div>
+
             <h4>Drives</h4>
             <div className="drives-list">
               {explorerState.drives?.map((drive, i) => (
@@ -200,9 +218,52 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
         )}
 
         {activeTab === 'debug' && (
-          <pre className="debug-view">
-            {JSON.stringify(explorerState, null, 2)}
-          </pre>
+          <div className="debug-state">
+            <h4>Recent LLM Calls{explorerState.debug?.llm_calls?.failed ? ` (${explorerState.debug.llm_calls.failed} failed)` : ''}</h4>
+            <div className="llm-calls-list">
+              {explorerState.debug?.llm_calls?.recent?.length ? (
+                explorerState.debug.llm_calls.recent.map((call, i) => (
+                  <div key={i} className="action-item" style={call.ok ? {} : {color: '#c0392b'}}>
+                    <b>{call.at} {call.tag}</b> {call.secs}s {call.ok ? '' : 'FAILED'}
+                    <div style={{whiteSpace: 'pre-wrap', fontSize: '0.85em'}}>{call.ok ? call.response : call.error}</div>
+                  </div>
+                ))
+              ) : <div>No calls recorded</div>}
+            </div>
+
+            <h4>Memory</h4>
+            <div className="action-details">
+              {(() => {
+                const m = explorerState.debug?.memory_stats || {};
+                return (
+                  <>
+                    <div>Concrete: {m.concrete ?? '?'} · Abstract: {m.abstract ?? '?'} · Information items: {m.information_items ?? '?'}</div>
+                    <div>Last semantic clustering: {m.last_semantic_clustering || 'never'}</div>
+                    {m.recent_abstractions?.map((a, i) => (
+                      <div key={i} className="memory-item">[{a.type}, {a.instances}] {a.summary}</div>
+                    ))}
+                  </>
+                );
+              })()}
+            </div>
+
+            <h4>Autonomy · Location · Visible</h4>
+            <div className="action-details">
+              <div>Autonomy: {explorerState.debug?.autonomy ? Object.entries(explorerState.debug.autonomy).map(([k, v]) => `${k}=${v ? 'auto' : 'manual'}`).join(', ') : '?'}</div>
+              <div>Location: {explorerState.debug?.location ? `(${explorerState.debug.location.x}, ${explorerState.debug.location.y})` : '?'}</div>
+              <div>Visible characters: {explorerState.debug?.social?.visible?.join(', ') || 'none'}</div>
+              <div>Central narrative: {explorerState.debug?.narrative?.central_narrative || 'None'}</div>
+              <div>Goal history: {explorerState.debug?.focus?.goal_history?.join(', ') || 'none'}</div>
+            </div>
+
+            <h4>Current View</h4>
+            <pre className="debug-view">{explorerState.debug?.look_percept || ''}</pre>
+
+            <h4>Raw State</h4>
+            <pre className="debug-view">
+              {JSON.stringify(explorerState, null, 2)}
+            </pre>
+          </div>
         )}
 
         {activeTab === 'social' && explorerState && (
@@ -238,8 +299,8 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
             <h4>Goals</h4>
             <div className="goals-list">
               {explorerState.cognitive?.goals?.map((goal, i) => (
-                <div className="goal-item" key={goal.id}>
-                  <div>{goal.name}</div>
+                <div className="goal-item" key={goal.id || i}>
+                  <div>{goal.focused ? '★ ' : ''}{goal.name}</div>
                   <div className="goal-description">{goal.description}</div>
                   <div className="goal-termination">Termination: {goal.termination}</div>
                   <div className="goal-conditions">Preconditions: {goal.preconditions}</div>
@@ -256,9 +317,16 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
                   <div className="task-description">{task.description}</div>
                   <div className="task-reason">Reason: {task.reason}</div>
                   <div className="task-actors">Actors: {task.actors?.join(', ')}</div>
-                  <div className="task-needs">Needs: {task.needs?.join(', ')}</div>
+                  <div className="task-needs">Needs: {Array.isArray(task.needs) ? task.needs.join(', ') : (task.needs || 'none')}</div>
+                  <div className="task-termination">Termination: {task.termination}</div>
+                  <div className="task-progress">Progress: {task.progress} · Acts: {task.acts_done}</div>
                 </div>
               ))}
+            </div>
+
+            <h4>Intentions</h4>
+            <div className="tasks-list">
+              {explorerState.cognitive?.intensions?.length ? explorerState.cognitive.intensions.join(', ') : 'none'}
             </div>
           </div>
         )}
@@ -271,7 +339,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
                 <div key={i} className="signal-cluster">
                   <div className="cluster-header">
                     <span className="cluster-type">
-                      {cluster.is_opportunity ? '✓ Opportunity' : '⚠ Issue'}
+                      {(cluster.type || '').toLowerCase().startsWith('opp') ? '✓ Opportunity' : '⚠ Issue'}
                     </span>
                     <span className="cluster-metrics">
                       Score: {cluster.score?.toFixed(1)}

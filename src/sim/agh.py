@@ -4043,6 +4043,73 @@ end your response with:
         result = self.llm.ask({}, prompt, tag='find_say_result', max_tokens=100, stops=['</end>'])
         return result or ""
 
+    def _explorer_debug(self):
+        """Explore panel 'Debug' sections: what the character is doing and why, down to the
+        LLM calls it made. Each section is guarded so one bad field cannot blank the panel."""
+        def section(fn):
+            try:
+                return fn()
+            except Exception as e:
+                return {'error': f'{type(e).__name__}: {e}'}
+
+        def focus():
+            goal, task, act = self.focus_goal, self.focus_task.peek(), self.focus_action
+            return {
+                'goal': {'id': goal.id, 'name': goal.name, 'description': goal.description,
+                         'termination': goal.termination, 'progress': goal.progress} if goal else None,
+                'task': {'id': task.id, 'name': task.name, 'description': task.description,
+                         'termination': task.termination, 'progress': task.progress,
+                         'acts_done': len(task.acts)} if task else None,
+                'task_stack': [t.name for t in (self.focus_task.stack or [])],
+                'action': act.to_string() if act else None,
+                'goal_history': [g.name for g in (self.goal_history or [])][-8:],
+            }
+
+        def location():
+            agent = getattr(self, 'mapAgent', None)
+            return {'x': agent.x, 'y': agent.y} if agent else None
+
+        def memory_stats():
+            mem = self.structured_memory
+            last = getattr(self.memory_consolidator, 'last_semantic_clustering', None)
+            return {
+                'concrete': len(mem.concrete_memories),
+                'abstract': len(mem.abstract_memories),
+                'recent_abstractions': [
+                    {'summary': a.summary[:200], 'instances': len(a.instances),
+                     'type': getattr(a, 'abstraction_type', 'singleton'), 'drive': str(a.drive) if a.drive else ''}
+                    for a in mem.get_recent_abstractions(6)],
+                'information_items': len(self.perceptual_state.information_items),
+                'last_semantic_clustering': last.isoformat() if last else None,
+            }
+
+        def narrative():
+            return {
+                'central_narrative': getattr(self, 'central_narrative', None),
+                'act': self.get_current_act_info(),
+                'scene': self.get_current_scene_info(),
+                'act_index': getattr(self, 'current_act_index', None),
+                'scene_index': getattr(self, 'current_scene_index', None),
+            }
+
+        def llm_calls():
+            calls = list(getattr(self.llm, 'recent_calls', []))
+            return {'recent': calls[::-1], 'failed': sum(1 for c in calls if not c['ok'])}
+
+        def social():
+            return {'visible': [m.name for m in self.actor_models.known_actors.values() if m.visible]}
+
+        return {
+            'focus': section(focus),
+            'narrative': section(narrative),
+            'autonomy': section(lambda: dict(vars(self.autonomy))),
+            'location': section(location),
+            'social': section(social),
+            'memory_stats': section(memory_stats),
+            'llm_calls': section(llm_calls),
+            'look_percept': getattr(self, 'look_percept', ''),
+        }
+
     def get_explorer_state(self):
         """Return detailed state for explorer UI"""
         focus_task = self.focus_task.peek()
@@ -4098,6 +4165,8 @@ end your response with:
             'cognitive': {
                 'goals': [
                     {
+                        'id': goal.id,
+                        'focused': goal is self.focus_goal,
                         'name': goal.name,
                         'description': goal.description,
                         'preconditions': goal.preconditions,
@@ -4113,6 +4182,10 @@ end your response with:
                         'description': p.description,
                         'reason': p.reason,
                         'actors': [a.name for a in p.actors],
+                        'needs': p.needs or '',
+                        'termination': p.termination,
+                        'progress': p.progress,
+                        'acts_done': len(p.acts),
                     } for p in (self.focus_task.stack or [])
                 ],
                 'intensions': [intension.name for intension in self.intensions]  # List[str]
@@ -4127,6 +4200,7 @@ end your response with:
                     'last_seen': cluster_pair[0].get_latest_timestamp().isoformat()
                 }
                 for cluster_pair in self.driveSignalManager.get_scored_clusters()
-            ]
+            ],
+            'debug': self._explorer_debug(),
         }
 
