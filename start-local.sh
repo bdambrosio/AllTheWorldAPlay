@@ -14,6 +14,8 @@ LOGS="$ROOT/logs"; mkdir -p "$LOGS"
 
 # main.py launches the engine as plain `python`, so the venv must be first on PATH.
 export PATH="$ROOT/.venv/bin:$PATH"
+# Unbuffered so logs/*.log are written in real time (also used by tools/smoke_run.py).
+export PYTHONUNBUFFERED=1
 
 if ! curl -sf -m 3 http://localhost:5000/v1/models >/dev/null; then
     echo "WARNING: no vLLM server answering on :5000 — plays will fail until it is up" >&2
