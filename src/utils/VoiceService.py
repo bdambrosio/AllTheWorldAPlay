@@ -130,8 +130,13 @@ class ElevenLabsProvider:
                     json=json_data,
                     timeout=timeout
                 )
+                if 400 <= response.status_code < 500:
+                    # client errors (bad model, quota, auth) won't succeed on retry; say why
+                    raise ValueError(f"ElevenLabs {response.status_code}: {response.text[:300]}")
                 response.raise_for_status()
                 return response
+            except ValueError:
+                raise
             except requests.exceptions.Timeout:
                 print(f"ElevenLabs request timeout (attempt {attempt + 1}/{max_retries})")
                 if attempt == max_retries - 1:
@@ -247,29 +252,33 @@ class ElevenLabsProvider:
         # Build request parameters
         request_data = {
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_multilingual_v2",  # eleven_monolingual_v1 is retired (400s)
             "voice_settings": {
                 "stability": options.get('stability', 0.5),
-                "similarity_boost": options.get('similarityBoost', 0.5)
+                # SpeechStylizer emits snake_case, Context.start camelCase: accept both
+                "similarity_boost": options.get('similarity_boost', options.get('similarityBoost', 0.5))
             }
         }
         
         # Add optional parameters if provided
         if 'style' in options:
             request_data['voice_settings']['style'] = options['style']
-        if 'speakerBoost' in options:
-            request_data['voice_settings']['use_speaker_boost'] = options['speakerBoost']
+        speaker_boost = options.get('use_speaker_boost', options.get('speakerBoost'))
+        if speaker_boost is not None:
+            request_data['voice_settings']['use_speaker_boost'] = speaker_boost
 
         try:
-            response = self._make_request_with_retry(
+            # blocking requests + retry sleeps: run in a thread so the engine's event loop keeps going
+            response = await asyncio.to_thread(
+                self._make_request_with_retry,
                 f"{self.base_url}/text-to-speech/{voice_id}",
-                headers={
+                {
                     'xi-api-key': self.api_key,
                     'Content-Type': 'application/json'
                 },
-                json_data=request_data,
-                max_retries=3,
-                timeout=30
+                request_data,
+                3,
+                30
             )
 
             # Save to temporary file but don't play
@@ -283,8 +292,12 @@ class ElevenLabsProvider:
             raise Exception(f"ElevenLabs TTS error: {e}")
 
     def get_voices(self) -> list:
-        if self.voices is None:
-            self.fetch_voices()
+        """Available voices, or [] if there is no key or the fetch fails (never raises)."""
+        if self.voices is None and self.api_key:
+            try:
+                self.fetch_voices()
+            except Exception:
+                self.voices = None  # fetch_voices already reported it; allow a later retry
         return self.voices or []
 
     def stop(self) -> None:
