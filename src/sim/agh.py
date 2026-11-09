@@ -1643,7 +1643,7 @@ End response with:
         if not goal:
             return []
         if replan:
-            if new_task and (goal.task_plan and len(goal.task_plan) == 0):
+            if new_task and not goal.task_plan:  # was 'task_plan and len(task_plan)==0': never true
                 goal.task_plan = [new_task]
                 new_task.goal = goal
                 return [new_task]
