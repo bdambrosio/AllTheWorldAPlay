@@ -58,6 +58,9 @@ METRICS = {
     "scene_consistency": (True, lambda c, j: mean_of((get(c, "character", "scene_to_scene_consistency") or {}).values())),
     "repeated_trigrams": (False, lambda c, j: mean_of(r.get("repeated_trigram_fraction") for r in (get(c, "character", "repetition") or {}).values())),
     "theory_of_mind": (True, lambda c, j: get(c, "character", "theory_of_mind_similarity")),
+    "physical_share_of_acts": (True, lambda c, j: get(c, "agency", "physical", "physical_share_of_acts")),
+    "speech_share_of_acts": (False, lambda c, j: get(c, "agency", "physical", "speech_share_of_acts")),
+    "concrete_action_rate": (True, lambda c, j: get(c, "agency", "physical", "concrete_action_rate")),
 }
 
 

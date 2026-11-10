@@ -256,6 +256,29 @@ def tier_agency(ev):
         "scenes": len(ev["scene_start"]),
         "scene_post_state_achieved": ratio(sum(post_tests), len(post_tests)),
         "commitments": funnel,
+        "physical": physical(ev),
+    }
+
+
+def physical(ev):
+    """Concrete physical action (sim/survival.py and the act mix): how much of the play is doing."""
+    acts = ev["act"]
+    modes = collections.Counter(a.get("mode") for a in acts)
+    aff = ev["affordance"]
+    applied = [a for a in aff if a.get("applied")]
+    hazards = collections.Counter(h.get("phase") for h in ev["hazard"])
+    return {
+        "act_modes": dict(modes),
+        "speech_share_of_acts": ratio(modes.get("Say", 0), len(acts)),
+        "physical_share_of_acts": ratio(modes.get("Do", 0) + modes.get("Move", 0), len(acts)),
+        "affordances_applied": len(applied),
+        "affordance_refusals": len(aff) - len(applied),
+        "affordances_by_action": dict(collections.Counter(a.get("action") for a in applied)),
+        "concrete_action_rate": ratio(len(applied), len(acts)),
+        "need_warnings": dict(collections.Counter(f"{b.get('need')}>={0.8 if b.get('level', 0) >= 0.8 else 0.5}" for b in ev["body"])),
+        "hazards": dict(hazards),
+        "travel_minutes": round(sum(t.get("minutes") or 0 for t in ev["travel"]), 1),
+        "world_events": len(ev["world_event"]),
     }
 
 
@@ -421,6 +444,9 @@ def headline(card):
          f'{ch.get("voice_distinctiveness", {}).get("stylometric_accuracy")} / '
          f'{ch.get("voice_distinctiveness", {}).get("embedding_accuracy")} ({ch.get("voice_distinctiveness", {}).get("chance")})'),
         ("theory-of-mind similarity", ch.get("theory_of_mind_similarity")),
+        ("speech / physical share of acts", f'{a["physical"]["speech_share_of_acts"]} / {a["physical"]["physical_share_of_acts"]}'),
+        ("survival actions applied (refused)", f'{a["physical"]["affordances_applied"]} ({a["physical"]["affordance_refusals"]})'),
+        ("hazards", a["physical"]["hazards"]),
     ]
 
 
