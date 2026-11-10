@@ -653,6 +653,7 @@ If absolutely no information is available for any field, use "unknown" for that 
                     self.map.agents.remove(previous)
         resource['properties']['owner'] = owner.mapAgent
         self.reference_manager.declare_relationship(resource_id, 'owned by', owner.name, 'owner of')
+        survival.give_body(self, owner)   # an owner with a part to play can hold things and be dealt with
         return owner
 
     def plausible_npc(self, name):
@@ -940,6 +941,12 @@ These facts about the result are already settled and must not be contradicted:
 {{$facts}}
 </facts>
 
+What each character present is carrying:
+<holdings>
+{{$holdings}}
+</holdings>
+These things change hands only as the facts above say. If the action takes or moves one of them otherwise, report the attempt and leave the thing with its holder.
+
 given {{$name}} local map is:
 
 <localMap>
@@ -989,6 +996,7 @@ End your response with:
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
                                      "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
+                                     "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
                                      "facts": facts or 'none'},
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 

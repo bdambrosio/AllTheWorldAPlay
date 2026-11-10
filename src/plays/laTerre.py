@@ -55,11 +55,14 @@ W = context.Context([J, F],
 
 J.mapAgent.move_to_resource('MarquartFarm')
 # each farm belongs to the father (an NPC), not to the '<Farm>_owner' placeholder the map creates
-W.set_resource_owner('MarquartFarm', 'Macquart', "Macquart, an ageing peasant farmer, Jean's father, owner of MarquartFarm")
+# ... and each father holds the deed to his farm: it passes only when he signs it over, both present
+W.set_resource_owner('MarquartFarm', 'Macquart', "Macquart, an ageing peasant farmer, Jean's father, owner of MarquartFarm"
+                     ).body.inventory.append('MarquartFarm deed')
 W.reference_manager.declare_relationship('Macquart', 'father of', 'Jean', 'child_of')
 J.look()
 F.mapAgent.move_to_resource('FouanFarm')
-W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer, Francoise's father, owner of FouanFarm")
+W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer, Francoise's father, owner of FouanFarm"
+                     ).body.inventory.append('FouanFarm deed')
 W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'child_of')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", mode='internal')
 J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", mode='internal')

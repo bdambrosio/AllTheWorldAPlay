@@ -36,6 +36,8 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      items ('requires', 'consumes', 'transfer') may be '*suffix': any held item
                      ending so ("*contract" is "Hu's contract"); 'gain' may use {actor}, {item},
                      'remote': True (a 'target' action that needs no nearness: a phone message),
+                     'conveys': suffix (with 'transfer': an item named '<ResourceId><suffix>',
+                     a deed, makes the target that resource's owner),
                      'target_gain': item the target receives (may use {said}: the words the
                      act quotes), 'reveals': prefix (lists the target's items that start so:
                      the messages on someone's phone)}],
@@ -155,13 +157,24 @@ def attach(context):
                                           ', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '']))
     if brief.strip() and brief not in context.current_state:
         context.current_state += brief
-    harm = _harm(cfg)['name']
     for character in context.actors + context.extras:
-        if getattr(character, 'body', None) is None and getattr(character, 'mapAgent', None) is not None:
-            levels = {n: d.get('initial', 0.2) for n, d in _need_defs(cfg).items()}
-            levels[harm] = 0.0
-            character.body = Body(levels=levels, inventory=list(cfg.get('initial_inventory', [])),
-                                  money=cfg.get('initial_money', 0), last_tick=context.simulation_time, cfg=cfg)
+        give_body(context, character)
+
+
+def give_body(context, character):
+    """A Body for one character, if the world has affordances and it has none yet. NPCs get one
+    when a play gives them a part (Context.set_resource_owner): a father who can hold a deed."""
+    cfg = config(context)
+    if cfg and getattr(character, 'body', None) is None and getattr(character, 'mapAgent', None) is not None:
+        levels = {n: d.get('initial', 0.2) for n, d in _need_defs(cfg).items()}
+        levels[_harm(cfg)['name']] = 0.0
+        character.body = Body(levels=levels, inventory=list(cfg.get('initial_inventory', [])),
+                              money=cfg.get('initial_money', 0), last_tick=context.simulation_time, cfg=cfg)
+
+
+def _embodied(context):
+    """Everyone with a body: the cast, and NPCs given one."""
+    return [c for c in context.actors + context.extras + context.npcs if getattr(c, 'body', None) is not None]
 
 
 OFFSTAGE_NEED_RISE = 0.25   # the most a need rises over one stretch of off-stage time
@@ -175,10 +188,8 @@ def pass_offstage(context, gap):
     now = context.simulation_time + gap
     hours = gap.total_seconds() / 3600
     cfg = config(context) or {}
-    for character in context.actors + context.extras:
-        body = getattr(character, 'body', None)
-        if body is None:
-            continue
+    for character in _embodied(context):
+        body = character.body
         for need, spec in _need_defs(cfg).items():
             rate = spec.get('per_hour', 0.0) * (spec.get('shelter_factor', 1.0) if body.sheltered else 1.0)
             body.adjust(need, min(rate * hours, OFFSTAGE_NEED_RISE))
@@ -257,8 +268,8 @@ def _present(character, name=None):
     """Other cast members within CO_PRESENT_TILES (with bodies), or the one named."""
     context = character.context
     out = []
-    for other in context.actors + context.extras:
-        if other is character or getattr(other, 'body', None) is None or getattr(other, 'mapAgent', None) is None:
+    for other in _embodied(context):
+        if other is character or getattr(other, 'mapAgent', None) is None:
             continue
         if name and other.name.lower() != name.lower():
             continue
@@ -376,15 +387,15 @@ def available_actions(character):
         note = f" ({missing})" if missing else ''
         if action.get('target') == 'character':
             if action.get('remote'):
-                out.append(f"{action['name']}@<anyone, wherever they are>{note}")
+                out.append((bool(missing), f"{action['name']}@<anyone, wherever they are>{note}"))
                 continue
             for other, d in _present(character):
                 if d <= CO_PRESENT_TILES:
-                    out.append(f"{action['name']}@{other.name}{note}")
+                    out.append((bool(missing), f"{action['name']}@{other.name}{note}"))
             continue
         types = action.get('resource_types')
         if not types:
-            out.append(action['name'] + note)
+            out.append((bool(missing), action['name'] + note))
             continue
         if action.get('requires_property'):
             # whose place it is decides: offer it where this character may do it (a character
@@ -402,16 +413,20 @@ def available_actions(character):
         if res.get('properties', {}).get('remaining') == 0:
             continue
         if d <= 1:
-            out.append(f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})")
+            out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})"))
         else:
-            out.append(f"{action['name']}@{rid} ({d} tiles {_direction(_here(character), res['location'])}; "
-                       f"first Move: {rid}{'; ' + missing if missing else ''})")
+            out.append((1 + bool(missing), f"{action['name']}@{rid} ({d} tiles {_direction(_here(character), res['location'])}; "
+                                           f"first Move: {rid}{'; ' + missing if missing else ''})"))
+    # what can be done now comes first; what needs a walk or something not held is cut first
+    # (the list was cut at 12 in config order, which dropped every action with a person: a
+    # father standing with his son was never offered 'sign over the farm')
+    out = [text for _, text in sorted(out, key=lambda o: o[0])][:14]
     threat = active_threat_for(character)
     if threat:
         h = threat['hazard']
         out.insert(0, f"THREAT: {h['description']} is {threat_position(character, threat)}; "
                       f"you could {', '.join(h.get('responses', {}).keys())}")
-    return '; '.join(out[:12])
+    return '; '.join(out)
 
 
 def affordance_prompt_line(character):
@@ -449,6 +464,56 @@ def _chosen(context, character, label):
     return None
 
 
+def holdings(character):
+    """Who is carrying what, among the character and those with it, as anyone can see: for
+    the narrator, so that things the mechanics track stay with whoever holds them."""
+    body = getattr(character, 'body', None)
+    if body is None or not config(character.context):
+        return ''
+    people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
+    return '\n'.join(f"{p.name}: {', '.join(i for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
+                     for p in people)
+
+
+TAKING = ['take', 'grab', 'snatch', 'seize', 'lift', 'pull', 'wrest', 'carry', 'relieve', 'ask for', 'demand', 'reach for']
+
+
+def _give_label(cfg, item, to_name):
+    """The label of this world's action by which a holder hands `item` to someone, or ''."""
+    for action in cfg.get('actions', []):
+        spec = action.get('transfer')
+        if spec and action.get('target') == 'character' and (item.endswith(spec[1:]) if spec.startswith('*') else item == spec):
+            return f"{action['name']}@{to_name}"
+    return ''
+
+
+def _asks_for(context, character, text, targets=None):
+    """A Do that takes or asks for something another character present is holding. Things
+    change hands by their holder's act, so nothing moves: the fact reports the attempt, and the
+    holder is told what is wanted and how to hand it over. None when the act is not that."""
+    cfg = config(context)
+    if not _matches(text, TAKING):
+        return None
+    names = [t.name.lower() for t in (targets or []) if hasattr(t, 'name')]
+    hidden = tuple(cfg.get('private_items', ())) or ('\0',)
+    for other, d in _present(character):
+        if d > CO_PRESENT_TILES or not (other.name.lower() in text or other.name.lower() in names):
+            continue
+        for item in other.body.inventory:
+            # the thing is named in the act by its last word ('sack of wheat' -> 'wheat', "Hu's contract" -> 'contract')
+            noun = item.split()[-1].lower()
+            if item.startswith(hidden) or item in character.body.inventory or not re.search(rf'\b{re.escape(noun)}\b', text):
+                continue
+            label = _give_label(cfg, item, character.name)
+            other.add_perceptual_input(f"{character.name} wants the {item} you are holding. It is yours to hand over or keep"
+                                       + (f" (to hand it over: {label})." if label else '.'), mode='internal')
+            fact = (f"{character.name} reaches for the {item} that {other.name} is holding; {other.name} still has it. "
+                    f"It changes hands only if {other.name} hands it over.")
+            _record(character, {'name': 'ask for', 'category': 'social'}, fact, 'text', applied=False, target=other.name)
+            return fact
+    return None
+
+
 def resolve_do(context, character, act_text, affordance=None, targets=None):
     """Apply the mechanics of a Do, if it is one of the world's actions. Returns a fact line for the
     narration, or None when it is not (the LLM decides as before). `targets`: the act's characters."""
@@ -471,6 +536,10 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     if chosen and chosen[0] == 'action':
         _, action, near, target = chosen
         return _apply(context, character, action, near, target, via, act_text or '')
+
+    asked = _asks_for(context, character, text, targets)
+    if asked:
+        return asked
 
     # candidate actions: verbs match; rank those whose resource (or person) the act names, then
     # those in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
@@ -584,6 +653,10 @@ def _apply(context, character, action, near, target, via, act_text=''):
     if item and other is not None:
         body.inventory.remove(item)
         other.body.inventory.append(item)
+        conveyed = context.map.resource_registry.get(item.removesuffix(action['conveys'])) if action.get('conveys') else None
+        if conveyed is not None:
+            conveyed.setdefault('properties', {})['owner'] = other.mapAgent
+            context.reference_manager.declare_relationship(item.removesuffix(action['conveys']), 'owned by', other.name, 'owner of')
     if action.get('transfer_money') and other is not None:
         body.money -= action['transfer_money']
         other.body.money += action['transfer_money']

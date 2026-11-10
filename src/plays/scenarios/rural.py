@@ -141,8 +141,9 @@ resource_rules = {
 # What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In this peasant village, land, money, harvest and inheritance are what is at stake: who holds which "
           "field, who works it, what the wheat fetches at market, who pays whom, and who will inherit. Heat, hard "
-          "labour and thirst are real. Use these to make concrete, checkable goals and obstacles tied to the farms, "
-          "the mill, the market and the family.")
+          "labour and thirst are real. A farm belongs to whoever its owner has signed the deed over to: the owner holds "
+          "the deed and signs it over only in person, with the heir standing there. Use these to make concrete, "
+          "checkable goals and obstacles tied to the farms, the mill, the market and the family.")
 
 # Stage business (sim/survival.py): field work, wheat, flour and bread, money, land claims.
 affordances = {
@@ -208,7 +209,11 @@ affordances = {
          'transfer_money': 2, 'minutes': 2, 'text': 'pays {target} two francs'},
         {'name': 'give bread', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share'],
          'transfer': 'loaf of bread', 'minutes': 2, 'text': 'gives {target} a loaf of bread'},
-        {'name': 'give wheat', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand over', 'deliver'],
+        # a farm passes when its owner, holding the deed, signs it over with the heir standing there
+        {'name': 'sign over the farm', 'category': 'social', 'target': 'character',
+         'verbs': ['sign over', 'sign the deed', 'signs the deed', 'put my mark', 'makes his mark', 'make my mark', 'deed the farm'],
+         'transfer': '*deed', 'conveys': ' deed', 'minutes': 10, 'text': 'signs the {item} over to {target}'},
+        {'name': 'give wheat', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'pass', 'deliver'],
          'transfer': 'sack of wheat', 'minutes': 5, 'text': 'hands {target} a sack of wheat'},
     ],
     'hazards': [
