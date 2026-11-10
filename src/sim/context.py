@@ -937,7 +937,8 @@ End your response with:
 """)]
         # survival mechanics (sim/survival.py) settle eating, drinking, shelter, threats ...;
         # the narration describes them rather than inventing other outcomes
-        facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None))
+        facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
+                                    targets=act.target if isinstance(act.target, list) else None)
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)

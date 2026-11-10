@@ -274,6 +274,7 @@ def physical(ev):
         "affordances_applied": len(applied),
         "affordance_refusals": len(aff) - len(applied),
         "affordances_by_action": dict(collections.Counter(a.get("action") for a in applied)),
+        "affordances_by_category": dict(collections.Counter(a.get("category", "survival") for a in applied)),
         "affordances_via": dict(collections.Counter(a.get("via", "text") for a in applied)),
         "affordances_after_approach": sum(1 for a in applied if a.get("approached")),
         "do_acts_labelled": ratio(sum(1 for a in acts if a.get("mode") == "Do" and a.get("affordance")), modes.get("Do", 0)),

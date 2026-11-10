@@ -2133,7 +2133,7 @@ In choosing each act (see format below), you can choose from these Modes:
 ############
 
 #What is physically going on right now (where you are, your body, what just happened, what you could do here).
-#Physical needs and threats are real: a concrete Do or Move that deals with them is often the right act.
+{{$act_note}}
 {{$here_and_now}}
 ##
 
@@ -2321,6 +2321,7 @@ End your response with:
                                               "do_actions": self.do_actions,
                                               "here_and_now": self.physical_context(),
                                               "affordance_line": survival.affordance_prompt_line(self),
+                                              "act_note": survival.act_note(self),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
                                               "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -2867,7 +2868,9 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can't be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through action, thought, spoken intention, and subtext, not narration.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail.
-Bodily needs, the place the characters are in, and what has just happened are real; let them shape what is said.
+""" + ("Bodily needs, the place the characters are in, and what has just happened are real; let them shape what is said."
+       if getattr(self, 'body', None) is not None else
+       "The place the characters are in and what has just happened are real; let them shape what is said.") + """
 Use plain, economical language and vary emotional tone.
         """
         prompt_string = """Be faithful to your character as presented in the following.
