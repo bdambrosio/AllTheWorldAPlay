@@ -326,17 +326,32 @@ def resolve_do(context, character, act_text, affordance=None):
     return _apply(context, character, action, near, via)
 
 
+def _can_approach(context, character, res, d):
+    """A Do aimed at a resource a short walk away (config 'approach_tiles', default 8), with no
+    threat active, walks there first instead of being refused. No line-of-sight test: the
+    'You could do here' offer lists resources by distance alone, and in forest the map's
+    line of sight blocked targets 5 tiles off that the character had just been offered."""
+    return d <= (config(context) or {}).get('approach_tiles', 8) and not active_threat_for(character)
+
+
 def _apply(context, character, action, near, via):
     """Check reach, stock and requirements, then apply the action's effects; returns the fact line."""
     body = character.body
     types = action.get('resource_types')
     resource_id = res = None
+    approach = ''
     if types:
         if near is None:
             fact = f"There is no {' or '.join(types).replace('_', ' ').lower()} in sight here."
             _record(character, action, fact, via, applied=False)
             return fact
         resource_id, res, d = near
+        if d > 1 and _can_approach(context, character, res, d):
+            # the narration has usually put the character there already: walk over, then act
+            heading = _direction(_here(character), res['location'])
+            minutes = travel(character, *res['location'])
+            approach = f"{character.name} walks {d} tiles {heading} to {resource_id} ({round(minutes)} min). "
+            d = 0
         if d > 1:
             fact = (f"{resource_id} is {d} tiles {_direction(_here(character), res['location'])}; "
                     f"{character.name} must move there first.")
@@ -344,11 +359,11 @@ def _apply(context, character, action, near, via):
             return fact
         props = res.setdefault('properties', {})
         if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
-            fact = f"There is nothing left at {resource_id}."
+            fact = approach + f"There is nothing left at {resource_id}."
             _record(character, action, fact, via, applied=False)
             return fact
     if action.get('requires') and action['requires'] not in body.inventory:
-        fact = f"{character.name} cannot {action['name']} without a {action['requires']}."
+        fact = approach + f"{character.name} cannot {action['name']} without a {action['requires']}."
         _record(character, action, fact, via, applied=False)
         return fact
 
@@ -368,20 +383,20 @@ def _apply(context, character, action, near, via):
     body.last_tick = context.simulation_time   # needs during the action are folded into its effect
 
     where = f" at {resource_id}" if resource_id else ''
-    fact = f"{character.name} {action.get('text', action['name']).format(resource=resource_id or 'here')}{'' if action.get('text') else where}."
+    fact = approach + f"{character.name} {action.get('text', action['name']).format(resource=resource_id or 'here')}{'' if action.get('text') else where}."
     risk = action.get('risk')
     if risk and _rng.random() < risk.get('chance', 0):
         for need, delta in risk.get('effects', {}).items():
             body.adjust(need, delta)
         fact += ' ' + risk.get('text', '')
     fact += f" ({character.name} is now {body.summary()}.)"
-    _record(character, action, fact, via, applied=True, resource=resource_id)
+    _record(character, action, fact, via, applied=True, resource=resource_id, approached=bool(approach))
     return fact
 
 
-def _record(character, action, fact, via, applied, resource=None):
+def _record(character, action, fact, via, applied, resource=None, approached=False):
     trace.event('affordance', character=character.name, action=action['name'], applied=applied,
-                resource=resource, fact=fact, via=via)
+                resource=resource, fact=fact, via=via, approached=approached)
 
 
 def travel(character, x, y):
