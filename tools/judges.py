@@ -66,7 +66,7 @@ CRITIC = """You are an expert dramaturg, improv coach and screenplay critic.
 You are given an improvised play performed by AI characters, as a series of lines:
 <character-name>: '<speech>' - dialogue
 <character-name>: ...<thoughts>... - internal monologue
-<character-name>: does / moves <action> - physical or world action, possibly followed by its result
+<character-name>: <action> - a physical action in the present tense ('pulls a tablet ...', 'moves to ...'), possibly followed by its result
 Lines without a character name are narration (scene settings, situation updates, scene wrap-ups)."""
 
 # name -> (what it asks, anchor for 1, anchor for 3, anchor for 5)

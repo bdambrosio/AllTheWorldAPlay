@@ -328,6 +328,9 @@ End your response with:
 
     def get_character_description(self):
         description = self.character
+        stylizer = getattr(self, 'speech_stylizer', None)
+        if stylizer is not None and stylizer.voice_line():
+            description += f'\nHow you speak: {stylizer.voice_line()}.'
         if self.actor_models.get_known_actor_relationship(self.name):
             description += '\n\n' + self.actor_models.get_known_actor_relationship(self.name)
         if type(description) != str:
@@ -1196,7 +1199,7 @@ End response with:
             
         if act_mode == 'Move':
             try:
-                act_arg = act_arg.strip()
+                act_arg = re.sub(r'^(?:move|go|walk)s?\s+(?:to\s+)?', '', act_arg.strip(), flags=re.I)
                 if act_arg.startswith('toward'):
                     act_arg = act_arg[len('toward'):]
                     location = None
@@ -1242,11 +1245,13 @@ End response with:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
             notices = self.process_consequences(act_arg, reason, consequences)
             await asyncio.sleep(0)
+            # the act text often starts with the character's own name ('Xue pulls a tablet ...')
+            deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg)
             if notices and len(notices) > 0:
                 self.add_perceptual_input(f'{notices}', mode='internal')           
-                self.context.message_queue.put({'name':self.name, 'text':f'does {act_arg} {notices}'})
+                self.context.message_queue.put({'name':self.name, 'text':f'{deed} {notices}', 'line_kind':'action'})
             else:
-                self.context.message_queue.put({'name':self.name, 'text':f'does {act_arg}'})
+                self.context.message_queue.put({'name':self.name, 'text':deed, 'line_kind':'action'})
             self.lastActResult = notices
             if source == None:
                 source = self.focus_task.peek()
@@ -1266,7 +1271,7 @@ End response with:
             # what others present can see happen (they used to get the action text only)
             visible_result = (world_updates or '').strip()
             self.visible_result = visible_result
-            self.context.add_event(f'{self.name} {act_arg}' + (f' -> {visible_result}' if visible_result else ''))
+            self.context.add_event(f'{self.name} {deed}' + (f' -> {visible_result}' if visible_result else ''))
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1282,9 +1287,7 @@ End response with:
             self.thought = act_arg
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
-            elevenlabs_params = {}
-            if ablation.enabled('stylizer'):
-                style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(self)
+            elevenlabs_params = self.speech_stylizer.voice_params(self)
             self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
@@ -1305,11 +1308,9 @@ End response with:
             await asyncio.sleep(0)
 
         elif act_mode == 'Say':# must be a say
+            act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             self.show += f"{act_arg}'"
-            elevenlabs_params = {}
-            if ablation.enabled('stylizer'):
-                style_block, elevenlabs_params = self.speech_stylizer.get_style_directive(target)
-                act_arg = self.speech_stylizer.stylize(act_arg, target, style_block)
+            elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
@@ -1356,6 +1357,8 @@ End response with:
                     target.focus_task.push(target_dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
 
+                for other in self.bystanders(target):
+                    other.add_perceptual_input(f"You hear {self.name} say to {target.name}: '{content}'", percept=False, mode='auditory')
                 # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
                 target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
@@ -2136,6 +2139,7 @@ In choosing each act (see format below), you can choose from these Modes:
 
 Review your character and current emotional stance when choosing Mode and action. 
 Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression for an Act.
+A Say is one spoken turn as your character would say it aloud: one to three plain sentences, no slogans or speeches.
 
 An act is:
 - Is a specific thought, spoken text, physical movement or action.
@@ -2837,6 +2841,9 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             #from_actor.driveSignalManager.recluster()
             return
 
+        cut_in = self.bystander_cuts_in(from_actor, message)
+        if cut_in:
+            message = f'{message}\n{cut_in}'
         text, response_source, reason = self.generate_dialog_turn(from_actor, message, self.focus_task.peek()) # Generate response using existing prompt-based method
         if not text or not text.strip():
             # no <response> (generate_dialog_turn already deactivated the dialog); an empty Say
@@ -2847,6 +2854,93 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         if self.focus_action == action:
             self.focus_action = None
         await asyncio.sleep(0)
+
+    EARSHOT_TILES = 4
+    MAX_CUT_INS_PER_SCENE = 2     # per character
+    CUT_IN_GAP_LINES = 4          # transcript lines before the same character may cut in again
+
+    def bystanders(self, other=None):
+        """Characters in the current scene, other than self and `other`, close enough to hear."""
+        scene = self.context.current_scene
+        if scene is None or self.mapAgent is None:
+            return []
+        here = (self.mapAgent.x, self.mapAgent.y)
+        return [c for c in self.context.actors + self.context.extras + self.context.npcs
+                if c is not self and c is not other and c.name != 'Viewer'
+                and getattr(c, 'current_scene', None) is scene and c.mapAgent is not None
+                and max(abs(c.mapAgent.x - here[0]), abs(c.mapAgent.y - here[1])) <= self.EARSHOT_TILES]
+
+    def bystander_cuts_in(self, from_actor, message):
+        """A dialog is between two characters, but others in the scene hear it. Before self
+        answers from_actor, one bystander (the one just named, else the one silent longest) is
+        asked whether it cuts in. Its line is shown, joins both parties' record of the dialog,
+        and is returned ('Hu cuts in, to Xue: ...') for self's answer to take into account.
+        Returns '' when nobody speaks."""
+        if self is from_actor or 'Viewer' in (self.name, from_actor.name):
+            return ''
+        scene, now = self.context.current_scene, len(self.context.transcript)
+
+        def may(c):
+            in_scene, count, last = getattr(c, '_cut_ins', (None, 0, 0))
+            if in_scene is not scene:
+                count, last = 0, -self.CUT_IN_GAP_LINES
+            return count < self.MAX_CUT_INS_PER_SCENE and now - last >= self.CUT_IN_GAP_LINES
+        candidates = [c for c in from_actor.bystanders(self) if may(c)]
+        if not candidates:
+            return ''
+        speaker = min(candidates, key=lambda c: (c.name.lower() not in message.lower(), getattr(c, '_cut_ins', (None, 0, 0))[2]))
+        dialog = from_actor.actor_models.get_actor_model(self.name).dialog
+        prompt = [SystemMessage(content="""You are an actor in an improvised play. Your character is present while two others talk, and hears every word.
+Most of the time a bystander lets them talk. Cut in only if staying silent now would cost your character something it wants in this scene, or you were just spoken about or lied about."""),
+                  UserMessage(content="""<your_character>
+{{$character}}
+</your_character>
+
+<scene>
+{{$scene}}
+</scene>
+
+<emotional_state>
+{{$emotional_state}}
+</emotional_state>
+
+The exchange between {{$a}} and {{$b}} so far:
+<dialog>
+{{$dialog}}
+</dialog>
+
+{{$a}} has just said to {{$b}}:
+<statement>
+{{$statement}}
+</statement>
+
+Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
+#cut_in yes or no
+#to {{$a}} or {{$b}} (whom the line is addressed to)
+#line the spoken line: one or two plain sentences, 30 words at most, in your character's own way of speaking; speech only
+</end>
+""")]
+        reply = speaker.llm.ask({'character': speaker.get_character_description(), 'scene': speaker.scene_brief(),
+                                 'emotional_state': speaker.emotionalStance.to_definition(), 'name': speaker.name,
+                                 'a': from_actor.name, 'b': self.name, 'statement': message,
+                                 'dialog': dialog.get_transcript(max_turns=8)},
+                                prompt, tag='bystander_cut_in', temp=0.7, stops=['</end>'], max_tokens=120) or ''
+        line = (hash_utils.find('line', reply) or '').strip().strip('"\'')
+        if not (hash_utils.find('cut_in', reply) or '').strip().lower().startswith('y') or not line:
+            return ''
+        to = from_actor if (hash_utils.find('to', reply) or '').strip().lower().startswith(from_actor.name.lower()) else self
+        speaker._cut_ins = (scene, (getattr(speaker, '_cut_ins', (None, 0, 0))[1] if getattr(speaker, '_cut_ins', (None,))[0] is scene else 0) + 1, now)
+        self.context.message_queue.put({'name': speaker.name, 'text': f"'{line}'",
+                                        'elevenlabs_params': json.dumps(speaker.speech_stylizer.voice_params(to))})
+        self.context.transcript.append(f'{speaker.name}: "{line}"')
+        trace.event('dialog_turn', speaker=speaker.name, listener=to.name, text=line[:1000], cut_in=True)
+        dialog.add_turn(speaker, line)
+        self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(speaker, line)
+        speaker.add_perceptual_input(f"You cut in, saying to {to.name}: '{line}'", percept=False, mode='internal')
+        for other in speaker.bystanders():
+            if other not in (self, from_actor):
+                other.add_perceptual_input(f"You hear {speaker.name} say to {to.name}: '{line}'", percept=False, mode='auditory')
+        return f"{speaker.name} cuts in, to {to.name}: '{line}'"
 
     def generate_dialog_turn(self, from_actor, message, source=None):
         #self.memory_consolidator.update_cognitive_model(
@@ -2861,14 +2955,14 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         if not self.focus_task.peek():
             raise Exception(f'{self.name} has no focus task')
         duplicative_insert = ''
-        system_prompt = """You are a seasoned writer writing dialog for a movie.
-Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can't be missed — so the audience feels the pulse of consequence.
-Let conflict emerge through action, thought, spoken intention, and subtext, not narration.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail.
+        system_prompt = """You are an actor in an improvised play, speaking your character's next line.
+You are in the scene, not writing it: say what this person would actually say now, to this listener, to get what they want.
+A good line does one thing (asks, refuses, offers, concedes, threatens, changes the subject) and leaves the other actor something to answer.
+People in conversation speak plainly and often incompletely; they do not deliver slogans, aphorisms or speeches.
 """ + ("Bodily needs, the place the characters are in, and what has just happened are real; let them shape what is said."
        if getattr(self, 'body', None) is not None else
        "The place the characters are in and what has just happened are real; let them shape what is said.") + """
-Use plain, economical language and vary emotional tone.
+Keep your character's own way of speaking (see 'How you speak') from line to line.
         """
         prompt_string = """Be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when confidence is low or relationship is in question, fear is high, or the character perceives conflicting goals or a threat.
@@ -2970,9 +3064,12 @@ Guidance:
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
 - Do not respond to a question with a question.
 - If the intent is to agree, state agreement without repeating the statement.
-- Above all, speak in your own voice. Do not echo the speech style of the statement. 
-- Your emotional state should have maximum impact on the tone, phrasing, and content of the response.
-- Respond in the style of natural spoken dialog. Use short sentences and casual language, but avoid repeating stereotypical phrases in the dialog to this point.
+- Above all, speak in your own voice. Do not echo the speech style of the statement.
+- Do not open by repeating the speaker's word or phrase back as a question ("A trap?", "Numbers?"). Answer it.
+- One turn: one to three sentences, 40 words at most. Make one point; leave the rest for later turns.
+- No slogans, paired contrasts ("X is ephemeral. Y is law.") or flourishes; say it the way the character would across a table.
+- Let your emotional state colour the line without announcing it.
+- Avoid phrases and images already used in the dialog to this point.
 {{$scene_post_narrative}}
  
 Respond only with the above XML

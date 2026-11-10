@@ -3,12 +3,11 @@
 The set of disabled features comes with the load_play command ({"ablate": "stylizer,stance"})
 and lasts until the next load. Everything is enabled by default.
 
-  stylizer     SpeechStylizer rewrites of Say lines (and their style-directive LLM calls)
   commitments  post-dialog commitment extraction
   stance       LLM emotional stance (characters keep the default stance)
   drive_checks per-drive awareness checks that update drive.activation
 """
-FEATURES = ('stylizer', 'commitments', 'stance', 'drive_checks')
+FEATURES = ('commitments', 'stance', 'drive_checks')
 _disabled: set = set()
 
 

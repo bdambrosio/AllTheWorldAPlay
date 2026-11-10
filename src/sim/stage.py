@@ -52,9 +52,10 @@ def _nearest_resource(world, xy, of_type=None):
 
 
 def resolve(context, location, anchor):
-    """(xy, name) of the place a scene location names, seen from `anchor` (where the cast is);
-    None when the scene stays where the cast is: 'same', a terrain the cast already stands on,
-    or a name that is no place on this map."""
+    """(xy, name) of the place a scene location names, seen from `anchor` (where the cast is):
+    a resource, the nearest resource of a kind, or the nearest tile of a terrain (the anchor
+    itself when it already stands on that terrain). None when the scene stays where the cast
+    is: 'same', or a name that is no place on this map."""
     world = context.map
     name = str(location or '').strip().strip('#"\'.')
     for suffix in (' terrain', ' resource', ' area'):
@@ -73,7 +74,7 @@ def resolve(context, location, anchor):
     terrain = world.get_terrain_type(name)
     if terrain is not None:
         if world.patches[anchor[0]][anchor[1]].terrain_type == terrain:
-            return None
+            return anchor, terrain.name   # already there: the scene is played where the cast stands
         tiles = [(x, y) for x in range(world.width) for y in range(world.height)
                  if world.patches[x][y].terrain_type == terrain]
         if tiles:

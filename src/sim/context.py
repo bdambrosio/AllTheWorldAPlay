@@ -948,20 +948,22 @@ with current situation:
 {{$narrative}}
 </situation>
 
-Respond with the observable result. Target a sentence or two at most as your response length.
-Respond ONLY with the observable immediate effects of the above Action on the environment and characters.
-Include any effects on the physical, mental, or emotional state of {{$name}} in your response, even if not observable to other characters.
+The characters present are: {{$present}}. Nobody else is here.
+
+You are the stage, not a character: report what the action physically does, and nothing more.
+Respond ONLY with the immediate result that someone standing there could see or hear. One or two simple declarative sentences, 40 words at most.
 Do not repeat the above action statement in your response.
-Observable result must be consistent with information provided in the LocalMap.
-Format your response as one or more simple declarative sentences.
-Include in your response:
+The result must be consistent with the LocalMap and with the facts above.
+Include, when they apply:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
-- sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
-- changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ',  'loses ... ', / ... / )
-- changes in {{$name}}'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
-- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
-Do NOT extend the scenario with any follow on actions or effects.
-Be terse, only report the most significant  state changes. Limit your response to 70 words.
+- changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ', 'loses ... ')
+- what {{$name}} physically finds or reads, stated as the actual content (e.g. '{{$name}} finds the ledger is two pages short'), only when the action is one that would find it
+- a change in {{$name}}'s own body (e.g. 'becomes tired', 'is injured')
+Do NOT:
+- say what any other character feels, thinks, decides or does in reply: their reactions are theirs to play
+- have the action succeed at controlling another character (a snatch, a shove, a forced signature): report the attempt and what is physically true so far; the other character answers it
+- introduce objects, documents, people or facts that the action and the situation did not already contain
+- extend the scenario with any follow-on actions or effects
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -976,6 +978,7 @@ End your response with:
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
+                                     "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
                                      "facts": facts or 'none'},
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
@@ -1081,6 +1084,7 @@ In the interim, the characters in the world had the following interactions:
 All actions performed by actors since the last situation update are including in the above History.
 Do not include in your updated situation any actions not listed above.
 Include characters in your response only with respect to the effects of their above actions on the situation.
+{{$narrative}}
 
 Respond using the following XML format:
 
@@ -1466,7 +1470,9 @@ Ensure your response reflects this change.
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
-            await self.update(changes_only=True)
+            cast_names = ', '.join(dict.fromkeys(n for n in scene.get('action_order', []) if n != 'Context'))
+            await self.update(narrative=f'A new scene is starting. The only characters in it are: {cast_names}. '
+                                        'Do not place any other character in the scene.', changes_only=True)
             await asyncio.sleep(0)
 
         if scene.get('post_narrative'):
@@ -1605,7 +1611,10 @@ Ensure your response reflects this change.
         # established") fed abstract labels to every character and to the next scene. The wrap-up
         # now says what physically happened, plus the assessed outcomes.
         self.current_scene['outcomes'] = outcomes
-        happened = '; '.join(e.split(' ', 1)[-1] for e in self.scene_events[-8:]) or 'little changed physically'
+        # each event is 'HH:MM who did what -> visible result': keep the results, the latest few
+        results = [e.split(' -> ', 1)[1] if ' -> ' in e else e.split(' ', 1)[-1] for e in self.scene_events]
+        happened = ' '.join(r.split('. ')[0].rstrip('.') + '.' for r in results[-4:]) or 'little changed physically'
+        happened = happened.rstrip('.')
         wrapup = f"Scene '{self.current_scene.get('scene_title', '')}' ends. What happened: {happened}."
         if true_outcomes:
             wrapup += f" Assessed outcome: {true_outcomes.replace(chr(10), '; ')}."

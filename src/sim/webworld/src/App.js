@@ -151,6 +151,16 @@ function App() {
                   running: false,
                   paused: true
                 }));
+                if (data.command === 'load_play') {
+                  // The ack arrives when the new play's world exists and before its characters
+                  // are sent: drop what the previous play left on screen (its character tabs
+                  // stayed, because character updates only ever add to the list).
+                  setCharacters({});
+                  setActiveTab(0);
+                  setWorldState({});
+                  setLogText('');
+                  setChoiceRequest(null);
+                }
                 if (data.command === 'load_play' && pendingPlayLoadRef.current) {
                   console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
                   setCurrentPlay(pendingPlayLoadRef.current);

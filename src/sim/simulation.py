@@ -62,10 +62,13 @@ logger = logging.getLogger('simulation_core')
 
 def transcript_fields(message):
     """speaker / kind / text of a UI line, for the run trace. The engine's line forms:
-    "'...'" speech, "...x..." thought, "does x" / "moves x" action, no speaker: narration."""
+    "'...'" speech, "...x..." thought, "moves x" or a line marked line_kind 'action' (a Do: the
+    deed and what the character notices), no speaker: narration."""
     name = (message.get('name') or '').strip()
     text = str(message.get('text') or '').strip()
-    if not name:
+    if message.get('line_kind'):
+        kind = message['line_kind']
+    elif not name:
         kind = 'narration'
     elif text.startswith("'"):
         kind = 'speech'

@@ -38,35 +38,16 @@ def get_voice_embedding(voice):
         return _embedding_model.encode(' none ')
 
 class SpeechStylizer:
-    """Context‑aware style generator for character dialogue.
+    """A character's speaking voice.
 
-    The stylizer merges *stable* character traits with *dynamic* scene
-    information (theme, emotional stance, relationship, tension) and a
-    stochastic jitter schedule to yield:
+    voice_line(): one fixed line on how the character speaks (tone, register, habits), read
+    once from the character description. It goes into the character's own description, so
+    every prompt that writes its speech sees the same voice.
 
-    1. **A dict** – useful for analytics or downstream recombination.
-    2. **A `<STYLE>` directive string** – ready to prepend to an LLM prompt
-       so the model rewrites bland speech into colourful, character‑true
-       lines.
-
-    Parameters
-    ----------
-    character : object
-        Must expose at least the following attributes (None allowed):
-            - ``name``
-            - ``character_description``
-            - ``reference_description``
-            - ``emotional_state`` (dict)
-            - ``current_scene`` (dict with keys *tension*, *dominant_theme*)
-            - ``relationships`` (dict mapping other.name -> relation dict)
-    global_variability : float, default 0.25
-        Master knob 0‑1 controlling magnitude of random jitter.
-    style_rotation_period : int, default 3
-        Number of *get_style_directive()* calls before forcing an above‑average
-        burst of variability – prevents characters from falling into
-        repetitive grooves on long stretches of polite banter.
-    rng : Optional[random.Random]
-        Inject a seeded RNG for reproducibility.
+    voice_params(): text-to-speech settings for an utterance, when voices are on. They vary
+    with emotion, relationship and scene; the words do not. (Each Say used to be rewritten by
+    a second LLM call under a style whose formality, metaphor and 'oddity' were re-rolled per
+    line: the same character swung between clipped slang and archaic formality.)
     """
 
     # ---------------------------------------------------------------------
@@ -90,24 +71,31 @@ class SpeechStylizer:
             except Exception as e:
                 logger.error(f"Error picking best voice: {e}")
         self._call_counter = 0
-        # Track recent words for overuse detection
-        self._recent_words = []  # List of (word, weight) tuples
         self.relationship_cache = {}
         self.relationships_last_refreshed = 0
 
     # =====================================================================
     # PUBLIC API
     # ---------------------------------------------------------------------
-    def get_style_directive(self, target_character=None, scene_context: Optional[dict] = None, dominant_theme: Optional[str] = None,) -> str:
-        """Return a `<STYLE>` block tailored for the next utterance."""
+    def voice_line(self) -> str:
+        """How this character speaks, in a line: the same for the whole play."""
+        style = self._base_style
+        formality = style.get("formality", 0.5)
+        quirks = style.get("lexical_quirks", {})
+        parts = [', '.join(style.get("tone", [])[:2]),
+                 'formal register' if formality >= 0.7 else 'casual register' if formality < 0.35 else 'everyday register']
+        if quirks.get("slang", 0.0) >= 0.5:
+            parts.append('uses slang')
+        parts.append('fond of a metaphor' if quirks.get("metaphor", 0.0) >= 0.6 else 'plain words, rarely a figure of speech')
+        if quirks.get("profanity"):
+            parts.append('swears')
+        return '; '.join(p for p in parts if p)
 
-        style = self._compose_style_dict(target_character=target_character, scene_context=scene_context, dominant_theme=dominant_theme)
-        return self._format_style_block(style), self.to_elevenlabs_params(style)
-
-    # ------------------------------------------------------------------
-    def get_style_dict(self, target_character=None, scene_context: Optional[dict] = None, dominant_theme: Optional[str] = None,) -> Dict:
-        """Return raw dict (same data used by *get_style_directive*)."""
-        return self._compose_style_dict(target_character=target_character, scene_context=scene_context, dominant_theme=dominant_theme)
+    def voice_params(self, target_character=None) -> Dict:
+        """Text-to-speech settings for the next utterance; {} when voices are off."""
+        if self.voice_id is None:
+            return {}
+        return self.to_elevenlabs_params(self._compose_style_dict(target_character=target_character))
 
     # =====================================================================
     # INTERNAL ORCHESTRATION
@@ -199,7 +187,10 @@ Format your response as valid JSON only, no other text.
                 "lexical_quirks": {"slang": 0.0, "profanity": False, "metaphor": 0.0}
             }
         # Ensure we have all required keys with defaults
-        style.setdefault("tone", [])
+        tone = style.get("tone") or []
+        if isinstance(tone, str):   # "gruff, warm": list() of it made a tone of every letter
+            tone = re.split(r'\s*[,;/]\s*|\s+and\s+', tone)
+        style["tone"] = [t.strip() for t in tone if isinstance(t, str) and t.strip()]
         style.setdefault("formality", 0.5)
         style.setdefault("lexical_quirks", {})
         style["lexical_quirks"].setdefault("slang", 0.0)
@@ -443,89 +434,6 @@ End your response with:
         return out
 
     # ---------------------------------------------------------------------
-    def _format_style_block(self, style: Dict) -> str:
-        """Turn dict into a `<STYLE>` block to inject into prompts."""
-        lines: List[str] = []
-        if style["tone"]:
-            lines.append(f"tone (a set of emotional qualities that describe the character's speech): {', '.join(style['tone'])}")
-        lines.append(f"formality (the degree of formality of the character's speech, from 0 - very informal to 1 - very formal): {style['formality']:.2f}")
-        quirks = style["lexical_quirks"]
-        if quirks.get("slang", 0.0) > 0.01:
-            lines.append(f"slang probability (the likelihood the character will use slang typical of their age and background for this utterance): {quirks['slang']:.2f}")
-        if quirks.get("metaphor", 0.0) > 0.01:
-            lines.append(f"metaphor probability (the likelihood the character will use a metaphor for this utterance): {quirks['metaphor']:.2f}")
-        if quirks.get("profanity"):
-            lines.append("profanity_allowed: true")
-        if style["syntactic_oddity"] > 0.01:
-            lines.append(f"syntactic oddity (the likelihood the character will use a syntactically odd or unusual sentence structure for this utterance): {style['syntactic_oddity']:.2f}")
-        return "<STYLE>\n" + "\n".join(lines) + "\n</STYLE>"
-
-    def stylize(self, original_say, target, style_block):
-        if self.char.name == 'Viewer':
-            return original_say
-        transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
-        filtered_transcript = '\n'.join([t for t in transcript if t.startswith(self.char.name)])
-        
-        # Get overused words to avoid
-        overused_words = self.get_overused_words(filtered_transcript)
-        overused_text = f"AVOID these overused words/phrases: {', '.join(overused_words)}" if overused_words else ""
-        
-        prompt = [SystemMessage(content="""
-You are a dialogue style-transfer module.  
-Your job is to rewrite a text so that it:
-
-1. Obeys every instruction in the `<STYLE>` block provided below. For probabilities, randomly choose an expression form based on the probability specified.
-2. Preserves the original semantic intent, which may be to inform, persuade, deceive, entertain, etc.
-3. Sounds like natural spoken dialogue (use contractions, real cadence).
-4. Fits the character's voice and current emotional stance. Source text will usually be relatively flat, so the rewrite should be more expressive.
-5. Avoids repetition of past speech unless needed for dramatic effect.
-6. Stays at most same length as original.
-7. Avoids repetition of words or phrases in recent history, especially of short 'social' phrases (e.g. "I'm on it!") or words that would alternated with variants in normal conversational speech (e.g. "loyalty").
-    History (you are {{$name}}):
-    {{$speech_transcript}}
-    
-    History specifically with {{$target}}, the target of the current utterance:
-    {{$recent_history}}
-
-
-### STYLE
-{{$style_block}}
-
-### CHARACTER
-{{$character_description}}
-
-### EMOTIONAL STANCE
-{{$emotional_stance}}
-                                
-### RECENT HISTORY
-{{$recent_history}}
-
-### ORIGINAL
-{{$original_say}}
-
-"""),
-    UserMessage(content="""
-Rewrite the *ORIGINAL* text so it matches the style directives.  
-Return **only** the rewritten line—no extra commentary, no tags, no quotation marks.
-""")]
-
-        if target:
-            recent_history = self.char.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.transcript[-20:]
-        else:
-            recent_history = self.char.actor_models.get_actor_model(self.char.name, create_if_missing=True).dialog.transcript[-20:]
-        response = self.char.llm.ask({"name": self.char.name, 
-                                      "target": target.name if target else None,
-                                      "speech_transcript": filtered_transcript,
-                                      "original_say": original_say, 
-                                      "recent_history": recent_history,
-                                      "style_block": style_block, 
-                                      "character_description": self.char.character, 
-                                      "emotional_stance": self.char.emotionalStance}, 
-                                     prompt, tag='stylize', temp=0.8, stops=['</end>'], max_tokens=180)
-        if response is None:
-            return original_say
-        return response.strip()
-
     def to_elevenlabs_params(self, style: Dict) -> Dict:
         """Convert SpeechStylizer style to ElevenLabs speech parameters."""
         if self.voice_id is None:
@@ -592,58 +500,3 @@ Return **only** the rewritten line—no extra commentary, no tags, no quotation 
         max_score = max(scores)
         best_voice = voices[scores.index(max_score)]
         return best_voice['voice_id']
-
-    def get_overused_words(self, filtered_transcript=None, threshold=3, max_words=10):
-        """
-        Generate a list of words/phrases to avoid based on recent usage.
-        
-        Args:
-            filtered_transcript: List of recent utterances (if None, gets from character)
-            threshold: Minimum count to consider a word overused 
-            max_words: Maximum number of words to return
-            
-        Returns:
-            List of overused words/phrases to avoid
-        """
-        if filtered_transcript is None:
-            filtered_transcript = self.char.actor_models.get_dialog_transcripts(max_turns=20)
-            filtered_transcript = [t for t in filtered_transcript if t.startswith(self.char.name)]
-        
-        # Extract just the spoken text (remove "CharacterName: " prefix)
-        spoken_text = []
-        for line in filtered_transcript:
-            if ': ' in line:
-                spoken_text.append(line.split(': ', 1)[1].lower())
-        
-        if not spoken_text:
-            return []
-        
-        # Count common short phrases and filler words
-        word_count = {}
-        filler_patterns = [
-            'yeah', 'ok', 'okay', 'sure', 'right', 'alright', 'well',
-            'no problem', "i'm on it", 'got it', 'sounds good', 
-            'makes sense', 'i see', 'i think', 'i mean', 'you know'
-        ]
-        
-        # Count occurrences
-        full_text = ' '.join(spoken_text)
-        for pattern in filler_patterns:
-            count = full_text.count(pattern)
-            if count >= threshold:
-                word_count[pattern] = count
-        
-        # Also count individual words that appear frequently
-        words = full_text.split()
-        for word in words:
-            # Skip very short words and common articles/prepositions
-            if len(word) > 2 and word not in ['the', 'and', 'but', 'for', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'will', 'would', 'could', 'should']:
-                word_count[word] = word_count.get(word, 0) + 1
-        
-        # Filter by threshold and sort by frequency
-        overused = [(word, count) for word, count in word_count.items() if count >= threshold]
-        overused.sort(key=lambda x: x[1], reverse=True)
-        
-        # Return just the words, limited to max_words
-        return [word for word, count in overused[:max_words]]
-

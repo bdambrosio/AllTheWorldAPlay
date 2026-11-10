@@ -2,11 +2,11 @@
 """Run a play several times under each ablation condition, then score and judge each run.
 
     set -a; . ~/.config/secrets.env; set +a     # needed with --judge claude or fireworks
-    .venv/bin/python tools/batch_run.py --name stylizer-test --play lost.py \\
-        --conditions base,stylizer --repeats 3 --run-secs 600 [--judge local]
+    .venv/bin/python tools/batch_run.py --name stance-test --play lost.py \\
+        --conditions base,stance --repeats 3 --run-secs 600 [--judge local]
 
 A condition is 'base' (everything on) or a '+'-joined list of features to disable
-(src/sim/ablation.py: stylizer, commitments, stance, drive_checks), e.g. 'stylizer+stance'.
+(src/sim/ablation.py: commitments, stance, drive_checks), e.g. 'commitments+stance'.
 Each run: tools/smoke_run.py (with --hw), tools/score_play.py, then tools/judges.py.
 Writes logs/batches/<name>.json, the input to tools/compare_runs.py. Runs are sequential:
 the engine serves one play at a time. Needs the stack up (./start-local.sh).
