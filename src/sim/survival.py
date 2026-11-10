@@ -32,7 +32,14 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      'sets' ('sheltered' | 'fire' | any flag), 'requires_flag',
                      'sets_property': {key: value}, 'requires_property': {key: value or None;
                      '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
-                     'risk': {'chance', 'effects', 'text'}, 'text'}],
+                     'risk': {'chance', 'effects', 'text'}, 'text',
+                     items ('requires', 'consumes', 'transfer') may be '*suffix': any held item
+                     ending so ("*contract" is "Hu's contract"); 'gain' may use {actor}, {item},
+                     'remote': True (a 'target' action that needs no nearness: a phone message),
+                     'target_gain': item the target receives (may use {said}: the words the
+                     act quotes), 'reveals': prefix (lists the target's items that start so:
+                     the messages on someone's phone)}],
+        'private_items': [prefixes of items others do not see a character carrying],
         'hazards': [{'name', 'description', 'when' ('day'|'night'|'any'), 'terrain',
                      'chance_per_hour', 'blocked_by' (sheltered, fire, flags), 'minutes_to_strike',
                      'harm', 'retreat_text', 'strike_text', 'fail_text',
@@ -112,10 +119,14 @@ class Body:
     def level(self, need):
         return self.levels.get(need, 0.0)
 
-    def summary(self):
+    def summary(self, public=False):
+        """The body in words. public: as someone else sees it, without the items the world
+        keeps private ('private_items' prefixes: the messages on a phone)."""
         parts = [_word(self.cfg, n, v) for n, v in self.levels.items()]
-        if self.inventory:
-            parts.append('carrying ' + ', '.join(self.inventory))
+        hidden = tuple(self.cfg.get('private_items', ())) if public else ()
+        carried = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
+        if carried:
+            parts.append('carrying ' + ', '.join(carried))
         if self.cfg.get('currency'):
             parts.append(f"{self.money:g} {self.cfg['currency']}")
         if self.sheltered:
@@ -327,12 +338,22 @@ def _prop_ok(res, wanted, character):
 
 
 # --------------------------------------------------------------------------- actions
+def _held(body, spec):
+    """The item in the inventory that an item spec names: the item itself, or for '*suffix' the
+    first held item ending with the suffix. None when nothing matches."""
+    if not spec:
+        return None
+    if spec.startswith('*'):
+        return next((i for i in body.inventory if i.endswith(spec[1:])), None)
+    return spec if spec in body.inventory else None
+
+
 def _missing(action, body):
     """Why the actor cannot do this action now (requirements on its own body), or ''."""
-    if action.get('requires') and action['requires'] not in body.inventory:
-        return f"needs a {action['requires']}"
-    if action.get('transfer') and action['transfer'] not in body.inventory:
-        return f"needs a {action['transfer']} to give"
+    if action.get('requires') and not _held(body, action['requires']):
+        return f"needs a {action['requires'].lstrip('*')}"
+    if action.get('transfer') and not _held(body, action['transfer']):
+        return f"needs a {action['transfer'].lstrip('*')} to give"
     if action.get('transfer_money') and body.money < action['transfer_money']:
         return f"needs {action['transfer_money']:g} {body.cfg.get('currency', '')} to give".rstrip()
     if action.get('cost') and body.money < action['cost']:
@@ -353,6 +374,9 @@ def available_actions(character):
         missing = _missing(action, body)
         note = f" ({missing})" if missing else ''
         if action.get('target') == 'character':
+            if action.get('remote'):
+                out.append(f"{action['name']}@<anyone, wherever they are>{note}")
+                continue
             for other, d in _present(character):
                 if d <= CO_PRESENT_TILES:
                     out.append(f"{action['name']}@{other.name}{note}")
@@ -441,7 +465,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
 
     if chosen and chosen[0] == 'action':
         _, action, near, target = chosen
-        return _apply(context, character, action, near, target, via)
+        return _apply(context, character, action, near, target, via, act_text or '')
 
     # candidate actions: verbs match; rank those whose resource (or person) the act names, then
     # those in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
@@ -454,7 +478,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
             named = bool(present)
             if not (named and (_matches(text, action.get('verbs', [])) or _matches(text, action.get('named_verbs', [])))):
                 continue
-            if action.get('transfer') and action['transfer'].lower() not in text:
+            if action.get('transfer') and action['transfer'].lstrip('*').lower() not in text:
                 continue   # 'gives Joe a look' is not giving him the bread
             target = min(present, key=lambda p: p[1])
             # first: it needs its own verb, a present person the act names, and the item given
@@ -474,7 +498,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
         return None
     candidates.sort(key=lambda c: c[:4])
     _, _, _, _, action, near, target = candidates[0]
-    return _apply(context, character, action, near, target, via)
+    return _apply(context, character, action, near, target, via, act_text or '')
 
 
 def _can_approach(context, character, d):
@@ -490,7 +514,19 @@ def _refuse(character, action, fact, via, target=None):
     return fact
 
 
-def _apply(context, character, action, near, target, via):
+def _said(act_text):
+    """The words an act carries (a message's content): what follows a colon, else what is in
+    quotes (outermost, so an apostrophe inside does not end it)."""
+    text = act_text or ''
+    if ':' in text:
+        said = text.split(':', 1)[1]
+    else:
+        quoted = re.search(r'["“](.+)["”]', text) or re.search(r"['‘](.+)['’]", text)
+        said = quoted.group(1) if quoted else ''
+    return said.strip().strip('"“”\'‘’').strip()[:160]
+
+
+def _apply(context, character, action, near, target, via, act_text=''):
     """Check reach, stock and requirements, then apply the action's effects; returns the fact line."""
     cfg = config(context)
     body = character.body
@@ -502,7 +538,7 @@ def _apply(context, character, action, near, target, via):
         if target is None:
             return _refuse(character, action, f"There is no one here to {action['name']}.", via)
         other, d = target
-        if d > CO_PRESENT_TILES:
+        if d > CO_PRESENT_TILES and not action.get('remote'):
             if not _can_approach(context, character, d):
                 return _refuse(character, action, f"{other.name} is {d} tiles away; {character.name} must go to them first.",
                                via, other.name)
@@ -535,7 +571,7 @@ def _apply(context, character, action, near, target, via):
     # ---- effects
     for need, delta in (action.get('effects') or {}).items():
         body.adjust(need, delta)
-    item = action.get('transfer')
+    item = _held(body, action.get('transfer'))
     if item and other is not None:
         body.inventory.remove(item)
         other.body.inventory.append(item)
@@ -545,10 +581,19 @@ def _apply(context, character, action, near, target, via):
     if other is not None:
         for need, delta in (action.get('target_effects') or {}).items():
             other.body.adjust(need, delta)
-    if action.get('consumes') and action['consumes'] in body.inventory:
-        body.inventory.remove(action['consumes'])
+    used = _held(body, action.get('consumes'))
+    if used:
+        body.inventory.remove(used)
+    item = item or used or _held(body, action.get('requires'))
     if action.get('gain'):
-        body.inventory.append(action['gain'])
+        body.inventory.append(_fmt(action['gain'], actor=character.name, item=item or ''))
+    if action.get('target_gain') and other is not None:
+        received = _fmt(action['target_gain'], actor=character.name, item=item or '', said=_said(act_text)).rstrip(': ')
+        other.body.inventory.append(received)
+        other.add_perceptual_input(f'You receive a {received}', mode='internal')
+    revealed = None
+    if action.get('reveals') and other is not None:
+        revealed = [i for i in other.body.inventory if i.startswith(action['reveals'])]
     found = None
     if action.get('finds'):
         roll = _rng.random()
@@ -582,13 +627,15 @@ def _apply(context, character, action, near, target, via):
     fact = approach + f"{character.name} {_fmt(action.get('text', action['name']), **kw)}{'' if action.get('text') else where}."
     if action.get('finds'):
         fact += f" {character.name} finds {found}." if found else f" {character.name} finds nothing useful."
+    if revealed is not None:
+        fact += f" {character.name} finds: {', '.join(revealed)}." if revealed else f" {character.name} finds nothing there."
     risk = action.get('risk')
     if risk and _rng.random() < risk.get('chance', 0):
         for need, delta in risk.get('effects', {}).items():
             body.adjust(need, delta)
         fact += ' ' + _fmt(risk.get('text', ''), **kw)
     fact += f" ({character.name} is now {body.summary()}"
-    fact += f"; {other.name} is now {other.body.summary()}.)" if other is not None else ".)"
+    fact += f"; {other.name} is now {other.body.summary(public=True)}.)" if other is not None else ".)"
     _record(character, action, fact, via, applied=True, resource=resource_id, approached=bool(approach),
             target=other.name if other else None, found=found)
     return fact

@@ -10,14 +10,14 @@ from sim.cognitive.driveSignal import Drive
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 model_name = configuration.model_name
-import plays.scenarios.suburban as suburban
+import plays.scenarios.city as city
 
 importlib.reload(configuration)# force reload in case cached version
 server_name = configuration.server_name 
 model_name = configuration.model_name
-importlib.reload(suburban)    
+importlib.reload(city)
 
-map_file_name='suburban.py' # needed to trigger narrative creation
+map_file_name='city.py' # needed to trigger narrative creation
 narrative=True
 # Character definitions
 Hu = NarrativeCharacter("Hu", """You are Hu Manli, a healthy, professionally dressed 39 year old chinese female insurance executive. 
@@ -83,10 +83,10 @@ Yangho.set_drives([
 ])
 
 
-# Create context with forest scenario
+# The city scenario: offices, apartments, a cafe and a hotel bar; contracts and phone messages
 W = context.Context([Hu, Xue, Qiu],
     """A modern chinese urban  setting with a mix of buildings, roads, and other signs of humanity.""",
-    scenario_module=suburban,  # Pass the forest scenario module
+    scenario_module=city,
     extras=[Wang, Xiaoyu, Yangho, Ding],
     server_name=server_name,
    )
@@ -96,8 +96,12 @@ Hu.add_perceptual_input("Yangho, is a client of Xue and a prime poaching target"
 Xue.add_perceptual_input("Xiaoyu, is a client of Hu and a prime poaching target", mode='internal')
 
 
-Hu.mapAgent.move_to_resource('Office1')
-Xue.mapAgent.move_to_resource('Office2')
+# the day starts with Hu and Xue at home, the others at work or at the university
+# (Qiu has neither office nor school: she starts at her apartment)
+for character, place in ((Hu, 'HuDingApartment'), (Xue, 'XueApartment'), (Qiu, 'QiuApartment'),
+                         (Ding, 'UniversityOffice'), (Wang, 'UniversityOffice'),
+                         (Xiaoyu, 'XiaoyuOffice'), (Yangho, 'YanghoOffice')):
+    character.mapAgent.move_to_resource(place)
 W.reference_manager.declare_relationship('Hu', 'wife of', 'Ding', 'husband of')
 W.reference_manager.declare_relationship('Wang', 'student of', 'Ding', 'teacher of')
 W.reference_manager.declare_relationship('Xiaoyu', 'client of', 'Hu', 'insurance agent of')
