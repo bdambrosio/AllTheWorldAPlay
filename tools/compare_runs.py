@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Compare ablation conditions from a batch (tools/batch_run.py).
 
-    .venv/bin/python tools/compare_runs.py logs/batches/<name>.json [--pairwise local|fireworks]
+    .venv/bin/python tools/compare_runs.py logs/batches/<name>.json [--pairwise local|claude|fireworks]
 
 Per metric and condition: n, mean and a 95% bootstrap interval. Against 'base': the
 difference, a Mann-Whitney p-value, and Holm-corrected significance across the metrics of
-that condition. --pairwise also asks a judge which transcript is better for base-vs-condition
-pairs, both orders, and reports the condition's win rate. The frontier (mean tokens vs mean
+that condition. --pairwise also asks a judge to compare base and condition runs scene by scene
+(same act and scene number), one question each for tension, pacing and engagement, both orders,
+and reports the condition's win rate per dimension. 'Judge validity' correlates each judge's
+scene scores with measured signals of the same scenes. The frontier (mean tokens vs mean
 judged quality per condition) answers "does a feature earn its tokens". Writes
 logs/batches/<name>.compare.json, .compare.md and .frontier.png.
 """
@@ -16,6 +18,7 @@ import argparse
 import collections
 import json
 import random
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -25,6 +28,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "src"))
+
+from judges import (CACHE_BREAK, CRITIC, SCENE_FIELDS, make_judge, render, scenes_of,   # noqa: E402
+                    script_lines)
+from score_play import load, by_kind   # noqa: E402
 
 
 def get(d, *path):
@@ -65,7 +72,8 @@ METRICS = {
 
 
 def judge_metrics(j):
-    """Judge scores per judge name: play dims, mean 2025 dims over characters, mean scene dims."""
+    """Judge scores per judge name: play dims, mean 2025 dims over characters, mean scene dims
+    (scenes the run's timer cut short are not judged and not counted)."""
     out = {}
     for r in (j or {}).get("judges", []):
         name = r["judge"]
@@ -77,9 +85,38 @@ def judge_metrics(j):
                 dims[d].append(v.get("score"))
         for d, vs in dims.items():
             out[f"{name}:{d}"] = mean_of(vs)
-        for f in ("yes_and", "tension", "discovery", "pacing", "purpose"):
-            out[f"{name}:scene_{f}"] = mean_of(s.get(f) for s in r.get("scenes", []))
+        for f in SCENE_FIELDS:
+            out[f"{name}:scene_{f}"] = mean_of(s.get(f) for s in r.get("scenes", []) if s.get("complete", True))
         out[f"{name}:attribution"] = get(r, "attribution", "accuracy")
+    return out
+
+
+# judge dimension -> measured scene signals it should move with (sign expected)
+VALIDITY_PAIRS = [("pacing", "repeated_trigrams", "-"), ("pacing", "repeated_acts", "-"),
+                  ("tension", "hazard_events", "+"), ("tension", "max_need", "+"),
+                  ("engagement", "repeated_trigrams", "-"), ("discovery", "affordances_applied", "+")]
+
+
+def judge_validity(manifest):
+    """Spearman, over every judged scene of the manifest's runs, between a judge's scene score
+    and a measured signal of the same scene (judges.py scene_signals)."""
+    from scipy.stats import spearmanr
+    rows = collections.defaultdict(list)     # judge -> scenes
+    for r in manifest["runs"]:
+        jd = json.loads(Path(r["judges"]).read_text()) if r.get("judges") and Path(r["judges"]).exists() else None
+        for res in (jd or {}).get("judges", []):
+            rows[res["judge"]] += [s for s in res.get("scenes", []) if s.get("complete") and s.get("signals")]
+    out = {}
+    for judge, scenes in rows.items():
+        entry = {"scenes": len(scenes)}
+        for dim, signal, sign in VALIDITY_PAIRS:
+            pairs = [(s[dim], s["signals"][signal]) for s in scenes
+                     if s.get(dim) is not None and s["signals"].get(signal) is not None]
+            if len(pairs) >= 6 and len({y for _, y in pairs}) > 1 and len({x for x, _ in pairs}) > 1:
+                rho = spearmanr([x for x, _ in pairs], [y for _, y in pairs])
+                entry[f"{dim}~{signal}"] = {"expected": sign, "spearman": round(float(rho.statistic), 3),
+                                            "p": round(float(rho.pvalue), 4), "n": len(pairs)}
+        out[judge] = entry
     return out
 
 
@@ -101,7 +138,13 @@ def holm(pvalues):
     return result
 
 
-PAIRWISE = """Two improvised performances of the same play follow, A and B.
+PAIRWISE_DIMS = {
+    "tension": "has more at stake, with pressure that rises or turns during the scene",
+    "pacing": "keeps moving, with less stalling, looping and repetition of beats",
+    "engagement": "would hold an audience better and leave them wanting the next scene",
+}
+
+PAIRWISE = """Two performances of the same point in the same play follow, scene A and scene B.
 
 #A
 {{$a}}
@@ -110,49 +153,67 @@ PAIRWISE = """Two improvised performances of the same play follow, A and B.
 #B
 {{$b}}
 ##
+""" + CACHE_BREAK + """Compare them on one quality only, {{$dim}}: which scene {{$question}}?
+Other differences must not decide the answer.
 
-Which is the better piece of theatre: more engaging, coherent, character-driven and dramatically alive?
-Respond with this hash-formatted text only:
+First cite the evidence, then answer. Respond with exactly these two lines, each starting with '#':
+#evidence up to 30 words: what decides it
 #better A or B
-#justification 6-12 words
 <end/>
 """
 
 
-def pairwise(manifest, judge, pairs_per_condition=4):
-    from judges import make_judge, script_lines, CRITIC
-    from score_play import load, by_kind
-    from utils import hash_utils
-    from utils.Messages import UserMessage
-    llm, temp = make_judge(judge)
-    scripts = {}
+def picked(reply):
+    """'A' or 'B' from a pairwise reply: '#better B', 'Better: A', or a last line that is just '#B'."""
+    found = re.findall(r"(?im)^\W*(?:better\b\W*)?(?:scene\s+)?([AB])\W*$", reply or "")
+    return found[-1].upper() if found else ""
+
+
+def pairwise(manifest, judge_name, pairs_per_condition=4):
+    """Base run vs condition run, scene by scene (same act and scene number, both played to
+    their end), one question per dimension, each pair asked in both orders."""
+    from scipy.stats import binomtest
+    judge = make_judge(judge_name)
+    scenes = {}
     for r in manifest["runs"]:
-        if r.get("trace"):
+        if r.get("trace") and Path(r["trace"]).exists():
             ev = collections.defaultdict(list, by_kind(load(r["trace"])))
-            scripts[r["label"]] = script_lines(ev["transcript_line"])[-50_000:]
-    base = [r["label"] for r in manifest["runs"] if r["condition"] == "base" and r["label"] in scripts]
+            scenes[r["label"]] = {sc["key"]: script_lines(sc["lines"])[-20_000:] for sc in scenes_of(ev)
+                                  if sc["complete"] and sc["judgeable"]}
+    base = [r["label"] for r in manifest["runs"] if r["condition"] == "base" and r["label"] in scenes]
     out = {}
     for cond in sorted({r["condition"] for r in manifest["runs"]} - {"base"}):
-        others = [r["label"] for r in manifest["runs"] if r["condition"] == cond and r["label"] in scripts]
+        others = [r["label"] for r in manifest["runs"] if r["condition"] == cond and r["label"] in scenes]
         pairs = [(b, o) for b in base for o in others]
         random.Random(0).shuffle(pairs)
-        wins = trials = 0
+        tally = {d: [0, 0] for d in PAIRWISE_DIMS}     # dim -> [condition wins, trials]
+        matched = 0
         for b, o in pairs[:pairs_per_condition]:
-            for first, second, cond_is in ((b, o, "B"), (o, b, "A")):   # both orders
-                reply = llm.ask({"a": scripts[first], "b": scripts[second]}, [CRITIC, UserMessage(content=PAIRWISE)],
-                                tag="judge_pairwise", temp=temp, max_tokens=2000, stops=["<end/>"])
-                pick = (hash_utils.find("better", reply or "") or "").strip().upper()[:1]
-                if pick in ("A", "B"):
-                    trials += 1
-                    wins += pick == cond_is
-        out[cond] = {"judge": judge, "trials": trials, "condition_win_rate": round(wins / trials, 3) if trials else None}
+            for key in sorted(set(scenes[b]) & set(scenes[o])):
+                matched += 1
+                for first, second, cond_is in ((scenes[b][key], scenes[o][key], "B"), (scenes[o][key], scenes[b][key], "A")):
+                    for dim, question in PAIRWISE_DIMS.items():
+                        reply = judge.ask(CRITIC, render(PAIRWISE, {"a": first, "b": second, "dim": dim, "question": question}),
+                                          "judge_pairwise", "low")
+                        pick = picked(reply)
+                        if pick in ("A", "B"):
+                            tally[dim][1] += 1
+                            tally[dim][0] += pick == cond_is
+                        else:
+                            judge.failed += 1
+        entry = {"judge": judge_name, "model": judge.model, "matched_scenes": matched}
+        for dim, (wins, trials) in tally.items():
+            entry[dim] = {"condition_win_rate": round(wins / trials, 3) if trials else None, "trials": trials,
+                          "p_vs_even": round(float(binomtest(wins, trials).pvalue), 4) if trials else None}
+        out[cond] = entry
+    out["_judge"] = {"calls": judge.calls, "failed": judge.failed, "cost_usd": judge.cost()}
     return out
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("manifest")
-    p.add_argument("--pairwise", choices=["local", "fireworks"])
+    p.add_argument("--pairwise", choices=["local", "claude", "fireworks"])
     p.add_argument("--quality", default="local:play_overall", help="judge metric for the frontier")
     p.add_argument("--max-llm-errors", type=float, default=0.05,
                    help="exclude runs whose LLM error rate exceeds this (server outages)")
@@ -202,6 +263,7 @@ def main():
         result["conditions"][cond] = entry
     if a.pairwise:
         result["pairwise"] = pairwise(manifest, a.pairwise)
+    result["judge_validity"] = judge_validity(manifest)
 
     # frontier: tokens vs judged quality, per condition
     frontier = {}
@@ -234,6 +296,12 @@ def main():
               ", ".join(f"{c}={max((e['n'] for e in result['conditions'][c].values()), default=0)}" for c in conds)]
     if result.get("pairwise"):
         lines += ["", "## Pairwise preference vs base", "", json.dumps(result["pairwise"], indent=2)]
+    if any(len(v) > 1 for v in result["judge_validity"].values()):
+        lines += ["", "## Judge validity (scene score vs measured signal, Spearman over scenes)", "",
+                  "| judge | pair | expected | rho | p | scenes |", "|---|---|---|---|---|---|"]
+        for judge, entry in result["judge_validity"].items():
+            lines += [f"| {judge} | {k} | {v['expected']} | {v['spearman']} | {v['p']} | {v['n']} |"
+                      for k, v in entry.items() if isinstance(v, dict)]
     lines += ["", f"## Frontier ({a.quality} vs tokens)", ""] + \
              [f"- {c}: {v['tokens']:.0f} tokens, quality {v['quality']}" if v["tokens"] else f"- {c}: n/a" for c, v in frontier.items()]
     Path(f"{stem}.compare.md").write_text("\n".join(lines) + "\n")

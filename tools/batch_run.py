@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a play several times under each ablation condition, then score and judge each run.
 
-    set -a; . ~/.config/secrets.env; set +a     # only needed with --judge fireworks/both
+    set -a; . ~/.config/secrets.env; set +a     # needed with --judge claude or fireworks
     .venv/bin/python tools/batch_run.py --name stylizer-test --play lost.py \\
         --conditions base,stylizer --repeats 3 --run-secs 600 [--judge local]
 
@@ -41,8 +41,9 @@ def main():
     p.add_argument("--conditions", default="base")
     p.add_argument("--repeats", type=int, default=3)
     p.add_argument("--run-secs", type=float, default=600)
-    p.add_argument("--judge", choices=["none", "local", "fireworks", "both"], default="local")
+    p.add_argument("--judge", default="local", help="none, or a comma list of local, claude, fireworks")
     p.add_argument("--samples", type=int, default=3)
+    p.add_argument("--scene-samples", type=int, default=5)
     a = p.parse_args()
 
     out_dir = ROOT / "logs" / "batches"
@@ -71,7 +72,8 @@ def main():
                     run_id = Path(trace).stem
                     entry["scorecard"] = str(ROOT / "logs" / "scores" / f"{run_id}.json")
                     if a.judge != "none":
-                        run([PY, "tools/judges.py", trace, "--judge", a.judge, "--samples", str(a.samples)], log)
+                        run([PY, "tools/judges.py", trace, "--judge", a.judge, "--samples", str(a.samples),
+                             "--scene-samples", str(a.scene_samples)], log)
                         entry["judges"] = str(ROOT / "logs" / "scores" / f"{run_id}.judges.json")
             manifest["runs"].append(entry)
             manifest_path.write_text(json.dumps(manifest, indent=2))
