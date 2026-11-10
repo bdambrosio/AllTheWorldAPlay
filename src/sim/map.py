@@ -390,6 +390,9 @@ class WorldMap:
         self._resource_counters = {}  # Track counters for each resource type
         self.property_registry = {}  # Store property data
 
+        # The stage: the cast starts at the centre of the map, and resources are placed near it
+        # (generate_resources), so the places a scene needs are a walk apart, not across the map.
+        self.stage_centre = (width // 2, height // 2)
         self.patches = [[Patch(x, y) for y in range(height)] for x in range(width)]
         self.road_graph = nx.Graph()
         self.agents = []
@@ -636,35 +639,6 @@ class WorldMap:
             
         return placed_resources
     
-    def random_location_by_resource(self, resource_name):
-        """Get a random location of a given resource type"""
-        resource_type = self.get_resource_type(resource_name)
-        if resource_type is None:
-            return random.randint(0, self.width-1), random.randint(0, self.height-1)
-        candidates = []
-        for candidate in self.resource_registry:
-            if self.resource_registry[candidate]['type'] == resource_type:
-                candidates.append(self.resource_registry[candidate]['location'])
-        if len(candidates) == 0:
-            return random.randint(0, self.width-1), random.randint(0, self.height-1)
-        return random.choice(candidates)
-    
-    def random_location_by_terrain(self, terrain_name):
-        """Get a random location of a given terrain type"""
-        if terrain_name is None:
-            return random.randint(0, self.width-1), random.randint(0, self.height-1)
-        terrain_type = self.get_terrain_type(terrain_name)
-        if terrain_type is None:
-            return self.random_location_by_resource(terrain_name)
-        candidates = []
-        for x in range(self.width):
-            for y in range(self.height):
-                if self.patches[x][y].terrain_type == terrain_type:
-                    candidates.append((x, y))
-        if len(candidates) == 0:
-            return random.randint(0, self.width-1), random.randint(0, self.height-1)
-        return random.choice(candidates)
-    
     def generate_properties(self):
         valid_terrain = [find_enum_member_by_name(self.terrain_types, t) 
                         for t in self._property_rules['valid_terrain']]
@@ -802,7 +776,11 @@ class WorldMap:
                 if terrain_type is not None:
                     terrain_weights[terrain_type] = weight
             
-            # Find valid locations
+            # Valid locations, weighted by terrain and by nearness to the stage centre: the weight
+            # falls to about a third at stage_radius tiles and to almost nothing at twice that
+            # (a resource whose terrain exists only far off is still placed, at the nearest of it)
+            radius = self._resource_rules.get('stage_radius', 12)
+            cx, cy = self.stage_centre
             candidates = []
             for x in range(self.width):
                 for y in range(self.height):
@@ -815,7 +793,8 @@ class WorldMap:
                         
                     weight = terrain_weights.get(patch.terrain_type, 0)
                     if weight > 0:
-                        candidates.append((x, y, weight))
+                        nearness = math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / radius ** 2)
+                        candidates.append((x, y, weight * max(nearness, 1e-12)))
             
             # Place resources
             placed = 0
@@ -1223,68 +1202,6 @@ class WorldMap:
             The matching terrain type if found, None otherwise
         """
         return find_enum_member_by_name(self.terrain_types, terrain_name)
-
-    def get_map_summary(self) -> str:
-        """
-        Extract enum classes, resources, and ownership info from the parsed map data.
-        
-        Returns:
-            YAML-style formatted string with extracted info
-        """
-        lines = []
-        
-        # Extract terrain types
-        if hasattr(self.terrain_types, '__members__'):
-            lines.append("TerrainTypes:")
-            for terrain_name in self.terrain_types.__members__:
-                lines.append(f"  - {terrain_name}")
-        
-        # Extract infrastructure types  
-        if hasattr(self.infrastructure_types, '__members__'):
-            lines.append("\nInfrastructureTypes:")
-            for infra_name in self.infrastructure_types.__members__:
-                lines.append(f"  - {infra_name}")
-        
-        # Extract property types
-        if hasattr(self.property_types, '__members__'):
-            lines.append("\nPropertyTypes:")
-            for prop_name in self.property_types.__members__:
-                lines.append(f"  - {prop_name}")
-        
-        # Extract resource types
-        if hasattr(self.resource_types, '__members__'):
-            lines.append("\nResourceTypes:")
-            for resource_name in self.resource_types.__members__:
-                lines.append(f"  - {resource_name}")
-        
-        # Extract resource allocation rules and actual instances
-        if self._resource_rules and self._resource_rules.get('allocations'):
-            lines.append("\nResourceAllocations:")
-            for allocation in self._resource_rules['allocations']:
-                resource_type = allocation['resource_type']
-                lines.append(f"  {resource_type.name}:")
-                lines.append(f"    description: {allocation['description']}")
-                lines.append(f"    count: {allocation['count']}")
-                lines.append(f"    requires_property: {allocation['requires_property']}")
-                
-                # Check for ownership
-                if allocation.get('has_npc', False):
-                    lines.append(f"    has_owner: true")
-                else:
-                    lines.append(f"    has_owner: false")
-        
-        # Extract actual resource instances created
-        if self.resource_registry:
-            lines.append("\nResourceInstances:")
-            for resource_id, resource_data in self.resource_registry.items():
-                text = f"  {resource_id}"
-                # Check if resource has an owner
-                owner = resource_data['properties'].get('owner')
-                if owner:
-                    text += f", owner: {owner.name}"
-                lines.append(text)
-        
-        return '\n'.join(lines)
 
 class Agent:
     def __init__(self, x, y, world, name):

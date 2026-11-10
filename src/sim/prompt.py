@@ -12,6 +12,7 @@ from sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
 import utils.xml_utils as xml
 import sim.map as map
+import sim.survival as survival
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
 #from sim.cognitive.DialogManager import Dialog
@@ -115,12 +116,18 @@ The current situation in the play
     for actor in character.context.actors+character.context.extras:
         actor_genders += f'\t{actor.name}: {actor.gender}\n'
 
+    # goal and task planning see what can physically be done here; the act prompt has it in
+    # its own here-and-now block
+    could_do = ''
+    if 'here_and_now' not in addl_bindings:
+        actions = survival.available_actions(character)
+        could_do = f'\nYou could do here: {actions}' if actions else ''
     bindings = {"name":character.name,
                 "character":character.get_character_description(),
                 "drives":'\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives]),
                 "central_narrative": character.central_narrative if character.central_narrative else 'None yet established',
                 "narrative":character.narrative.get_summary('medium'),
-                "surroundings":character.look_percept,
+                "surroundings":character.look_percept + could_do,
                 "time": character.context.simulation_time.isoformat(),
                 "situation":character.context.current_state if character.context else "",
                 "actor_genders":actor_genders,

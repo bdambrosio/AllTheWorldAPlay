@@ -94,7 +94,7 @@ def parse_duration(duration_str: str) -> timedelta:
 
 # Character base class
 class Character:
-    def __init__(self, name, character_description, reference_description='', init_x=50, init_y=50, server_name='local', mapAgent=True):
+    def __init__(self, name, character_description, reference_description='', init_x=None, init_y=None, server_name='local', mapAgent=True):
         print(f"Initializing Character {name}")  # Debug print
         self.name = name.strip().capitalize()
         self.character = character_description
@@ -1217,10 +1217,7 @@ End response with:
                 else: 
                     resource, canonical_name = self.resourceRefManager.resolve_reference_with_llm(act_arg)
                     if resource:
-                        new_x = resource['location'][0]
-                        new_y = resource['location'][1]
-                        self.mapAgent.x = new_x
-                        self.mapAgent.y = new_y
+                        survival.travel(self, *resource['location'])   # a walk takes time, however the place was named
                         percept = self.look(act_mode, act_arg,reason)
                         self.show += f' moves to {resource["name"]}.\n  and notices ' + percept
                         self.context.add_event(f'{self.name} moves to {resource["name"]}')
@@ -3422,7 +3419,7 @@ End your response with:
         if not scene:
             return ''
         own = (scene.get('characters') or {}).get(self.name.capitalize()) or (scene.get('characters') or {}).get(self.name) or {}
-        return (f"{scene.get('scene_title', '')} at {scene.get('location', '')}\n"
+        return (f"{scene.get('scene_title', '')} at {scene.get('place') or scene.get('location', '')}\n"
                 f"Set-up: {scene.get('pre_narrative', '')}\nYour goal in this scene: {own.get('goal', '')}")
 
     def physical_context(self):
@@ -3432,13 +3429,9 @@ End your response with:
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
         parts.append('Recent events:\n' + self.context.recent_events_text(6))
-        try:
-            from sim import survival
-            actions = survival.available_actions(self)
-            if actions:
-                parts.append('You could do here: ' + actions)
-        except Exception:
-            pass
+        actions = survival.available_actions(self)
+        if actions:
+            parts.append('You could do here: ' + actions)
         return '\n'.join(parts)
 
     def _pop_dialog_task(self, other):

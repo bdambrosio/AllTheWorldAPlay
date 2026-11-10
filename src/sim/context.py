@@ -28,6 +28,7 @@ import time
 from sim.prompt import ask as default_ask
 from sim.trace import trace
 import sim.survival as survival
+import sim.stage as stage
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -149,11 +150,14 @@ class Context():
             print(f"Context initializing {actor.name}")
             actor.set_context(self)
             print(f"Context initialized {actor.name} speech_stylizer: {actor.speech_stylizer}")
+            # centre stage unless the character was given a position (a play may then move it:
+            # "H.mapAgent.move_to_resource('Office1')" after the context is created)
+            x = self.map.stage_centre[0] if actor.init_x is None else actor.init_x
+            y = self.map.stage_centre[1] if actor.init_y is None else actor.init_y
             if actor.mapAgent is None:
-                actor.mapAgent = map.Agent(actor.init_x, actor.init_y, self.map, actor.name)
+                actor.mapAgent = map.Agent(x, y, self.map, actor.name)
             else:
-                actor.mapAgent.x = actor.init_x
-                actor.mapAgent.y = actor.init_y
+                actor.mapAgent.x, actor.mapAgent.y = x, y
             # Initialize relationships with valid character names. This was for knownActor relationships, I think?
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors+self.extras if a != actor]
@@ -262,7 +266,9 @@ class Context():
         }
 
     def summarize_map(self) -> str:
-        return self.map.get_map_summary()
+        """The physical world for the planning prompts: the kinds of terrain, and the named
+        places near the cast with what each offers (sim/stage.py)."""
+        return f"Terrain: {', '.join(self.map.terrain_types.__members__)}\n{stage.gazetteer(self)}"
 
 
     async def start(self):
@@ -1431,8 +1437,9 @@ Ensure your response reflects this change.
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 
-    async def run_scene(self, scene, act=None):
-        """Run a scene"""
+    async def run_scene(self, scene, act=None, opens_act=False):
+        """Run a scene. The cast stays where the previous scene left it unless this scene names
+        another place (sim/stage.py); opens_act: the first scene of an act may jump there."""
         print(f'Running scene: {scene["scene_title"]}')
         new_scene = await self.request_scene_choice(scene)
         if new_scene is None:
@@ -1440,19 +1447,13 @@ Ensure your response reflects this change.
             return
         scene = new_scene
         await asyncio.sleep(0.1)
-        if isinstance(scene["time"], datetime) and scene["time"] < self.simulation_time:
-            scene["time"] = self.simulation_time
+        scene["time"] = max(self.validate_scene_time(scene), self.simulation_time)
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
         await asyncio.sleep(0.1)
         self.current_state += f'\n{scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'
-        if type(scene['time']) == str:
-            try:
-                self.simulation_time = datetime.fromisoformat(scene['time'])
-            except Exception as e:
-                print(f'Error parsing scene time: {e}')
-        else:
-            self.simulation_time = scene['time']
-        survival.scene_clock_reset(self)
+        scene_start = max(self.validate_scene_time(scene), self.simulation_time)
+        survival.pass_offstage(self, scene_start - self.simulation_time)
+        self.simulation_time = scene_start
         await asyncio.sleep(0.1)
         self.current_scene = scene
         self.scene_events = []
@@ -1486,16 +1487,14 @@ Ensure your response reflects this change.
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
-        # establish character locations and goals for scene
-        location = scene['location']
-        x,y = self.map.random_location_by_terrain(location)
-        characters_at_location = []
+        # the cast gathers at the scene's place (walking there, unless the scene opens an act)
+        arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        if arrival:
+            self.add_event(arrival)
+            self.current_state += '\n' + arrival
+            self.message_queue.put({'name': self.name, 'text': f'    {arrival}'})
         scene_goals = {}
-        #set characters in scene at scene location
         for character in characters_in_scene:
-            character.mapAgent.x = x
-            character.mapAgent.y = y
-            characters_at_location.append(character)
             character.current_scene = scene
 
         #now that all characters are in place, establish their goals
@@ -1636,8 +1635,8 @@ Ensure your response reflects this change.
             scene_duration = parse_duration(self.current_scene.get('duration', 0) or 0)
         except Exception:
             scene_duration = timedelta(0)
-        if scene_duration > timedelta(0):
-            self.simulation_time += scene_duration
+        # the planned duration is the least a scene takes; acts and travel have already moved the clock
+        self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
@@ -1667,7 +1666,7 @@ Ensure your response reflects this change.
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             print(f'Running scene: {scene["scene_title"]}')
-            true_outcomes = await self.run_scene(scene, act)
+            true_outcomes = await self.run_scene(scene, act, opens_act=scene_number == 0)
 
             world_state_end_scene = self.current_state
             if (hasattr(self, 'staleness_detector') and act_number == 2 and scene_number == 1
@@ -1757,17 +1756,6 @@ Ensure your response reflects this change.
             self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             await character.write_narrative(self.summarize_scenario(), self.summarize_map(), self.central_narrative)
             await asyncio.sleep(0.1)
-        """
-        for character in cast(List[NarrativeCharacter], self.actors):
-            self.message_queue.put({'name':character.name, 'text':f'---- initial coordination -----'})
-            await character.share_narrative()
-            await asyncio.sleep(0.1)
-        for character in cast(List[NarrativeCharacter], self.actors):
-            self.message_queue.put({'name':character.name, 'text':f'----- updating narrative -----'})
-            character.update_narrative_from_shared_info()
-            logger.info(f'\n{character.name}\n{json.dumps(self.reserialize_acts_times(character.plan), indent=2, default=datetime_handler)}')
-            await asyncio.sleep(0.1)
-        """
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
         await asyncio.sleep(0.1)
 
@@ -1822,6 +1810,11 @@ The integrated plan should be a single JSON object with a sequence of acts, each
 The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
 Be sure that that integrated act is consistent with the previous act's post-state.
 Note carefully the proposed acts pre-conditions and locations, and resolve any inconsistencies among them or with the previous act's post-state.
+{{$scene_rules}}
+
+#Places
+{{$places}}
+##
 
 Here are the original, independent, plans for each character:
 {{$plans}}
@@ -1858,7 +1851,7 @@ Return exactly one JSON object with these keys:
 Each **scene** object must have:
 { "scene_number": int, // sequential within the play 
  "scene_title": string, // concise descriptor 
- "location": string, // pick from resource or terrain names in the map file
+ {{$location_field}}
  "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
  "duration": mm, // the duration of the scene, in minutes
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
@@ -1939,6 +1932,8 @@ In performing this integration:
                                  "act_central_narrative": act_central_narrative, 
                                  "central_dramatic_question": self.central_narrative,
                                  "act_directives": act_directives,
+                                 "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
+                                 "places": stage.gazetteer(self),
                                  "previous_act_post_state": previous_act_post_state},
                               prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
         try:
@@ -1961,52 +1956,25 @@ In performing this integration:
         return updated_narrative_plan
 
     def validate_dates_in_plan(self, narrative_plan):
-        """Validate and adjust scene dates to ensure they are after simulation time and advance temporally.
-        
-        Args:
-            narrative_plan: The narrative plan containing acts and scenes
-        """
-        if narrative_plan and 'acts' in narrative_plan:
-            acts = narrative_plan['acts']
-        elif type(narrative_plan) == dict:
-            acts = [narrative_plan]
-        elif type(narrative_plan) == list:
+        """Make scene times in a plan run forward from now: a scene starts no earlier than the
+        current time, nor before the previous scene's planned end. (A scene time at or before the
+        clock used to be pushed a whole day on, so every play opened a day after its start.)"""
+        if isinstance(narrative_plan, dict):
+            acts = narrative_plan.get('acts') or [narrative_plan]
+        elif isinstance(narrative_plan, list):
             acts = narrative_plan
         else:
             return
-            
-        prev_scene_time = self.simulation_time
-        prev_duration = 0
+        earliest = self.simulation_time
         for act in acts:
-            if 'scenes' not in act:
-                continue
-            for scene in act['scenes']:
+            for scene in act.get('scenes', []):
                 if 'time' not in scene:
                     continue
-                # Parse scene time if it's a string
-                if isinstance(scene['time'], str):
-                    try:
-                        scene_time = datetime.fromisoformat(scene['time'])
-                    except Exception as e:
-                        print(f'Error parsing scene time: {e}')
-                        scene_time = self.simulation_time
-                else:
-                    scene_time = scene['time']
-                # If scene time is before simulation time or previous scene, advance it
-                while scene_time <= prev_scene_time:
-                    # Advance by one day while preserving time of day
-                    scene_time = scene_time + timedelta(days=1)
-                # Update scene time and previous scene time
-                scene['time'] = scene_time
-                if scene_time < prev_scene_time+timedelta(minutes=prev_duration):
-                    scene_time = prev_scene_time+timedelta(minutes=prev_duration)
-                    scene['time'] = scene_time
-                duration = scene.get('duration', 0)
-                if type(duration) == int and duration > 0:
-                    prev_duration = duration
-                else:
-                    prev_duration = 0
-                prev_scene_time = scene_time
+                scene['time'] = max(self.validate_scene_time(scene), earliest)
+                try:
+                    earliest = scene['time'] + parse_duration(scene.get('duration', 0) or 0)
+                except Exception:
+                    earliest = scene['time']
 
 
     async def run_integrated_narrative(self):
@@ -3128,6 +3096,11 @@ Again, the current act number is {{$act_number}} and the scene number is {{$scen
     9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
 
 
+The scene continues from where the previous one ended; move it only if the event demands it.
+#Places
+{{$places}}
+##
+
 Respond with the updated scene, using the following format:
 
 ```json
@@ -3137,7 +3110,7 @@ updated scene
 Scene format is as follows:
 { "scene_number": int, // sequential within the play 
  "scene_title": string, // concise descriptor 
- "location": string, // pick from resource or terrain names in the map file
+ {{$location_field}}
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
@@ -3155,6 +3128,8 @@ Scene format is as follows:
                               addl_bindings={"name": self.name, "scene": json.dumps(scene, indent=1, default=datetime_handler), 
                                     "scene_number": scene_number,
                                     "act_number": act_number,
+                                    "location_field": stage.LOCATION_FIELD,
+                                    "places": stage.gazetteer(self),
                                     "act": json.dumps(act, indent=1, default=datetime_handler),
                                     "intervention": intervention,
                                     "act_central_narrative": self.act_central_narrative,

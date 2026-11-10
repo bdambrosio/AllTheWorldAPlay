@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sim.survival as survival
+import sim.stage as stage
 import asyncio
 import copy
 from datetime import datetime
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger('simulation_core')
 
 class NarrativeCharacter(Character):
-    def __init__(self, name, character_description= '', reference_description='', init_x=50, init_y=50, server_name='local'):
+    def __init__(self, name, character_description= '', reference_description='', init_x=None, init_y=None, server_name='local'):
         super().__init__(name, character_description, reference_description=reference_description, init_x=init_x, init_y=init_y, server_name=server_name)
         # Narrative files
         self.play_file = None 
@@ -243,7 +244,7 @@ You will have the opportunity to revise your plan as you go along, observe the r
 1. Base every character’s *stated goal* on their drives, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
 2. Craft 3 acts - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives.
 3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
-4. Place scenes in plausible locations drawn from `map.py` resources/terrain.  
+4. Set scenes at the named places listed under Physical World, where their action can happen.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
 6. Vary imagery and emotional tone; avoid repeating the same metaphor scene-to-scene.  
 7. Do **NOT** invent new characters unless absolutely necessary, and never break JSON validity.  
@@ -279,51 +280,6 @@ Return **only** the JSON.  No commentary, no code fences.
         self.current_scene = None
         return self.plan
 
-    async def share_narrative(self):
-        """Share the narrative with other characters"""
-        for character in self.context.actors+self.context.extras:
-            if character != self:
-                mission = """Decide what, if anything, about your plans you would like to share with {{$name}} to help coordinate your actions. 
-You may well decide to share nothing, especially with those you perceive as adversaries, in which case you should respond with </end>
-Note that the current time is {{$time}}, if you wish to share a future plan, phrase your message accordingly. (e.g. "I'll be in the park tomorrow" or "I'll be in the park on May 15th")
-Take note of any prior conversations you have already had with {{$name}}."""
-                suffix = """
-
-Your plans at the moment are:
-{{$plan}}
-
-If you have nothing you want to tell {{$name}}, simply respond with </end>
-Otherwise, respond with the information you would like to share, using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag. Specifically, DO NOT insert a newline between the #share tag and the information you want to share:
-
-#share ...
-##
-
-=== Example ===
-#share Hi John, I'm going to be in the park tomorrow.
-##
-=== End of Example ===
-
-End your response with </end>
-"""
-
-                response = default_ask(self, prefix=mission, suffix=suffix, 
-                                addl_bindings={"name": character.name, 
-                                 "plan": json.dumps(self.plan, default=datetime_handler)}, 
-                                 max_tokens=240, tag='NarrativeCharacter.share_narrative')
-                try:
-                    say_arg = (hash_utils.find('share', response) or '').strip()
-                    if say_arg:
-                        # (act_on_action was outside this test: a character with nothing to share
-                        # raised NameError, or re-sent the previous character's message)
-                        print(f'{self.name} says to {character.name}: {say_arg}')
-                        act = Act(mode='Say', action=say_arg, actors=[self, character], reason=f'sharing my plans with {character.name}', duration=1, source=None, target=[character])
-                        await self.act_on_action(act, None)
-                except Exception as e:
-                    print(f'Error parsing shared narrative: {e}')
-                    traceback.print_exc()
-        return None
-
     def get_act_from_plan(self, act_number):
         for act in self.plan["acts"]:
             if act["act_number"] == act_number:
@@ -347,182 +303,6 @@ End your response with </end>
                 return True
         return False        
     
-    def update_narrative_from_shared_info(self):
-        """Update the narrative with the latest shared information"""
-
-        system_prompt = """You are a seasoned writer designing medium-term arcs for a movie.
-Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
-Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail.
-""" + survival.stakes_text(self.context, 'Survival chores are background unless they expose or escalate the core mystery.') + """
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
-        """
-        mission = """Based on prior conversations recorded below, do you see need to update an act in your plan?"""
-        suffix = """
-
-Recent dialogs:
-{{$dialogs}}
-
-Your plan at the moment is:
-{{$plan}}
-
-if you choose to update an act, remember:
-
-Respond with the single word 'yes' or 'no', and, if yes, the act number of the first act you would like to update, and the updated act, using the following format:
-
-#update yes or no
-#actId (int) number of the first act to update
-##
-```json
-updated act
-```
-
-Act format is as follows:
-
-An Act is a single JSON document that outlines a short-term plan for yourself
-###  Structure
-Return exactly one JSON object with these keys:
-
- 
-* "acts" – an array of act objects.  Each act object has  
-  - "act_number" (int, 1-based)  
-  - "act_title"   (string)  
-  - "act_description" (string, concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-  - "act_pre_state" (string, description of the situation / goals / tensions before the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
-  - "act_post_state" (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
-  - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
-      ...
-    ],
-  - "scenes"      (array) (only for the first act)
-
-Each **scene** object must have:
-{"scene_number": int, // sequential within the play 
- "scene_title": string, // concise descriptor 
- "location": string, // pick from resource or terrain names in the map file
- "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
- "duration": int, // in minutes
- "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
- "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I am going to the park', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
- // OPTIONAL: 
- "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition. 
- }
-
- === Example ===
-#update yes or no
-#actId (int) number of the first act to update
-##
-```json
-{
-  "act_number": (int),
-  "act_title": (string),
-  "act_description": (string),
-  "act_goals": {"primary": "primary goal", "secondary": "secondary goal"},
-  "act_pre_state": (string),
-  "act_post_state": (string),
-  "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
-    ...
-  ],
-  "scenes": [
-    {
-      "scene_number": 1,  
-      "scene_title": "Scene 1",
-      "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
-      "duration": int, // in minutes
-      "location": "Location 1",
-      "characters": { "Character 1": { "goal": "Goal 1" }, ... },
-      "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
-      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'", 
-      "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
-       // OPTIONAL: 
-      "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
-    },
-    ...
-  ]
-}
-```
-=== End of Example ===
-
-Remember that your primary and secondary drives are:
-
-Primary
-{{$primary_drive}}
-
-Secondary
-{{$secondary_drive}}
-
-Respond with your decision, and if yes, the act number of the first act you would like to update and the updated act, using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#update yes or no
-#actId (int) number of the first act to update
-##
-```json
-updated act
-```
-"""
-        dialogs = self.actor_models.dialogs()
-
-        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
-                              addl_bindings={"name": self.name, 
-                               "dialogs": '\n'.join(dialogs),
-                               "plan": json.dumps(self.context.reserialize_acts_times(self.plan), default=datetime_handler),
-                               "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
-                               "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'},
-                              max_tokens=1600, tag='NarrativeCharacter.update_narrative')
-        try:
-            updated_act = None
-            act_id = -1
-            if not response:
-                return None
-            if "```json" in response:
-                update = response.split("```json")
-                flag = hash_utils.find('update', update[0])
-                act_id_str = hash_utils.find('actId', update[0])
-                act_id=1
-                if flag and flag.strip().lower() == 'yes':
-                    try:
-                        act_id = int(act_id_str.strip())
-                    except Exception as e:
-                        print(f'Error parsing actId: {e}')
-                        logger.error(f'Error parsing actId: {e}')
-                        logger.error(traceback.format_exc())
-                    try:
-                        updated_act = json.loads(update[1].replace("```", "").strip())
-                    except Exception as e:
-                        print(f'Error parsing updated act: {e}')
-                        logger.error(f'Error parsing updated act: {e}')
-                        logger.error(traceback.format_exc())
-            else:
-                flag = hash_utils.find('update', response)
-                act_id=1
-                if flag and flag.strip().lower() == 'yes':
-                    # parse the act first: the actId fallback below read updated_act while it
-                    # was still None, which aborted the whole update
-                    update = response.split("##")
-                    if len(update) > 1:
-                        updated_act = json.loads(update[1].replace("```json", "").replace("```", "").strip())
-                    try:
-                        act_id = int(hash_utils.find('actId', response).strip())
-                    except Exception as e:
-                        print(f'Error parsing actId: {e}')
-                        logger.error(f'Error parsing actId: {e}')
-                        act_id = updated_act.get('act_number', -1) if isinstance(updated_act, dict) else -1
-            if act_id != -1 and updated_act:
-                print(f'{self.name} updates act {act_id}')
-                self.update_act(updated_act)
-        except Exception as e:
-            print(f'Error parsing update narrative: {e}')
-            logger.error(f'Error parsing update narrative: {e}')
-            logger.error(traceback.format_exc())
-        return None
-
     def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
         """Rewrite the act with the latest shared information"""
 
@@ -612,6 +392,12 @@ The following act-specific guidelines supplement the general guidelines above, a
     9. No ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
 
 
+{{$scene_rules}}
+
+#Places
+{{$places}}
+##
+
 Respond with the updated act, using the following format:
 
 ```json
@@ -639,7 +425,7 @@ Return exactly one JSON object with these keys:
 Each **scene** object must have:
 { "scene_number": int, // sequential within the play 
  "scene_title": string, // concise descriptor 
- "location": string, // pick from resource or terrain names in the map file
+ {{$location_field}}
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
@@ -694,6 +480,8 @@ Again, the act central narrative is:
         response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
                                "act_number": act['act_number'],
+                               "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
+                               "places": stage.gazetteer(self.context),
                                "previous_act_post_state": previous_act_post_state,
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,

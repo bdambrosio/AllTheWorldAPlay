@@ -36,6 +36,8 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
         'hazards': [{'name', 'description', 'when' ('day'|'night'|'any'), 'terrain',
                      'chance_per_hour', 'blocked_by' (sheltered, fire, flags), 'minutes_to_strike',
                      'harm', 'retreat_text', 'strike_text', 'fail_text',
+                     'escape_tiles' (8): a threat is in one place; a target this far from it
+                     when it strikes is spared, and it ends once every target is clear,
                      'source': {'resource_types', 'requires_property', 'within' (tiles, 6)}:
                      the hazard comes from a resource in that state (a line not yet repaired);
                      it threatens only characters near one, appears there, and ends
@@ -133,14 +135,14 @@ def attach(context):
     cfg = config(context)
     if not cfg:
         return
-    # what the area offers and threatens, in the shared situation every planning prompt reads
-    types = sorted({str(r.get('type')) for r in context.map.resource_registry.values()})
+    # what threatens and wears on the cast, in the shared situation every planning prompt reads.
+    # What a place offers is told where it is true: per place to the playwright (stage.gazetteer)
+    # and as 'You could do here' to each character.
     dangers = [h['description'] + (' at night' if h.get('when') == 'night' else '') for h in cfg.get('hazards', [])]
     rising = [n for n, d in _need_defs(cfg).items() if d.get('per_hour')]
-    brief = ('\nThe area offers: ' + ', '.join(t.replace('_', ' ').lower() for t in types) + '.' +
-             (' Dangers: ' + '; '.join(dangers) + '.' if dangers else '') +
-             (' ' + ', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else ''))
-    if brief not in context.current_state:
+    brief = '\n' + ' '.join(filter(None, ['Dangers: ' + '; '.join(dangers) + '.' if dangers else '',
+                                          ', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '']))
+    if brief.strip() and brief not in context.current_state:
         context.current_state += brief
     harm = _harm(cfg)['name']
     for character in context.actors + context.extras:
@@ -151,15 +153,30 @@ def attach(context):
                                   money=cfg.get('initial_money', 0), last_tick=context.simulation_time, cfg=cfg)
 
 
-def scene_clock_reset(context):
-    """A scene sets its own clock (often hours after the last one): time between scenes passes
-    off-stage, so needs and hazard rolls restart from the scene's start time (Context scene start)."""
-    now = context.simulation_time
+OFFSTAGE_NEED_RISE = 0.25   # the most a need rises over one stretch of off-stage time
+
+
+def pass_offstage(context, gap):
+    """Time between scenes passes off-stage. Needs rise at their usual rate, but by no more than
+    OFFSTAGE_NEED_RISE each: off-stage, characters keep themselves going without solving
+    anything, so a hungry character is still hungry at the next scene and a day's gap does not
+    starve one. No hazards begin off-stage."""
+    now = context.simulation_time + gap
+    hours = gap.total_seconds() / 3600
+    cfg = config(context) or {}
     for character in context.actors + context.extras:
-        if getattr(character, 'body', None) is not None:
-            character.body.last_tick = now
+        body = getattr(character, 'body', None)
+        if body is None:
+            continue
+        for need, spec in _need_defs(cfg).items():
+            rate = spec.get('per_hour', 0.0) * (spec.get('shelter_factor', 1.0) if body.sheltered else 1.0)
+            body.adjust(need, min(rate * hours, OFFSTAGE_NEED_RISE))
+        body.last_tick = now
     if hasattr(context, '_hazard_last'):
         context._hazard_last = now
+    threat = getattr(context, 'active_threat', None)
+    if threat and now >= threat['deadline']:   # it does not strike a cast that is not on stage
+        _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."))
 
 
 def tick(character):
@@ -583,8 +600,15 @@ def _record(character, action, fact, via, applied, resource=None, approached=Fal
                 target=target, found=found, fact=fact, via=via, approached=approached)
 
 
-def travel(character, x, y):
-    """Move a character to (x, y), advancing time by distance x terrain cost (affordance worlds)."""
+def offers(context, resource_type):
+    """Names of the world's actions that can be done at a resource of this type."""
+    cfg = config(context) or {}
+    return [a['name'] for a in cfg.get('actions', []) if str(resource_type) in (a.get('resource_types') or [])]
+
+
+def travel(character, x, y, advance_clock=True):
+    """Walk a character to (x, y); returns the minutes it takes (distance x terrain cost) and,
+    unless told not to (several characters walking together), moves the clock on by them."""
     context = character.context
     cfg = config(context) or {}
     start = _here(character)
@@ -602,7 +626,8 @@ def travel(character, x, y):
         character.body.sheltered = False
         if cfg.get('travel_need'):
             character.body.adjust(cfg['travel_need'], 0.01 * tiles)
-    context.simulation_time += timedelta(minutes=minutes)
+    if advance_clock:
+        context.simulation_time += timedelta(minutes=minutes)
     trace.event('travel', character=character.name, tiles=tiles, minutes=round(minutes, 1))
     return minutes
 
@@ -683,12 +708,18 @@ def hazard_tick(context):
                 'retreat_text', f"The {threat['hazard']['name']} is over."))
         elif all(_blocked(context, c, threat['hazard']) for c in targets):
             _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."))
-        elif now >= threat['deadline']:
-            harm = threat['hazard'].get('harm', 0.3)
-            for c in targets:
-                c.body.adjust(harm_need, harm)
-            _end_threat(context, threat, threat['hazard'].get('strike_text', f"The {threat['hazard']['name']} strikes.")
-                        + f" ({', '.join(c.name + ' is now ' + c.body.summary() for c in targets)})", struck=True)
+        else:
+            clear = threat['hazard'].get('escape_tiles', 8)
+            caught = [c for c in targets if _distance(_here(c), threat['location']) < clear]
+            if not caught:
+                _end_threat(context, threat, f"{' and '.join(c.name for c in targets)} "
+                                             f"{'is' if len(targets) == 1 else 'are'} clear of the {threat['hazard']['name']}.")
+            elif now >= threat['deadline']:
+                harm = threat['hazard'].get('harm', 0.3)
+                for c in caught:
+                    c.body.adjust(harm_need, harm)
+                _end_threat(context, threat, threat['hazard'].get('strike_text', f"The {threat['hazard']['name']} strikes.")
+                            + f" ({', '.join(c.name + ' is now ' + c.body.summary() for c in caught)})", struck=True)
         return
 
     for hazard in cfg.get('hazards', []):
@@ -726,7 +757,8 @@ def hazard_tick(context):
         context.add_event(text)
         context.current_state += '\n' + text
         for c in exposed:
-            c.add_perceptual_input(text, mode='visual')
+            if c.name in targets:
+                c.add_perceptual_input(text, mode='visual')
         trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
         return
 
