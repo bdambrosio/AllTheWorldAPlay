@@ -86,7 +86,11 @@ class SpeechStylizer:
                  'formal register' if formality >= 0.7 else 'casual register' if formality < 0.35 else 'everyday register']
         if quirks.get("slang", 0.0) >= 0.5:
             parts.append('uses slang')
-        parts.append('fond of a metaphor' if quirks.get("metaphor", 0.0) >= 0.6 else 'plain words, rarely a figure of speech')
+        metaphor = quirks.get("metaphor", 0.0)
+        # a frequency in words: a bare trait ('uses metaphors') is played in every line
+        parts.append('speaks in images as often as not' if metaphor >= 0.75
+                     else 'a figure of speech now and then (about one line in five), otherwise plain words' if metaphor >= 0.35
+                     else 'plain words, rarely a figure of speech')
         if quirks.get("profanity"):
             parts.append('swears')
         return '; '.join(p for p in parts if p)

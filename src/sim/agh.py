@@ -151,6 +151,7 @@ class Character:
         self.act = None
         self.previous_action_name = None
         self.look_percept = ''
+        self.recent_exchanges = []   # (other, what I opened with, the last thing they answered): see note_exchange
         self.driveSignalManager = None
        # Initialize drives
         self.drives = [
@@ -1248,10 +1249,11 @@ End response with:
             # the act text often starts with the character's own name ('Xue pulls a tablet ...')
             deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg)
             if notices and len(notices) > 0:
-                self.add_perceptual_input(f'{notices}', mode='internal')           
-                self.context.message_queue.put({'name':self.name, 'text':f'{deed} {notices}', 'line_kind':'action'})
-            else:
-                self.context.message_queue.put({'name':self.name, 'text':deed, 'line_kind':'action'})
+                self.add_perceptual_input(f'{notices}', mode='internal')
+            # the audience sees the deed and what it physically did; what the character makes of
+            # it ('notices': how the result bears on its goal) is the character's own
+            result = (consequences or '').strip()
+            self.context.message_queue.put({'name':self.name, 'text':f"{deed.rstrip('. ')}. {result}".strip(), 'line_kind':'action'})
             self.lastActResult = notices
             if source == None:
                 source = self.focus_task.peek()
@@ -2108,6 +2110,7 @@ Choose actions that drive narrative forward, not just maintain status quo.
 #recent percepts related to the current goals and tasks
 {{$goal_memories}}
 ##
+{{$already_said}}
 
 Respond with two alternative acts, including their Mode, action, target, and expected duration. 
 The acts should vary in mode and action.
@@ -2323,6 +2326,7 @@ End your response with:
                                               "here_and_now": self.physical_context(),
                                               "affordance_line": survival.affordance_prompt_line(self),
                                               "act_note": survival.act_note(self),
+                                              "already_said": self.already_said(task),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
                                               "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -2820,6 +2824,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                         turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
             self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
             dialog_as_list = dialog.split('\n') 
+            self.note_exchange(from_actor, dialog_as_list)
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -2828,6 +2833,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             # it would probably be better to have the other actor deactivate the dialog itself
             other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
             from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {other_dialog}', percept=False, mode='auditory')
+            from_actor.note_exchange(self, other_dialog.split('\n'))
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
@@ -2854,6 +2860,43 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         if self.focus_action == action:
             self.focus_action = None
         await asyncio.sleep(0)
+
+    def own_recent_lines(self, other):
+        """Guidance built from this character's own last two spoken lines: a habit of speech
+        (a metaphor, a pet phrase, one sentence shape) should colour some lines, not every one."""
+        model = self.actor_models.get_actor_model(other.name)
+        mine = [t.split(' says: ', 1)[1] for t in (model.dialog.transcript if model else [])
+                if t.startswith(f'{self.name} says: ')][-2:]
+        if not mine:
+            return ''
+        return ("- Your own last lines were: " + ' / '.join(f"'{m[:140]}'" for m in mine)
+                + ". Do not reuse their imagery or their sentence shape. If either used a figure of speech, speak plainly this time.")
+
+    def note_exchange(self, other, dialog_lines):
+        """Remember how a finished dialog went: what this character opened with and the last
+        thing the other answered, so its next act does not open the same exchange again."""
+        mine = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{self.name} says: ')]
+        theirs = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{other.name} says: ')]
+        if mine and theirs:
+            self.recent_exchanges = (self.recent_exchanges + [(other.name, mine[0][:160], theirs[-1][:160])])[-4:]
+
+    def already_said(self, task):
+        """For the act prompt: recent exchanges and what was already said in this task. A scene
+        used to circle one demand, each act re-opening it as a new dialog with no memory that
+        it had just been asked and answered."""
+        parts = []
+        if self.recent_exchanges:
+            parts.append("#Your recent exchanges: what you opened with, and the last answer you got.\n"
+                         + '\n'.join(f"- to {other}: '{asked}' -> {other} answered: '{answer}'"
+                                     for other, asked, answer in self.recent_exchanges)
+                         + "\nDo not open the same exchange again: asked the same way, it gets the same answer. "
+                           "Take the answer as given and do something different: act on it, concede, raise the price, or turn to someone else.\n##")
+        spoken = [a.action for a in (task.acts or []) if a.mode == 'Say']
+        if spoken:
+            parts.append("#In this task you have already said:\n" + '\n'.join(f"- '{line[:160]}'" for line in spoken[-2:])
+                         + "\nYou have had your say in this task: now choose a Do, Move, Look or Think, "
+                           "unless someone has just said something you must answer.\n##")
+        return '\n'.join(parts)
 
     EARSHOT_TILES = 4
     MAX_CUT_INS_PER_SCENE = 2     # per character
@@ -3070,6 +3113,7 @@ Guidance:
 - No slogans, paired contrasts ("X is ephemeral. Y is law.") or flourishes; say it the way the character would across a table.
 - Let your emotional state colour the line without announcing it.
 - Avoid phrases and images already used in the dialog to this point.
+{{$own_recent}}
 {{$scene_post_narrative}}
  
 Respond only with the above XML
@@ -3124,6 +3168,7 @@ End your response with:
             'actor_genders': actor_genders,
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
+            'own_recent': self.own_recent_lines(from_actor),
             "scene_post_narrative": scene_post_narrative,
             "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
             "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -3630,7 +3675,6 @@ End your response with:
             if old_time.day!= self.context.simulation_time.day:
                 pass # need to figure out out to force UI to no sho old image
             if delay > 15.0:
-                self.context.update(changes_only=True)
                 self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.context.world_image_json()})
                 await asyncio.sleep(0)
         except Exception as e:

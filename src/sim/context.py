@@ -1022,51 +1022,16 @@ End your response with:
         response = self.llm.ask({"previous_state": previous_state, "new_state": new_state}, prompt, tag='Context.identify_state_changes', temp=0.6, stops=['</end>'], max_tokens=100)
         return response
 
-    async def update(self, narrative='', local_only=False, changes_only=False):
-
+    async def update(self, local_only=False, changes_only=False):
+        """Rewrite the situation description from what has happened since the last update."""
         history = self.history()
-
-        event = ""
-        if not local_only and random.randint(1, 7) == -1:
-            event = """
-Include a event occurence consistent with the PreviousState below, such as appearance of a new object, 
-natural event such as weather (if outdoors), communication event such as email arrival (if devices available to receive such), etc.
-
-===Examples===
-PreviousState:
-Apartment
-
-History:
-worry about replacement
-
-Event:
-Annie receives an email directed to her personally from an unknown agent.
-
------
-
-PreviousState:
-Open forest 
-
-History:
-Safety, hunger
-
-Event:
-Joe finds a sharp object that can be used as a tool.
------
-
-===End Examples===
-
-"""
 
         prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
 Include day/night cycles and weather patterns. It is now {{$time}}.
 
-
-{{$narrative}}
-                              
 Update location and other physical situation characteristics as indicated in the History.
 Your response should be concise, and only include only an update of the physical situation.
-        """ + event + """
+
 Your situation description should be dispassionate, 
 and should begin with a brief description of the current physical space suitable for a text-to-image generator. 
 The situation previously was:
@@ -1084,7 +1049,6 @@ In the interim, the characters in the world had the following interactions:
 All actions performed by actors since the last situation update are including in the above History.
 Do not include in your updated situation any actions not listed above.
 Include characters in your response only with respect to the effects of their above actions on the situation.
-{{$narrative}}
 
 Respond using the following XML format:
 
@@ -1102,15 +1066,7 @@ Ensure your response is surrounded with <situation> and </situation> tags as sho
 End your response with:
 </end>""")]
 
-        narrative_insert = ''
-        if narrative:
-            narrative_insert = f"""The scene has changed to:
-
-$narrative
-            
-Ensure your response reflects this change.
-"""
-        response = self.llm.ask({"narrative": narrative_insert, "situation": self.current_state, 'history': history, 'time': self.simulation_time.isoformat()}, prompt,
+        response = self.llm.ask({"situation": self.current_state, 'history': history, 'time': self.simulation_time.isoformat()}, prompt,
                                 tag='Context.update', temp=0.6, stops=['</end>'], max_tokens=270)
         new_situation = xml.find('<situation>', response)       
         # Debug prints
@@ -1470,9 +1426,9 @@ Ensure your response reflects this change.
             self.current_state += '\n\n'+scene['pre_narrative']
             self.scene_pre_narrative = scene['pre_narrative']
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
-            cast_names = ', '.join(dict.fromkeys(n for n in scene.get('action_order', []) if n != 'Context'))
-            await self.update(narrative=f'A new scene is starting. The only characters in it are: {cast_names}. '
-                                        'Do not place any other character in the scene.', changes_only=True)
+            # The planned set-up is the scene's opening as written. (An LLM "situation update" here
+            # paraphrased it and put characters in the scene who were not: 3 calls per scene.)
+            self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json()})
             await asyncio.sleep(0)
 
         if scene.get('post_narrative'):
@@ -2896,13 +2852,15 @@ End your response with </end>
 
     def place_commitment(self, character, task, significance, goal=None):
         """Put a commitment from a dialog into the running scene's task plan. Returns True if
-        placed. The cap counts entries still to run (it counted the whole plan, including tasks
-        already done), against the plan length the scene started with:
-          CRUCIAL      while fewer than 2x that remain
-          SIGNIFICANT  while fewer than 1.5x remain
-          RELEVANT     while fewer than 1x remain, as an optional entry that run_scene skips if
-                       the scene is over budget by the time it comes up
+        placed. A scene may grow, but not without end: the whole plan (tasks done and to come)
+        is held to a multiple of the length it started with:
+          CRUCIAL      up to 2x
+          SIGNIFICANT  up to 1.5x
+          RELEVANT     up to 1.25x, as an optional entry that run_scene skips if the scene is
+                       over budget by the time it comes up
           REDUNDANT / NOISE  dropped
+        (The cap used to count only the tasks still to run, so a scene that kept completing
+        tasks kept accepting new ones: a 3-beat scene ran 18 tasks.)
         Several commitments from one dialog run in the order given (each was inserted at
         index+1, so they ran in reverse). Every drop is logged."""
         plan = self.scene_integrated_task_plan
@@ -2916,10 +2874,9 @@ End your response with </end>
             why = significance
         if why is None:
             budget = max(1, self.scene_task_budget or len(plan))
-            remaining = len(plan) - self.scene_integrated_task_plan_index - 1
-            limit = {'CRUCIAL': 2.0, 'SIGNIFICANT': 1.5, 'RELEVANT': 1.0}[significance] * budget
-            if remaining >= limit:
-                why = f'{significance} but {remaining} tasks remain (limit {limit:g})'
+            limit = {'CRUCIAL': 2.0, 'SIGNIFICANT': 1.5, 'RELEVANT': 1.25}[significance] * budget
+            if len(plan) >= limit:
+                why = f'{significance} but the scene already has {len(plan)} tasks (limit {limit:g})'
         if why:
             logger.info(f'commitment dropped ({why}): {character.name} {task.name}')
             trace.event('commitment', character=character.name, task_id=task.id, task=task.name,
