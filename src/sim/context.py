@@ -613,6 +613,32 @@ If absolutely no information is available for any field, use "unknown" for that 
                 return actor
         return None
 
+    def set_resource_owner(self, resource_id, owner_name, description=None):
+        """Make `owner_name` the owner of a resource: a cast member, or an NPC created here (a
+        play names the real owner, e.g. a character's father, in place of the '<Resource>_owner'
+        NPC that __init__ gives every owned resource type). Returns the owner."""
+        resource = self.map.resource_registry[resource_id]
+        owner = next((a for a in self.actors + self.extras if a.name == owner_name), None)
+        if owner is None:
+            x, y = resource['location']
+            owner = self.get_npc_by_name(owner_name, description=description or f'{owner_name} owns {resource_id}',
+                                         x=x, y=y, create_if_missing=True)
+        previous = resource['properties'].get('owner')
+        previous_name = getattr(previous, 'name', None)
+        if previous_name and previous_name != owner.name:
+            relations = self.reference_manager.relationships
+            relations.pop(previous_name, None)
+            for name in list(relations):
+                relations[name] = [(rel, other) for rel, other in relations[name] if other != previous_name]
+            if not any(r['properties'].get('owner') is previous for rid, r in self.map.resource_registry.items()
+                       if rid != resource_id):
+                self.npcs = [n for n in self.npcs if n.name != previous_name]
+                if previous in self.map.agents:
+                    self.map.agents.remove(previous)
+        resource['properties']['owner'] = owner.mapAgent
+        self.reference_manager.declare_relationship(resource_id, 'owned by', owner.name, 'owner of')
+        return owner
+
     def plausible_npc(self, name):
         """Check if a name is plausible for an NPC"""
         return name.lower() in ['Viewer','father', 'mother', 'sister', 'brother', 'husband', 'wife', 'friend', 'neighbor',  'stranger']

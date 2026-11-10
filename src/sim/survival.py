@@ -30,7 +30,8 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      'deplete', 'gain', 'requires', 'consumes', 'transfer': item, 'transfer_money',
                      'finds': [{'item', 'chance'}], 'earn', 'cost',
                      'sets' ('sheltered' | 'fire' | any flag), 'requires_flag',
-                     'sets_property': {key: value}, 'requires_property': {key: value or None},
+                     'sets_property': {key: value}, 'requires_property': {key: value or None;
+                     '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
                      'risk': {'chance', 'effects', 'text'}, 'text'}],
         'hazards': [{'name', 'description', 'when' ('day'|'night'|'any'), 'terrain',
                      'chance_per_hour', 'blocked_by' (sheltered, fire, flags), 'minutes_to_strike',
@@ -264,14 +265,41 @@ def _fmt(template, **kw):
         return template
 
 
-def _prop_ok(res, wanted, actor):
-    """requires_property check: value None means the property must be unset."""
+FAMILY_OWNER_RELATIONS = ('father of', 'mother of', 'husband of', 'wife of')
+
+
+def _prop_value(value):
+    """A resource property as config and text use it: an owner is stored as a map agent
+    (Context gives each owned resource an owner NPC), and compared and shown by name."""
+    return getattr(value, 'name', value)
+
+
+def _household_owns(character, owner):
+    """True when `owner` (a name) is the character or a parent or spouse of the character
+    (reference manager relationships, e.g. declared by the play)."""
+    if not owner:
+        return False
+    if owner == character.name:
+        return True
+    manager = getattr(character.context, 'reference_manager', None)
+    relations = manager.get_relationships(owner) if manager else []
+    return any(rel in FAMILY_OWNER_RELATIONS and other == character.name for rel, other in relations)
+
+
+def _prop_ok(res, wanted, character):
+    """requires_property check. Value None: the property must be unset. '{actor}': it must be the
+    actor's name. '{household}' (for 'owner'): the actor, or the actor's parent or spouse."""
     props = (res or {}).get('properties', {})
     for key, value in (wanted or {}).items():
-        value = _fmt(value, actor=actor) if isinstance(value, str) else value
-        if value is None and props.get(key):
+        have = _prop_value(props.get(key))
+        if value == '{household}':
+            if not _household_owns(character, have):
+                return False
+            continue
+        value = _fmt(value, actor=character.name) if isinstance(value, str) else value
+        if value is None and have:
             return False
-        if value is not None and props.get(key) != value:
+        if value is not None and have != value:
             return False
     return True
 
@@ -320,7 +348,7 @@ def available_actions(character):
         seen.add((action['name'], rid))
         if res.get('properties', {}).get('remaining') == 0:
             continue
-        if not _prop_ok(res, action.get('requires_property'), character.name):
+        if not _prop_ok(res, action.get('requires_property'), character):
             continue
         if d <= 1:
             out.append(f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})")
@@ -474,9 +502,9 @@ def _apply(context, character, action, near, target, via):
         props = res.setdefault('properties', {})
         if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
             return _refuse(character, action, approach + f"There is nothing left at {resource_id}.", via)
-        if not _prop_ok(res, action.get('requires_property'), character.name):
+        if not _prop_ok(res, action.get('requires_property'), character):
             return _refuse(character, action, approach + f"{character.name} cannot {action['name']} at {resource_id} "
-                                                         f"({', '.join(f'{k}: {v}' for k, v in props.items() if k != 'remaining') or 'not possible now'}).", via)
+                                                         f"({', '.join(f'{k}: {_prop_value(v)}' for k, v in props.items() if k != 'remaining') or 'not possible now'}).", via)
     missing = _missing(action, body)
     if missing:
         return _refuse(character, action, approach + f"{character.name} cannot {action['name']}: {missing}.", via,

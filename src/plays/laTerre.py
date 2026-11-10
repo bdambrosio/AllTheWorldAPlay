@@ -53,10 +53,13 @@ W = context.Context([J, F],
     server_name=server_name)
 
 J.mapAgent.move_to_resource('MarquartFarm')
-W.reference_manager.declare_relationship('Marquart farm_owner', 'father of', 'Jean', 'child_of')
+# each farm belongs to the father (an NPC), not to the '<Farm>_owner' placeholder the map creates
+W.set_resource_owner('MarquartFarm', 'Macquart', "Macquart, an ageing peasant farmer, Jean's father, owner of MarquartFarm")
+W.reference_manager.declare_relationship('Macquart', 'father of', 'Jean', 'child_of')
 J.look()
 F.mapAgent.move_to_resource('FouanFarm')
-W.reference_manager.declare_relationship('Fouan farm_owner', 'father of', 'Francoise', 'child_of')
+W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer, Francoise's father, owner of FouanFarm")
+W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'child_of')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", mode='internal')
 J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", mode='internal')
 F.add_perceptual_input("You think – I saw that Jean Macquart again in the field. He works so hard for his family. Seems to have a chip on his shoulder though. Best not to stare and set the gossips' tongues wagging.", mode='internal')
