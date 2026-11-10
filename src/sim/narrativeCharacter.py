@@ -150,7 +150,7 @@ Every act should push dramatic tension higher: give the protagonist a clear want
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
 Characters hold real agency; they pursue goals, make trade-offs, and can fail. Attempts at compromise often results in loss of both possibilities. 
-Survival chores are background unless they expose or escalate the core mystery.
+Physical needs (water, food, rest, shelter) and natural hazards are real stakes in this world: use them to create concrete, checkable goals and obstacles tied to places and things, and keep any mystery grounded in them.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
 By the final act, resolve — or intentionally leave poised — the protagonist’s primary drive.
         """
@@ -215,7 +215,7 @@ Remember, you are {{$name}}
 ## TASK: Generate a narrative arc for yourself
 Generate a single JSON document that outlines the narrative arc for yourself.
 The narrative should start at the current time: {{$start_time}}
-Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.
+Physical needs (water, food, rest, shelter) and natural hazards are real stakes in this world: use them to create concrete, checkable goals and obstacles tied to places and things, and keep any mystery grounded in them.
 By the end of the narrative, the primary drive should be resolved.
 
 ### Structure
@@ -353,7 +353,7 @@ End your response with </end>
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Physical needs (water, food, rest, shelter) and natural hazards are real stakes in this world: use them to create concrete, checkable goals and obstacles tied to places and things, and keep any mystery grounded in them.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
 By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
         """
@@ -530,7 +530,7 @@ updated act
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail. Physical needs (water, food, rest, shelter) and natural hazards are real stakes in this world: use them to create concrete, checkable goals and obstacles tied to places and things, and keep any mystery grounded in them.
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
 By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
         """

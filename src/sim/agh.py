@@ -5,6 +5,7 @@ import os, json, math, time, requests, sys
 
 from sim.SpeechStylizer import SpeechStylizer
 from sim.trace import trace
+import sim.survival as survival
 import sim.ablation as ablation
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -51,6 +52,10 @@ if TYPE_CHECKING:
     from sim.context import Context  # Only imported during type checking
 
 logger = logging.getLogger('simulation_core')
+
+# Acts a character may spend on one task before step_task returns (the loop allowed 2 but
+# returned after the first, so each task got one act and a Say took the whole beat).
+MAX_ACTS_PER_TASK = 3
 
 
 
@@ -706,6 +711,8 @@ End response with:
         self.my_map[self.mapAgent.x][self.mapAgent.y] = view
 
         view_text, resources, characters, paths, percept_summary = map.hash_direction_info(view, world=self.context.map)
+        for resource_id in resources:  # what the {{$resources}} prompt block lists (it was never filled)
+            self.resource_models.add_resource_model(resource_id)
         # the raw #view dump is the current view (also kept as self.look_percept), not an event
         # worth remembering: storing it filled structured memory with map dumps
         view_percept = self.add_perceptual_input(view_text, mode=SensoryMode.VISUAL, remember=False)
@@ -1066,7 +1073,8 @@ End response with:
         weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode in ('Say', Mode.Say)])
         trace.event('task_check', character=self.name, task_id=task.id, task=task.name,
                     satisfied=bool(satisfied), progress=progress, acts=len(task.acts))
-        if satisfied or weighted_acts > random.randint(4,6): # basic timeout on task
+        # basic timeout on task; Says weigh 3, so a talk-only task ends after ~2 Says
+        if satisfied or weighted_acts > random.randint(MAX_ACTS_PER_TASK + 2, MAX_ACTS_PER_TASK + 4):
             trace.event('task_end', character=self.name, task_id=task.id, task=task.name,
                         outcome='satisfied' if satisfied else 'timeout', acts=len(task.acts), progress=progress,
                         goal_id=task.goal.id if task.goal else None)
@@ -1078,7 +1086,6 @@ End response with:
                 self.focus_goal.task_plan.remove(task)
             if self.focus_goal:
                 pass #self.focus_goal.tasks_completed.append(task)
-            self.context.current_state += f"\nFollowing task has been satisfied. This may invalidate parts of the above:\n  {task.to_string()}"
             self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
             self.achievments.append(task.termination)
             #await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
@@ -1136,8 +1143,23 @@ End response with:
             self.mapAgent.move(target_string.strip())
             return True
         resource = self.context.map.get_resource_by_id(target_string.strip())
+        if not isinstance(resource, dict):
+            # free text ('Walk west toward Spring3, scanning ...'): a named resource wins, then a direction
+            for token in re.findall(r'[A-Za-z_]+\d+', target_string):
+                found = self.context.map.get_resource_by_id(token)
+                if isinstance(found, dict):
+                    resource = found
+                    break
+            else:
+                for word in sorted(re.findall(r'[A-Za-z]+', target_string), key=len, reverse=True):
+                    if map.Direction.from_string(word):   # longest first: 'NorthWest' before 'North'
+                        self.mapAgent.move(word)
+                        return True
         if isinstance(resource, dict):  # it returns the string "path" for the path type, which crashed below
-            self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
+            if survival.config(self.context) and getattr(self, 'body', None) is not None:
+                survival.travel(self, *resource['location'])   # arrive, taking time by distance and terrain
+            else:
+                self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
             return True
         else:
             actor, _ = self.actor_models.resolve_character(target_string)
@@ -1168,6 +1190,7 @@ End response with:
         # Update thought display
         self.thought +=  self.reason
         self.lastActResult = ''
+        self.visible_result = ''
             
         if act_mode == 'Move':
             try:
@@ -1178,9 +1201,12 @@ End response with:
                     if act_arg.startswith('s '): # just in case towards instead of toward
                         act_arg = act_arg[len('s '):]
                 moved = self.move_toward(act_arg)
+                if moved and getattr(self, 'body', None) is not None:
+                    self.body.sheltered = False   # leaving shelter
                 if moved:
                     percept = self.look(act_mode, act_arg,reason)
                     self.show += ' moves to ' + act_arg + '.\n'#  and notices ' + percept
+                    self.context.add_event(f'{self.name} moves to {act_arg}')
                     self.context.message_queue.put({'name':self.name, 'text':self.show})
                     self.context.transcript.append(f'{self.name}: {self.show}')
                     self.show = '' # has been added to message queue!
@@ -1195,6 +1221,7 @@ End response with:
                         self.mapAgent.y = new_y
                         percept = self.look(act_mode, act_arg,reason)
                         self.show += f' moves to {resource["name"]}.\n  and notices ' + percept
+                        self.context.add_event(f'{self.name} moves to {resource["name"]}')
                         self.context.message_queue.put({'name':self.name, 'text':self.show})
                         self.context.transcript.append(f'{self.name}: {self.show}')
                         self.show = '' # has been added to message queue!
@@ -1202,6 +1229,7 @@ End response with:
                     else:
                         act_mode = 'Do'
                         act_arg = 'move to ' + act_arg
+                        act.action = act_arg  # Context.do reads act.action
             except Exception as e:
                 traceback.print_exc()
                 print(f'{self.name} move_toward failure: {e}')
@@ -1236,10 +1264,10 @@ End response with:
             if len(world_updates) > 0:
                 self.add_perceptual_input(f"{world_updates}", mode='visual')
             self.act_result = world_updates +'. '+character_updates
-        
-            # Update target's sensory input
-            if target is not None:
-                target.sense_input += '\n' + world_updates
+            # what others present can see happen (they used to get the action text only)
+            visible_result = (world_updates or '').strip()
+            self.visible_result = visible_result
+            self.context.add_event(f'{self.name} {act_arg}' + (f' -> {visible_result}' if visible_result else ''))
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1337,13 +1365,16 @@ End response with:
          # After action completes, update record with results
         # Notify other actors of action
         if act_mode != 'Say' and act_mode != 'Look' and act_mode != 'Think':  # everyone you do or move or look if they are visible
+            seen = f"You see {self.name}: '{act_arg}'"
+            if act_mode == 'Do' and getattr(self, 'visible_result', '').strip(' .'):
+                seen += f". Result: {self.visible_result.strip(' .')}"
             for actor in self.context.actors+self.context.extras:
                 if actor != self:
-                    if actor != target:
-                        actor_model = self.actor_models.get_actor_model(actor.name)
-                        if actor_model != None and actor_model.visible:
-                            percept = actor.add_perceptual_input(f"You see {self.name}: '{act_arg}'", percept=False, mode='visual')
-                            actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
+                    # (the target was excluded here and only got an unread sense_input)
+                    actor_model = self.actor_models.get_actor_model(actor.name)
+                    if actor_model != None and actor_model.visible:
+                        percept = actor.add_perceptual_input(seen, percept=False, mode='visual')
+                        actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         self.previous_action_mode = act_mode           
 
     def instantiate_narrative_goal(self, goal_statement, generate_conditions=True):
@@ -2085,8 +2116,8 @@ In choosing each act (see format below), you can choose from these Modes:
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-    Alternately, move towards a known resource or actor.
-    Useful when you need to move towards a resource or actor.
+    Alternately, give the name of a known resource or actor (e.g. a place listed under 'You could do here', such as Spring3) to walk all the way there.
+    Useful when you need to move towards a resource or actor: naming it is the reliable way to arrive.
 - Do - perform an act (other than move) to achieve physical consequences in the world or demonstrate to others your commitment to a goal or drive (whether real or performative). 
     This is often appropriate when the task involves interacting physically with a resource or actor. See below for actor thoughts on physical actions.
 - Think - mental reasoning about the current situation wrt your state and the task.
@@ -2098,6 +2129,11 @@ In choosing each act (see format below), you can choose from these Modes:
 
 {{$do_actions}}
 ############
+
+#What is physically going on right now (where you are, your body, what just happened, what you could do here).
+#Physical needs and threats are real: a concrete Do or Move that deals with them is often the right act.
+{{$here_and_now}}
+##
 
 Review your character and current emotional stance when choosing Mode and action. 
 Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression for an Act.
@@ -2274,13 +2310,14 @@ End your response with:
                     goal_memories.append(tm)
         task = self.focus_task.peek()
         if self.context.scene_post_narrative:
-            scene_post_narrative = f"\n\nThe dominant theme of the scene is: {self.context.scene_post_narrative}. The act alternatives should be consistent with this theme."
+            scene_post_narrative = f"\n\nThe scene is heading toward: {self.context.scene_post_narrative}"
         else:
             scene_post_narrative = ''
 
         response = default_ask(self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "do_actions": self.do_actions,
+                                              "here_and_now": self.physical_context(),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
                                               "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -2826,8 +2863,9 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         system_prompt = """You are a seasoned writer writing dialog for a movie.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can't be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through action, thought, spoken intention, and subtext, not narration.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Survival chores are background unless they expose or escalate the core mystery.
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
+Characters hold real agency; they pursue goals, make trade-offs, and can fail.
+Bodily needs, the place the characters are in, and what has just happened are real; let them shape what is said.
+Use plain, economical language and vary emotional tone.
         """
         prompt_string = """Be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when confidence is low or relationship is in question, fear is high, or the character perceives conflicting goals or a threat.
@@ -2895,6 +2933,12 @@ Your last action was:
 
 """
 
+        prompt_string += """What is physically going on right now (where you are, your body, what just happened, what you could do here):
+<here_and_now>
+{{$here_and_now}}
+</here_and_now>
+
+"""
         prompt_string += """generate a next thought in the internal dialog below:""" if self is from_actor else """generate a response to the statement below in the dialog:"""
         prompt_string += """
 <statement>
@@ -2919,7 +2963,7 @@ Guidance:
 - Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}}.
     Actor genders:
     {{$actor_genders}}
-- The response can occasionally include occasional body language or facial expressions as well as speech
+- Speech only: do not narrate actions, gestures or body language in the response; physical actions are separate Do acts.
 - Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
 - Do not respond to a question with a question.
 - If the intent is to agree, state agreement without repeating the statement.
@@ -2955,7 +2999,7 @@ End your response with:
 
         emotionalState = self.emotionalStance
         if self.context.scene_post_narrative:
-            scene_post_narrative = f"- Most importantly, the dominant theme of the scene is:\n {self.context.scene_post_narrative}\n  The response must be consistent with this theme."
+            scene_post_narrative = f"- The scene is heading toward: {self.context.scene_post_narrative}"
         else:
             scene_post_narrative = ''
 
@@ -2983,7 +3027,9 @@ End your response with:
             "scene_post_narrative": scene_post_narrative,
             "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
             "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-            "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''
+            # own view of the scene only: the full scene JSON revealed the other character's goal
+            "scene": self.scene_brief(),
+            "here_and_now": self.physical_context(),
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
         if response is None:
@@ -3364,6 +3410,31 @@ End your response with:
             return self.focus_action
 
 
+    def scene_brief(self):
+        """The current scene as this character knows it: title, place, set-up and own goal."""
+        scene = self.context.current_scene
+        if not scene:
+            return ''
+        own = (scene.get('characters') or {}).get(self.name.capitalize()) or (scene.get('characters') or {}).get(self.name) or {}
+        return (f"{scene.get('scene_title', '')} at {scene.get('location', '')}\n"
+                f"Set-up: {scene.get('pre_narrative', '')}\nYour goal in this scene: {own.get('goal', '')}")
+
+    def physical_context(self):
+        """Where the character is, its body, recent physical events, and what it could do here."""
+        parts = [f'Surroundings: {self.look_percept or "unknown"}']
+        body = getattr(self, 'body', None)
+        if body is not None:
+            parts.append(f'Your body: {body.summary()}')
+        parts.append('Recent events:\n' + self.context.recent_events_text(6))
+        try:
+            from sim import survival
+            actions = survival.available_actions(self)
+            if actions:
+                parts.append('You could do here: ' + actions)
+        except Exception:
+            pass
+        return '\n'.join(parts)
+
     def _pop_dialog_task(self, other):
         """Pop the 'dialog with other' task if it is on top (the pop was unconditional and could
         remove the scene task when the dialog task was already gone)."""
@@ -3558,6 +3629,7 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
 
+        survival.tick(self)   # needs rise with elapsed simulation time (survival scenarios only)
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
@@ -3565,7 +3637,7 @@ End your response with:
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
         subtask_count = 0
-        while act_count < 2 and self.focus_task.peek():
+        while act_count < MAX_ACTS_PER_TASK and self.focus_task.peek():
             #self.look(task.name+': '+task.description)
             action_alternatives: List[Act] = self.generate_acts(task)
             if not action_alternatives:
@@ -3643,8 +3715,9 @@ End your response with:
                     return True
             else:
                 print(f'{self.name} step_task: task {task.name} not found in focus_task.stack')
-            return True
-            
+                break
+            # (an unconditional 'return True' here ended every task after its first act)
+
         if self.focus_task.peek() is task:
             return False
             #self.focus_task.pop() # didn't get done by turn limit pretend task is done            return True # probably need to replan around step failure, but we're not going to do that here
@@ -3874,6 +3947,9 @@ end your response with:
             'memory_stats': section(memory_stats),
             'llm_calls': section(llm_calls),
             'look_percept': getattr(self, 'look_percept', ''),
+            'body': self.body.summary() if getattr(self, 'body', None) is not None else None,
+            'available_actions': survival.available_actions(self),
+            'recent_events': list(self.context.recent_events)[-8:] if self.context else [],
         }
 
     def get_explorer_state(self):

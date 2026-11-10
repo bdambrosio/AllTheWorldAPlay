@@ -1,4 +1,5 @@
 from __future__ import annotations
+import collections
 import copy
 import json
 import os
@@ -26,7 +27,8 @@ import asyncio
 import time
 from sim.prompt import ask as default_ask
 from sim.trace import trace
-from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler
+import sim.survival as survival
+from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
     from sim.agh import Character  # Only imported during type checking
@@ -127,6 +129,12 @@ class Context():
         self.act_central_narrative: str = ''
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
+        # concrete physical events (acts with visible results, travel, hazards), newest last; fed to
+        # dialog and act prompts so characters respond to what actually happens (add_event)
+        self.recent_events = collections.deque(maxlen=16)
+        self.scene_events = []   # this scene's events (scene wrap-up, outcome check)
+        self.act_scene_wrapups = []
+        self.act_events = []     # this act's events
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
         self.embedding_model = None
@@ -158,6 +166,7 @@ class Context():
             #actor.generate_task_alternatives() # don't have focus task yet
             actor.wakeup = False
         # (the voice service set up above was rebuilt here, refetching the voice list)
+        survival.attach(self)  # bodies, when the scenario defines survival (plays/scenarios/forest.py)
 
         
     def parse_scenario(self, scenario_lines: List[str]) -> dict:
@@ -281,8 +290,9 @@ class Context():
         prompt = []
         if system_prompt:
             prompt.append(SystemMessage(content=system_prompt))
-    
-        prompt.append(UserMessage(content="""    
+        # (prefix was accepted and silently dropped: check_post_state_ambiguity's whole task
+        # framing lived there)
+        prompt.append(UserMessage(content=(prefix + '\n' if prefix else '') + """    
 
 #Central Narrative Focus
 {{$central_narrative}}
@@ -883,6 +893,11 @@ in the current situation:
 {{$state}}
 </situation>
 
+These facts about the result are already settled and must not be contradicted:
+<facts>
+{{$facts}}
+</facts>
+
 given {{$name}} local map is:
 
 <localMap>
@@ -920,13 +935,21 @@ Do not include any Introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]
+        # survival mechanics (sim/survival.py) settle eating, drinking, shelter, threats ...;
+        # the narration describes them rather than inventing other outcomes
+        facts = survival.resolve_do(self, actor, action)
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, 
+                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
+                                     "facts": facts or 'none'},
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
+        if consequences is None:
+            consequences = facts or ''
+        elif facts:
+            consequences = facts + ' ' + consequences
         if consequences.endswith('<'):
             consequences = consequences[:-1]
         world_updates = self.world_updates_from_act_consequences(consequences)
@@ -1402,8 +1425,10 @@ Ensure your response reflects this change.
                 print(f'Error parsing scene time: {e}')
         else:
             self.simulation_time = scene['time']
+        survival.scene_clock_reset(self)
         await asyncio.sleep(0.1)
         self.current_scene = scene
+        self.scene_events = []
         trace.event('scene_start', title=scene.get('scene_title'), location=scene.get('location'),
                     pre_narrative=scene.get('pre_narrative'), planned_post=scene.get('post_narrative'),
                     goals={name: (c or {}).get('goal') for name, c in (scene.get('characters') or {}).items()},
@@ -1516,6 +1541,7 @@ Ensure your response reflects this change.
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             await character.step_task(task)
+            survival.hazard_tick(self)
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.step = False
 
@@ -1549,16 +1575,24 @@ Ensure your response reflects this change.
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
             true_outcomes = '\n'.join([outcome.get('outcome') for outcome in outcomes if outcome.get('test') == True])
-            self.current_scene['post_narrative'] = true_outcomes
-        if self.current_scene.get('post_narrative'):
-            self.current_state += '\n'+self.current_scene['post_narrative']
-            for character in characters_in_scene:
-                character.add_perceptual_input(self.current_scene['post_narrative'], mode = 'internal')
-                character.reason_over(self.current_scene['post_narrative'])
-                self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
+        # The planned post_narrative is kept: overwriting it with the outcome labels ("Alliance
+        # established") fed abstract labels to every character and to the next scene. The wrap-up
+        # now says what physically happened, plus the assessed outcomes.
+        self.current_scene['outcomes'] = outcomes
+        happened = '; '.join(e.split(' ', 1)[-1] for e in self.scene_events[-8:]) or 'little changed physically'
+        wrapup = f"Scene '{self.current_scene.get('scene_title', '')}' ends. What happened: {happened}."
+        if true_outcomes:
+            wrapup += f" Assessed outcome: {true_outcomes.replace(chr(10), '; ')}."
+        self.current_scene['wrapup'] = wrapup
+        self.act_scene_wrapups.append(wrapup)
+        self.current_state += '\n' + wrapup
+        for character in characters_in_scene:
+            character.add_perceptual_input(wrapup, mode='internal')
+            character.reason_over(wrapup)
+            self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
-            self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {self.current_scene["post_narrative"]}\n'})
-            await asyncio.sleep(0.1)
+        self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {wrapup}\n'})
+        await asyncio.sleep(0.1)
 
         staleness = None
         if hasattr(self, 'staleness_detector'):
@@ -1568,10 +1602,15 @@ Ensure your response reflects this change.
             except Exception:
                 pass
         trace.event('scene_end', outcomes=outcomes, post_narrative=self.current_scene.get('post_narrative'),
+                    wrapup=self.current_scene.get('wrapup'),
                     staleness=staleness)
-        scene_duration = self.current_scene.get('duration', 0)
-        if scene_duration > 0:
-            self.simulation_time += timedelta(minutes=scene_duration)
+        # plans write durations as numbers or as text ('20 minutes'); '>' on a string ended the narrative
+        try:
+            scene_duration = parse_duration(self.current_scene.get('duration', 0) or 0)
+        except Exception:
+            scene_duration = timedelta(0)
+        if scene_duration > timedelta(0):
+            self.simulation_time += scene_duration
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
@@ -1587,6 +1626,8 @@ Ensure your response reflects this change.
             logger.error(f'No scenes in act: {act["act_title"]}')
             return
         print(f'Running act: {act["act_title"]}')
+        self.act_events = []
+        self.act_scene_wrapups = []
         trace.event('act_start', number=act_number, title=act.get('act_title'),
                     planned_pre=act.get('act_pre_state'), planned_post=act.get('act_post_state'),
                     scenes=len(scenes))
@@ -1619,15 +1660,19 @@ Ensure your response reflects this change.
                     print(f"Staleness detection error: {e}")
             scene_number += 1
             self.step = False
-        # now ensure post_narrative
+        # act_post_state stays as planned (it was replaced by the first True outcome label, which
+        # then became the next act's starting point); the act's record is its scene wrap-ups
         if act.get('act_post_state'):
             outcomes = await self.check_post_state_ambiguity(act)
-            true_outcomes = [outcome for outcome in outcomes if outcome.get('test') == True]
-            if true_outcomes:
-                act["act_post_state"] = true_outcomes[0].get('outcome')
-            self.current_state += f'\n{act["act_post_state"]}\n'
+            act['act_outcomes'] = outcomes
+            assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
+            act_summary = ' '.join(self.act_scene_wrapups[-4:]) or 'The act passed without notable events.'
+            if assessed:
+                act_summary += f' Assessed act outcome: {assessed}.'
+            act['act_summary'] = act_summary
+            self.current_state += f'\n{act_summary}\n'
             for character in cast(List[NarrativeCharacter], self.actors+self.extras):
-                character.add_perceptual_input(act["act_post_state"], mode = 'internal') # this is a hack to get the post state into the character's memory
+                character.add_perceptual_input(act_summary, mode = 'internal')
         trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
         self.previous_acts.append(act)
         self.previous_scenes.extend(scenes)
@@ -2051,6 +2096,10 @@ The current state of the play is:
 {{$act_central_narrative}}
 ##
 
+#What actually happened (physical events, most recent last)
+{{$events}}
+##
+
 The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
 the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
 Return a succint name for each possible outcome, together with True or False according to whether that outcome is so in the actual state of the play.
@@ -2070,8 +2119,9 @@ be careful to insert line breaks only where shown, separating a value from the n
 ...
 """
         if scene:
-            pre_state = scene.get('scene_pre_state', '')
-            post_state = scene.get('scene_post_state', '')
+            # scenes carry pre_narrative / post_narrative (scene_pre_state did not exist: both were empty)
+            pre_state = scene.get('pre_narrative', '')
+            post_state = scene.get('post_narrative', '')
             act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
         else:
             pre_state = act.get('act_pre_state', '')
@@ -2079,8 +2129,9 @@ be careful to insert line breaks only where shown, separating a value from the n
             act_or_scene = json.dumps(act, indent=2, default=datetime_handler)
             
         response = await self.context_ask(prefix=prefix, suffix=suffix, addl_bindings={"act_or_scene": act_or_scene, 
-        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else ''}, 
-        max_tokens=100, tag='check_post_state_ambiguity')
+        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
+        "events": '\n'.join(self.scene_events if scene else self.act_events) or 'none recorded'},
+        max_tokens=300, tag='check_post_state_ambiguity')
         if response:
             outcomes = []
             forms = hash_utils.findall_forms(response)
@@ -2195,16 +2246,17 @@ end your response with:
         act_post_state = final_act.get('act_post_state', '')
         if not act_post_state:
             act_post_state = 'The characters have resolved the central dramatic question and are now in a new equilibrium.'
-        outcomes = await self.check_post_state_ambiguity(final_act)
-        true_outcomes = [outcome for outcome in outcomes if outcome.get('test') == True]
-        act_post_state = ''
-        if true_outcomes:
-            for outcome in true_outcomes:
-                act_post_state += f"{outcome.get('outcome', '')}\n"
-            self.message_queue.put({'name':self.name, 'text':f'coda: {act_post_state}'})
-        else:
-            print(f'Ambiguous post state: {outcomes}')
-            return
+        # What the next act starts from: the act's record (scene wrap-ups, assessed outcome, from
+        # run_narrative_act) with the planned post-state. This used to be the True outcome labels
+        # only, and None (wiping the next act's starting state) when no label tested True.
+        planned = act_post_state
+        summary = final_act.get('act_summary')
+        if summary is None:
+            outcomes = await self.check_post_state_ambiguity(final_act)
+            assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
+            summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
+        act_post_state = f'{summary.strip()}\n(The act was planned to end with: {planned})'
+        self.message_queue.put({'name':self.name, 'text':f'coda: {summary.strip()}'})
 
         decisions = await self.check_decision_required(final_act, scene)
         if decisions:
@@ -2588,15 +2640,9 @@ A paragraph or two including the following elements:
 Your response should be consistent with the play-level central narrative and the previous acts.
 
 Generate the act-specific framework that will guide scene-level planning.
-re""")]
-        
-        for character in cast(List[NarrativeCharacter], self.actors):
-            character.narrative = NarrativeSummary(
-            recent_events="",
-            ongoing_activities="",
-            last_update=self.simulation_time, 
-            active_drives=[]
-        )
+""")]
+        # (each character's narrative summary was reset to empty here every act, erasing the
+        # record of what had actually happened before the plans that use it)
 
         act_guidance = [
             """Act 1: "ESTABLISH foundation - Introduce core conflict, form fragile alliances, set central stakes" """,
@@ -2830,6 +2876,19 @@ End your response with </end>
         words = re.findall(r'[A-Za-z]+', response or '')
         level = words[0].upper() if words else ''
         return level if level in Context.SIGNIFICANCE_LEVELS else 'NOISE'
+
+    def add_event(self, text):
+        """Record a concrete physical event (see recent_events)."""
+        text = ' '.join(str(text).split())[:300]
+        if text:
+            line = f'{self.simulation_time.strftime("%H:%M")} {text}'
+            self.recent_events.append(line)
+            self.scene_events.append(line)
+            self.act_events.append(line)
+            trace.event('world_event', text=text)
+
+    def recent_events_text(self, n=6):
+        return '\n'.join(list(self.recent_events)[-n:]) or 'Nothing yet.'
 
     def place_commitment(self, character, task, significance, goal=None):
         """Put a commitment from a dialog into the running scene's task plan. Returns True if
