@@ -36,7 +36,12 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
         'hazards': [{'name', 'description', 'when' ('day'|'night'|'any'), 'terrain',
                      'chance_per_hour', 'blocked_by' (sheltered, fire, flags), 'minutes_to_strike',
                      'harm', 'retreat_text', 'strike_text', 'fail_text',
-                     'responses': {name: {'verbs', 'success', 'bonus': {item: +p}}}}]}
+                     'source': {'resource_types', 'requires_property', 'within' (tiles, 6)}:
+                     the hazard comes from a resource in that state (a line not yet repaired);
+                     it threatens only characters near one, appears there, and ends
+                     ('resolved_text') when the resource leaves that state,
+                     'responses': {name: {'verbs', 'success', 'bonus': {item: +p},
+                                          'sets_property' (on the source, when it works)}}}]}
     Text templates may use {resource}, {target}, {actor}, {item}.
 """
 from __future__ import annotations
@@ -616,6 +621,30 @@ def _blocked(context, character, hazard):
             or any(b in body.flags for b in blocks))
 
 
+def _hazard_source(context, character, hazard):
+    """The resource this hazard comes from, for this character: (id, resource) of the nearest
+    one of the source's types, in the required state, within its reach; None when there is
+    none. A hazard without a 'source' is not tied to a resource (callers check that first)."""
+    source = hazard['source']
+    best = None
+    for rid, res in _resources_of(context, source.get('resource_types') or []):
+        d = _distance(_here(character), res['location'])
+        if d <= source.get('within', 6) and _prop_ok(res, source.get('requires_property'), character) \
+                and (best is None or d < best[0]):
+            best = (d, rid, res)
+    return best[1:] if best else None
+
+
+def _source_gone(context, threat):
+    """True when the threat came from a resource that is no longer in the hazard's state."""
+    rid = threat.get('source')
+    if not rid:
+        return False
+    res = context.map.resource_registry.get(rid)
+    wanted = threat['hazard']['source'].get('requires_property')
+    return res is None or not all(_prop_ok(res, wanted, c) for c in context.actors if c.name in threat['targets'])
+
+
 def active_threat_for(character):
     threat = getattr(character.context, 'active_threat', None)
     return threat if threat and character.name in threat['targets'] else None
@@ -624,6 +653,12 @@ def active_threat_for(character):
 def threat_position(character, threat):
     d = _distance(_here(character), threat['location'])
     return 'right here' if d == 0 else f"{d} tiles {_direction(_here(character), threat['location'])}"
+
+
+def _where(anchor, threat):
+    if threat.get('source'):
+        return f"at {threat['source']}"
+    return f"{threat_position(anchor, threat)} of {anchor.name}"
 
 
 def hazard_tick(context):
@@ -643,7 +678,10 @@ def hazard_tick(context):
     threat = getattr(context, 'active_threat', None)
     if threat:
         targets = [c for c in cast if c.name in threat['targets']]
-        if all(_blocked(context, c, threat['hazard']) for c in targets):
+        if _source_gone(context, threat):
+            _end_threat(context, threat, threat['hazard'].get('resolved_text') or threat['hazard'].get(
+                'retreat_text', f"The {threat['hazard']['name']} is over."))
+        elif all(_blocked(context, c, threat['hazard']) for c in targets):
             _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."))
         elif now >= threat['deadline']:
             harm = threat['hazard'].get('harm', 0.3)
@@ -665,6 +703,8 @@ def hazard_tick(context):
                 terrain = None
             if hazard.get('terrain') and terrain not in hazard['terrain']:
                 continue
+            if hazard.get('source') and _hazard_source(context, c, hazard) is None:
+                continue
             if not _blocked(context, c, hazard):
                 exposed.append(c)
         if not exposed:
@@ -673,11 +713,16 @@ def hazard_tick(context):
         if _rng.random() >= p:
             continue
         anchor = exposed[0]
-        loc = (anchor.mapAgent.x + _rng.choice([-3, 3]), anchor.mapAgent.y + _rng.choice([-2, 2]))
+        source_id = None
+        if hazard.get('source'):
+            source_id, source = _hazard_source(context, anchor, hazard)
+            loc = tuple(source['location'])
+        else:
+            loc = (anchor.mapAgent.x + _rng.choice([-3, 3]), anchor.mapAgent.y + _rng.choice([-2, 2]))
         targets = [c.name for c in exposed if _distance(_here(c), _here(anchor)) <= 4]
-        context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc,
+        context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
                                  'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
-        text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {threat_position(anchor, context.active_threat)} of {anchor.name}, threatening {', '.join(targets)}."
+        text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}."
         context.add_event(text)
         context.current_state += '\n' + text
         for c in exposed:
@@ -712,6 +757,10 @@ def _respond_to_threat(context, character, threat, text, chosen=None):
                 p += bonus
         context.simulation_time += timedelta(minutes=5)
         if _rng.random() < min(0.95, p):
+            source = context.map.resource_registry.get(threat.get('source')) if threat.get('source') else None
+            for key, value in (response.get('sets_property') or {}).items():
+                if source is not None:
+                    source.setdefault('properties', {})[key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
             fact = f"{character.name} tries to {name}: it works. " + hazard.get('retreat_text', f"The {hazard['name']} passes.")
             _end_threat(context, threat, fact)
         else:

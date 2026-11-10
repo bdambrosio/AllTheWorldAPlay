@@ -201,7 +201,7 @@ affordances = {
          'named_verbs': [], 'resource_types': ['Evastation', 'Repairpanel'], 'gain': 'sealant kit', 'minutes': 5, 'deplete': 3,
          'text': 'takes a sealant kit from {resource}'},
         {'name': 'seal the coolant line', 'category': 'work', 'verbs': ['seal', 'weld', 'patch', 'clamp', 'repair', 'fix'],
-         'resource_types': ['Gantry', 'Repairpanel'], 'requires': 'sealant kit', 'consumes': 'sealant kit',
+         'resource_types': ['Gantry'], 'requires': 'sealant kit', 'consumes': 'sealant kit',
          'requires_property': {'repaired': None}, 'sets_property': {'repaired': True},
          'effects': {'fatigue': 0.15}, 'minutes': 30, 'text': 'seals the cracked coolant line at {resource}',
          'risk': {'chance': 0.15, 'effects': {'injury': 0.15}, 'text': 'A jet of coolant vapour slams against the visor.'}},
@@ -227,12 +227,15 @@ affordances = {
          'responses': {'take cover': {'verbs': ['take cover', 'shelter', 'duck behind', 'get behind'], 'success': 0.6},
                        'retreat inside': {'verbs': ['retreat', 'head for the airlock', 'go inside'], 'success': 0.5}}},
         {'name': 'line rupture', 'description': 'the cracked coolant line venting a plume of frozen vapour', 'when': 'any',
-         'terrain': ['Gantry'], 'chance_per_hour': 0.15, 'blocked_by': ['sheltered'],
+         'chance_per_hour': 0.15, 'blocked_by': ['sheltered'],
+         # the crack is in the line at the gantry: no rupture once that line is sealed
+         'source': {'resource_types': ['Gantry'], 'requires_property': {'repaired': None}, 'within': 6},
+         'resolved_text': 'The sealed line holds; the venting stops.',
          'minutes_to_strike': 20, 'harm': 0.3, 'fail_text': 'the vapour plume whips across the gantry',
          'retreat_text': 'The venting slows to a trickle; the line holds for now.',
          'strike_text': 'The line ruptures; a blast of frozen coolant knocks bodies against the rail.',
-         'responses': {'clamp the line': {'verbs': ['clamp', 'seal', 'patch', 'shut the valve', 'isolate'], 'success': 0.4,
-                                          'bonus': {'sealant kit': 0.35}},
+         # a clamp only holds for now; 'seal the coolant line' (with a sealant kit) is the repair
+         'responses': {'clamp the line': {'verbs': ['clamp', 'shut the valve', 'close the valve', 'isolate'], 'success': 0.5},
                        'back away': {'verbs': ['back away', 'retreat', 'move clear'], 'success': 0.6}}},
     ],
 }
