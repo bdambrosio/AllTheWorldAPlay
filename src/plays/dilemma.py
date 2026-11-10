@@ -81,7 +81,7 @@ W = None
 W = context.Context([Maya, Elijah, Chrys],
 """A small coastal town at sunset, where the river meets the sea. Colorful buildings line the waterfront, with artists' workshops and fishing boats creating a scene of rustic charm. The evening light casts long shadows as townspeople finish their day's work.
 Maya and Elijah are sitting on a bench overlooking the harbor, where Elijah's newly completed wooden boat is moored. A letter from the city gallery is in Maya's pocket. The air is filled with the scent of salt water and wood. Birds call as they return to roost for the evening.""", 
-scenario_module=coastal,
+start_time='2024-05-14T19:30:00', scenario_module=coastal,
 server_name=server_name)
 
 Maya.mapAgent.move_to_resource('Workshop1')

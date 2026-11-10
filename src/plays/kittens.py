@@ -43,4 +43,4 @@ meow.add_to_history("Where did that Lemon go this time?")
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = context.Context([lemon, meow],
                 """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happenning.
-""", scenario_module=garden, server_name=server_name)
+""", start_time='2024-05-15T09:00:00', scenario_module=garden, server_name=server_name)

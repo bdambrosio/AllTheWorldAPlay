@@ -43,7 +43,8 @@ WORLD_IMAGE_FILES = 8
 
 
 class Context():
-    def __init__(self, characters, description, scenario_module, extras=[], server_name=None, model_name=None):
+    def __init__(self, characters, description, scenario_module, extras=[], server_name=None, model_name=None,
+                 start_time=None):
         """Initialize a context with characters and world description
         
         Args:
@@ -88,7 +89,12 @@ class Context():
         self.current_actor_index = 0  # Add this line to track position in actors list
         
         self.show = ''
-        self.simulation_time = self.extract_simulation_time(description)
+        # A play states when it starts (start_time: a datetime or ISO string). Without one the
+        # date and hour are guessed from the description by the LLM.
+        if start_time is not None:
+            self.simulation_time = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time)
+        else:
+            self.simulation_time = self.extract_simulation_time(description)
         self.reference_manager = ReferenceManager(self, self.llm)
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
@@ -446,7 +452,7 @@ Respond with two lines in exactly this format:
 If any piece of information is not explicitly stated in the text, make a reasonable inference based on context clues (e.g., "early morning" suggests morning time, "soft light" might suggest spring or summer). 
 If absolutely no information is available for any field, use "unknown" for that field. However, always make best effort to supply a specific value consistent with the context.
 """)]
-        response = self.llm.ask({"situation": situation}, prompt, tag='Context.extract_simulation_time', temp=0.5, max_tokens=20)
+        response = self.llm.ask({"situation": situation}, prompt, tag='Context.extract_simulation_time', temp=0.5, max_tokens=60)
         try:
             year = hash_utils.find('year', response)
             if year is None or not year.strip().isdigit():
@@ -468,9 +474,13 @@ If absolutely no information is available for any field, use "unknown" for that 
                 hour = datetime.now().hour
             else:
                 hour = int(hour.strip())
-            ampm = hash_utils.find('ampm', response)
-            if ampm is None or ampm.strip() == 'unknown':
-                ampm = 'AM' if hour < 12 else 'PM'
+            # 20 tokens cut the reply off before the hour, and 'pm' was read but never applied:
+            # a late-afternoon play started at 1 in the morning of the current year
+            ampm = (hash_utils.find('ampm', response) or '').strip().lower()
+            if ampm == 'pm' and hour < 12:
+                hour += 12
+            elif ampm == 'am' and hour == 12:
+                hour = 0
             return datetime(year, month, day, hour, 0, 0, tzinfo=datetime.now().tzinfo)
         except Exception as e:  
             print(f"Error parsing datetime: {e}")
@@ -1407,32 +1417,11 @@ End your response with:
             return
         scene = new_scene
         await asyncio.sleep(0.1)
-        scene["time"] = max(self.validate_scene_time(scene), self.simulation_time)
-        self.message_queue.put({'name':self.name, 'text':f' -----scene----- {scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'})
-        await asyncio.sleep(0.1)
-        self.current_state += f'\n{scene["scene_title"]}\n    Setting: {scene["location"]} at {scene["time"]}'
-        scene_start = max(self.validate_scene_time(scene), self.simulation_time)
+        scene_start = scene["time"] = max(self.validate_scene_time(scene), self.simulation_time)
         survival.pass_offstage(self, scene_start - self.simulation_time)
         self.simulation_time = scene_start
-        await asyncio.sleep(0.1)
         self.current_scene = scene
         self.scene_events = []
-        trace.event('scene_start', title=scene.get('scene_title'), location=scene.get('location'),
-                    pre_narrative=scene.get('pre_narrative'), planned_post=scene.get('post_narrative'),
-                    goals={name: (c or {}).get('goal') for name, c in (scene.get('characters') or {}).items()},
-                    action_order=scene.get('action_order'))
-        self.scene_pre_narrative = ''
-        if scene.get('pre_narrative'):
-            self.current_state += '\n\n'+scene['pre_narrative']
-            self.scene_pre_narrative = scene['pre_narrative']
-            self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
-            # The planned set-up is the scene's opening as written. (An LLM "situation update" here
-            # paraphrased it and put characters in the scene who were not: 3 calls per scene.)
-            self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json()})
-            await asyncio.sleep(0)
-
-        if scene.get('post_narrative'):
-            self.scene_post_narrative = scene['post_narrative']
 
         #construct a list of characters in the scene in the order in which they appear
         characters_in_scene: List[Character] = []
@@ -1449,12 +1438,34 @@ End your response with:
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
-        # the cast gathers at the scene's place (walking there, unless the scene opens an act)
+        # the cast gathers at the scene's place (walking there, unless the scene opens an act);
+        # the heading names the place the scene is actually played ('same' said nothing)
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]} at {scene_start}'
+        self.message_queue.put({'name':self.name, 'text':f' -----scene----- {heading}'})
+        self.current_state += f'\n{heading}'
+        await asyncio.sleep(0.1)
+        trace.event('scene_start', title=scene.get('scene_title'), location=scene.get('location'),
+                    pre_narrative=scene.get('pre_narrative'), planned_post=scene.get('post_narrative'),
+                    goals={name: (c or {}).get('goal') for name, c in (scene.get('characters') or {}).items()},
+                    action_order=scene.get('action_order'))
+        self.scene_pre_narrative = ''
+        if scene.get('pre_narrative'):
+            self.current_state += '\n\n'+scene['pre_narrative']
+            self.scene_pre_narrative = scene['pre_narrative']
+            self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
+            # The planned set-up is the scene's opening as written. (An LLM "situation update" here
+            # paraphrased it and put characters in the scene who were not: 3 calls per scene.)
+            self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json()})
+            await asyncio.sleep(0)
         if arrival:
             self.add_event(arrival)
             self.current_state += '\n' + arrival
             self.message_queue.put({'name': self.name, 'text': f'    {arrival}'})
+
+        if scene.get('post_narrative'):
+            self.scene_post_narrative = scene['post_narrative']
+
         scene_goals = {}
         for character in characters_in_scene:
             character.current_scene = scene

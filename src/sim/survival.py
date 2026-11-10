@@ -321,12 +321,13 @@ def _household_owns(character, owner):
 
 def _prop_ok(res, wanted, character):
     """requires_property check. Value None: the property must be unset. '{actor}': it must be the
-    actor's name. '{household}' (for 'owner'): the actor, or the actor's parent or spouse."""
+    actor's name. '{household}' (for 'owner'): the actor, or the actor's parent or spouse;
+    '!{household}': anyone else's."""
     props = (res or {}).get('properties', {})
     for key, value in (wanted or {}).items():
         have = _prop_value(props.get(key))
-        if value == '{household}':
-            if not _household_owns(character, have):
+        if value in ('{household}', '!{household}'):
+            if _household_owns(character, have) != (value == '{household}'):
                 return False
             continue
         value = _fmt(value, actor=character.name) if isinstance(value, str) else value
@@ -385,7 +386,13 @@ def available_actions(character):
         if not types:
             out.append(action['name'] + note)
             continue
-        near = _nearest(character, types)
+        if action.get('requires_property'):
+            # whose place it is decides: offer it where this character may do it (a character
+            # knows the way to its own farm), not at whichever is nearest
+            own = _eligible(character, action)
+            near = (own[1], own[2], own[0]) if own else None
+        else:
+            near = _nearest(character, types)
         if near is None:
             continue
         rid, res, d = near
@@ -393,8 +400,6 @@ def available_actions(character):
             continue
         seen.add((action['name'], rid))
         if res.get('properties', {}).get('remaining') == 0:
-            continue
-        if not _prop_ok(res, action.get('requires_property'), character):
             continue
         if d <= 1:
             out.append(f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})")
@@ -561,8 +566,12 @@ def _apply(context, character, action, near, target, via, act_text=''):
         if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
             return _refuse(character, action, approach + f"There is nothing left at {resource_id}.", via)
         if not _prop_ok(res, action.get('requires_property'), character):
+            own = _eligible(character, action)
+            elsewhere = (f" {character.name} can do that at {own[1]}, {own[0]} tiles "
+                         f"{_direction(_here(character), own[2]['location'])}." if own else '')
             return _refuse(character, action, approach + f"{character.name} cannot {action['name']} at {resource_id} "
-                                                         f"({', '.join(f'{k}: {_prop_value(v)}' for k, v in props.items() if k != 'remaining') or 'not possible now'}).", via)
+                                                         f"({', '.join(f'{k}: {_prop_value(v)}' for k, v in props.items() if k != 'remaining') or 'not possible now'})."
+                                                         + elsewhere, via)
     missing = _missing(action, body)
     if missing:
         return _refuse(character, action, approach + f"{character.name} cannot {action['name']}: {missing}.", via,
@@ -647,10 +656,31 @@ def _record(character, action, fact, via, applied, resource=None, approached=Fal
                 target=target, found=found, fact=fact, via=via, approached=approached)
 
 
-def offers(context, resource_type):
-    """Names of the world's actions that can be done at a resource of this type."""
+def offers(context, res, cast=()):
+    """What can be done at a resource, for the playwright's list of places. An action open to
+    only some of the cast there (a family's own farm) names them; one open to none is left out."""
     cfg = config(context) or {}
-    return [a['name'] for a in cfg.get('actions', []) if str(resource_type) in (a.get('resource_types') or [])]
+    cast = [c for c in cast if getattr(c, 'body', None) is not None]
+    out = []
+    for action in cfg.get('actions', []):
+        if str(res.get('type')) not in (action.get('resource_types') or []):
+            continue
+        able = [c for c in cast if _prop_ok(res, action.get('requires_property'), c)]
+        if not cast or len(able) == len(cast):
+            out.append(action['name'])
+        elif able:
+            out.append(f"{action['name']} ({', '.join(c.name for c in able)} only)")
+    return out
+
+
+def _eligible(character, action):
+    """(distance, id, resource) of the nearest resource of the action's types where the
+    character meets the action's requires_property, however far; None when there is none."""
+    here = _here(character)
+    found = [(_distance(here, res['location']), rid, res)
+             for rid, res in _resources_of(character.context, action.get('resource_types') or [])
+             if _prop_ok(res, action.get('requires_property'), character)]
+    return min(found, key=lambda f: f[:2]) if found else None
 
 
 def travel(character, x, y, advance_clock=True):

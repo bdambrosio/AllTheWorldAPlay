@@ -46,4 +46,4 @@ L.add_to_history("You think: A newcomer in Bellona? How intriguing. He seems los
 W = context.Context([K, L],
 """A post-apocalyptic urban landscape, the city of Bellona is isolated, lawless, and filled with strange phenomena. 
 The sun hangs low in the hazy sky, casting an eerie light over the buildings and deserted streets.
-""", scenario_module=apocalypse, server_name=server_name)
+""", start_time='2024-10-12T18:00:00', scenario_module=apocalypse, server_name=server_name)

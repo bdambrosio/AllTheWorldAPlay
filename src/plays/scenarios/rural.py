@@ -169,8 +169,10 @@ affordances = {
     'actions': [
         {'name': 'draw water', 'verbs': ['drink', 'draw water', 'drink water'], 'named_verbs': ['draw', 'haul', 'lower the bucket'],
          'resource_types': ['Well'], 'effects': {'thirst': -0.7}, 'minutes': 10, 'text': 'draws water at {resource} and drinks'},
-        {'name': 'work for wages', 'category': 'work', 'verbs': ['hire out', 'labour for', 'work for wages'],
-         'named_verbs': ['work', 'reap', 'scythe', 'bind sheaves', 'plough', 'hoe'], 'resource_types': ['Farm'],
+        # hiring out is on another family's land and is said as such: cutting wheat is 'harvest
+        # family wheat' (it stood first with the same verbs, so Jean harvesting became day labour)
+        {'name': 'work for wages', 'category': 'work', 'verbs': ['hire out', 'hire myself', 'labour for', 'work for wages', 'day labour', 'day-wage'],
+         'named_verbs': ['hire'], 'resource_types': ['Farm'], 'requires_property': {'owner': '!{household}'},
          'effects': {'fatigue': 0.25, 'thirst': 0.15}, 'earn': 2, 'minutes': 180,
          'text': 'labours in the fields at {resource} for a day-wage'},
         {'name': 'take possession', 'category': 'work', 'verbs': ['claim', 'take possession', 'stake a claim', 'pace out'],

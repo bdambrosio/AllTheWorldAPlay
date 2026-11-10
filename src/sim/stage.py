@@ -95,16 +95,22 @@ def where(context, xy):
 
 def set_scene(context, scene, characters, opens_act):
     """Bring the scene's cast together at the scene's place and return the line that says so
-    ('' when nobody moves). The place is seen from the first character of the scene: the scene
-    stays with that character unless its location names somewhere else. Others join there.
+    ('' when nobody moves). A scene continues the one before it: unless its location names
+    somewhere else, it is played where the characters who were in the previous scene now are,
+    and newcomers join them there. (It was played where its first-named character stood, so a
+    scene that brought Francoise to Jean walked Jean to Francoise's farm instead.) With nobody
+    carried over, it is the previous scene's place; in a first scene, where its first character is.
     A scene that opens an act puts its cast in place; any other scene has them walk, and the
     clock moves on by the longest walk."""
     if not characters:
         return ''
-    anchor = here(characters[0])
+    previous = getattr(context, 'previous_scene', None) or {'cast': (), 'xy': None}
+    carried = [c for c in characters if c.name in previous['cast']]
+    anchor = here(carried[0]) if carried else previous['xy'] or here(characters[0])
     target = resolve(context, scene.get('location'), anchor)
     xy, place = target if target else (anchor, None)
     scene['place'] = place or where(context, xy).removeprefix('at ')
+    context.previous_scene = {'cast': tuple(c.name for c in characters), 'xy': xy}
     movers, longest = [], 0.0
     for character in characters:
         tiles = _distance(here(character), xy)
@@ -135,8 +141,9 @@ def set_scene(context, scene, characters, opens_act):
 
 def gazetteer(context):
     """The stage for a playwright prompt: where each cast member is, and the named places
-    nearest the cast with what each offers and how far it is. Every kind of place that offers
-    an action is listed at least once, however far, so the plan knows it exists."""
+    nearest the cast with what each offers (and to whom, when a place is someone's own) and
+    how far it is. Every kind of place that offers an action is listed at least once, however
+    far, so the plan knows it exists."""
     world = context.map
     cast = [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
     if not cast or not world.resource_registry:
@@ -147,7 +154,7 @@ def gazetteer(context):
                      for rid, res in world.resource_registry.items()), key=lambda p: p[:2])
     listed, kinds = [], set()
     for d, rid, res in places:
-        offers = survival.offers(context, res.get('type'))
+        offers = survival.offers(context, res, cast)
         if len(listed) < GAZETTEER_PLACES or (offers and res.get('type') not in kinds):
             listed.append((d, rid, res, offers))
             kinds.add(res.get('type'))

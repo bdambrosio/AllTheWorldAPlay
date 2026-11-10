@@ -110,6 +110,7 @@ W = context.Context(
 Jade is tethered outside, welding a high‑pressure coolant line in the vacuum of the lunar surface; a hairline crack begins to spider. 
 Inside the pressurised hatch, Cmdr Alvarez monitors Jade's suit vitals while fielding urgent calls from Earth‑side PR.  Time is oxygen; reputation is funding. 
 One bad choice and everything vents into the void.""",
+    start_time='2035-06-12T09:00:00',
     scenario_module=lunar,
     server_name=server_name,
 )

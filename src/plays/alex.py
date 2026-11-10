@@ -49,7 +49,7 @@ A bathroom with shower is adjacent. The kitchen has a coffee maker that has just
 Outside is a driveway with a car, and beyond that a quiet suburban street. 
 A calendar on the wall has today's date circled with "INTERVIEW - 10:00 AM" written on it.
 Alex is in bed, having just woken up to the alarm. The automatic coffee maker has finished brewing in the kitchen.""",
-    scenario_module=suburban,
+    start_time=datetime.now().replace(hour=6, minute=45, second=0, microsecond=0), scenario_module=suburban,
     extras=[Susan, Receptionist, Interviewer],
     server_name=server_name
 )
@@ -65,8 +65,5 @@ Susan.mapAgent.y = Alex.mapAgent.y
 W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Susan', 'partner of', 'Alex', 'partner of')
-# If simulation_time is None, use today's date
-base_datetime = W.simulation_time if W.simulation_time else datetime.now()
-W.simulation_time = base_datetime.replace(hour=6, minute=45, second=0, microsecond=0)
 Interviewer.mapAgent.move_to_resource('Office1')
 

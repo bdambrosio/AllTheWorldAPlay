@@ -49,6 +49,7 @@ Drive("brief moments of rest and simple joys amid the hardships")
 W = context.Context([J, F],
     """A small 19th century French farming village surrounded by fields ripe with wheat and other crops. 
     It is late afternoon on a hot summer day.""",
+    start_time='1860-07-15T17:00:00',
     scenario_module=rural,  # Pass the entire module
     server_name=server_name)
 

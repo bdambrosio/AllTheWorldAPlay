@@ -80,7 +80,7 @@ W = context.Context([Maya, Elijah, Chrys],
 The cafe is bustling with morning activity. The smell of fresh coffee and baked goods fills the air. A few tables are occupied by locals starting their day. Maya's art studio is visible down the street, and Elijah's boat workshop can be seen at the harbor nearby.
 
 It's 8:30 am on a clear Tuesday morning in May. The town is coming alive as shops open and fishing boats return with their morning catch.""", 
-scenario_module=coastal,
+start_time='2024-05-14T08:30:00', scenario_module=coastal,
 server_name=server_name)
 
 # Position characters at appropriate locations

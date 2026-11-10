@@ -86,6 +86,7 @@ Yangho.set_drives([
 # The city scenario: offices, apartments, a cafe and a hotel bar; contracts and phone messages
 W = context.Context([Hu, Xue, Qiu],
     """A modern chinese urban  setting with a mix of buildings, roads, and other signs of humanity.""",
+    start_time='2024-05-15T08:00:00',
     scenario_module=city,
     extras=[Wang, Xiaoyu, Yangho, Ding],
     server_name=server_name,
