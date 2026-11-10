@@ -238,9 +238,9 @@ def available_actions(character):
         if depleted:
             continue
         if d <= 1:
-            out.append(f"{action['name']} at {rid} (here)")
+            out.append(f"{action['name']}@{rid} (here)")
         else:
-            out.append(f"{action['name']} at {rid} ({d} tiles {_direction(_here(character), res['location'])}; first Move: {rid})")
+            out.append(f"{action['name']}@{rid} ({d} tiles {_direction(_here(character), res['location'])}; first Move: {rid})")
     threat = active_threat_for(character)
     if threat:
         h = threat['hazard']
@@ -249,7 +249,39 @@ def available_actions(character):
     return '; '.join(out[:10])
 
 
-def resolve_do(context, character, act_text):
+def affordance_prompt_line(character):
+    """The optional #affordance field of the act format, for survival plays only."""
+    if getattr(character, 'body', None) is None or not config(character.context):
+        return ''
+    return ("\n#affordance for a Do that performs one of the actions listed under 'You could do here', "
+            "that action's exact label (e.g. drink@Spring3, rest, flee); omit for any other act.\n"
+            "  For example: #mode Do / #action kneels at the spring and drinks from cupped hands / #affordance drink@Spring3")
+
+
+def _chosen(context, character, label):
+    """('threat', response) or ('action', action, near) for an #affordance label, or None."""
+    cfg = config(context)
+    label = label.strip().strip('\'"`.').split(' (')[0]
+    name, _, rid = label.partition('@')
+    name, rid = name.strip().lower(), rid.strip()
+    threat = active_threat_for(character)
+    if threat and name in threat['hazard'].get('responses', {}):
+        return ('threat', name)
+    for action in cfg.get('actions', []):
+        if action['name'].lower() != name:
+            continue
+        types = action.get('resource_types')
+        if not types:
+            return ('action', action, None)
+        res = context.map.resource_registry.get(rid) if rid else None
+        if res is not None and str(res.get('type')) in types:
+            return ('action', action, (rid, res, _distance(_here(character), res['location'])))
+        near = _nearest(character, types, mentioned=rid.lower() if rid else None)
+        return ('action', action, near)
+    return None
+
+
+def resolve_do(context, character, act_text, affordance=None):
     """Apply the mechanics of a Do, if it is a survival action. Returns a fact line for the
     narration, or None when the act is not a survival action (the LLM decides as before)."""
     cfg = config(context)
@@ -257,12 +289,20 @@ def resolve_do(context, character, act_text):
     if not cfg or body is None:
         return None
     text = (act_text or '').lower()
+    # the act's #affordance label, when it gave a valid one, decides; text matching is the fallback
+    chosen = _chosen(context, character, affordance) if affordance else None
+    via = 'label' if chosen else 'text'
 
     threat = active_threat_for(character)
-    if threat:
-        fact = _respond_to_threat(context, character, threat, text)
+    if threat and not (chosen and chosen[0] == 'action'):
+        fact = _respond_to_threat(context, character, threat, text,
+                                  chosen=chosen[1] if chosen else None)
         if fact:
             return fact
+
+    if chosen and chosen[0] == 'action':
+        _, action, near = chosen
+        return _apply(context, character, action, near, via)
 
     # candidate actions: verbs match; rank those whose resource the act names, then those with a
     # resource in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
@@ -283,27 +323,33 @@ def resolve_do(context, character, act_text):
         return None
     candidates.sort(key=lambda c: c[:3])
     _, _, _, action, near = candidates[0]
+    return _apply(context, character, action, near, via)
+
+
+def _apply(context, character, action, near, via):
+    """Check reach, stock and requirements, then apply the action's effects; returns the fact line."""
+    body = character.body
     types = action.get('resource_types')
     resource_id = res = None
     if types:
         if near is None:
             fact = f"There is no {' or '.join(types).replace('_', ' ').lower()} in sight here."
-            _record(character, action, fact, applied=False)
+            _record(character, action, fact, via, applied=False)
             return fact
         resource_id, res, d = near
         if d > 1:
             fact = (f"{resource_id} is {d} tiles {_direction(_here(character), res['location'])}; "
                     f"{character.name} must move there first.")
-            _record(character, action, fact, applied=False)
+            _record(character, action, fact, via, applied=False)
             return fact
         props = res.setdefault('properties', {})
         if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
             fact = f"There is nothing left at {resource_id}."
-            _record(character, action, fact, applied=False)
+            _record(character, action, fact, via, applied=False)
             return fact
     if action.get('requires') and action['requires'] not in body.inventory:
         fact = f"{character.name} cannot {action['name']} without a {action['requires']}."
-        _record(character, action, fact, applied=False)
+        _record(character, action, fact, via, applied=False)
         return fact
 
     for need, delta in (action.get('effects') or {}).items():
@@ -329,13 +375,13 @@ def resolve_do(context, character, act_text):
             body.adjust(need, delta)
         fact += ' ' + risk.get('text', '')
     fact += f" ({character.name} is now {body.summary()}.)"
-    _record(character, action, fact, applied=True, resource=resource_id)
+    _record(character, action, fact, via, applied=True, resource=resource_id)
     return fact
 
 
-def _record(character, action, fact, applied, resource=None):
+def _record(character, action, fact, via, applied, resource=None):
     trace.event('affordance', character=character.name, action=action['name'], applied=applied,
-                resource=resource, fact=fact)
+                resource=resource, fact=fact, via=via)
 
 
 def travel(character, x, y):
@@ -453,10 +499,12 @@ def _end_threat(context, threat, text, struck=False):
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
 
 
-def _respond_to_threat(context, character, threat, text):
+def _respond_to_threat(context, character, threat, text, chosen=None):
     hazard = threat['hazard']
     for name, response in hazard.get('responses', {}).items():
-        if not _matches(text, response.get('verbs', [])):
+        if chosen is not None and name != chosen:
+            continue
+        if chosen is None and not _matches(text, response.get('verbs', [])):
             continue
         p = response.get('success', 0.5)
         for item, bonus in response.get('bonus', {}).items():

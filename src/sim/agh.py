@@ -502,6 +502,8 @@ End your response with:
                 source=task,
                 target=targets
             )
+            # survival plays: the offered action this Do uses, by its listed name (drink@Spring3)
+            act.affordance = (hash_utils.find('affordance', hash_string) or '').strip() or None
             return act
         else:
             print(f"Invalid actionable Hash: {hash_string}")
@@ -2186,7 +2188,7 @@ Respond in hash-formatted text:
 #mode one of {{$modes}}, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
 #action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
-#duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.
+#duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
 ##
 
 #NOTE#
@@ -2318,6 +2320,7 @@ End your response with:
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "do_actions": self.do_actions,
                                               "here_and_now": self.physical_context(),
+                                              "affordance_line": survival.affordance_prompt_line(self),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
                                               "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -3745,7 +3748,8 @@ End your response with:
         trace.event('act', character=self.name, mode=act_mode, action=act_arg, reason=action.reason,
                     targets=[t.name for t in (action.target or []) if hasattr(t, 'name')],
                     task_id=task.id if task else None, task=task.name if task else None,
-                    goal_id=task.goal.id if task and task.goal else None)
+                    goal_id=task.goal.id if task and task.goal else None,
+                    affordance=getattr(action, 'affordance', None))
         self.reason = action.reason
         source = action.source
         #print(f'{self.name} choose {action}')
