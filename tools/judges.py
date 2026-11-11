@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LLM-judge tiers of a play scorecard (tiers 4-5), from a run trace (src/sim/trace.py).
 
-    set -a; . ~/.config/secrets.env; set +a          # CLAUDE_API_KEY / FIREWORKS_API_KEY
+    set -a; . ~/.config/secrets.env; set +a          # CLAUDE_API_KEY / FIREWORKS_PROJECT_KEY
     .venv/bin/python tools/judges.py <trace.jsonl> [--judge local,claude] [--samples 3] [--scene-samples 5]
 
 Judges (--judge takes a comma list; 'both' = local,fireworks):

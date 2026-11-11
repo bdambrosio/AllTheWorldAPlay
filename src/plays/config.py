@@ -17,3 +17,10 @@ server_name='vllm'
 #server_name='openrouter'; model_name='meta-llama/llama-4-scout' #google/gemini-2.0-flash-preview'
 #server_name='openrouter'; model_name='qwen/qwen3-32b'
 #server_name='openrouter'; model_name='moonshotai/kimi-k2'
+
+# One run on another model without editing this file: ATWAP_LLM=fireworks ./start-local.sh
+# (GLM-5.3-Flash on Fireworks; needs FIREWORKS_PROJECT_KEY). ATWAP_MODEL names a model for it.
+import os
+if os.environ.get('ATWAP_LLM'):
+    server_name = os.environ['ATWAP_LLM']
+    model_name = os.environ.get('ATWAP_MODEL') or None

@@ -28,9 +28,10 @@ logger = logging.getLogger('simulation_core')
 
 LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://localhost:5000/v1')
 # Fireworks-hosted GLM-5.3-Flash, used as an external judge (tools/judges.py); route and
-# settings follow Cognitive_workbench measure/models/fw_glm53flash.yaml. Key: FIREWORKS_API_KEY.
+# settings follow Cognitive_workbench measure/models/fw_glm53flash.yaml. Key: FIREWORKS_PROJECT_KEY.
 FIREWORKS_URL = 'https://api.fireworks.ai/inference/v1'
 FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
+FIREWORKS_HEADROOM = 96
 IMAGE_URL = os.environ.get('IMAGE_URL', 'http://127.0.0.1:5008/generate_image')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -299,11 +300,13 @@ class LLM():
     def _fireworks_request(self, messages, options, retries=6):
         """Fireworks chat completion with backoff on 429/5xx (the account's rate limit, not the
         model's, is what throttles; see the workbench yaml)."""
-        key = os.environ.get('FIREWORKS_API_KEY')
+        key = os.environ.get('FIREWORKS_PROJECT_KEY')
         if not key:
-            raise RuntimeError('FIREWORKS_API_KEY is not set (source ~/.config/secrets.env)')
+            raise RuntimeError('FIREWORKS_PROJECT_KEY is not set (source ~/.config/secrets.env)')
+        # the engine's budgets are for the answer alone (some are 10 or 20 tokens); this model
+        # spends a few reasoning tokens from the same budget even at 'low', so it gets headroom
         body = {"model": self.model, "messages": messages, "temperature": options.temperature,
-                "top_p": options.top_p, "max_tokens": options.max_tokens,
+                "top_p": options.top_p, "max_tokens": options.max_tokens + FIREWORKS_HEADROOM,
                 "stop": options.stops or None, "reasoning_effort": getattr(self, 'reasoning_effort', 'low')}
         delay = 2.0
         for attempt in range(retries):

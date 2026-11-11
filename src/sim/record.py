@@ -34,7 +34,7 @@ NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed a
 BODILY = (r"hung|starv|fed\\b|thirst|quench|parch|tired|exhaust|rested|fatigue|sleep|hurt|wound|injur|pain|ache|sore|swol|swell|"
           r"sprain|twist|broke|bleed|blood|bruis|fever|sick|ill\\b|nause|cramp|limp|lame|burn|bandag|sling|faint|dizz|weak")
 COMMON = {'their', 'there', 'while', 'which', 'about', 'after', 'before', 'still', 'being', 'where', 'other', 'again', 'hands', 'holds', 'takes'}
-KINDS = ('item', 'condition', 'presence', 'place', 'time', 'stock', 'outcome')
+KINDS = ('item', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
 
@@ -63,6 +63,7 @@ A statement is unsupported when it is one of these:
 - place: a character standing at, or having moved to, a place other than where Present puts them, when Settled has no walk. Seeing, facing, pointing at, turning or taking a few steps toward a place in sight is not moving there.
 - time: light, dark or a time of day that does not fit Time.
 - stock: how much is left somewhere, other than as Stock says.
+- gender: someone called he or she, him or her, sir or madam, a man or a woman, against what Cast says they are.
 - outcome: only when Settled refuses the action (it says 'cannot', 'must move there first', 'still has it', 'nothing to') and the narration has it done all the same; or Settled has it done and the narration has it fail. When Settled is 'none' there is no outcome claim: one character touching, pushing, pinning, gripping or striking another, or handling a thing it holds, is allowed.
 Everything the record does not keep is allowed: the ground, plants, weather that fits the time, the clothes a person wears, sounds, gestures, how a thing looks or feels, whatever the action itself says the character does with its own body, and everything of the mind: what anyone thinks, feels, fears, wants, knows, remembers or has forgotten is never a 'condition'.
 
@@ -77,6 +78,16 @@ or, when there is none, the single line:
 """
 
 
+def cast(context, people=None):
+    """The people of the play with what each is, for any prompt that writes about someone other
+    than its own character: 'Hu (female), Xue (male), ...'. Each call used to see one
+    character's description and everyone else as a bare name, and a name like Hu, Xue or Xiaoyu
+    says nothing: one scene had Hu as 'him', Xiaoyu as 'her' and then 'his', and 'the lady' said
+    to a man. `people`: those to list; the whole cast by default."""
+    people = people or list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
+    return ', '.join(f"{c.name} ({(getattr(c, 'gender', '') or '').strip().lower() or 'not stated'})" for c in people)
+
+
 def of(context, actor, people=None):
     """The record as it bears on what may be said of `actor` and those with it (or of `people`,
     a scene's cast)."""
@@ -86,6 +97,7 @@ def of(context, actor, people=None):
     places = [f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else stage._direction(at, res['location']).lower()})"
               for d, rid, res in near if d <= NEARBY_TILES]
     return '\n'.join([
+        f'Cast: {cast(context)}',
         f'Time: {stage.clock(context)}',
         'Present: ' + '; '.join(f'{c.name} {stage.where(context, stage.here(c))}' for c in people) + '. Nobody else.',
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
@@ -362,6 +374,8 @@ def settle(context, actor, action, facts, narration, rewrite, kind='do', source=
         trace.event('narration_check', character=actor.name, of=kind, outcome='admitted',
                     claims=[f'{k}: {w}' for k, w in claims], made=made, before=narration, after=narration)
         return Settled(narration, made)
+    if any(k == 'gender' for k, _ in remaining):
+        refused = refused + [f'Cast: {cast(context)}.']
     settled = ' '.join(filter(None, [facts or ''] + made + refused))
     again = rewrite(rejection(remaining, made, refused, settled=re.sub(survival.BODY_NOTE, '', facts or '').strip()))
     still = check(context, actor, action, settled, again) if again else None
@@ -398,12 +412,14 @@ Speaker: {{$name}}
 {{$line}}
 </line>
 
-Find only statements of these kinds, made in the first person about right now:
+Find only statements of these kinds. The first five are made in the first person, about right now:
 - holds: {{$name}} has, holds, offers or hands over a thing it does not have ("Here, clean water" with none in hand; "take my knife").
 - body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested).
 - doing: {{$name}} says it is doing, this moment, a physical thing that it is not ("I'm climbing down" while sitting).
 - where: {{$name}} says it, or someone present, is at a place other than where Present puts them.
 - time: light, dark or a time of day that does not fit Time.
+And one that may be about anyone in the play, present or not:
+- gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
 Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water").
 
 Also say if the line hands a thing the speaker really has to someone present, in so many words ("Here, take the branch"):
@@ -429,6 +445,7 @@ Speaker: {{$name}}
 
 Not so:
 {{$claims}}
+(Who is who: {{$cast}})
 
 Say the line again as {{$name}} would, in the same voice, in the first person, and no longer than it was. Keep everything else it says and means; leave out what is not so.
 - Do not announce the correction: never "It's morning", "I'm not up the tree", "I have no water". Just do not say the untrue thing.
@@ -455,7 +472,7 @@ def _body_bears(speaker, low):
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time')
+SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender')
 
 
 ME_NOW = r"\b(i'm|i’m|i am|we're|we’re|we are)\b"
@@ -522,7 +539,7 @@ def speech(context, speaker, line, listener=None):
     if not claims:
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
         return line, give
-    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line,
+    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context),
                              'claims': '\n'.join(f'- {w}' for _, w in claims)}, [UserMessage(content=RESAY)],
                             tag='record.resay', temp=0.6, stops=['</end>'], max_tokens=120)
     again = (again or '').strip().strip('"“”\'').strip()

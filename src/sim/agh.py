@@ -1212,6 +1212,11 @@ End response with:
             refused = getattr(self, 'last_affordance', None)
             if refused and not refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
                 result = result[len(refused['fact']):].strip()   # the world's reason is for the character, not the audience
+            elif refused and refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
+                # the world's own sentence ('Xue has a meal at Cafe.') stood between the deed and
+                # a narration that told the same thing; it is shown only when nothing else tells it
+                told_by_narration = result[len(refused['fact']):].strip()
+                result = told_by_narration or result
             # the world refused it, by its rules or because the deed rested on something that is
             # not there: others saw a try, and the page tells what happened, not what was meant
             rested_on_nothing = getattr(self, 'deed_refused', False)
@@ -3188,6 +3193,11 @@ End your response with:
             "here_and_now": self.physical_context(),
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
+        # The line ends where anything that is not the line begins. (One model closed its
+        # response with the reason's tag, and 'Polite deferral, no commitment yet' was spoken
+        # aloud three times in a scene.)
+        if response:
+            response = re.split(r'</?\s*(?:reason|response)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -3578,6 +3588,8 @@ End your response with:
     def physical_context(self):
         """Where the character is, its body, recent physical events, and what it could do here."""
         parts = [f'Surroundings: {self.look_percept or "unknown"}']
+        if self.context is not None:   # so that nobody is 'him' in one line and 'her' in the next
+            parts.append(f'Everyone in the play, and whether each is he or she: {record.cast(self.context)}.')
         others = stage.whereabouts(self)
         if others:
             parts.append(f'Where the others are: {others}. To act on or speak to someone out of reach you first walk to them, which takes time.')

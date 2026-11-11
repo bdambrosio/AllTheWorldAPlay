@@ -956,6 +956,7 @@ What each is carrying:
 {{$holdings}}
 </holdings>
 It is now {{$clock}}.
+Everyone in the play, and whether each is he or she: {{$cast}}.
 Looking changes nobody's body and nothing anyone holds: report no bodily condition, possession or time of day that the above does not show.
 Danger here now: {{$danger}}. Report no animal, person or danger that is not listed here or on the map.
 {{$rejected}}
@@ -985,7 +986,7 @@ End your response with:
         inputs = {"name": actor.name, "action": action, "local_map": local_map, "target": target,
                   "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
-                  "danger": record.danger(actor) or 'none',
+                  "danger": record.danger(actor) or 'none', "cast": record.cast(self),
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked',
                   "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}
@@ -1071,6 +1072,7 @@ with current situation:
 </situation>
 
 The characters present are: {{$present}}. Nobody else is here.
+Everyone in the play, and whether each is he or she: {{$cast}}.
 
 You are the stage, not a character: report what the action physically does, and nothing more.
 If the action does nothing beyond what its own words already say (a look, a gesture, a stance, a pause), respond with the single word: nothing
@@ -1102,7 +1104,7 @@ End your response with:
         local_map = xml.format_xml(local_map)
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
                   "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
-                  "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
+                  "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
                   "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
                   "danger": record.danger(actor) or 'none', "events": self.recent_events_text(6),
@@ -1564,6 +1566,7 @@ End your response with:
 </planned_scene>
 
 <where_things_stand>
+Everyone in the play, and whether each is he or she: {{$cast}}.
 It is now {{$clock}}.
 {{$places}}
 Bodies and what each carries: {{$bodies}}
@@ -1607,7 +1610,7 @@ Respond with these lines only:
         hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
         threat = getattr(self, 'active_threat', None)
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                  'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving,
+                  'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -2314,6 +2317,61 @@ Respond with these lines only, one sentence each:
         trace.event('episode', **self.episode)
         return self.episode
 
+    def equip_cast(self):
+        """Before the first act, settle what each character has with it that the story turns on,
+        and make it real. A world's characters began with empty hands unless the play file gave
+        them something, so the widow whose whole part is her photographs reached into her handbag
+        and 'came up empty', and then told the room she had photographs. Returns {name: [things]}."""
+        cfg = survival.config(self)
+        people = [c for c in self.actors if getattr(c, 'body', None) is not None]
+        if not cfg or not people or getattr(self, '_cast_equipped', False):
+            return {}
+        self._cast_equipped = True
+        prompt = [UserMessage(content="""A play is about to begin in a simulated world that keeps track of what each character carries. Settle what each character has with them at the start that the story depends on.
+
+<setting>
+{{$setting}}
+</setting>
+
+<central_question>
+{{$central}}
+</central_question>
+
+<characters>
+{{$characters}}
+</characters>
+
+Already carrying:
+{{$carrying}}
+
+Things this world's own actions produce, which are not to be handed out here: {{$items}}
+
+- List only what a character's description, or the premise of the story, says or plainly implies they have with them when the play opens and that the story turns on: evidence, a letter, a keepsake, the tool of their trade.
+- Most characters need nothing. Someone who begins with nothing (lost, stranded, robbed) gets nothing. At most two things each.
+- No weapon, food, drink, medicine or money, and nothing they could only have by something happening in the play.
+
+Respond with one line for each thing, or the single line #none:
+#has <character name> | <the thing, two or three plain words>
+</end>
+""")]
+        reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
+                              'characters': '\n'.join(f"{c.name}: {' '.join(c.character.split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in people),
+                              'carrying': '\n'.join(f"{c.name}: {', '.join(c.body.inventory) or 'nothing'}" for c in people),
+                              'items': ', '.join(survival.item_kinds(self)) or 'none'},
+                             prompt, tag='equip_cast', temp=0.2, stops=['</end>'], max_tokens=160) or ''
+        given = {}
+        own = [k.lower() for k in survival.item_kinds(self)]
+        for name, thing in re.findall(r'^\s*#has\s+([^|\n]+?)\s*\|\s*(.+?)\s*$', reply, re.M):
+            holder = next((c for c in people if c.name.lower() == name.strip().lower()), None)
+            thing = thing.strip(' ."\'').lower()
+            if holder is None or not thing or thing in own or len(given.get(holder.name, [])) >= 2:
+                continue
+            if survival.add_thing(self, thing, holder=holder):
+                given.setdefault(holder.name, []).append(thing)
+                holder.add_perceptual_input(f'You have with you: {thing}.', percept=False, mode='internal')
+        trace.event('cast_equipped', given=given, reply=reply.strip())
+        return given
+
     def episode_note(self, closing=False):
         """The episode's frame as a note for whoever plans an act; '' when there is none."""
         frame = getattr(self, 'episode', None) or {}
@@ -2349,6 +2407,7 @@ Respond with these lines only, one sentence each:
         previous_act = None  # the act just performed; replan_narrative_act adapts the next act to it
         try:
             self.frame_episode()
+            self.equip_cast()
             for i in range(integrated_act_count):
                 act_central_narrative = await self.generate_act_central_narrative(i+1)
                 if act_central_narrative is None:
