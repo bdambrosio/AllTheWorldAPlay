@@ -1,41 +1,107 @@
-## ImprovAI[^1] Version 3.0
-This is probably the final major version, I believe I've reached near end of cognitive character development using the current architecture.
-I'll probably continue to make minor fixes, esp to the UI.
-Also, the containers still need an upgrade, I'll work on that soon
+## ImprovAI[^1]: All the World's a Play
+
+### Back in development (November 2026)
+
+Version 3.0 of this README said I had probably reached the end of what the architecture could do. I was wrong about that, or at least early. After sixteen months away I came back, ran `lost`, handed the transcript to a writing instructor, and got a C. The characters were not the problem. The play kept contradicting itself: a man offered water he did not have, a boar was struck five times after it had run off, a shoulder was bandaged on a body the world said was unhurt.
+
+So this is an overhaul, in progress. It is now on `main`, and it is not finished. This page says what has changed, what works today, and what does not.
+
 cheers - Bruce
 
-*rename will migrate to all other appearances of label, and reflects slight project refocus.*
-### A playground for cognitive software and other beings.
-#### minor update - installing scaffolding to prevent characters from delaying decisions indefinitely.
+### What it is
 
-### long-term plan update
-ImprovAI provides a stage for mixed human / AI-improv performances.
-Given a short scenario, it:
-- generates a cast of cognitively-deep AI actors (my primary research interest)
-- Allows each character to choose how to act at the Act, Scene, Goal, Task, and individual Action levels.
-- Under the overall guidance of a Director whose job it is to coordinate the actors into a coherent narrative.
-- The role of Director can be flexibly assigned to the system or a human at any decision level, separately for each character.
+ImprovAI is a stage for improvised plays performed by AI actors. Given a short scenario, it:
 
-Sample replays at [demo](https://demo.tuuyi.com)
+- builds a cast of cognitively deep characters, each with drives, memory, emotional stance, goals and plans (my main research interest);
+- lets each character choose how to act at the Act, Scene, Goal, Task and Action levels;
+- coordinates them through a Director into a narrative of acts and scenes;
+- lets a human take the Director's chair at any of those levels, for any character.
+
+Underneath is a small simulated world the actors live in. That world is where most of the new work has gone.
 
 ![Play screenshot](docs/images/WebworldMain.png)
 
-more at [Slide Show](http://www.tuuyi.com)
-or [Devin] ([https://app.devin.ai/wiki/bdambrosio/AllTheWorldAPlay])
+Older sample replays are at [demo](https://demo.tuuyi.com), with more background in the [slide show](http://www.tuuyi.com). Both predate the overhaul.
 
-example scenario:
+### What the overhaul is about
+
+**The world is the authority.** The old engine let every LLM call write freely about the world, then fed that text back to every other call as the situation. Whatever a narrator once wrote was true from then on. The new rule is that the world keeps the record and everything else is held to it.
+
+- **A world that keeps count.** Each play runs in a world (forest, farm, city, lunar base and others) that tracks bodies (thirst, hunger, fatigue, injury), what each character carries, places and what can be done at them, what has been used up, and dangers. Eating, drinking, giving, sheltering and fighting off a boar happen by rules, not by narration.
+- **Narration is checked before anyone sees it.** What the narrator writes after an action is compared with the world's record. A mistake is written out. The check costs about a third of a second.
+- **New things are made real or refused.** When a plan or the director brings in something new, it is put in the world's own terms and becomes real: an injury is in the body, a pool can be drunk from. A character's own action can produce an ordinary prop (a farmer's sickle) but cannot conjure water, a weapon or a cure. A refusal is followed through: the actor is told, bystanders see a failed try, and the page shows what happened instead of what was meant.
+- **Plans are fitted to the play as it stands.** Each scene is refitted just before it is played, to where the cast is, what time it is and what their bodies need, then checked the same way.
+- **Speech is held to what a speaker must know.** A character may be wrong about the world and may lie on purpose. It may not be mistaken about its own hands, its own body or the hour.
+- **One continuous clock and stage.** Scenes follow one another in place and time. Walking takes time and is shown. Nobody is teleported back to a spring they left an hour ago.
+- **Drives that move with events.** What a character takes in raises or eases its drives, one appraisal per turn.
+
+**Measurement.** Every run writes a trace of what was said, done, settled and checked. Tools in `tools/` run a play headless, score it, and put it in front of LLM judges. I also grade by hand: paste a transcript to a model with the instruction to grade as an instructor in a beginning creative writing class.
+
+### Where it stands
+
+On that informal instructor scale, three drafts of `lost` over the course of this work went C, C+, B. That is one play, one grader and a handful of runs, so read it as a direction and not a result.
+
+What is better:
+
+- Needs are met once and stay met. Things stay with whoever holds them.
+- Scene set-ups match where the characters actually are.
+- The two leads sound like different people.
+- A danger scene now holds together, in the one run where I have watched one closely.
+
+What is not done:
+
+- The plays are quiet. Coherence came partly from less happening. The director may now bring on a real danger, rarely, and that is new and lightly tested.
+- The clock moves slowly. A play that wants a night often ends in the early afternoon.
+- Outcome lines and act summaries shown to the audience are still unchecked model text.
+- The checks make mistakes of their own, in both directions. Most of the recent work has been finding those.
+- Only `lost`, `laTerre`, `ABetterLife` and `VaccumLine` have been run on the current code. The other plays have not.
+- Thinking is switched off on every model call for speed. A per-run switch to turn it on for chosen calls exists; whether it helps has not been measured.
+- The containers and the hosted demo are from the old version.
+
+### Running it
+
+The current setup is local: a model served by vLLM, a local image server, the Python backend and the React UI. It has been run on one machine, mine. Expect to adjust things.
+
+You need:
+
+- an OpenAI-compatible LLM server on port 5000 (I use a Qwen model under vLLM);
+- a GPU with room for the image server (FLUX.2-klein, about 8 GB), or `NO_IMAGES=1` for grey placeholders;
+- Python 3.13 and `uv`, Node and npm.
+
 ```
-map_file_name='forest.py' # needed to trigger narrative creation
+git clone https://github.com/bdambrosio/AllTheWorldAPlay.git
+cd AllTheWorldAPlay
 
-# Character definitions
-S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt. 
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python -r src/requirements-local.txt
+(cd src/sim/webworld && npm install)
+
+NO_TTS=1 ./start-local.sh        # image server :5008, backend :8010, UI :3000
+```
+
+Then open http://localhost:3000, click Initialize, pick a play, Load, and Run. Planning the first act takes a minute or two before anything appears.
+
+- `start-local.sh` reads API keys from `~/.config/secrets.env` if that file exists. None are needed for a local model. `ELEVENLABS_API_KEY` enables voices; `NO_TTS=1` runs without them.
+- The model is chosen in `src/plays/config.py`. The hosted providers listed there (OpenAI, Anthropic, Gemini, Grok, OpenRouter and others) worked in version 3.0 and have not been tried since the overhaul.
+- The older full install (`src/requirements.txt`, the Dockerfiles) is out of date.
+
+### Using the UI
+
+- **Step** lets one actor act; **Run** lets them go in turn; **Pause** stops at the end of the current action.
+- The tabs at upper left show each actor. **Explore** opens a deeper view of that actor's state, including a chat tab.
+- The **Director's chair** at lower right lets you choose for an actor at the act, scene, goal, task or action level.
+- If you don't like how a play is going, reload it. Every run is different.
+
+### Plays and worlds
+
+Plays are short Python files in `src/plays/`: the characters, their drives, an opening situation, and the world they are in. Worlds are in `src/plays/scenarios/` and define the map, what can be done where, and what can go wrong.
+
+```
+S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt.
 You love the outdoors and hiking.
-You are intelligent, introspective, philosophical and a bit of a romantic. 
+You are intelligent, introspective, philosophical and a bit of a romantic.
 You have a uncomfortable history, maybe it is just as well you don't remember it.
-You are informal, chatty, and are a playful when relaxed, but at other times can be argumentative and defensive.
-You are comfortable on long treks, and are unafraid of hard work. 
-You are wary of strangers.""", 
-server_name=server_name)
+You are wary of strangers.""", server_name=server_name)
 
 S.set_drives([
     "solve the mystery of how they ended up in the forest. Find a way back home.",
@@ -43,133 +109,31 @@ S.set_drives([
     "love and belonging, including home, acceptance, friendship, trust, intimacy."
 ])
 
-
-J = NarrativeCharacter("Joe", """Joe, a healthy young man, short beard  and dark hair, in grey chinos and a red t-shirt. 
-You are intelligent and self-sufficient. 
-You are informal and somewhat impulsive. 
-You are strong, and think you love the outdoors, but are basically a nerd.
-You yearn for something more, but don't know what it is.
-You are socially awkward, especially around strangers. 
-You speak informally, but occasionally in a 'budding scientist' style.""",
-server_name=server_name)
-
-J.set_drives([
-    "solve the mystery of how they ended up in the forest. Find a way out of the forest.",
-    "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
-    "companionship, community, family, acceptance, trust, intimacy.",
-    "immediate physiological needs: survival, shelter, water, food, rest."
-])
-S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", 'internal')
-J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", 'internal')
-J.add_perceptual_input("You think Whoever she is, she is pretty!", 'internal')
-
-
-# Create context with forest scenario
 W = context.Context([S, J],
-    """A temperate, mixed forest-open landscape with no buildings, no roads, no other signs of humanity. 
+    """A temperate, mixed forest-open landscape with no buildings, no roads, no other signs of humanity.
     It is a early morning on what seems like it will be a warm, sunny day.
     Two people are standing in the middle of the forest, looking around in confusion.""",
-    scenario_module=forest,  # Pass the forest scenario module
+    start_time='2024-06-15T07:00:00',
+    scenario_module=forest,
     server_name=server_name)
 ```
 
-## A stage on which plays are presented, with AI cognitive agents as actors.
+### Tools
 
-What's a cognitive agent? Well (my defs): *agents* are entities that can do things. *cognition* is using explicit representation and reasoning. So AI cognitive agents are hardware/software-based entities that build and reason over explicit representations to think and act. These do so on stage[^2].
+All of these read the run trace, written to `~/.local/share/alltheworldaplay/logs/traces/`.
 
-Why? 
-- My AGB (artificial general Being) test - In order for these plays to be interesting, the actors must be *interesting* for a sufficiently long period of time (longer than the typical chatbot is the first threshold). So, motivation 1 - a testbed for my ideas.
-- Pychology/Voyeurism - Why do interesting cognitive simulacra do what they do? The UI allows inspection into most of the cognitive state of any actor at any time - drives, *signals* (perceptually salient indicators from sensors), emotions, tasks and plans, acts, thoughts about other actors, etc. If that isn't enough, you can chat with any actor and simply ask them.
-- Design your own plays and see how the actors handle various situations.
-- It's just plain fun
+- `tools/smoke_run.py`: run a play headless against a running stack for a set time; reports errors and model-call counts.
+- `tools/score_play.py`: a scorecard from a trace, with no model calls.
+- `tools/judges.py`: LLM judges over scenes and whole plays.
+- `tools/compare_runs.py`, `tools/batch_run.py`: compare runs and conditions, including with features switched off.
 
-Limitations:
-This is very much *Alpha* software. In particular, load/save only saves actor-models and hasn't been tested recently. Also, this is not clone and run. There may be hardcoded paths you will need to edit for things like LLM model files, for example (post an issue, please!). It doesn't (yet) know about your GPU config, but does has most of the major direct providers, see src/plays/config.py Finally, it is slow. About 1/3 real-time, probably, IF you use a low-latency LLM provider. Many many LLM calls per actor. So, for example, I've found DeepSeek, while attractively priced, too long latency to be useful once everyone discovered them. openai 4.1-mini or comparable competitors aren't bad, gemma-3-27b-it is fun to run local - not up to 4.1-mini dialog quality, but much edgier.
+### Why
 
-So this is NOT at this time for those unprepared to dig into the software at all the levels required to make llm-based raw python work. However, I can promise to work hard to support anyone willing to give it a try. E.G. find a hardcoded path I need to fix, post an issue!. Having said that, I'm a lone developer, and more documentation (e.g. how to write plays, and the scenarios underneath them) are high priority. However, I get distracted by new ideas, hence the new narrative capability.
+- A testbed. For a play to be interesting, its actors have to stay interesting for longer than a chatbot does. That is my test for whether the cognitive side is worth anything.
+- Curiosity. Why does a simulated mind do what it does? The UI shows most of an actor's state at any moment (drives, emotions, plans, what it thinks of the others), and you can ask it.
+- Writing your own plays and seeing what the cast makes of them.
+- It is fun.
 
-More info in wiki.
+This is alpha software from one developer. It is not clone-and-run. If you try it and hit a hardcoded path or a broken play, post an issue and I will work on it. Ideas and PRs are welcome.
 
-## Installation:
-The following install has been tested on Ubuntu 22.04 (Llambda instance with A10) or try containers!
-```code
-# first install python 3.12
-sudo apt update && sudo apt install -y software-properties-common
-sudo add-apt-repository ppa:deadsnakes/ppa   # press ↵ if prompted
-sudo apt update
-sudo apt install -y python3.12 python3.12-venv python3.12-dev
-PY312=/usr/bin/python3.12
-
-#create venv$PY312 -m venv ~/venvs/myproj-312
-source ~/venvs/myproj-312/bin/activate#clone repo and install requirementsgit clone https://github.com/bdambrosio/AllTheWorldAPlay.git
-pip install faiss-gpu-cu12[fix_cuda]
-cd AllTheWorldAPlay/src
-python -m pip install -r requirements.txt
-cd sim
-export OPENAI_API_KEY="....." # add other api keys as needed, otherwise ignore errors on missing keys
-uvicorn main:app --port 8000
-# you should now see the python engine startup sequence, ending in: Converting message: show_update
-
-# startup UI
-cd webworld/src/
-sudo apt install npm
-npm install # ignore warnings
-npm start
-# you should now http://<host-ip>:3000 in your browser and see empty UI!
-
-# startup image-server
-cd ../../../utils # ie, to AllTheWorldAPlay/src/utils/
-fastapi run lcmLora-serve.py --port 5008 &
-# this should start the image server. First run will have to download the lcmLora model from huggingface
-```
-
-## Use
-
-```
-See install script, just skip the install steps!
-#   don't believe 'Application startup complete', that's just the python UI handler
-# now go to *host*:3000 in your browser, click Initialize (or screen refresh first if nothing happens)
-# if all is well that will display a combo box of available plays. Pick one and click the load button. Wait.
-# Note: at the moment the Alex, Demo, laTerre, and lost plays should work, I'm still porting the others.
-```
-API keys to put in your env (minimally, only the one you use, if not local):
-  ```code
-export OPENAI_API_KEY
-export GOOGLE_KEY=
-export GOOGLE_CX=
-export MISTRAL_API_KEY=
-export CLAUDE_API_KEY=
-export DEEPSEEK_API_KEY=
-export HIVE_API_KEY= (for Hive image server if not running a local tti)
-export XAI_API_KEY=
-export COHERE_API_KEY=
-export OPENROUTER_API_KEY= (don't forget to set model name in plays/config.py)
-```
-- ATWAP uses several ports, including 3000, 5000, 5008, 5555, 5556, and 8000. That's probably horrible. I apologize. I am a jack of all trades, master of none.
-- It needs two external services - a model (LLM) server, and a tti (text-to-image) server.
-  - model server: in plays/config.py you can uncomment the appropriate line to use a variety of sources. Put your api-key in your env.
-      - 'deepseeklocal' is in fact vllm, I'll explain that in a future update, post an issue if you need to know more.
-      - 'local' is for running locally llama.cpp or exllamav2 that will prompt for the model to load. run ```code fastapi run exl2-server.py --port 5000 &```. I run Llama3.3-70B-Instruct locally in 8 bit exl2 on a pair of RTX6000Ada. At the time I write this Grok will give you $150/mo credits if you allow them to capture your traffic for training. Grok2 is fast and quite nice.
-  - image server: I use src/utils/lcmlora-serve.py. It's fast, only uses ~ 4GB of vram. Images are mostly just eye candy, don't expect much from them. to run it cd to utils and run ```code fastapi run lcmLora-serve.py --port 5008 &```. Alternately, you can run (or adapt) ```code fastapi run hive_serve.py --port 5008 &``` or adapt the code to use your favorite image server. 
-
-## Now what?
-- as above, use Initialize to load a play
-- Step allows one actor to act
-- Run starts free-running round robin of actors
-- Pause will stop 'Run' at the end on the current actor actions
-- tabs in upper left - one for each actor
-- 'Explore' button on bottom of an actor tab will open a modal for deeper exploration, including a chat tab. Be patient.
-- 'Director's chair in bottom right of main screen allows you to choose actions for actors. Only Acts works at the moment, I think.
-- Overall, be very patient. Sorry, they have a lot to do, it takes time.
-- See [Slides](https://tuuyi.com) for more on what you should see / can do.
-
-## Random notes
-- if you don't like how a play is going, reload it! Every run is different.
-- If you don't like something about a character, tweak the play (they are all in src/plays). Plays are python, best to just edit the text strings unless you've looked at the engine code.
-- Play debugging - 4/11/2025 new logging of goals / tasks / actions to sim/simulation.log.
-  - Load the log into utils/format_prompt.py using the Import File button, the Format Text to see the generation prompts and responses and execution trace.
-
-Ideas / contributions (via PRs?) most welcome.
-
-[^1]: An Improvisational AI Theater. If this term is copywritten (? is that a word) let me know, sorry.
-[^2]: with a simple world sim underneath they can interact with.
+[^1]: An Improvisational AI Theater. If the term is someone's trademark, let me know.
