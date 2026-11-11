@@ -25,6 +25,7 @@ import utils.llm_api as llm_api
 from utils.llm_api import LLM, generate_image
 from sim.trace import trace, TraceErrorHandler, llm_call_listener
 import sim.ablation as ablation
+import sim.stage as stage
 import base64
 import asyncio
 from typing import Dict, Any
@@ -713,6 +714,8 @@ class SimulationServer:
                             'details': message['data']
                         })
                     else:
+                        # the audience reads the world's own words, not the engine's place ids
+                        message['text'] = stage.plain(self.sim_context, message['text']) if isinstance(message.get('text'), str) else message.get('text')
                         trace.event('transcript_line', **transcript_fields(message))
                         await self.send_result({
                             'type': 'show_update',

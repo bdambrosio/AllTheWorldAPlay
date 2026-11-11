@@ -292,3 +292,21 @@ def stage_line(name, deed, result):
         kept.append(sentence.strip())
         seen.append(stems)
     return ' '.join([deed + '.'] + kept[:2]).strip()
+
+
+def plain(context, text):
+    """Audience text in the words of the world: the engine's numbered place names become ordinary
+    ones ('Fallen_Branch9' -> 'the fallen branch', 'Berries15' -> 'the berries') and tile counts
+    go ('walks 4 tiles Southwest to' -> 'walks Southwest to'). Places an author named ('HotelBar')
+    are left as they are."""
+    world = getattr(context, 'map', None)
+    if not text or world is None:
+        return text
+    def ordinary(match):
+        rid = match.group(0)
+        if rid not in world.resource_registry:
+            return rid
+        return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
+    text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
+    text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
+    return re.sub(r'(^\s*[\'"]?|[.!?]\s+)the ', lambda m: m.group(1) + 'The ', text)

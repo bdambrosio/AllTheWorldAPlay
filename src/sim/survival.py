@@ -602,6 +602,11 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     # candidate actions: verbs match; rank those whose resource (or person) the act names, then
     # those in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
     names = [t.name.lower() for t in (targets or []) if hasattr(t, 'name')]
+    # what someone else is doing is not the actor's deed: 'watches Joe drink' drank for Samantha
+    for other in _embodied(context):
+        if other is not character:
+            text = re.sub(rf"\b({re.escape(other.name.lower())}(?:'s)?)\s+\w+", r'\1', text)
+    text = re.sub(r'\b(watch\w*|see\w*|let\w*|wait\w* for)\s+(him|her|them)\s+\w+', r'\1 \2', text)
     candidates = []
     for order, action in enumerate(cfg.get('actions', [])):
         types = action.get('resource_types')
@@ -613,10 +618,10 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
             if action.get('transfer') and action['transfer'].lstrip('*').lower() not in text:
                 continue   # 'gives Joe a look' is not giving him the bread
             target = min(present, key=lambda p: p[1])
-            # first: it needs its own verb, a present person the act names, and the item given;
-            # last when the item is not held ('plucks berries and offers one' is gathering first)
-            lacking = bool(action.get('transfer')) and not _held(character.body, action['transfer'])
-            candidates.append((lacking, False, target[1] > CO_PRESENT_TILES, order, action, None, target))
+            # first: it needs its own verb, a present person the act names, and the item given
+            if action.get('transfer') and not _held(character.body, action['transfer']):
+                continue   # nothing of the kind to give: a loose match ('eyes on his hands'), not a refused gift
+            candidates.append((False, False, target[1] > CO_PRESENT_TILES, order, action, None, target))
             continue
         named = bool(types) and _names_type(cfg, text, types)
         # 'named_verbs' are too generic alone ('cups his hands'): they count when the act names the thing

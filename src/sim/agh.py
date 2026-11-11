@@ -3755,9 +3755,12 @@ End your response with:
                 # generate_acts returns [] when the LLM call fails; pick_weighted([]) raised
                 logger.warning(f'{self.name} step_task: no actions generated for {task.name}')
                 break
-            if any(a.mode == 'Say' for a in (task.acts or [])):
-                # it has had its say in this task: take the alternative that is not more talk
-                action_alternatives = [a for a in action_alternatives if a.mode != 'Say'] or action_alternatives
+            # one opening Say and one Look to a task, and no Look straight after a Look: take the
+            # alternative that is not more of the same (Samantha scanned east for tusks five times)
+            spent = {m for m in ('Say', 'Look') if any(a.mode == m for a in (task.acts or []))}
+            if getattr(self, 'previous_action_mode', None) == 'Look':
+                spent.add('Look')
+            action_alternatives = [a for a in action_alternatives if a.mode not in spent] or action_alternatives
             await self.request_action_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
