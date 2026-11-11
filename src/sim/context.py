@@ -3026,7 +3026,7 @@ The scene should be rewritten to reflect this event.
         mission = """ 
 #The actual scenes performed so far are:
 
-{{$previous_scene}}
+{{$previous_scenes}}
 ##
 """
         suffix = """
@@ -3125,7 +3125,7 @@ Scene format is as follows:
             updated_scene = None
             scene_id = scene.get('scene_number',0)
             if not response:
-                return None
+                return scene   # no rewrite: play the scene as planned (None here stopped the play)
             response = response.replace("```json", "").replace("```", "").strip()
             updated_scene = json.loads(response)
         except Exception as e:
