@@ -139,6 +139,15 @@ def resolve(context, location, anchor):
     return None
 
 
+def places_named(context, text):
+    """The places on the map that a text names, longest name first. A place was looked for as a
+    word ending in digits ('Spring3'), which the places an author names ('HuOffice', 'Cafe') are
+    not: 'Walk to HuOffice to draft the papers breaking Hu's contract' walked Xue to Hu."""
+    low = (text or '').lower()
+    return [rid for rid in sorted(context.map.resource_registry, key=len, reverse=True)
+            if re.search(rf'(?<![a-z0-9_]){re.escape(rid.lower())}(?![a-z0-9_])', low)]
+
+
 def where(context, xy):
     """A position in words: 'at Well5', or '6 tiles North of Well5'."""
     nearest = _nearest_resource(context.map, xy)

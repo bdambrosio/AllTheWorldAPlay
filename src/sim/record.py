@@ -152,9 +152,8 @@ def _fits_clock(context, low):
 def _elsewhere(context, actor, words):
     """Do these words put someone at a named place other than where the actor is?"""
     at = stage.here(actor)
-    for rid in re.findall(r'\b[A-Z][A-Za-z_]*\d+\b', words):
-        res = context.map.resource_registry.get(rid)
-        if res is not None and stage._distance(at, res['location']) > stage.AT_PLACE_TILES:
+    for rid in stage.places_named(context, words):
+        if stage._distance(at, context.map.resource_registry[rid]['location']) > stage.AT_PLACE_TILES:
             return True
     return bool(re.search(r'\b\d+ tiles?\b|\b(two|three|four|five|six|seven|eight|nine|ten) tiles\b', words.lower())) and \
         bool(re.search(r'\b(walk|run|sprint|cross|march|hurr|stride|flee|rush|mov)\w*', words.lower()))

@@ -243,6 +243,7 @@ class LLM():
                         print(f' var not in bindings {var} {bindings}')
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role': message.role, 'content': new_content})
+        self._last_prompt = substituted_prompt   # as sent, for the run's prompt log (sim/trace.py)
 
         if trace:
             print(f'\n{json.dumps(substituted_prompt)}\n')
@@ -342,7 +343,8 @@ class LLM():
                           secs=round(time.time() - start, 3), ok=error is None, error=(error or '')[:300],
                           prompt_tokens=usage.get('prompt_tokens'), completion_tokens=usage.get('completion_tokens'),
                           cached_tokens=details.get('cached_tokens'), finish_reason=finish,
-                          response_chars=len(response or ''))
+                          response_chars=len(response or ''),
+                          prompt=getattr(self, '_last_prompt', None), response=response)
             for listener in _call_listeners:
                 try:
                     listener(**fields)

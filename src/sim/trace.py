@@ -66,6 +66,25 @@ class PlayTrace:
                 act.get('act_number') if isinstance(act, dict) else None,
                 scene.get('scene_number') if isinstance(scene, dict) else None)
 
+    def prompt(self, prompt, response, **fields):
+        """Every model call of the run, as sent and as answered, in <run>.prompts.jsonl beside the
+        trace: tag, owner, where the play stood, the messages, the reply. The only record of
+        prompts was simulation.log, which each engine start overwrites; a line nobody could
+        account for ('photographs of Hu and Ding', who are husband and wife) could not be traced
+        to what the model had been told. Read with tools/prompts.py."""
+        if self._file is None or self.path is None:
+            return
+        try:
+            sim_time, act, scene = self._position()
+            record = {'t': round(time.time(), 3), 'sim_time': sim_time, 'act': act, 'scene': scene,
+                      'tag': fields.get('tag'), 'owner': fields.get('owner'), 'secs': fields.get('secs'),
+                      'finish_reason': fields.get('finish_reason'), 'prompt': prompt, 'response': response}
+            with self._lock:
+                with open(self.path.with_suffix('.prompts.jsonl'), 'a') as f:
+                    f.write(json.dumps(record, default=str) + '\n')
+        except Exception:
+            pass  # logging must never affect the play
+
     def event(self, kind: str, **fields):
         if self._file is None:
             return
@@ -92,5 +111,8 @@ class TraceErrorHandler(logging.Handler):
 
 
 def llm_call_listener(**fields):
-    """Registered with utils.llm_api.add_call_listener (utils does not import sim)."""
+    """Registered with utils.llm_api.add_call_listener (utils does not import sim). The call's
+    figures go to the trace; what was sent and what came back go to the run's prompt log."""
+    prompt, response = fields.pop('prompt', None), fields.pop('response', None)
     trace.event('llm_call', **fields)
+    trace.prompt(prompt, response, **fields)

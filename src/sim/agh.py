@@ -1118,7 +1118,7 @@ End response with:
         alone = bool(stage.ALONE.search(f'{where} {reason or ""}'))
         world = self.context.map
         # a named resource wins ('Walk west toward Spring3, scanning ...'), then a person, then a direction
-        for token in [where] + re.findall(r'[A-Za-z_]+\d+', where):
+        for token in [where] + stage.places_named(self.context, where):
             resource = world.get_resource_by_id(token.strip())
             if isinstance(resource, dict):   # it returns the string "path" for the path type
                 return stage.walk(self, tuple(resource['location']), resource['name'], alone)
@@ -1320,7 +1320,7 @@ End response with:
             if done:
                 self.context.add_event(f'{self.name} -> {done}')
                 self.add_perceptual_input(done, percept=False, mode='internal')
-                self.context.message_queue.put({'name': self.name, 'text': stage.stage_line(self.name, '', done).lstrip('. '), 'line_kind': 'action'})
+                self.context.message_queue.put({'name': self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), 'line_kind': 'action'})
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]

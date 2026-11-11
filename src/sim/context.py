@@ -1743,7 +1743,7 @@ Respond with these lines only:
         # The heading and the set-up name the same place: when the set-up names one place and the
         # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
         # set-up that began 'At the spring': both were two steps away).
-        named = {rid for rid in re.findall(r'\b[A-Z][A-Za-z_]*\d+\b', scene.get('pre_narrative') or '') if rid in self.map.resource_registry}
+        named = set(stage.places_named(self, scene.get('pre_narrative') or ''))
         if len(named) == 1 and characters_in_scene and getattr(characters_in_scene[0], 'mapAgent', None) is not None:
             rid = next(iter(named))
             if stage._distance(stage.here(characters_in_scene[0]), self.map.resource_registry[rid]['location']) <= stage.AT_PLACE_TILES:
@@ -2626,7 +2626,7 @@ end your response with:
             pre_state = scene.get('pre_narrative', '')
             post_state = scene.get('post_narrative', '')
             act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
-            goals = '\n\t'.join([f'{key}: {value["goal"]}' for key, value in scene['characters'].items()])
+            goals = '\n\t'.join([f'{key}: {(value or {}).get("goal", "")}' for key, value in (scene.get('characters') or {}).items()])   # a plan may leave 'characters' out
         else:
             pre_state = act.get('act_pre_state', '')
             post_state = act.get('act_post_state', '')
