@@ -364,6 +364,9 @@ def _missing(action, body):
     """Why the actor cannot do this action now (requirements on its own body), or ''."""
     if action.get('requires') and not _held(body, action['requires']):
         return f"needs a {action['requires'].lstrip('*')}"
+    gain = action.get('gain')
+    if gain and '{' not in gain and gain in body.inventory and not action.get('effects'):
+        return f"already has {'' if gain.endswith('s') else 'a '}{gain}"   # one branch in hand is enough: no taking it again
     if action.get('transfer') and not _held(body, action['transfer']):
         return f"has no {action['transfer'].lstrip('*')} to give"
     if action.get('transfer_money') and body.money < action['transfer_money']:
@@ -560,8 +563,7 @@ def _asks_for(context, character, text, targets=None):
             label = _give_label(cfg, item, character.name)
             other.add_perceptual_input(f"{character.name} wants the {item} you are holding. It is yours to hand over or keep"
                                        + (f" (to hand it over: {label})." if label else '.'), mode='internal')
-            fact = (f"{character.name} reaches for the {item} that {other.name} is holding; {other.name} still has it. "
-                    f"It changes hands only if {other.name} hands it over.")
+            fact = f"{character.name} reaches for the {item} that {other.name} is holding; {other.name} still has it."
             _record(character, {'name': 'ask for', 'category': 'social'}, fact, 'text', applied=False, target=other.name)
             return fact
     return None
@@ -789,6 +791,7 @@ def _apply(context, character, action, near, target, via, act_text=''):
 
 
 def _record(character, action, fact, via, applied, resource=None, approached=False, target=None, found=None):
+    character.last_affordance = {'applied': applied, 'fact': fact}   # a refusal is not told to the audience
     if applied:   # for the scene's planned business (stage.pending_business)
         character.scene_deeds = getattr(character, 'scene_deeds', []) + [action['name'].lower()]
     trace.event('affordance', character=character.name, action=action['name'],
@@ -903,6 +906,46 @@ def _where(anchor, threat):
     return f"{threat_position(anchor, threat)} of {anchor.name}"
 
 
+def _start_threat(context, hazard, anchor, exposed):
+    """A hazard comes on: it threatens those of `exposed` near `anchor` until answered or its deadline."""
+    now = context.simulation_time
+    source_id = None
+    if hazard.get('source') and _hazard_source(context, anchor, hazard) is not None:
+        source_id, source = _hazard_source(context, anchor, hazard)
+        loc = tuple(source['location'])
+    else:
+        loc = (anchor.mapAgent.x + _rng.choice([-3, 3]), anchor.mapAgent.y + _rng.choice([-2, 2]))
+    targets = [c.name for c in exposed if _distance(_here(c), _here(anchor)) <= 4]
+    context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
+                             'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
+    text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}."
+    context.add_event(text)
+    context.current_state += '\n' + text
+    for c in exposed:
+        if c.name in targets:
+            c.add_perceptual_input(text, mode='visual')
+    trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
+
+
+def stage_hazard(context, scene, cast):
+    """When a scene's set-up brings on one of the world's hazards by name ('The boar bursts from
+    the undergrowth'), it is a real one: it threatens the cast, they must answer it, and it
+    strikes or is driven off by the world's rules. (The planned boar was only words: it never
+    acted, and the scene was about a branch.)"""
+    cfg = config(context)
+    if not cfg or getattr(context, 'active_threat', None):
+        return
+    told = f"{scene.get('scene_title', '')} {scene.get('pre_narrative', '')}".lower()
+    exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
+    for hazard in cfg.get('hazards', []):
+        if exposed and re.search(rf"\b{re.escape(hazard['name'].lower())}s?\b", told):
+            for c in exposed:
+                c.body.sheltered = False   # the scene has it upon them
+            context._hazard_last = context.simulation_time
+            _start_threat(context, hazard, exposed[0], exposed)
+            return
+
+
 def hazard_tick(context):
     """Roll hazard onsets and strikes for the elapsed simulation time (run_scene calls this)."""
     cfg = config(context)
@@ -960,23 +1003,7 @@ def hazard_tick(context):
         p = 1 - (1 - hazard.get('chance_per_hour', 0.1)) ** hours
         if _rng.random() >= p:
             continue
-        anchor = exposed[0]
-        source_id = None
-        if hazard.get('source'):
-            source_id, source = _hazard_source(context, anchor, hazard)
-            loc = tuple(source['location'])
-        else:
-            loc = (anchor.mapAgent.x + _rng.choice([-3, 3]), anchor.mapAgent.y + _rng.choice([-2, 2]))
-        targets = [c.name for c in exposed if _distance(_here(c), _here(anchor)) <= 4]
-        context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
-                                 'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
-        text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}."
-        context.add_event(text)
-        context.current_state += '\n' + text
-        for c in exposed:
-            if c.name in targets:
-                c.add_perceptual_input(text, mode='visual')
-        trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
+        _start_threat(context, hazard, exposed[0], exposed)
         return
 
 

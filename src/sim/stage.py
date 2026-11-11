@@ -36,7 +36,6 @@ A jump in time, or to a distant place, belongs at the start of an act.
 What a scene's ending says about bodies and things (someone fed, watered, rested, armed, a paper signed or handed over) is true only if a character does the action in that scene: list it under business. Saying it does not make it so."""
 
 
-COMPASS_STEP_TILES = 3    # 'moves Southwest' goes this far
 # a move that leaves the others behind: said in the act or its reason
 ALONE = re.compile(r"\b(flee|flees|fleeing|fled|escap\w+|run(s|ning)? (away|off)|slip(s|ping)? (away|off|out)|sneak\w*|"
                    r"storm(s|ing)? (off|out)|walk(s|ing)? (out|off|away)|away from|leav(e|es|ing) (him|her|them|\w+ behind)|"
@@ -200,8 +199,9 @@ def walk(character, xy, place, alone=False, to=True):
     minutes = max(survival.travel(c, *xy, advance_clock=False) for c in [character] + party)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)
-    line = (f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '')
-            + f" ({max(1, round(minutes))} min)")
+    # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing
+    line = '' if tiles <= character.EARSHOT_TILES else (
+        f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '') + f" ({max(1, round(minutes))} min)")
     for other in was_with:
         if other not in party and not alone:
             continue   # it has only stepped across the place
@@ -239,7 +239,7 @@ def tempo(character):
 
 def speech_tempo(character):
     """A line for the speech prompts when the moment is not calm."""
-    return {'urgent': "- This moment is urgent: eight words at most. A warning, an order or a cry; no banter, no explaining.",
+    return {'urgent': "- This moment is urgent: twelve words at most, and no explaining; but it is still your character's own voice and way with words, not a generic shout.",
             'tense': "- The moment is tense: one sentence, fifteen words at most."}.get(tempo(character), '')
 
 
@@ -282,6 +282,8 @@ def stage_line(name, deed, result):
     The result used to follow whole, so a deed was told two or three times over (the actor's
     words, the world's fact, the narrator's restatement) with the body's condition in brackets."""
     deed = re.sub(rf'^\s*{re.escape(name)}\s+', '', (deed or '').strip()).rstrip('. ')
+    if '@' in deed:   # an action label given as the deed ('gather berries@Berries9'): the result tells it
+        deed = ''
     result = re.sub(r'\s*\([^()]*\bis now\b[^()]*\)', '', result or '').strip()
     skip = {name.lower()}
     seen, kept = [_stems(deed, skip)], []
@@ -291,7 +293,7 @@ def stage_line(name, deed, result):
             continue
         kept.append(sentence.strip())
         seen.append(stems)
-    return ' '.join([deed + '.'] + kept[:2]).strip()
+    return ' '.join(([deed + '.'] if deed else []) + kept[:2]).strip()
 
 
 def plain(context, text):
@@ -309,4 +311,5 @@ def plain(context, text):
         return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
+    text = re.sub(r'\b([Tt]he) (\w+ )?the\b', r'\1 \2'.rstrip(), text)   # 'the dense the thicket'
     return re.sub(r'(^\s*[\'"]?|[.!?]\s+)the ', lambda m: m.group(1) + 'The ', text)

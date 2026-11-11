@@ -1117,13 +1117,8 @@ End response with:
         for other in self.context.actors + self.context.extras + self.context.npcs:
             if other is not self and other.mapAgent is not None and re.search(rf'\b{re.escape(other.name)}\b', where, re.I):
                 return stage.walk(self, stage.here(other), other.name, alone=True)
-        for word in sorted(re.findall(r'[A-Za-z]+', where), key=len, reverse=True):   # 'NorthWest' before 'North'
-            direction = map.Direction.from_string(word)
-            if direction:
-                dx, dy = self.mapAgent.get_direction_offset(direction)
-                x = min(world.width - 1, max(0, self.mapAgent.x + dx * stage.COMPASS_STEP_TILES))
-                y = min(world.height - 1, max(0, self.mapAgent.y + dy * stage.COMPASS_STEP_TILES))
-                return stage.walk(self, (x, y), direction.name, alone, to=False)
+        if map.Direction.from_string(where):
+            return ''   # a bare compass direction leads nowhere: a walk goes to a place or a person
         resource, _ = self.resourceRefManager.resolve_reference_with_llm(where)
         if resource:
             return stage.walk(self, tuple(resource['location']), resource['name'], alone)
@@ -1205,6 +1200,10 @@ End response with:
             # the audience sees the deed and what it physically did; what the character makes of
             # it ('notices': how the result bears on its goal) is the character's own
             result = (consequences or '').strip()
+            refused = getattr(self, 'last_affordance', None)
+            if refused and not refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
+                result = result[len(refused['fact']):].strip()   # the world's reason is for the character, not the audience
+            self.last_affordance = None
             self.context.message_queue.put({'name':self.name, 'text': stage.stage_line(self.name, act_arg, result), 'line_kind':'action'})
             self.lastActResult = notices
             if source == None:
@@ -2081,9 +2080,8 @@ In choosing each act (see format below), you can choose from these Modes:
     For example, if you want to build a shelter with Samantha, it might be effective to Say: 'Samantha, let's build a shelter.'
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-- Move - move in any one of eight directions: North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-    Alternately, give the name of a known resource or actor (e.g. a place listed under 'You could do here', such as Spring3) to walk all the way there.
-    Useful when you need to move towards a resource or actor: naming it is the reliable way to arrive.
+- Move - walk to a named place or person: give its name (a place listed under 'You could do here', such as Spring3, or an actor's name).
+    The walk takes time and those with you come along, unless you say you go alone. A bare compass direction is not a Move.
 - Do - perform an act (other than move) to achieve physical consequences in the world or demonstrate to others your commitment to a goal or drive (whether real or performative). 
     This is often appropriate when the task involves interacting physically with a resource or actor. See below for actor thoughts on physical actions.
 - Think - mental reasoning about the current situation wrt your state and the task.
@@ -2126,6 +2124,7 @@ Dialog guidance: If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
 - Do not name what you and the other are to each other or what the moment means ("you're my anchor", "we're bound now"); ask, refuse, offer or tease, and let that show it.
 - Words do nothing physical: to eat, drink, take, give or go somewhere, choose a Do or a Move. Never report as done what has not been done.
+- 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
 - Speak only of what your character has seen, been told or can reasonably guess; do not invent facts about this place or its dangers.
 - Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
 {{$tempo}}
@@ -3081,6 +3080,7 @@ Guidance:
 - Let your emotional state colour the line without announcing it.
 - Do not name what the two of you are to each other or what the moment means ("you're my anchor", "we're bound now", "trust is survival"): ask, refuse, offer, tease or change the subject, and let that show it.
 - Words do nothing physical. Do not say you are eating, drinking, taking or handing over something unless you are doing it this moment and it is within reach; never report as done what has not been done.
+- 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
 - Speak only of what your character has seen, been told or can reasonably guess, and say a guess as a guess. Do not invent facts about this place or its dangers.
 - Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
 - Avoid phrases and images already used in the dialog to this point.

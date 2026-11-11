@@ -944,6 +944,12 @@ These facts about the result are already settled and must not be contradicted:
 {{$facts}}
 </facts>
 
+The body of each character present, as it is:
+<bodies>
+{{$bodies}}
+</bodies>
+Give nobody a bodily condition (a fever, a wound, thirst quenched, hunger) that Bodies and the facts do not show.
+
 What each character present is carrying:
 <holdings>
 {{$holdings}}
@@ -984,6 +990,7 @@ Do NOT:
 - have the action succeed at controlling another character (a snatch, a shove, a forced signature): report the attempt and what is physically true so far; the other character answers it
 - introduce objects, documents, people or facts that the action and the situation did not already contain
 - extend the scenario with any follow-on actions or effects
+- explain a rule or why something cannot be: say only what is seen
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -1000,6 +1007,8 @@ End your response with:
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
                                      "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
                                      "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
+                                     "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
+                                                         if getattr(c, 'body', None) is not None) or 'not tracked',
                                      "facts": facts or 'none'},
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
@@ -1407,6 +1416,61 @@ End your response with:
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 
+    async def reground_scene(self, scene, cast):
+        """Fit a planned scene to where the play now stands. An act's scenes are all written
+        before any is played, so a later scene can assume a world that has moved on: 'March to
+        the Spring' opened with the cast at the spring, and scenes walked them back to a place
+        they had left so the plan could happen there. One LLM call just before the scene keeps
+        its purpose and goals and corrects place, set-up and ending in place. Returns True when
+        the scene's purpose has already happened and it should not be played."""
+        prompt = [UserMessage(content="""You are the stage manager of an improvised play. The next scene was planned before the earlier scenes of this act were played. Fit it to where things actually stand, keeping its dramatic purpose.
+
+<planned_scene>
+{{$scene}}
+</planned_scene>
+
+<where_things_stand>
+{{$places}}
+Bodies: {{$bodies}}
+What has happened lately:
+{{$events}}
+</where_things_stand>
+
+Rules:
+- location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
+- The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
+- If everything the scene was for has already happened, skip it.
+- Otherwise change as little as you can.
+
+Respond with these lines only:
+#skip yes or no
+#location same, or the exact name of a place listed above
+#setup the scene's set-up, one or two sentences, true to where things stand
+#ending what the scene should arrive at, one sentence
+#goal <character name>: that character's goal in the scene (one line for each character)
+</end>
+""")]
+        planned = {k: scene.get(k) for k in ('scene_title', 'location', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
+        reply = self.llm.ask({'scene': json.dumps(planned, indent=1, default=datetime_handler),
+                              'places': stage.gazetteer(self),
+                              'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
+                              'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()},
+                             prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
+        find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
+        if find('skip').lower().startswith('y'):
+            return True
+        changed = {}
+        for key, value in (('location', find('location')), ('pre_narrative', find('setup')), ('post_narrative', find('ending'))):
+            if value and value != scene.get(key):
+                changed[key] = scene[key] = value
+        for name, goal in re.findall(r'#goal\s+([^:\n]+):\s*(.+)', reply):
+            for key, entry in (scene.get('characters') or {}).items():
+                if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
+                    entry['goal'] = goal.strip()
+        if changed:
+            trace.event('scene_regrounded', title=scene.get('scene_title'), **changed)
+        return False
+
     async def run_scene(self, scene, act=None, opens_act=False):
         """Run a scene. The cast stays where the previous scene left it unless this scene names
         another place (sim/stage.py); opens_act: the first scene of an act may jump there."""
@@ -1438,9 +1502,15 @@ End your response with:
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
+        if not opens_act and await self.reground_scene(scene, characters_in_scene):
+            trace.event('scene_skipped', title=scene.get('scene_title'))
+            self.current_scene = None
+            return ''
+
         # the cast gathers at the scene's place (walking there, unless the scene opens an act);
         # the heading names the place the scene is actually played ('same' said nothing)
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]} at {scene_start}'
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {heading}'})
         self.current_state += f'\n{heading}'
@@ -1602,7 +1672,8 @@ End your response with:
             character.reason_over(wrapup)
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
-        self.message_queue.put({'name':'', 'text': f" ---- {true_outcomes.replace(chr(10), '; ')}\n" if true_outcomes else ' ----\n'})
+        shown = re.sub(r'\s*\([^)]*\)', '', true_outcomes.replace(chr(10), '; '))   # '(Actual State)'
+        self.message_queue.put({'name':'', 'text': f" ---- {shown}\n" if shown else ' ----\n'})
         await asyncio.sleep(0.1)
 
         staleness = None
