@@ -33,6 +33,7 @@ from utils.Messages import UserMessage
 NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed at, spoken of
 BODILY = (r"hung|starv|fed\\b|thirst|quench|parch|tired|exhaust|rested|fatigue|sleep|hurt|wound|injur|pain|ache|sore|swol|swell|"
           r"sprain|twist|broke|bleed|blood|bruis|fever|sick|ill\\b|nause|cramp|limp|lame|burn|bandag|sling|faint|dizz|weak")
+COMMON = {'their', 'there', 'while', 'which', 'about', 'after', 'before', 'still', 'being', 'where', 'other', 'again', 'hands', 'holds', 'takes'}
 KINDS = ('item', 'condition', 'presence', 'place', 'time', 'stock', 'outcome')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
@@ -159,6 +160,9 @@ def check(context, actor, action, facts, narration, people=None):
     claims = []
     names = [c.name.lower() for c in (people or [actor] + actor.bystanders())]
     hazards = [h['name'].lower() for h in (survival.config(context) or {}).get('hazards', [])]
+    done = (facts or '').lower()
+    if re.search(r"\bcannot\b|must move|must go|still has it|nothing to|there is no\b", done):
+        done = ''   # a refusal settles that the thing was not done
     for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply, re.M):
         kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
         if kind not in KINDS or not words.strip('.'):
@@ -175,6 +179,8 @@ def check(context, actor, action, facts, narration, people=None):
             continue
         if kind == 'item' and re.search(r"\b(no|not|nothing|none|empty|without|bare|absent|missing)\b", low):
             continue   # the narration saying a thing is not there claims nothing
+        if kind == 'item' and done and any(w in done for w in _words(words) if len(w) >= 5 and w not in names and w not in COMMON):
+            continue   # the thing is in what the world just settled (Joe 'bites into the unripe apple' he was settled to have eaten)
         claims.append((kind, words))
     return claims
 
@@ -279,12 +285,13 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     return facts, refused, remaining
 
 
-def rejection(claims, facts=(), refused=()):
+def rejection(claims, facts=(), refused=(), settled=''):
     """The note that sends a narration back to be written again."""
     return ("\nYour earlier answer was turned down: the world does not hold these things, so they may not be stated or implied:\n"
             + '\n'.join(f'- {words}' for _, words in claims)
             + (("\nWhat is so instead:\n" + '\n'.join(f'- {r}' for r in refused)) if refused else '')
             + (("\nThese are now true and may be used:\n" + '\n'.join(f'- {f}' for f in facts)) if facts else '')
+            + (f"\nWhat the world has settled stands, and your answer must not undo it: {settled}" if settled else '')
             + "\nWrite it again without what was turned down, from what is so: say plainly what is actually done and found. "
               "If little is left to say, say little.\n")
 
@@ -356,7 +363,7 @@ def settle(context, actor, action, facts, narration, rewrite, kind='do', source=
                     claims=[f'{k}: {w}' for k, w in claims], made=made, before=narration, after=narration)
         return Settled(narration, made)
     settled = ' '.join(filter(None, [facts or ''] + made + refused))
-    again = rewrite(rejection(remaining, made, refused))
+    again = rewrite(rejection(remaining, made, refused, settled=re.sub(survival.BODY_NOTE, '', facts or '').strip()))
     still = check(context, actor, action, settled, again) if again else None
     if again and still == []:
         result, outcome = again, 'rewritten'
@@ -528,3 +535,116 @@ def speech(context, speaker, line, listener=None):
     trace.event('speech_check', character=speaker.name, outcome=outcome, claims=[f'{k}: {w}' for k, w in claims],
                 before=line, after=result)
     return result, None
+
+
+# --------------------------------------------------------------------------- deeds
+# An actor is told what it holds, and still writes deeds with things it does not have: Joe
+# 'brandishing the branch' with empty hands, Samantha 'snapping a thick branch from the ground'
+# four tiles from the nearest. Performed, such a deed can only be told as a failure ('her fingers
+# closing on air'), and a scene of them is slapstick. So a deed is looked at before it is done.
+# The test is the world's own and needs no model: does the deed use one of the things the
+# world's actions deal in, which the actor neither holds nor can get where it stands? or treat
+# its own unhurt body as hurt? A deed that fails is passed over for another the actor offered,
+# or written again in the same spirit from what the actor does have.
+USING = ['grip', 'swing', 'raise', 'brandish', 'thrust', 'wave', 'wield', 'hold', 'jab', 'plant', 'drive', 'brace', 'lower', 'hand',
+         'give', 'pass', 'slide', 'throw', 'toss', 'drop', 'strike', 'hit', 'club', 'swat', 'eat', 'chew', 'bite', 'munch', 'offer',
+         'shove', 'kick', 'wedge', 'drag', 'stack', 'crack', 'split', 'sign', 'read', 'show', 'lean on']
+GETTING = ['take', 'grab', 'snatch', 'seize', 'pick up', 'snap', 'break off', 'wrench', 'gather', 'collect', 'pluck', 'pick', 'lift', 'fetch']
+HURT = (r"\b(his|her|my|own)\s+(\w+\s+){0,2}(swollen|injured|wounded|bleeding|broken|sprained|twisted|bandaged|bruised|torn|hurt)\b"
+        r"|\b(limp(s|ing)?|bleed(s|ing)?|nurs(es|ing))\b")
+
+
+def deed_lacks(context, character, text):
+    """What a deed rests on that is not so, in words for the actor: [] when the deed is sound."""
+    cfg = survival.config(context)
+    body = getattr(character, 'body', None)
+    if not cfg or body is None or getattr(character, 'mapAgent', None) is None or not text:
+        return []
+    low = text.lower().replace('’', "'")
+    at = stage.here(character)
+    lacks = []
+    others = [c for c in character.bystanders() if getattr(c, 'body', None) is not None]
+    threat = survival.active_threat_for(character)
+    # a verb form after 'his', 'the', ... is a thing ('Samantha's hands'), not a deed
+    verbs = re.sub(r"\b(his|her|their|its|my|your|our|the|a|an|\w+'s)\s+\w+", r'\1', low)
+    for kind in survival.item_kinds(context):
+        noun = kind.split()[-1].lower()
+        stem = noun[:-3] if noun.endswith('ies') else noun[:-1] if noun.endswith('s') and len(noun) > 4 else noun
+        if not re.search(rf"\b{re.escape(stem)}\w*", low):
+            continue
+        using, getting = survival._matches(verbs, USING), survival._matches(verbs, GETTING)
+        if not (using or getting):
+            continue   # it is looked at, pointed out or spoken of, not used
+        if any(stem in i.lower() for i in body.inventory) or any(stem in p['name'] for p in survival.lying(context, at)):
+            continue
+        if re.search(rf"\b(\w+'s|her|his|their)\s+(\w+\s+)?{re.escape(stem)}", low) and any(stem in i.lower() for o in others for i in o.body.inventory):
+            continue   # it is someone else's, and they have it
+        sources = sorted((stage._distance(at, res['location']), rid) for rid, res in context.map.resource_registry.items()
+                         if stem in rid.lower())
+        reach = cfg.get('approach_tiles', 8)
+        if sources and (sources[0][0] <= stage.AT_PLACE_TILES or (getting and not using and sources[0][0] <= reach and not threat)):
+            continue   # it is to be had here, or the deed is to go and get it
+        where = (f"; the nearest is at {sources[0][1]}, {sources[0][0]} tiles {stage._direction(at, context.map.resource_registry[sources[0][1]]['location']).lower()}"
+                 + (', and with danger this close there is no walking over to it' if threat else '')) if sources else ''
+        lacks.append(f"{character.name} has no {noun}{where}")
+    harm = survival._harm(cfg)['name']
+    if (re.search(HURT, low) and body.levels.get(harm, 0.0) < survival.NEED_FELT
+            and not re.search(r"\b\w+'s\s+(\w+\s+){0,2}(swollen|injured|wounded|bleeding|broken|bruised)", low)):
+        lacks.append(f"{character.name} is unhurt")
+    return lacks
+
+
+def _is_do(act):
+    return str(getattr(act, 'mode', '')).split('.')[-1] == 'Do'
+
+
+def sound_deeds(context, character, acts):
+    """The acts an actor offered, without the Dos that rest on what is not so; all of them when
+    none is sound (the chosen one is then mended)."""
+    if not ablation.enabled('narration_gate'):
+        return acts
+    sound = [a for a in acts if not _is_do(a) or not deed_lacks(context, character, a.action)]
+    if sound and len(sound) < len(acts):
+        trace.event('deed_check', character=character.name, outcome='passed_over',
+                    deeds=[a.action[:160] for a in acts if a not in sound])
+    return sound or acts
+
+
+REDO = """A character in a play was about to do the deed below, but it rests on something that is not so.
+
+{{$name}} was about to:
+<deed>
+{{$deed}}
+</deed>
+
+What is so:
+{{$lacks}}
+{{$name}} is carrying: {{$holding}}. Lying here: {{$lying}}.
+
+Write the deed again: what {{$name}} does instead, toward the same end and in the same manner, with what it has and where it stands. If the end was to have the missing thing, the deed is to go for it. One sentence, in the same grammatical form as the original, no longer than it was. Do not mention what is missing.
+Respond with the deed only.
+</end>
+"""
+
+
+def mend_deed(context, character, act):
+    """The act about to be performed, made sound: a Do that rests on what is not so is written
+    again from what is. The act is changed in place; returns True when it was."""
+    if not _is_do(act) or not ablation.enabled('narration_gate'):
+        return False
+    lacks = deed_lacks(context, character, act.action)
+    if not lacks:
+        return False
+    again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
+                             'holding': ', '.join(character.body.inventory) or 'nothing',
+                             'lying': ', '.join(p['name'] for p in survival.lying(context, stage.here(character))) or 'nothing'},
+                            [UserMessage(content=REDO)], tag='record.redo', temp=0.5, stops=['</end>'], max_tokens=90)
+    again = (again or '').strip().strip('"“”').strip()
+    left = deed_lacks(context, character, again) if again else lacks
+    outcome = 'redone' if again and not left else 'unfixed'
+    trace.event('deed_check', character=character.name, outcome=outcome, lacks=lacks, before=act.action, after=again)
+    if outcome == 'redone':
+        act.action = again
+        if getattr(act, 'affordance', None):
+            act.affordance = None   # the label was for the deed as it was
+    return outcome == 'redone'

@@ -377,12 +377,19 @@ def _missing(action, body):
         return f"costs {action['cost']:g} {body.cfg.get('currency', '')}".strip()
     if action.get('requires_flag') and action['requires_flag'] not in body.flags:
         return f"needs to be {action['requires_flag']} first"
-    # using up food when not hungry: Joe ate at three bushes in a row while 'not hungry'
-    effects = action.get('effects') or {}
-    if effects and (action.get('deplete') or action.get('consumes')) and all(
-            delta < 0 and body.levels.get(need, 0.0) < NEED_FELT for need, delta in effects.items()):
-        return 'is ' + ' and '.join(_word(body.cfg, need, body.levels.get(need, 0.0)) for need in effects)
+    if _sated(action, body):
+        return 'is ' + ' and '.join(_word(body.cfg, need, body.levels.get(need, 0.0)) for need in action['effects'])
     return ''
+
+
+def _sated(action, body):
+    """Would this action only use up food the body does not want? (Joe ate at three bushes in a
+    row while 'not hungry'.) Such an act is no action of the world's: nothing is used and nothing
+    is refused, so chewing on is just chewing. (Refused, 'chews the apple loudly' after a first
+    bite was told as 'a loud crunching noise against the air'.)"""
+    effects = action.get('effects') or {}
+    return bool(effects) and bool(action.get('deplete') or action.get('consumes')) and all(
+        delta < 0 and body.levels.get(need, 0.0) < NEED_FELT for need, delta in effects.items())
 
 
 def _stocked(character, types):
@@ -502,8 +509,9 @@ def spoken_deed(context, character, line):
                 continue
             near = _nearest(character, types)
             if near is not None and near[2] <= CO_PRESENT_TILES and not _missing(action, character.body):
+                character.last_affordance = None
                 fact = _apply(context, character, action, near, None, 'speech', line)
-                return fact if character.last_affordance.get('applied') else None   # refused: it was only talk
+                return fact if fact and (character.last_affordance or {}).get('applied') else None   # refused: it was only talk
     return None
 
 
@@ -518,8 +526,9 @@ def do_business(context, character, label):
     _, action, near, target = chosen
     if action.get('sets') == 'sheltered' and character.body.sheltered:
         return None   # asleep in the thicket is already sheltered there
+    character.last_affordance = None
     fact = _apply(context, character, action, near, target, 'business', '')
-    return fact if character.last_affordance.get('applied') else None
+    return fact if fact and (character.last_affordance or {}).get('applied') else None
 
 
 def acts_at_a_distance(character, act):
@@ -657,8 +666,11 @@ def change_body(character, need, worse, size):
     return f"{character.name} is now {body.summary(public=True)}."
 
 
-HANDING = ['give', 'hand', 'pass', 'slide', 'toss', 'throw', 'return']
-DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place']
+HANDING = ['give', 'hand', 'pass', 'return']
+# sent across the ground or through the air, a thing lands; it is the other's when they take it
+# ('slides the branch across the dirt to Samantha's feet' put it in her hands, and Joe went on
+# gripping, raising and planting a branch he no longer had)
+DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place', 'slide', 'toss', 'throw', 'kick', 'roll', 'push', 'shove']
 
 
 def _prop_deed(context, character, text, names):
@@ -667,7 +679,7 @@ def _prop_deed(context, character, text, names):
     body = character.body
     said = lambda item: re.search(rf"\b{re.escape(item.split()[-1])}\b", text)
     for item in [i for i in body.inventory if said(i)]:
-        if _matches(text, HANDING):
+        if _matches(text, HANDING) and not re.search(r"\b(feet|ground|dirt|floor|toward|towards|across)\b", text):
             for other, d in _present(character):
                 if d <= CO_PRESENT_TILES and (other.name.lower() in names or other.name.lower() in text):
                     body.inventory.remove(item)
@@ -846,6 +858,8 @@ def _apply(context, character, action, near, target, via, act_text=''):
     resource_id = res = None
     other = None
     approach = ''
+    if _sated(action, body):
+        return None   # not a deed of the world's: the narration tells it as it is
     lacking = _missing(action, body)
     if lacking:   # before any walk: Joe walked to the mushrooms to be told he was not hungry
         return _refuse(character, action, f"{character.name} cannot {action['name']}: {lacking}.", via,
@@ -1101,6 +1115,7 @@ def _tell(context, text):
 def _start_threat(context, hazard, anchor, exposed):
     """A hazard comes on: it threatens those of `exposed` near `anchor` until answered or its deadline."""
     now = context.simulation_time
+    context._hazards_started = getattr(context, '_hazards_started', 0) + 1
     source_id = None
     if hazard.get('source') and _hazard_source(context, anchor, hazard) is not None:
         source_id, source = _hazard_source(context, anchor, hazard)
@@ -1122,32 +1137,60 @@ def _start_threat(context, hazard, anchor, exposed):
     trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
 
 
-# words that say a hazard named in a set-up is not upon the cast now: gone, feared, or only possible
-NOT_NOW = (r"\b(return\w*|gone|vanish\w*|retreat\w*|fled|fear\w*|afraid|dread\w*|might|could|in case|if the|no sign|sign of|"
-           r"shadow|memory|after the|since the|watch\w* for|scan\w*|listen\w* for|driven off|slink\w*|passed|is over|surviv\w*|"
-           r"fought|just|earlier|recent\w*|had|was|were|did|drove|beat\w*|escap\w*|match\w*|tracks?|prints?|sign)\b")
+MAX_HAZARDS_PER_PLAY = 1   # from every source together: chance, the plan, the director
+
+
+def hazard_spent(context):
+    """Has this play had its danger? Bruce: dangers are to be rare. A play had a boar, the boar
+    again and a wolf by its second act, each from a set-up that merely named one."""
+    return getattr(context, '_hazards_started', 0) >= MAX_HAZARDS_PER_PLAY
+
+
+def _present_forms(verb):
+    stem = verb[:-1] if verb.endswith('e') else verb
+    doubled = verb + verb[-1] if re.fullmatch(r'.*[^aeiou][aeiou][bdgmnprt]', verb) and len(verb) <= 5 else stem
+    return rf"{verb}e?s|{stem}ing|{doubled}ing"
+
+
+ARRIVING = '|'.join(_present_forms(v) for v in (
+    'appear', 'emerge', 'burst', 'charge', 'attack', 'lunge', 'approach', 'circle', 'stalk', 'prowl', 'howl', 'snarl', 'growl',
+    'leap', 'rush', 'close', 'bear', 'break', 'strike', 'arrive', 'come', 'step', 'crouch', 'creep', 'roll', 'race', 'sweep',
+    'hit', 'begin', 'start', 'pelt', 'ping', 'rain', 'hammer', 'vent', 'bound', 'jump', 'crash', 'descend', 'spread', 'loom')) + r"|is upon|are upon|is here|are here"
+
+
+def arrives(hazard, text):
+    """Does this text have the hazard arriving now: named as the one doing it, in the present?
+    ('A wolf emerges from the dark'; not 'safety against the wolves and boars', not 'the bruise
+    from the boar's charge', not 'before the boar returns'.) The earlier test staged a hazard
+    unless the sentence said it was gone, and failed three times on three phrasings."""
+    name = re.escape(hazard['name'].lower())
+    return bool(re.search(rf"\b{name}s?\b(?!['’])(?:\s+(?!not\b|never\b)[\w-]+){{0,3}}?\s+(?:{ARRIVING})\b", (text or '').lower()))
+
+
+def brought_on(context, scene):
+    """The hazard this scene's set-up brings on, if it may: a real one is then started
+    (stage_hazard). None when the set-up brings none on, a threat is already active, or the
+    play has had its danger."""
+    cfg = config(context)
+    if not cfg or getattr(context, 'active_threat', None) or hazard_spent(context):
+        return None
+    told = f"{scene.get('scene_title', '')}. {scene.get('pre_narrative', '')}"
+    return next((h for h in cfg.get('hazards', []) if arrives(h, told)), None)
 
 
 def stage_hazard(context, scene, cast):
-    """When a scene's set-up brings on one of the world's hazards by name ('The boar bursts from
-    the undergrowth'), it is a real one: it threatens the cast, they must answer it, and it
-    strikes or is driven off by the world's rules. (The planned boar was only words: it never
-    acted, and the scene was about a branch.)"""
-    cfg = config(context)
-    if not cfg or getattr(context, 'active_threat', None):
-        return
-    told = f"{scene.get('scene_title', '')}. {scene.get('pre_narrative', '')}".lower()
+    """When a scene's set-up brings on one of the world's hazards ('The boar bursts from the
+    undergrowth'), it is a real one: it threatens the cast, they must answer it, and it strikes
+    or is driven off by the world's rules. (The planned boar was only words: it never acted,
+    and the scene was about a branch.)"""
+    hazard = brought_on(context, scene)
     exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
-    for hazard in cfg.get('hazards', []):
-        # not one the sentence names only as gone or feared: 'before the boar returns' and 'the
-        # wolf's shadow vanishes' each staged a fresh beast
-        named = [s for s in re.split(r'[.!?;,]', told) if re.search(rf"\b{re.escape(hazard['name'].lower())}s?\b", s)]
-        if exposed and any(not re.search(NOT_NOW, s) for s in named):
-            for c in exposed:
-                c.body.sheltered = False   # the scene has it upon them
-            context._hazard_last = context.simulation_time
-            _start_threat(context, hazard, exposed[0], exposed)
-            return
+    if hazard is None or not exposed:
+        return
+    for c in exposed:
+        c.body.sheltered = False   # the scene has it upon them
+    context._hazard_last = context.simulation_time
+    _start_threat(context, hazard, exposed[0], exposed)
 
 
 # per scene from the second act on: about one play in two has one, none has two
@@ -1165,7 +1208,7 @@ def director_hazard(context, cast, act_number):
         act_number = int(act_number)
     except (TypeError, ValueError):
         return None
-    if (not cfg or act_number < 2 or getattr(context, '_director_hazard', None)
+    if (not cfg or act_number < 2 or hazard_spent(context)
             or getattr(context, 'active_threat', None) or _rng.random() >= DIRECTOR_HAZARD_CHANCE):
         return None
     now = context.simulation_time
@@ -1219,13 +1262,17 @@ def hazard_tick(context):
                 _end_threat(context, threat, f"{' and '.join(c.name for c in targets)} "
                                              f"{'is' if len(targets) == 1 else 'are'} clear of the {threat['hazard']['name']}.")
             elif now >= threat['deadline']:
+                # it falls on one of them, the nearest, and the page says who ('its tusks catching
+                # a leg' was nobody's leg, and both bodies were hurt)
                 harm = threat['hazard'].get('harm', 0.3)
-                for c in caught:
-                    c.body.adjust(harm_need, harm)
+                victim = min(caught, key=lambda c: _distance(_here(c), threat['location']))
+                victim.body.adjust(harm_need, harm)
                 _end_threat(context, threat, threat['hazard'].get('strike_text', f"The {threat['hazard']['name']} strikes.")
-                            + f" ({', '.join(c.name + ' is now ' + c.body.summary() for c in caught)})", struck=True)
+                            + f" It is {victim.name} who is hurt. ({victim.name} is now {victim.body.summary()})", struck=True)
         return
 
+    if hazard_spent(context):
+        return
     for hazard in cfg.get('hazards', []):
         when = hazard.get('when', 'any')
         if (when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)):

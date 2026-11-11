@@ -303,6 +303,20 @@ class Context():
         else:
             self._state_base, self._state_notes = value, ''
 
+    def _hazard_claim_stands(self, words, scene=None):
+        """Is a 'presence' finding that names one of this world's dangers a real one? Speaking of
+        a danger (feared, or past) claims nothing. Having it arrive does, unless it is the danger
+        already on the cast or one this scene may bring on (survival.brought_on): a play has
+        one danger, and a second that a plan writes in is written out again."""
+        named = [h for h in (survival.config(self) or {}).get('hazards', []) if h['name'].lower() in words.lower()]
+        if not named:
+            return True   # not one of the world's dangers: an ordinary finding
+        active = (getattr(self, 'active_threat', None) or {}).get('hazard')
+        bringing = survival.brought_on(self, scene) if scene is not None else None
+        if active in named or bringing in named:
+            return False
+        return any(survival.arrives(h, words) for h in named) and (survival.hazard_spent(self) or scene is not None)
+
     async def start(self):
         voices = self.voice_service.get_voices()
         message = {'name':'', 'text':"play context initialized, creating characters..."}
@@ -1238,7 +1252,8 @@ End your response with:
             newcomers = bool(analysis.get('entities', {}).get('new_character'))
             found = record.check(self, cast[0], 'The director brings an event into the play.', None,
                                  intervention_description, people=cast) or []
-            claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and (newcomers or any(h in w.lower() for h in hazards)))]
+            claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and (newcomers or (
+                any(h in w.lower() for h in hazards) and not self._hazard_claim_stands(w))))]
             made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
             trace.event('intervention_check', made=made, refused=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
             if remaining:
@@ -1555,7 +1570,9 @@ Respond with these lines only:
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self), 'clock': stage.clock(self),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
-                  'hazards': ', '.join(hazards) or 'none', 'danger': threat['hazard']['description'] if threat else 'none',
+                  'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
+                              'none may come on now: this play has had its danger (it may be spoken of as past)'),
+                  'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
@@ -1581,7 +1598,7 @@ Respond with these lines only:
             # where the scene is set is the plan's to say, and a danger of this world that the
             # set-up brings on is made real (survival.stage_hazard)
             claims = [(kind, words) for kind, words in found
-                      if kind != 'place' and not (kind == 'presence' and any(h in words.lower() for h in hazards))]
+                      if kind != 'place' and not (kind == 'presence' and not self._hazard_claim_stands(words, scene))]
             if not claims:
                 break
             # a plan may bring new things into the world: what can be put in the world's terms is
@@ -1625,6 +1642,7 @@ Respond with these lines only:
         scene = new_scene
         await asyncio.sleep(0.1)
         scene_start = scene["time"] = max(self.validate_scene_time(scene), self.simulation_time)
+        hours_between = (scene_start - self.simulation_time).total_seconds() / 3600
         survival.pass_offstage(self, scene_start - self.simulation_time)
         self.simulation_time = scene_start
         self.current_scene = scene
@@ -1656,8 +1674,18 @@ Respond with these lines only:
         # the heading names the place the scene is actually played ('same' said nothing)
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
+        # The heading and the set-up name the same place: when the set-up names one place and the
+        # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
+        # set-up that began 'At the spring': both were two steps away).
+        named = {rid for rid in re.findall(r'\b[A-Z][A-Za-z_]*\d+\b', scene.get('pre_narrative') or '') if rid in self.map.resource_registry}
+        if len(named) == 1 and characters_in_scene and getattr(characters_in_scene[0], 'mapAgent', None) is not None:
+            rid = next(iter(named))
+            if stage._distance(stage.here(characters_in_scene[0]), self.map.resource_registry[rid]['location']) <= stage.AT_PLACE_TILES:
+                scene['place'] = rid
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
         self._state_notes = ''   # the situation's notes are those of the scene in progress
+        if hours_between >= 2:   # the day went from half past eight to seven in the evening without a word
+            self.message_queue.put({'name': '', 'text': f"    {'A day and more passes' if hours_between >= 30 else f'About {round(hours_between)} hours pass'}."})
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {heading}'})
         self.current_state += f'\n{heading}'
         await asyncio.sleep(0.1)

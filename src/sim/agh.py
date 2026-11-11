@@ -3804,7 +3804,11 @@ End your response with:
             if getattr(self, 'previous_action_mode', None) == 'Look':
                 spent.add('Look')
             action_alternatives = [a for a in action_alternatives if a.mode not in spent] or action_alternatives
+            # a deed is looked at before it is done: one that rests on a thing the actor does not
+            # have is passed over for another it offered, or written again (sim/record.py deeds)
+            action_alternatives = record.sound_deeds(self.context, self, action_alternatives)
             await self.request_action_choice(action_alternatives) # sets self.focus_action
+            record.mend_deed(self.context, self, self.focus_action)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
             await asyncio.sleep(0)
@@ -3838,7 +3842,9 @@ End your response with:
                 if not action_alternatives:
                     logger.warning(f'{self.name} step_task: no actions generated for subtask of {task.name}')
                     break
+                action_alternatives = record.sound_deeds(self.context, self, action_alternatives)
                 await self.request_action_choice(action_alternatives) # sets self.focus_action
+                record.mend_deed(self.context, self, self.focus_action)
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
                 await asyncio.sleep(0)
