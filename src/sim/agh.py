@@ -1207,9 +1207,17 @@ End response with:
             refused = getattr(self, 'last_affordance', None)
             if refused and not refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
                 result = result[len(refused['fact']):].strip()   # the world's reason is for the character, not the audience
-            self.attempt_only = bool(refused and not refused['applied'])   # the world refused it: others saw a try
+            # the world refused it, by its rules or because the deed rested on something that is
+            # not there: others saw a try, and the page tells what happened, not what was meant
+            rested_on_nothing = getattr(self, 'deed_refused', False)
+            self.attempt_only = bool(refused and not refused['applied']) or rested_on_nothing
             self.last_affordance = None
-            self.context.message_queue.put({'name':self.name, 'text': stage.stage_line(self.name, act_arg, result), 'line_kind':'action'})
+            for note in getattr(self, 'settled_notes', []):   # the world's own wording is for the characters
+                result = result.replace(note, '').strip()
+            told = stage.stage_line(self.name, '' if rested_on_nothing else act_arg, result)
+            if rested_on_nothing:
+                told = re.sub(rf'^{re.escape(self.name)}\s+', '', told) or f"tries: {deed.rstrip('. ')}, and it comes to nothing."
+            self.context.message_queue.put({'name':self.name, 'text': told, 'line_kind':'action'})
             self.lastActResult = notices
             if source == None:
                 source = self.focus_task.peek()

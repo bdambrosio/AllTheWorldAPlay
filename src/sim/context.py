@@ -948,7 +948,8 @@ End your response with:
                   "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
-        consequences = record.settle(self, actor, f'looks: {action}', None, narrate(), narrate, kind='look') or ''
+        settled = record.settle(self, actor, f'looks: {action}', None, narrate(), narrate, kind='look') or ''
+        consequences = ' '.join(filter(None, list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ())) + [settled]))
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -1066,12 +1067,12 @@ End your response with:
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
         # the narration is held to the world's record before it is shown, remembered or built on
-        consequences = record.settle(self, actor, action, facts, narrate(), narrate, kind='do')
-
-        if consequences is None:
-            consequences = facts or ''
-        elif facts:
-            consequences = facts + ' ' + consequences
+        settled = record.settle(self, actor, action, facts, narrate(), narrate, kind='do')
+        # what settling made real or refused is part of what happened: the actor is told it, and
+        # a deed that rested on something refused was a try (Character.acts shows it so)
+        actor.settled_notes = list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ()))
+        actor.deed_refused = bool(getattr(settled, 'tainted', False))
+        consequences = ' '.join(filter(None, [facts or ''] + actor.settled_notes + [settled or '']))
         if consequences.endswith('<'):
             consequences = consequences[:-1]
         # What the deed did is the settled fact and the admitted narration. (Two more LLM calls
@@ -1221,6 +1222,23 @@ End your response with:
         print(f"\n🎭 STALENESS DETECTED (Score: {staleness_score})")
         print(f"   Factors: {', '.join(primary_factors)}")
         print(f"   Injecting {intervention_type} intervention: {intervention_description}")
+        # The director may bring new things in, in the world's terms (sim/record.py). What cannot
+        # be put in those terms is taken out before anyone hears of it; an intervention that was
+        # nothing else is not made at all (it used to reach every character as a percept, and
+        # the next scene was rewritten around it).
+        cast = [c for c in self.actors if getattr(c, 'body', None) is not None]
+        if survival.config(self) and cast and ablation.enabled('narration_gate'):
+            hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
+            newcomers = bool(analysis.get('entities', {}).get('new_character'))
+            found = record.check(self, cast[0], 'The director brings an event into the play.', None,
+                                 intervention_description, people=cast) or []
+            claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and (newcomers or any(h in w.lower() for h in hazards)))]
+            made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
+            trace.event('intervention_check', made=made, refused=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
+            if remaining:
+                # an intervention is one event: with a part of it refused (the wounded dog), what is
+                # left ('stopping to tend the animal') stands on nothing, so none of it is made
+                return None
 
         for character in analysis['entities']['new_character']:
             #<new_character name="Storm Chaser" 
@@ -1509,7 +1527,7 @@ Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - The set-up and ending must fit the time it is now: no dusk, dark or sleep for the night in the morning. If the plan needs night and it is day, write the scene for the day.
-- The scene may use only what this world holds: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). No other animal, no object, supply, shelter, water, food or device that is not listed; no wound, illness or exhaustion that Bodies does not show. Where the plan needs one of these, keep the scene's purpose and find it in what is there.
+- The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a wound or a need newly felt, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
 {{$rejected}}
@@ -1533,7 +1551,7 @@ Respond with these lines only:
                   'hazards': ', '.join(hazards) or 'none', 'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
-        changed, claims, note = {}, [], ''
+        changed, claims, note, brought = {}, [], '', []
         for attempt in range(2):
             reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
@@ -1559,13 +1577,32 @@ Respond with these lines only:
                       if kind != 'place' and not (kind == 'presence' and any(h in words.lower() for h in hazards))]
             if not claims:
                 break
-            note = record.rejection(claims)
-        if claims:   # still there after one rewrite: the set-up the audience reads is cut
-            kept = record.cut(scene.get('pre_narrative', ''), [c for c in claims if c[1].lower() in scene.get('pre_narrative', '').lower()])
-            changed['pre_narrative'] = scene['pre_narrative'] = kept
+            # a plan may bring new things into the world: what can be put in the world's terms is
+            # made real where the scene is set (the injury is then in the body, the pool on the map)
+            target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
+            made, refused = [], []
+            if attempt == 0:   # once: the rewrite that follows is only to take out what was refused
+                made, refused, claims = record.admit(self, cast[0], claims, told, 'director', people=cast,
+                                                     at=target[0] if target else None)
+            brought += made
+            if not claims:
+                break
+            note = record.rejection(claims, made, refused)
+        if claims:
+            # Still there after one rewrite: it goes from everything the scene hands on (set-up,
+            # ending and goals), not only from what the audience reads. A goal that was nothing
+            # but the refused thing becomes the scene's plain purpose.
+            for key in ('pre_narrative', 'post_narrative'):
+                kept = record.strip(scene.get(key, ''), claims)
+                if kept != scene.get(key, ''):
+                    changed[key] = scene[key] = kept
+            for name, entry in (scene.get('characters') or {}).items():
+                if isinstance(entry, dict) and entry.get('goal'):
+                    entry['goal'] = record.strip(entry['goal'], claims) or f"Meet what this scene brings ('{scene.get('scene_title', '')}') as it is."
         if checked:
-            trace.event('scene_check', title=scene.get('scene_title'), outcome='cut' if claims else 'rewritten' if note else 'ok',
-                        claims=[f'{k}: {w}' for k, w in claims], note=note.strip())
+            trace.event('scene_check', title=scene.get('scene_title'),
+                        outcome='cut' if claims else 'rewritten' if note else 'admitted' if brought else 'ok',
+                        claims=[f'{k}: {w}' for k, w in claims], made=brought, note=note.strip())
         if changed:
             trace.event('scene_regrounded', title=scene.get('scene_title'), **changed)
         return False

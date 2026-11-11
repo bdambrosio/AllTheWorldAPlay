@@ -599,8 +599,8 @@ This world is simulated: it holds only the places below, what the characters car
 
 {stage.gazetteer(self.context)}
 
-An intervention must be made of those: one of the dangers arriving, something seen or learned at a listed place, a character arriving, a change in the weather, or a change in a drive.
-Do NOT bring in an object, supply, shelter, water or food source, or device that is not listed, and do NOT give anyone a wound or illness: the world would not hold it and nobody could use it. Leave new_resource and new_sprite out.
+An intervention is made in this world's terms: one of the dangers arriving, something seen or learned at a listed place, a character arriving, a change in the weather, a change in a drive; or something new, which then becomes real: an object, a wound, or a source of water, food or shelter of the kinds of place listed.
+A thing that would work by rules this world does not have (a machine that summons rescue, a cure) stays an inert object: do not build the event on what it would do. Leave new_resource and new_sprite out.
 
 ###"""
 

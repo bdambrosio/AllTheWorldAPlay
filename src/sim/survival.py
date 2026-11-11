@@ -565,8 +565,131 @@ def holdings(character):
     if body is None or not config(character.context):
         return ''
     people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
-    return '\n'.join(f"{p.name}: {', '.join(i for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
-                     for p in people)
+    here = ', '.join(p['name'] for p in lying(character.context, _here(character)))
+    return '\n'.join([f"{p.name}: {', '.join(i for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
+                      for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
+
+
+# --------------------------------------------------------------------------- things that come into the world
+# A plan, or a character's deed, sometimes brings in a thing the world does not hold. It is then
+# either made real here, in the world's own terms, or refused (sim/record.py decides which).
+# Made real, a thing is one of: a prop (something nobody acts on through the world's rules: a
+# sickle, a phone), an item the world's actions use, a place of a kind the world has, or a
+# change to a body. Props are held, or lie where they were left, and change hands by the three
+# plain deeds in _prop_deed.
+def item_kinds(context):
+    """The things this world's actions use (gain, need, hand over or find), by name."""
+    kinds = []
+    for action in (config(context) or {}).get('actions', []):
+        for spec in [action.get(k) for k in ('gain', 'requires', 'consumes', 'transfer')] + [f.get('item') for f in action.get('finds') or []]:
+            if spec and '{' not in spec and spec.lstrip('*') not in kinds:
+                kinds.append(spec.lstrip('*'))
+    return kinds
+
+
+def place_kinds(context):
+    """{kind of place: what can be done there}, for the kinds this map has and its actions use."""
+    kinds = {}
+    for action in (config(context) or {}).get('actions', []):
+        for kind in action.get('resource_types') or []:
+            if context.map.get_resource_type(kind) is not None:
+                kinds.setdefault(kind, []).append(action['name'])
+    return kinds
+
+
+def lying(context, xy):
+    """The things lying at or near a spot."""
+    return [p for p in getattr(context, 'props', []) if _distance(p['at'], xy) <= CO_PRESENT_TILES]
+
+
+def add_thing(context, name, holder=None, at=None):
+    """A thing comes into the world: in `holder`'s hands, or lying at `at`. Returns the fact."""
+    name = re.sub(r'^(a|an|the|some)\s+', '', name.strip().lower())[:40]
+    if not name:
+        return ''
+    if holder is not None and getattr(holder, 'body', None) is not None:
+        if name not in holder.body.inventory:
+            holder.body.inventory.append(name)
+        fact = f"{holder.name} has {_a(name)}."
+    else:
+        context.props = getattr(context, 'props', [])
+        if not any(p['name'] == name for p in lying(context, at)):
+            context.props.append({'name': name, 'at': tuple(at)})
+        fact = f"There is {_a(name)} here."
+    trace.event('thing_added', name=name, holder=holder.name if holder is not None else None)
+    return fact
+
+
+def _a(name):
+    return name if name.endswith('s') else f"{'an' if name[0] in 'aeiou' else 'a'} {name}"
+
+
+def add_place(context, kind, description, xy):
+    """A place of one of the world's own kinds comes into the map at xy (a pool is a Spring:
+    it can be drunk from, by the same rules). Returns (id, fact), or (None, '') for a kind this
+    world does not have."""
+    world = context.map
+    resource_type = world.get_resource_type(kind)
+    if resource_type is None or kind not in place_kinds(context):
+        return None, ''
+    rid = world._generate_resource_id(resource_type)
+    world.resource_registry[rid] = {'id': rid, 'type': resource_type, 'name': rid,
+                                    'description': description or f'a {kind.lower()}', 'location': tuple(xy), 'properties': {}}
+    try:
+        world.patches[xy[0]][xy[1]].resources[rid] = world.resource_registry[rid]
+        world._resource_counters[resource_type] = world._resource_counters.get(resource_type, 0) + 1
+    except Exception:
+        pass
+    trace.event('place_added', id=rid, type=kind, description=description)
+    return rid, f"There is {description or _a(kind.lower())} here ({rid}): one can {', '.join(place_kinds(context)[kind])} there."
+
+
+def change_body(character, need, worse, size):
+    """A body changes as a plan says (a twisted ankle is an injury the body then has). Returns the fact."""
+    body = getattr(character, 'body', None)
+    cfg = config(character.context) or {}
+    need = _harm(cfg)['name'] if need in ('injury', 'harm', 'hurt', 'wound') else need
+    if body is None or need not in body.levels:
+        return ''
+    body.adjust(need, (1 if worse else -1) * {'slightly': 0.2, 'clearly': 0.4, 'badly': 0.6}.get(size, 0.3))
+    trace.event('body_changed', character=character.name, need=need, level=round(body.levels[need], 2))
+    return f"{character.name} is now {body.summary(public=True)}."
+
+
+HANDING = ['give', 'hand', 'pass', 'slide', 'toss', 'throw', 'return']
+DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place']
+
+
+def _prop_deed(context, character, text, names):
+    """Handing over, picking up or putting down a thing that no action of this world covers.
+    Returns the fact, or None."""
+    body = character.body
+    said = lambda item: re.search(rf"\b{re.escape(item.split()[-1])}\b", text)
+    for item in [i for i in body.inventory if said(i)]:
+        if _matches(text, HANDING):
+            for other, d in _present(character):
+                if d <= CO_PRESENT_TILES and (other.name.lower() in names or other.name.lower() in text):
+                    body.inventory.remove(item)
+                    other.body.inventory.append(item)
+                    other.add_perceptual_input(f'{character.name} hands you the {item}', mode='internal')
+                    fact = f"{character.name} hands {other.name} the {item}."
+                    _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'text', applied=True, target=other.name)
+                    return fact
+        if _matches(text, DROPPING):
+            body.inventory.remove(item)
+            context.props = getattr(context, 'props', []) + [{'name': item, 'at': _here(character)}]
+            fact = f"{character.name} puts down the {item}."
+            _record(character, {'name': 'put down', 'category': 'survival'}, fact, 'text', applied=True)
+            return fact
+    if _matches(text, TAKING + ['pick up', 'pocket', 'collect']):
+        for prop in lying(context, _here(character)):
+            if said(prop['name']):
+                context.props.remove(prop)
+                body.inventory.append(prop['name'])
+                fact = f"{character.name} takes the {prop['name']}."
+                _record(character, {'name': 'pick up', 'category': 'survival'}, fact, 'text', applied=True)
+                return fact
+    return None
 
 
 TAKING = ['take', 'grab', 'snatch', 'seize', 'lift', 'pull', 'wrest', 'carry', 'relieve', 'ask for', 'demand', 'reach for']
@@ -642,7 +765,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     if rejected:
         # the actor meant one action and did not do it; a verb in passing must not do another
         # (plucking berries to hold them out, labelled 'gather berries', ate them instead)
-        return None
+        return _prop_deed(context, character, text, [t.name.lower() for t in (targets or []) if hasattr(t, 'name')])
 
     # candidate actions: verbs match; rank those whose resource (or person) the act names, then
     # those in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
@@ -683,7 +806,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
         in_reach = (not types) or (near is not None and near[2] <= 1)
         candidates.append((True, not named, not in_reach, order, action, near, None))
     if not candidates:
-        return None
+        return _prop_deed(context, character, text, names)
     candidates.sort(key=lambda c: c[:4])
     _, _, _, _, action, near, target = candidates[0]
     return _apply(context, character, action, near, target, via, act_text or '')
