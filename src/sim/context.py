@@ -45,6 +45,9 @@ WORLD_IMAGE_SECS = float(os.environ.get('WORLD_IMAGE_SECS', '60'))
 WORLD_IMAGE_FILES = 8
 
 
+WORLD_IMAGE_SIZE = '768x768'   # shown at about 400 px; was 512
+
+
 class Context():
     def __init__(self, characters, description, scenario_module, extras=[], server_name=None, model_name=None,
                  start_time=None):
@@ -633,30 +636,30 @@ If absolutely no information is available for any field, use "unknown" for that 
 
     def image(self, filepath, image_generator='tti_serve'):
         try:
-            state = '. '.join(self.current_state.split('.')[:3])
-            characters = '\n' + '.\n'.join(
-                [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
-            prompt = state + characters
-            # (the old image_generator!='tti_serve' branch called a removed generate_dalle_image)
-            filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
+            prompt = stage.picture(self)   # the stage as it stands: place, hour, who is there
+            if prompt is None:
+                state = '. '.join(self.current_state.split('.')[:3])
+                characters = '\n' + '.\n'.join(
+                    [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
+                prompt = f'{stage.style(self)}. Wide view. {state}{characters}'
+            trace.event('image', of='world', prompt=prompt)
+            filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
         except Exception as e:
             traceback.print_exc()
         return filepath
 
     def act_image(self, actor: Character, act: Act, consequences:str = '', filepath='worldsim.png', image_generator='tti_serve'):
         try:
-            state = '. '.join(self.current_state.split('.')[:4])
-            characters = '\n' + '.\n'.join(
-                [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
-            actor_dscp_str = actor.character.strip().split('.')[0].strip()
-            actor_dscp_str.replace(actor.name, '')
-            act_str=f'. {actor.name}. {actor_dscp_str}'
-            if act:
-                act_str += f', {act.mode}: {act.action}'
-            else:
-                act_str += '. '
-            prompt = act_str + consequences + state + characters
-            filepath = llm_api.generate_image(self.llm, f"""wide-view photorealistic style. {prompt}""", size='512x512', filepath=filepath)
+            # the same picture of the stage, with the deed in front. (It was the actor's
+            # description, the raw act, the settled facts with their body notes and place ids,
+            # then the opening of the Situation.)
+            deed = re.sub(rf'^\s*{re.escape(actor.name)}\s+', '', (act.action if act else '') or '').strip()
+            prompt = stage.picture(self, doing=deed if act is not None and str(act.mode).split('.')[-1] in ('Do', 'Move') else '')
+            if prompt is None:
+                state = '. '.join(self.current_state.split('.')[:4])
+                prompt = f"{stage.style(self)}. Wide view. {self._image_description(actor)}, {deed}. {state}"
+            trace.event('image', of='act', prompt=prompt)
+            filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
         except Exception as e:
             traceback.print_exc()
         return filepath
@@ -1693,12 +1696,16 @@ Respond with these lines only:
         # not used, except that a time hours ahead on a scene with no 'when' is a jump it asked for.
         self._hours_moved = 0.0
         planned = self.validate_scene_time(scene)
-        if (stage.part_named(scene.get('when')) is None and self._may_move_on(opens_act)
+        if (stage.part_named(scene.get('when')) is None
                 and (planned - self.simulation_time).total_seconds() >= survival.REAL_JUMP_HOURS * 3600):
-            self.move_on(planned)
-            self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
-        else:
-            survival.pass_offstage(self, timedelta(0))
+            if opens_act and not survival.config(self):
+                self.move_on(planned)   # no pre-scene step in a world without mechanics: the jump is made here
+            else:
+                # asked of the pre-scene step, which moves the play on only for a scene that is
+                # played (a scene moved the clock seven hours, was skipped as already done, and
+                # the next act opened at dusk without a word)
+                scene['when'] = stage.part_of(planned) + (' next day' if planned.date() > self.simulation_time.date() else '')
+        survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
 
@@ -2265,6 +2272,61 @@ In performing this integration:
                     earliest = scene['time']
 
 
+    def frame_episode(self):
+        """Settle, before the first act, what this playthrough is to settle and what it leaves
+        open: an episode. The acts are planned one at a time and nothing said how the play should
+        close, so it closed on whatever the last act happened to reach. And a play's largest
+        question ('how did we come to be here?') is often one the world holds no answer to: no
+        scene can pay it off, so it is named here as left open, for a later episode, instead of
+        being promised and dropped. Returns the frame, {} when it could not be made."""
+        prompt = [UserMessage(content="""You are planning one episode of an improvised play. An episode settles one thing and leaves one thing open.
+
+<setting>
+{{$setting}}
+</setting>
+
+<central_question>
+{{$central}}
+</central_question>
+
+<characters>
+{{$characters}}
+</characters>
+
+- What the episode settles is the central question, or as much of it as these characters can bring about themselves, here, by what they do to and with each other: something between them, not a single errand. It is shown in an act, not announced.
+- Use only what the setting and the characters give you. Invent no object, sound, creature or event.
+- What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
+- The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
+
+Respond with these lines only, one sentence each:
+#settles what this episode settles
+#open what it leaves open
+#last the image or act it should end on
+</end>
+""")]
+        reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
+                              'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors)},
+                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=160) or ''
+        echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
+        frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
+        frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
+        self.episode = frame if frame['settles'] and frame['open'] else {}
+        trace.event('episode', **self.episode)
+        return self.episode
+
+    def episode_note(self, closing=False):
+        """The episode's frame as a note for whoever plans an act; '' when there is none."""
+        frame = getattr(self, 'episode', None) or {}
+        if not frame:
+            return ''
+        if closing:
+            return (f"This is the last act of the episode. It closes what the episode set out to settle: {frame['settles']} "
+                    f"Show it settled in what the characters do; nobody says it. "
+                    f"It leaves standing what the episode cannot answer: {frame['open']} Do not answer it, and do not have anyone sum it up. "
+                    + (f"End on this, or something as quiet: {frame['last']}" if frame.get('last') else ''))
+        return (f"This episode is to settle: {frame['settles']} Each act should bring that nearer or put it in doubt. "
+                f"It leaves open: {frame['open']} That may be touched on, never answered in this episode.")
+
     async def run_integrated_narrative(self):
         """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
         Integrates on an act by act basis, assuming that, since characters had a chance to share their narratives, actwise integration is coherent"""
@@ -2286,11 +2348,14 @@ In performing this integration:
         previous_act_post_state = ''
         previous_act = None  # the act just performed; replan_narrative_act adapts the next act to it
         try:
+            self.frame_episode()
             for i in range(integrated_act_count):
                 act_central_narrative = await self.generate_act_central_narrative(i+1)
                 if act_central_narrative is None:
                     stop('could not generate the act central narrative')
                     return
+                if self.episode_note():   # every act is planned knowing what the episode is for
+                    act_central_narrative = f'{act_central_narrative}\n\n{self.episode_note()}'
                 character_narrative_blocks = []
                 for character in cast(List[NarrativeCharacter], self.actors):
                     if i < len(character.plan['acts']): # what about coda?
@@ -2319,7 +2384,8 @@ In performing this integration:
             for character in cast(List[NarrativeCharacter], self.actors):
                 if character.decisions and len(character.decisions) > 0:
                     coda_central_narrative.append(f'{character.decisions[-1].get('choice', '')}: {character.decisions[-1].get('reason','')}')
-            coda_central_narrative.append("Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
+            coda_central_narrative.append(self.episode_note(closing=True)
+                                          or "Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
             coda_central_narrative = '\n'.join(coda_central_narrative)
 
             character_narrative_blocks = []  # fresh: this list still held the last act's plans
@@ -2334,6 +2400,8 @@ In performing this integration:
                 stop('no coda act to run')
                 return
             await self.run_narrative_act(new_act, i+2)  # was next_act, discarding Director's-chair edits
+            self.message_queue.put({'name': '', 'text': '\n----- end of episode -----'})
+            trace.event('episode_end', **(getattr(self, 'episode', None) or {}))
             
         except Exception as e:
             stop(f'error running integrated narrative: {type(e).__name__}: {e}')

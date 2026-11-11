@@ -103,12 +103,12 @@ def healthz():
 
 
 @app.get("/generate_image")   # AllTheWorldAPlay
-def generate_image(prompt: str, size: str = "512x512"):
+def generate_image(prompt: str, size: str = "512x512", seed: int | None = None):
     try:
         w, h = (int(v) for v in size.lower().split("x"))
     except ValueError:
         raise HTTPException(400, f"bad size {size!r}, expected WxH")
-    png, secs = _render(prompt, w, h)
+    png, secs = _render(prompt, w, h, seed=seed)
     return Response(png, media_type="image/png", headers={"x-wall-seconds": f"{secs:.2f}"})
 
 

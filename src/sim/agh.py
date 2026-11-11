@@ -5,6 +5,7 @@ import os, json, math, time, requests, sys
 
 from sim.SpeechStylizer import SpeechStylizer
 from sim.trace import trace
+import zlib
 import sim.survival as survival
 import sim.stage as stage
 import sim.ablation as ablation
@@ -859,10 +860,10 @@ adjective, adjective, adjective
             recent_memories = '\n'.join(memory.to_string() for memory in recent_memories)
             #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=10)
-            if response:
-                description = description[:192-min(len(context), 48)] + f'. {self.name} feels '+response.strip()+'. Background: '+context
-            else:
-                description = description[:192-min(len(context), 48)] + ', '+context
+            # how the character looks, how it feels, where it is (sim/stage.py). It was the first
+            # two sentences of the description, then 'Background:' and the opening of the Situation
+            # cut off at 96 characters.
+            description = stage.portrait(self.context, self, response or '')
 
         except Exception as e:
             traceback.print_exc()
@@ -874,7 +875,10 @@ adjective, adjective, adjective
             description = self.generate_image_description()
             prompt = description
             #print(f' actor image prompt len {len(prompt)}')
-            image_path = llm_api.generate_image(self.llm, prompt, size='192x192', filepath=self.name + '.png')
+            # one seed for a character, so that it keeps a face from one portrait to the next
+            trace.event('image', of=self.name, prompt=prompt)
+            image_path = llm_api.generate_image(self.llm, prompt, size='384x384', filepath=self.name + '.png',
+                                                seed=zlib.crc32(self.name.encode()))
         except Exception as e:
             traceback.print_exc()
         return image_path

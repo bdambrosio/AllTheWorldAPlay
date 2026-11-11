@@ -363,3 +363,65 @@ def plain(context, text):
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
     text = re.sub(r'\b([Tt]he) (\w+ )?the\b', lambda m: f"{m.group(1)} {m.group(2) or ''}".rstrip(), text)   # 'the dense the thicket'
     return re.sub(r'(^\s*[\'"]?|[.!?]\s+)the ', lambda m: m.group(1) + 'The ', text)
+
+
+# --------------------------------------------------------------------------- pictures
+# What an image of the stage is asked for. It used to be the first sentences of the Situation
+# text, which since that text is rendered from the world begins with the play's opening
+# description: every picture of a play was asked for with the same morning and the same two
+# people 'looking around in confusion'. A picture is now of where the play stands: the place,
+# the light at this hour, who is there as they look, a danger if one is on them, and for an
+# act, what is being done. One style for a play (`image_style` on the context or its scenario).
+LIGHT = {'night': 'night, dark, faint moonlight', 'dawn': 'dawn, first grey light', 'morning': 'clear morning light',
+         'midday': 'midday, high sun', 'afternoon': 'afternoon light, long shadows beginning', 'dusk': 'dusk, fading light'}
+DEFAULT_STYLE = 'Photorealistic, 35mm film'
+
+
+def style(context):
+    return (getattr(context, 'image_style', None) or getattr(getattr(context, 'map', None) and context.map.scenario_module, 'image_style', None)
+            or DEFAULT_STYLE)
+
+
+def _looks(context, character):
+    """A character as it looks: the first sentence of its description, without its name."""
+    return context._image_description(character).rstrip('. ')
+
+
+def _place_words(context, cast):
+    scene = context.current_scene or {}
+    place = scene.get('place') or where(context, here(cast[0])).removeprefix('at ')
+    res = context.map.resource_registry.get(place)
+    words = plain(context, place)
+    told = (res or {}).get('description')
+    return f"{words} ({told})" if told and told.lower() not in words.lower() else words
+
+
+def picture(context, doing=''):
+    """The prompt for a picture of the stage as it stands, or None where there is no map to
+    stand on. doing: what is being done in the foreground, in plain words."""
+    world = getattr(context, 'map', None)
+    cast = [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
+    if world is None or not cast:
+        return None
+    scene = context.current_scene
+    on_stage = [c for c in cast if scene is not None and getattr(c, 'current_scene', None) is scene] or cast
+    setting = ' '.join(context.initial_state.split('.')[0].split()).strip()
+    people = '; '.join(_looks(context, c) for c in on_stage[:4])
+    threat = getattr(context, 'active_threat', None)
+    parts = [style(context), 'Wide view', setting, f"{_place_words(context, on_stage)}, {LIGHT[part_of(context.simulation_time)]}",
+             f"{'One person' if len(on_stage) == 1 else str(len(on_stage)) + ' people'}: {people}"]
+    if threat:
+        parts.append(f"Close by, {threat['hazard']['description']}")
+    if doing:
+        parts.append(f"In the foreground, one of them {plain(context, doing).strip().rstrip('.')[:220]}")
+    return '. '.join(p.strip().rstrip('.') for p in parts if p and p.strip()) + '.'
+
+
+def portrait(context, character, mood=''):
+    """The prompt for a character's portrait: how it looks, how it feels, where it is."""
+    cast = [character] if getattr(character, 'mapAgent', None) is not None else []
+    where_ = f"{_place_words(context, cast)}, {LIGHT[part_of(context.simulation_time)]}" if cast and getattr(context, 'map', None) else ''
+    parts = [style(context), f"Head and shoulders portrait of {_looks(context, character)}",
+             f"Expression: {mood.strip().rstrip('.')}" if mood and mood.strip() else '',
+             f"Behind, out of focus: {where_}" if where_ else '']
+    return '. '.join(p.strip().rstrip('.') for p in parts if p) + '.'

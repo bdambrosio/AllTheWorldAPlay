@@ -49,11 +49,13 @@ def set_model(model):
         OpenRouterClient.MODEL = model
 
 
-def generate_image(llm=None, description='', size='512x512', filepath='test.png'):
-    """Fetch an image from the local image server (utils/klein_serve.py); grey placeholder on failure."""
+def generate_image(llm=None, description='', size='512x512', filepath='test.png', seed=None):
+    """Fetch an image from the local image server (utils/klein_serve.py); grey placeholder on failure.
+    The prompt is sent as given: its style is the caller's to say (sim/stage.py picture). seed:
+    the same seed and words give the same picture, which is how a character keeps a face."""
     image_content = None
     try:
-        response = requests.get(IMAGE_URL, params={"prompt": "photorealistic style: " + description, "size": size},
+        response = requests.get(IMAGE_URL, params={"prompt": description, "size": size, **({"seed": seed} if seed is not None else {})},
                                 timeout=60)
         if response.status_code == 200:
             image_content = response.content

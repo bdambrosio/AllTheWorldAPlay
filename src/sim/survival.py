@@ -699,7 +699,7 @@ HANDING = ['give', 'hand', 'pass', 'return']
 # sent across the ground or through the air, a thing lands; it is the other's when they take it
 # ('slides the branch across the dirt to Samantha's feet' put it in her hands, and Joe went on
 # gripping, raising and planting a branch he no longer had)
-DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place', 'slide', 'toss', 'throw', 'kick', 'roll', 'push', 'shove']
+DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place', 'slide', 'toss', 'throw', 'kick', 'roll']
 
 
 def _prop_deed(context, character, text, names):
@@ -707,8 +707,11 @@ def _prop_deed(context, character, text, names):
     Returns the fact, or None."""
     body = character.body
     said = lambda item: re.search(rf"\b{re.escape(item.split()[-1])}\b", text)
+    # a verb form after 'her', 'the', ... is a thing, not a deed: 'wiping her mouth with the back of
+    # her hand ... raising her branch' handed Joe the branch
+    deeds = re.sub(r"\b(his|her|their|its|my|your|our|the|a|an|\w+'s)\s+\w+", r'\1', text.replace('’', "'"))
     for item in [i for i in body.inventory if said(i)]:
-        if _matches(text, HANDING) and not re.search(r"\b(feet|ground|dirt|floor|toward|towards|across)\b", text):
+        if _matches(deeds, HANDING) and not re.search(r"\b(feet|ground|dirt|floor|toward|towards|across)\b", text):
             for other, d in _present(character):
                 if d <= CO_PRESENT_TILES and (other.name.lower() in names or other.name.lower() in text):
                     body.inventory.remove(item)
@@ -717,13 +720,13 @@ def _prop_deed(context, character, text, names):
                     fact = f"{character.name} hands {other.name} the {item}."
                     _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'text', applied=True, target=other.name)
                     return fact
-        if _matches(text, DROPPING):
+        if _matches(deeds, DROPPING):
             body.inventory.remove(item)
             context.props = getattr(context, 'props', []) + [{'name': item, 'at': _here(character)}]
             fact = f"{character.name} puts down the {item}."
             _record(character, {'name': 'put down', 'category': 'survival'}, fact, 'text', applied=True)
             return fact
-    if _matches(text, TAKING + ['pick up', 'pocket', 'collect']):
+    if _matches(deeds, TAKING + ['pick up', 'pocket', 'collect']):
         for prop in lying(context, _here(character)):
             if said(prop['name']):
                 context.props.remove(prop)
@@ -1362,9 +1365,15 @@ def _respond_to_threat(context, character, threat, text, chosen=None):
             fact = f"{character.name} tries to {name}, and it works. " + hazard.get('retreat_text', f"The {hazard['name']} passes.")
             _end_threat(context, threat, fact, tell=False)
         else:
-            character.body.adjust(_harm(cfg)['name'], hazard.get('harm', 0.3) / 2)
+            # A stand that fails costs something the body shows and the page says. (Half a strike
+            # left Joe 'unhurt' after the boar ran through him; two scenes later the plan had him
+            # clutching his side, and the wound the last act turned on had happened off stage.)
+            harm_need = _harm(cfg)['name']
+            level = character.body.levels.get(harm_need, 0.0)
+            character.body.adjust(harm_need, max(hazard.get('harm', 0.3) / 2, NEED_FELT + 0.02 - level))
             fail = _fmt(hazard.get('fail_text', f"the {hazard['name']} is not deterred"), actor=character.name)
-            fact = f"{character.name} tries to {name}, but {fail}. ({character.name} is now {character.body.summary()}.)"
+            fact = (f"{character.name} tries to {name}, but {fail}. {character.name} takes the force of it and is "
+                    f"{_word(cfg, harm_need, character.body.levels[harm_need])}. ({character.name} is now {character.body.summary()}.)")
             context.add_event(fact)
         trace.event('hazard', phase='response', hazard=hazard['name'], character=character.name, response=name, fact=fact)
         return fact
