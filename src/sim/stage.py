@@ -205,8 +205,10 @@ def walk(character, xy, place, alone=False, to=True):
         return ''
     left = where(context, here(character))
     was_with = company(character)
-    # a few steps within the place (to the woodpile and back) are taken alone; a real walk takes the party
-    party = [] if alone or tiles <= character.EARSHOT_TILES else was_with
+    # a few steps within the place (to the woodpile and back) are taken alone; a walk to another
+    # place takes the party, however short (Joe walked three tiles to the spring alone, then
+    # walked back to say it was 'right there, past the ferns')
+    party = [] if alone or (tiles <= character.EARSHOT_TILES and where(context, xy) == left) else was_with
     minutes = max(survival.travel(c, *xy, advance_clock=False) for c in [character] + party)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)

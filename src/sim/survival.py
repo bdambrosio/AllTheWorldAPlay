@@ -58,6 +58,7 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
 from __future__ import annotations
 
 import random
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -1123,7 +1124,8 @@ def _start_threat(context, hazard, anchor, exposed):
 
 # words that say a hazard named in a set-up is not upon the cast now: gone, feared, or only possible
 NOT_NOW = (r"\b(return\w*|gone|vanish\w*|retreat\w*|fled|fear\w*|afraid|dread\w*|might|could|in case|if the|no sign|sign of|"
-           r"shadow|memory|after the|since the|watch\w* for|scan\w*|listen\w* for|driven off|slink\w*|passed|is over|surviv\w*)\b")
+           r"shadow|memory|after the|since the|watch\w* for|scan\w*|listen\w* for|driven off|slink\w*|passed|is over|surviv\w*|"
+           r"fought|just|earlier|recent\w*|had|was|were|did|drove|beat\w*|escap\w*|match\w*|tracks?|prints?|sign)\b")
 
 
 def stage_hazard(context, scene, cast):
@@ -1146,6 +1148,46 @@ def stage_hazard(context, scene, cast):
             context._hazard_last = context.simulation_time
             _start_threat(context, hazard, exposed[0], exposed)
             return
+
+
+# per scene from the second act on: about one play in two has one, none has two
+# (ATWAP_DIRECTOR_HAZARD overrides it, for testing)
+DIRECTOR_HAZARD_CHANCE = float(os.environ.get('ATWAP_DIRECTOR_HAZARD', 0.08))
+
+
+def director_hazard(context, cast, act_number):
+    """The director brings on one of the world's hazards for the scene about to be played: a
+    real one, by the world's rules, at most once in a play and in about half of plays. (Chance
+    alone gave a daytime play no danger at all, and a narrator may no longer invent one.)
+    Returns the hazard's name, or None."""
+    cfg = config(context)
+    try:
+        act_number = int(act_number)
+    except (TypeError, ValueError):
+        return None
+    if (not cfg or act_number < 2 or getattr(context, '_director_hazard', None)
+            or getattr(context, 'active_threat', None) or _rng.random() >= DIRECTOR_HAZARD_CHANCE):
+        return None
+    now = context.simulation_time
+    exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
+    fitting = []
+    for hazard in cfg.get('hazards', []):
+        when = hazard.get('when', 'any')
+        if (when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)):
+            continue
+        if hazard.get('source') and not any(_hazard_source(context, c, hazard) for c in exposed):
+            continue
+        fitting.append(hazard)
+    if not exposed or not fitting:
+        return None
+    hazard = _rng.choice(fitting)
+    for c in exposed:
+        c.body.sheltered = False   # it comes on them where they are
+    context._director_hazard = hazard['name']
+    context._hazard_last = now
+    trace.event('director_hazard', hazard=hazard['name'], act=act_number)
+    _start_threat(context, hazard, exposed[0], exposed)
+    return hazard['name']
 
 
 def hazard_tick(context):

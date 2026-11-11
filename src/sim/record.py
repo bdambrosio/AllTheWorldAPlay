@@ -445,7 +445,48 @@ def _body_bears(speaker, low):
     return False
 
 
-SPEECH_KINDS = ('holds', 'body', 'doing', 'where', 'time')
+# 'doing' is asked for but not acted on: the world does not keep what a character is doing with
+# itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
+# deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
+SPEECH_KINDS = ('holds', 'body', 'where', 'time')
+
+
+ME_NOW = r"\b(i'm|i’m|i am|we're|we’re|we are)\b"
+LATER = r"\b(i'll|i’ll|i will|we'll|we’ll|going to|gonna|let me|let's|let’s|should|could|would|can|if|when|until|before|after)\b"
+SENSING = r"\b(see|saw|hear|heard|watch|look|notice|know|feel|felt|think|smell|sense|remember|understand|believe|hope|want|need)\w*"
+HOUR_NOW = (r"\b(it'?s|it’s|it is|getting|nearly|almost|already|now)\b.{0,24}\b(dark|night|dusk|dawn|late|evening|morning|noon|midday|sunset|sunrise)\b"
+            r"|\b(sun|light|day)\b.{0,16}\b(setting|fading|going|gone|rising|up|down|dying)\b")
+
+
+def speech_claims(context, speaker, reply):
+    """The findings in a speech check's reply that hold up: [(kind, words)]. The model finds
+    more than the narrow list allows, so each kind has a test of its own. (In its first run it
+    took 'Thicket3 is just a bigger room to hide in' for a claim to be there, 'the dark fruit'
+    for a time of day, 'I see them' for a deed and 'I'll scout the perimeter' for one under
+    way: five lines resaid, none of them wrong.)"""
+    claims = []
+    held = [i.split()[-1].lower() for i in speaker.body.inventory]
+    for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply or '', re.M):
+        kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
+        if kind not in SPEECH_KINDS or not words.strip('.'):
+            continue
+        if kind in ('holds', 'body', 'doing') and not re.search(r"\b(i|i'm|i’m|i've|i’ve|my|me|mine|here)\b", low):
+            continue   # not said of the speaker ("You're sweating")
+        if kind == 'holds' and (any(h in low for h in held) or (held and re.search(r'\b(this|these|it|them|that|those|one)\b', low))
+                                or re.search(LATER, low)):
+            continue   # it does hold one, or speaks of what it will do
+        if kind == 'body' and (not re.search(BODILY, low) or _body_bears(speaker, low)):
+            continue
+        if kind == 'doing' and (not re.search(ME_NOW + r"\s+(\w+\s+)?\w+ing\b|" + ME_NOW + r"\s+(already\s+)?(up|in|on|inside|under|behind)\b", low)
+                                or re.search(LATER, low) or re.search(ME_NOW + r"\s+(\w+\s+)?" + SENSING, low)):
+            continue   # only a deed said to be under way: not sensing, not what is to come
+        if kind == 'time' and (not re.search(HOUR_NOW, low) or _fits_clock(context, low)
+                               or re.search(r'\b(before|until|by|when|after|tonight|soon|comes?|will|later|tomorrow)\b', low)):
+            continue   # only the hour said of now ('the dark fruit' is not one)
+        if kind == 'where' and not (re.search(ME_NOW + r"|\b(you're|you’re|you are|he's|she's|he is|she is)\b", low) and _elsewhere(context, speaker, words)):
+            continue   # only someone said to be at another place now; naming a place is not being there
+        claims.append((kind, words))
+    return claims
 
 
 def speech(context, speaker, line, listener=None):
@@ -464,22 +505,7 @@ def speech(context, speaker, line, listener=None):
                             tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=120)
     if reply is None:
         return line, None
-    claims = []
-    for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply, re.M):
-        kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
-        if kind not in SPEECH_KINDS or not words.strip('.'):
-            continue
-        if kind in ('holds', 'body', 'doing') and not re.search(r"\b(i|i'm|i’m|i've|i’ve|my|me|mine|here)\b", low):
-            continue   # not said of the speaker ("You're sweating")
-        if kind == 'body' and (not re.search(BODILY, low) or _body_bears(speaker, low)):
-            continue
-        if kind == 'time' and (_fits_clock(context, low) or re.search(r'\b(before|until|by|when|after|tonight|soon|comes?|will|later|tomorrow)\b', low)):
-            continue   # what is to come is not a claim about now ("before dark")
-        if kind == 'where' and not _elsewhere(context, speaker, words):
-            continue
-        if kind == 'holds' and any(i.split()[-1].lower() in low for i in speaker.body.inventory):
-            continue   # it does hold one
-        claims.append((kind, words))
+    claims = speech_claims(context, speaker, reply)
     give = None
     handed = re.search(r'^\s*#give\s+(.+?)\s+to\s+(\w+)', reply, re.M)
     if handed and not claims:

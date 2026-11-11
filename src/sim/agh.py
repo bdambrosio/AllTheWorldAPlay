@@ -1249,9 +1249,12 @@ End response with:
             consequences = await self.context.look(self, act)
             if  consequences and len(consequences) > 0:
                 self.add_perceptual_input(f'{consequences}', mode='internal')  
-            self.lastActResult = consequences
+            self.lastActResult = consequences or 'You look, and see nothing new.'
             self.show += act_arg + '.\n ' + consequences
-            self.context.message_queue.put({'name':self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences or act_arg)), 'line_kind':'action'})
+            if consequences.strip():   # a look that finds nothing is not a line: four of them in two acts drained the dread they were meant to build
+                self.context.message_queue.put({'name':self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences)), 'line_kind':'action'})
+            else:
+                trace.event('look_empty', character=self.name)
             await asyncio.sleep(0)
 
         elif act_mode == 'Think': # Say is handled below

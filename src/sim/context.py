@@ -919,6 +919,7 @@ Danger here now: {{$danger}}. Report no animal, person or danger that is not lis
 {{$rejected}}
 
 Respond with the information result. Target a sentence or two at most as your response length.
+If the look shows {{$name}} nothing it did not already know (no movement, no change, the same trees), respond with the single word: nothing
 Respond ONLY with the immediate information gain by the character.
 Include any effects on the physical, mental, or emotional state of {{$name}} in your response, even if not observable to other characters.
 Do not repeat the above action statement in your response.
@@ -948,7 +949,8 @@ End your response with:
                   "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
-        settled = record.settle(self, actor, f'looks: {action}', None, narrate(), narrate, kind='look') or ''
+        nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else text
+        settled = record.settle(self, actor, f'looks: {action}', None, nothing(narrate()), lambda note: nothing(narrate(note)), kind='look') or ''
         consequences = ' '.join(filter(None, list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ())) + [settled]))
 
         if consequences.endswith('<'):
@@ -1029,6 +1031,7 @@ with current situation:
 The characters present are: {{$present}}. Nobody else is here.
 
 You are the stage, not a character: report what the action physically does, and nothing more.
+If the action does nothing beyond what its own words already say (a look, a gesture, a stance, a pause), respond with the single word: nothing
 Respond ONLY with the immediate result that someone standing there could see or hear. One or two simple declarative sentences, 40 words at most.
 Do not repeat the above action statement in your response.
 The result must be consistent with the LocalMap and with the facts above.
@@ -1067,7 +1070,10 @@ End your response with:
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
         # the narration is held to the world's record before it is shown, remembered or built on
-        settled = record.settle(self, actor, action, facts, narrate(), narrate, kind='do')
+        # 'nothing', or a sentence that only says nothing came of it ('He does not find or gain anything new.')
+        empty = r"[^.!?]*\b(does not|doesn't|did not) (find|gain)\b[^.!?]*[.!?]?|[^.!?]*\b(finds?|gains?|learns?) nothing( new)?\b[^.!?]*[.!?]?"
+        nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else re.sub(empty, '', text or '').strip()
+        settled = record.settle(self, actor, action, facts, nothing(narrate()), lambda note: nothing(narrate(note)), kind='do')
         # what settling made real or refused is part of what happened: the actor is told it, and
         # a deed that rested on something refused was a try (Character.acts shows it so)
         actor.settled_notes = list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ()))
@@ -1528,6 +1534,7 @@ Rules:
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - The set-up and ending must fit the time it is now: no dusk, dark or sleep for the night in the morning. If the plan needs night and it is day, write the scene for the day.
 - The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a wound or a need newly felt, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
+- If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
 {{$rejected}}
@@ -1638,6 +1645,8 @@ Respond with these lines only:
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
+        # rarely, the director brings on one of the world's dangers; the scene is then fitted to it
+        survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'))
         if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
