@@ -26,13 +26,17 @@ GAZETTEER_PLACES = 14     # places listed for the playwright, nearest first
 # writes scenes (character act plans, the integrated act, a replanned scene).
 LOCATION_FIELD = ('"location": string, // a place named under Places (e.g. its exact name), '
                   'or "same" to stay where the previous scene ended\n'
+                  ' "when": "same" | "dawn" | "morning" | "midday" | "afternoon" | "dusk" | "night", // "same": it follows straight on '
+                  'from the scene before. Name a part of the day only when what happens in the scene depends on it (a night watch, '
+                  'a dawn departure): the play then moves on to the next such time\n'
                   ' "tempo": "calm" | "tense" | "urgent", // urgent: danger or a deadline is on them now, and nobody has time for talk\n'
                   ' "business": {"<character name>": ["<action>@<place>"]}, // the physical actions this scene\'s ending depends on, '
                   'as listed under Places (e.g. "drink@Spring2"); {} when it depends on none')
-SCENE_RULES = """Scenes within an act are continuous: each starts where and when the previous one ended.
+SCENE_RULES = """Scenes within an act are continuous: each starts where the previous one ended, and when it ended unless its "when" names a later part of the day.
 Set a scene where its action can happen: Places lists what can be done at each named place.
 Give a scene a different location only when the action must move there; the cast then walks, which takes the time shown.
-A jump in time, or to a distant place, belongs at the start of an act.
+A scene's title, set-up and ending must fit its "when": a scene called a night watch has "when": "night". When a scene moves the play on, hours pass off stage and the cast is taken to have eaten, drunk and rested as it could: do not spend the scene on that. Move the play on at most once within an act; the clock times you write are not used for this.
+A jump to a distant place belongs at the start of an act.
 What a scene's ending says about bodies and things (someone fed, watered, rested, armed, a paper signed or handed over) is true only if a character does the action in that scene: list it under business. Saying it does not make it so."""
 
 
@@ -51,9 +55,40 @@ def clock(context, date=False):
     that writes about the world gets this (a set-up written at 10:12 spoke of 'the approaching
     dusk', and the cast then slept through the middle of the day)."""
     t = context.simulation_time
-    part = ('night' if t.hour < 5 else 'dawn' if t.hour < 7 else 'morning' if t.hour < 12 else 'midday' if t.hour < 14
-            else 'afternoon' if t.hour < 18 else 'dusk' if t.hour < 20 else 'night')
+    part = part_of(t)
     return f"{t:%Y-%m-%d %H:%M} ({part})" if date else f"{t:%H:%M}, {part}"
+
+
+def part_of(t):
+    return ('night' if t.hour < 5 else 'dawn' if t.hour < 7 else 'morning' if t.hour < 12 else 'midday' if t.hour < 14
+            else 'afternoon' if t.hour < 18 else 'dusk' if t.hour < 20 else 'night')
+
+
+PART_BEGINS = {'dawn': (5, 30), 'morning': (8, 0), 'midday': (12, 30), 'afternoon': (15, 0), 'dusk': (18, 30), 'night': (21, 0)}
+PART_WORDS = (('night', r'night|midnight|dark'), ('dusk', r'dusk|evening|sunset|twilight'), ('dawn', r'dawn|sunrise|daybreak|first light'),
+              ('midday', r'midday|noon'), ('afternoon', r'afternoon'), ('morning', r'morning'))
+
+
+def part_named(when):
+    """The part of the day a scene's 'when' names ('night', 'next morning', 'at dusk'), or None
+    for 'same', nothing, or words that name none."""
+    text = str(when or '').strip().lower()
+    return next((part for part, words in PART_WORDS if re.search(rf'\b({words})\b', text)), None)
+
+
+def next_time(now, when):
+    """When the play moves on to for a scene that needs `when`: the next time it is that part of
+    the day, or None when it already is (or `when` names none). Never back, and 'next morning'
+    said in the morning is tomorrow's."""
+    part = part_named(when)
+    again = bool(re.search(r'\b(next|tomorrow|following)\b', str(when or '').lower()))
+    if part is None or (part == part_of(now) and not again):
+        return None
+    hour, minute = PART_BEGINS[part]
+    then = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if then <= now or again:
+        then += survival.timedelta(days=1)
+    return then
 
 
 def _distance(a, b):

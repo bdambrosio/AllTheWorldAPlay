@@ -179,28 +179,57 @@ def _embodied(context):
     return [c for c in context.actors + context.extras + context.npcs if getattr(c, 'body', None) is not None]
 
 
-OFFSTAGE_NEED_RISE = 0.25   # the most a need rises over one stretch of off-stage time
+
+
+REAL_JUMP_HOURS = 2   # a gap this long is a jump in the play, not the pause between two scenes
+
+
+def _spans_night(start, end):
+    """Does the time from start to end take in the small hours?"""
+    t = start
+    while t <= end:
+        if t.hour >= 23 or t.hour < 4:
+            return True
+        t += timedelta(hours=1)
+    return False
 
 
 def pass_offstage(context, gap):
-    """Time between scenes passes off-stage. Needs rise at their usual rate, but by no more than
-    OFFSTAGE_NEED_RISE each: off-stage, characters keep themselves going without solving
-    anything, so a hungry character is still hungry at the next scene and a day's gap does not
-    starve one. No hazards begin off-stage."""
+    """Time passes off stage, to context.simulation_time + gap (the caller moves the clock).
+    Needs do not rise off stage. Over a real jump the cast is taken to have looked after itself:
+    hunger and thirst that were felt are met, and tiredness too when the gap takes in a night.
+    Injuries stay. (Needs used to rise across a gap, so a play that moved on to dusk for a night
+    watch opened on two people who had to find water first; and frozen, a character hungry in the
+    morning was still hungry at dusk having done nothing about it. A plan that wants them hungry
+    says so, and that is made real.) A danger left standing is over, and a fire burns out.
+    Returns the names of the needs that were met."""
     now = context.simulation_time + gap
     hours = gap.total_seconds() / 3600
     cfg = config(context) or {}
+    jump = hours >= REAL_JUMP_HOURS
+    night = _spans_night(context.simulation_time, now)
+    met = set()
     for character in _embodied(context):
         body = character.body
-        for need, spec in _need_defs(cfg).items():
-            rate = spec.get('per_hour', 0.0) * (spec.get('shelter_factor', 1.0) if body.sheltered else 1.0)
-            body.adjust(need, min(rate * hours, OFFSTAGE_NEED_RISE))
+        if jump:
+            for need, spec in _need_defs(cfg).items():
+                level = body.levels.get(need, 0.0)
+                if spec.get('per_hour', 0.0) <= 0 or level < NEED_FELT:
+                    continue
+                if re.search(r'fatig|tired|sleep|rest', need) and not night:
+                    continue
+                body.adjust(need, (NEED_FELT - 0.05) - level)
+                met.add(need)
         body.last_tick = now
     if hasattr(context, '_hazard_last'):
         context._hazard_last = now
     threat = getattr(context, 'active_threat', None)
-    if threat and now >= threat['deadline']:   # it does not strike a cast that is not on stage
-        _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."))
+    if threat and (jump or now >= threat['deadline']):   # it does not strike, or wait hours for, a cast that is not on stage
+        _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."), tell=False)
+    fire = getattr(context, 'survival_fire', None)
+    if fire and fire['until'] <= now:
+        context.survival_fire = None
+    return met
 
 
 def tick(character):

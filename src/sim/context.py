@@ -303,6 +303,31 @@ class Context():
         else:
             self._state_base, self._state_notes = value, ''
 
+    MAX_JUMPS_IN_ACT = 1   # times a scene other than an act's first may move the play on
+
+    def move_on(self, target):
+        """The play moves on to `target`, off stage (survival.pass_offstage: needs are met, not
+        raised; a danger left standing is over). The cast is told how long it has been and what
+        time it is, so that nobody carries on from the morning at dusk. Returns the hours passed."""
+        gap = target - self.simulation_time
+        hours = gap.total_seconds() / 3600
+        if hours <= 0:
+            return 0.0
+        met = survival.pass_offstage(self, gap)
+        self.simulation_time = target
+        if hours >= survival.REAL_JUMP_HOURS:
+            told = (f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
+                    + (" In that time you ate, drank and rested as you could." if met else ''))
+            for character in self.actors + self.extras:
+                character.add_perceptual_input(told, percept=False, mode='internal')
+            self.add_event(f'About {round(hours)} hours pass')
+            trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
+            self._hours_moved = getattr(self, '_hours_moved', 0.0) + hours
+        return hours
+
+    def _may_move_on(self, opens_act):
+        return opens_act or getattr(self, '_act_jumps', 0) < self.MAX_JUMPS_IN_ACT
+
     def _hazard_claim_stands(self, words, scene=None):
         """Is a 'presence' finding that names one of this world's dangers a real one? Speaking of
         a danger (feared, or past) claims nothing. Having it arrive does, unless it is the danger
@@ -1547,7 +1572,8 @@ What has happened lately:
 Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
-- The set-up and ending must fit the time it is now: no dusk, dark or sleep for the night in the morning. If the plan needs night and it is day, write the scene for the day.
+- when: first settle what part of the day the scene is played in. {{$moving}}
+- Then write the set-up and ending for the time the scene is played in, and make the title fit it. Do not state the time of day in the set-up unless it matters to what happens: the heading gives it.
 - The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a wound or a need newly felt, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
 - If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
@@ -1556,7 +1582,9 @@ Rules:
 
 Respond with these lines only:
 #skip yes or no
+#when same, or one of: dawn, morning, midday, afternoon, dusk, night
 #location same, or the exact name of a place listed above
+#title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
 #setup the scene's set-up, one or two sentences, true to where things stand
 #ending what the scene should arrive at, one sentence
 #goal <character name>: that character's goal in the scene (one line for each character)
@@ -1564,11 +1592,19 @@ Respond with these lines only:
 """)]
         if opens_act and not survival.config(self):
             return False   # no world to hold an opening scene to
-        planned = {k: scene.get(k) for k in ('scene_title', 'location', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
+        planned = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
+        # not while a danger is on the cast: it would be left standing, hours behind them
+        may_move = self._may_move_on(opens_act) and not getattr(self, 'active_threat', None)
+        moving = ('"same" means now, and is right for most scenes. Name a later part of the day only when what the scene is for depends on it '
+                  '(its title, set-up or ending call for night, or dusk, or dawn, and it is not that now): the play then moves on to the next such time, '
+                  'hours pass off stage, and the cast is taken to have eaten, drunk and rested in them, so the scene is not about that.'
+                  if may_move else
+                  'It must be "same": the play has already moved on in this act and is played now. Where the plan calls for another time of day, '
+                  'keep the scene\'s purpose and write it for now.')
         hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
         threat = getattr(self, 'active_threat', None)
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                  'places': stage.gazetteer(self), 'clock': stage.clock(self),
+                  'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving,
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -1581,8 +1617,17 @@ Respond with these lines only:
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
             if find('skip').lower().startswith('y') and not opens_act:
                 return True
+            if attempt == 0 and may_move:
+                # the scene's time is established before anything else is settled about it: the
+                # set-up was written for that time, and the check that follows reads the clock
+                target = stage.next_time(self.simulation_time, find('when'))
+                if target is not None and self.move_on(target) >= survival.REAL_JUMP_HOURS:
+                    self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
+                    changed['when'] = scene['when'] = stage.part_of(self.simulation_time)
+                    inputs.update(clock=stage.clock(self), moving='It must be "same": the play has just moved on to this time.',
+                                  bodies='; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked')
             for key, value in (('location', '' if opens_act else find('location')), ('pre_narrative', find('setup')),
-                               ('post_narrative', find('ending'))):
+                               ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
                 if value and value != scene.get(key):
                     changed[key] = scene[key] = value
             for name, goal in re.findall(r'#goal\s+([^:\n]+):\s*(.+)', reply):
@@ -1641,10 +1686,19 @@ Respond with these lines only:
             return
         scene = new_scene
         await asyncio.sleep(0.1)
-        scene_start = scene["time"] = max(self.validate_scene_time(scene), self.simulation_time)
-        hours_between = (scene_start - self.simulation_time).total_seconds() / 3600
-        survival.pass_offstage(self, scene_start - self.simulation_time)
-        self.simulation_time = scene_start
+        # A scene starts when the one before it ended, unless it needs another part of the day:
+        # then the play moves on to it (stage.next_time), which the pre-scene step settles
+        # (reground_scene, '#when'). The clock times a plan writes are start-plus-durations
+        # arithmetic ('The Pact of the Night', set-up 'Night approaches', stamped 07:20) and are
+        # not used, except that a time hours ahead on a scene with no 'when' is a jump it asked for.
+        self._hours_moved = 0.0
+        planned = self.validate_scene_time(scene)
+        if (stage.part_named(scene.get('when')) is None and self._may_move_on(opens_act)
+                and (planned - self.simulation_time).total_seconds() >= survival.REAL_JUMP_HOURS * 3600):
+            self.move_on(planned)
+            self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
+        else:
+            survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
 
@@ -1672,6 +1726,8 @@ Respond with these lines only:
 
         # the cast gathers at the scene's place (walking there, unless the scene opens an act);
         # the heading names the place the scene is actually played ('same' said nothing)
+        scene_start = scene["time"] = self.simulation_time   # as established: where the last scene left the clock, or moved on
+        hours_between = self._hours_moved
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         # The heading and the set-up name the same place: when the set-up names one place and the
@@ -1881,6 +1937,7 @@ Respond with these lines only:
 
     async def run_narrative_act(self, act, act_number):
         """Run a narrative"""
+        self._act_jumps = 0   # the play moves on at most MAX_JUMPS_IN_ACT times within an act
         self.establish_tension_points(act)
         self.current_act = act
         scenes = act.get('scenes', [])
