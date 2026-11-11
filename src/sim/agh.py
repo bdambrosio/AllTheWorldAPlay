@@ -8,6 +8,7 @@ from sim.trace import trace
 import sim.survival as survival
 import sim.stage as stage
 import sim.ablation as ablation
+import sim.record as record
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -1280,6 +1281,18 @@ End response with:
         elif act_mode == 'Say':# must be a say
             await self.approach(self._first_character(target, act))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
+            # A line is held to what its speaker cannot be mistaken about (its hands, its body,
+            # what it is doing, where it is, the hour) before anyone hears it, unless the
+            # character means it as a lie (sim/record.py speech). What is heard, remembered and
+            # answered is the line as it is finally said.
+            meant_as_lie = bool(re.search(r'\(\s*lie\s*\)', act_arg, re.I))
+            act_arg = re.sub(r'\s*\(\s*lie\s*\)\s*', ' ', act_arg, flags=re.I).strip()
+            handed = None
+            if meant_as_lie:
+                trace.event('speech_check', character=self.name, outcome='lie', claims=[], before=act_arg)
+            else:
+                act_arg, handed = record.speech(self.context, self, act_arg, self._first_character(target, act))
+            act.action = act_arg
             self.show += f"{act_arg}'"
             elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
@@ -1287,6 +1300,11 @@ End response with:
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0)
             done = survival.spoken_deed(self.context, self, act_arg)
+            if not done and handed:   # 'Here, take the branch': the words hand it over
+                done = survival.resolve_do(self.context, self, f'hands {handed[1].name} the {handed[0]}', targets=[handed[1]])
+                if not (getattr(self, 'last_affordance', None) or {}).get('applied'):
+                    done = None   # out of reach, or not the speaker's to give: it was only said
+                self.last_affordance = None
             if done:
                 self.context.add_event(f'{self.name} -> {done}')
                 self.add_perceptual_input(done, percept=False, mode='internal')
@@ -2142,6 +2160,7 @@ Dialog guidance: If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
 - Do not name what you and the other are to each other or what the moment means ("you're my anchor", "we're bound now"); ask, refuse, offer or tease, and let that show it.
 - Words do nothing physical: to eat, drink, take, give or go somewhere, choose a Do or a Move. Never report as done what has not been done.
+- If your character is deliberately saying something untrue about itself (a lie or a bluff, meant to deceive), end the line with the mark (lie); it will not be shown. Otherwise say nothing of what you hold, are doing, or your body's state that is not so.
 - 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
 - Speak only of what your character has seen, been told or can reasonably guess; do not invent facts about this place or its dangers.
 - Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
@@ -2964,6 +2983,7 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         if not (hash_utils.find('cut_in', reply) or '').strip().lower().startswith('y') or not line:
             return ''
         to = from_actor if (hash_utils.find('to', reply) or '').strip().lower().startswith(from_actor.name.lower()) else self
+        line = record.speech(self.context, speaker, line, to)[0] or line
         speaker._cut_ins = (scene, (getattr(speaker, '_cut_ins', (None, 0, 0))[1] if getattr(speaker, '_cut_ins', (None,))[0] is scene else 0) + 1, now)
         self.context.message_queue.put({'name': speaker.name, 'text': f"'{line}'",
                                         'elevenlabs_params': json.dumps(speaker.speech_stylizer.voice_params(to))})
@@ -3098,6 +3118,7 @@ Guidance:
 - Let your emotional state colour the line without announcing it.
 - Do not name what the two of you are to each other or what the moment means ("you're my anchor", "we're bound now", "trust is survival"): ask, refuse, offer, tease or change the subject, and let that show it.
 - Words do nothing physical. Do not say you are eating, drinking, taking or handing over something unless you are doing it this moment and it is within reach; never report as done what has not been done.
+- If your character is deliberately saying something untrue about itself (a lie or a bluff, meant to deceive), end the line with the mark (lie); it will not be shown. Otherwise say nothing of what you hold, are doing, or your body's state that is not so.
 - 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
 - Speak only of what your character has seen, been told or can reasonably guess, and say a guess as a guess. Do not invent facts about this place or its dangers.
 - Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.

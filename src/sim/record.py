@@ -371,3 +371,134 @@ def settle(context, actor, action, facts, narration, rewrite, kind='do', source=
                 claims=[f'{k}: {w}' for k, w in claims], still=[f'{k}: {w}' for k, w in (still or [])],
                 made=made, refused=refused, tainted=tainted, before=narration, after=result)
     return Settled(result, made, refused, tainted)
+
+
+# --------------------------------------------------------------------------- speech
+# A character may be wrong about the world, and may lie. What it cannot be is mistaken about
+# itself at this moment: what is in its hands, what it is doing, the state of its own body,
+# where it stands, whether it is light or dark. A line that gets one of those wrong, and was
+# not meant as a lie, is an error of the engine ("Here. Clean water." with empty hands, which
+# the listener then took as given), and is said again without it before anyone hears it.
+# Everything else a character says is its own: opinions, guesses, plans, fears, figures of speech.
+SPEECH = """A character in a play is about to speak. Check the line against what the speaker cannot be mistaken about: itself, at this moment.
+
+Speaker: {{$name}}
+<about {{$name}}, now>
+{{$record}}
+</about>
+
+<line>
+{{$line}}
+</line>
+
+Find only statements of these kinds, made in the first person about right now:
+- holds: {{$name}} has, holds, offers or hands over a thing it does not have ("Here, clean water" with none in hand; "take my knife").
+- body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested).
+- doing: {{$name}} says it is doing, this moment, a physical thing that it is not ("I'm climbing down" while sitting).
+- where: {{$name}} says it, or someone present, is at a place other than where Present puts them.
+- time: light, dark or a time of day that does not fit Time.
+Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water").
+
+Also say if the line hands a thing the speaker really has to someone present, in so many words ("Here, take the branch"):
+#give <the thing, as Holdings names it> to <the person>
+
+Respond with one line for each finding, giving the words from the line exactly:
+#claim <kind>: <the exact words>
+and the #give line if there is one; or, when there is neither, the single line:
+#ok
+</end>
+"""
+
+RESAY = """A character in a play was about to say the line below, but part of it is untrue of the speaker at this moment, and the character did not mean to lie.
+
+Speaker: {{$name}}
+<about {{$name}}, now>
+{{$record}}
+</about>
+
+<line>
+{{$line}}
+</line>
+
+Not so:
+{{$claims}}
+
+Say the line again as {{$name}} would, in the same voice, in the first person, and no longer than it was. Keep everything else it says and means; leave out what is not so.
+- Do not announce the correction: never "It's morning", "I'm not up the tree", "I have no water". Just do not say the untrue thing.
+- Do not move the untrue thing onto someone else.
+- If the point of the line was the untrue part, say what {{$name}} can truly say toward the same end: an offer of water one does not have becomes an offer to fetch it; a claim to hold a branch becomes going to get one; a warning that it is nearly dark becomes a warning that dark will come.
+Respond with the spoken words only.
+</end>
+"""
+
+FELT_WORDS = {'thirst': r'thirst|parch|dry|water', 'hunger': r'hung|starv|empty|food|eat', 'fatigue': r'tired|exhaust|weary|worn|sleep|spent|fatigue'}
+
+
+def _body_bears(speaker, low):
+    """Does the speaker's body bear out these words about itself? ('My throat's dry', thirsty.)"""
+    levels = speaker.body.levels
+    harm = survival._harm(speaker.body.cfg)['name']
+    for need, level in levels.items():
+        pattern = FELT_WORDS.get(need) or (r'hurt|wound|injur|pain|ache|sore|bleed|blood|bruis|limp|swol' if need == harm else re.escape(need[:5]))
+        if re.search(pattern, low):
+            return level >= survival.NEED_FELT
+    return False
+
+
+SPEECH_KINDS = ('holds', 'body', 'doing', 'where', 'time')
+
+
+def speech(context, speaker, line, listener=None):
+    """A spoken line as its speaker can truly say it: (line, give). `give` is (thing, person)
+    when the line itself hands over something the speaker holds, else None. One check; one
+    rewrite when it finds something; a line the rewrite leaves no better is cut to its sound
+    sentences. Traced as 'speech_check'."""
+    if (not line or not survival.config(context) or getattr(speaker, 'body', None) is None
+            or getattr(speaker, 'mapAgent', None) is None or not ablation.enabled('speech_gate')):
+        return line, None
+    people = [speaker] + [c for c in speaker.bystanders() if c is not speaker]
+    if listener is not None and listener not in people and getattr(listener, 'mapAgent', None) is not None:
+        people.append(listener)
+    about = of(context, speaker, people)
+    reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line}, [UserMessage(content=SPEECH)],
+                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=120)
+    if reply is None:
+        return line, None
+    claims = []
+    for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply, re.M):
+        kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
+        if kind not in SPEECH_KINDS or not words.strip('.'):
+            continue
+        if kind in ('holds', 'body', 'doing') and not re.search(r"\b(i|i'm|i’m|i've|i’ve|my|me|mine|here)\b", low):
+            continue   # not said of the speaker ("You're sweating")
+        if kind == 'body' and (not re.search(BODILY, low) or _body_bears(speaker, low)):
+            continue
+        if kind == 'time' and (_fits_clock(context, low) or re.search(r'\b(before|until|by|when|after|tonight|soon|comes?|will|later|tomorrow)\b', low)):
+            continue   # what is to come is not a claim about now ("before dark")
+        if kind == 'where' and not _elsewhere(context, speaker, words):
+            continue
+        if kind == 'holds' and any(i.split()[-1].lower() in low for i in speaker.body.inventory):
+            continue   # it does hold one
+        claims.append((kind, words))
+    give = None
+    handed = re.search(r'^\s*#give\s+(.+?)\s+to\s+(\w+)', reply, re.M)
+    if handed and not claims:
+        thing = next((i for i in speaker.body.inventory if i.split()[-1].lower() in handed.group(1).lower()), None)
+        person = next((c for c in people if c is not speaker and c.name.lower() == handed.group(2).lower()), None)
+        give = (thing, person) if thing and person is not None else None
+    if not claims:
+        trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
+        return line, give
+    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line,
+                             'claims': '\n'.join(f'- {w}' for _, w in claims)}, [UserMessage(content=RESAY)],
+                            tag='record.resay', temp=0.6, stops=['</end>'], max_tokens=120)
+    again = (again or '').strip().strip('"“”\'').strip()
+    carried = lambda text: [c for c in claims if ' '.join(c[1].lower().split()).rstrip('.') in ' '.join(text.lower().split())]
+    if again and not carried(again):
+        result, outcome = again, 'resaid'
+    else:
+        kept = strip(line, claims)
+        result, outcome = (kept, 'cut') if kept else (again or line, 'unfixed')
+    trace.event('speech_check', character=speaker.name, outcome=outcome, claims=[f'{k}: {w}' for k, w in claims],
+                before=line, after=result)
+    return result, None
