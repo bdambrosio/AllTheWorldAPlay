@@ -6,6 +6,7 @@ import os, json, math, time, requests, sys
 from sim.SpeechStylizer import SpeechStylizer
 from sim.trace import trace
 import sim.survival as survival
+import sim.stage as stage
 import sim.ablation as ablation
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -589,10 +590,8 @@ This description will inform the next scene and remainder of the play.
 {{$current_description}}
 ##
 
-Respond with a new description of your character, in the same overall style as the original description (ie, no new formatting, no new tags, no new structure), 
-reflecting your character's development. The first sentence is used to identify the character and must contain two critical pieces of information: 
-(1) the character's name, age, and gender - these should simply be copied from the original description; and (2) a description of the character's current appearance.
-Limit your response to 125 words at most.
+The original description stays as it is. Respond only with what has changed for your character since it was written: one to three sentences, 50 words at most,
+on their present appearance and condition, and any lasting change of mind or commitment. Plain statements of fact about the character; do not restate the original, and write no slogans or morals.
 Do not include any reasoning, introductory, explanatory, or discursive text, or any markdown or other formatting. 
 
 """
@@ -600,7 +599,9 @@ Do not include any reasoning, introductory, explanatory, or discursive text, or 
                                 addl_bindings={"original_description":self.original_character, "current_description":self.character}, 
                                 tag='Agh.update', max_tokens=300)
         if response:
-            self.character = response
+            # the author's description is kept whole (rewriting all of it each scene wore away
+            # traits such as how the character speaks); only the 'Lately' paragraph changes
+            self.character = f'{self.original_character.strip()}\nLately: {response.strip()}'
         return response
 
 
@@ -1098,39 +1099,53 @@ End response with:
         return satisfied
 
 
-    def move_toward(self, target_string):
-        """Move toward the target string"""
-        if map.Direction.from_string(target_string.strip()):
-            self.mapAgent.move(target_string.strip())
-            return True
-        resource = self.context.map.get_resource_by_id(target_string.strip())
-        if not isinstance(resource, dict):
-            # free text ('Walk west toward Spring3, scanning ...'): a named resource wins, then a direction
-            for token in re.findall(r'[A-Za-z_]+\d+', target_string):
-                found = self.context.map.get_resource_by_id(token)
-                if isinstance(found, dict):
-                    resource = found
-                    break
-            else:
-                for word in sorted(re.findall(r'[A-Za-z]+', target_string), key=len, reverse=True):
-                    if map.Direction.from_string(word):   # longest first: 'NorthWest' before 'North'
-                        self.mapAgent.move(word)
-                        return True
-        if isinstance(resource, dict):  # it returns the string "path" for the path type, which crashed below
-            if survival.config(self.context) and getattr(self, 'body', None) is not None:
-                survival.travel(self, *resource['location'])   # arrive, taking time by distance and terrain
-            else:
-                self.mapAgent.move_toward_location(resource['location'][0], resource['location'][1])
-            return True
-        else:
-            actor, _ = self.actor_models.resolve_character(target_string)
-            if actor:
-                if type(actor.x) == int:
-                    raise Exception(f'{self.name} move_toward: actor {actor.name} x is int, not method')
-                self.mapAgent.move_toward_location(actor.x(), actor.y())
-                return True
-            else:
-                return self.mapAgent.move(target_string)
+    def move(self, where, reason=''):
+        """Walk somewhere: a named place, a person, or a compass direction. Scene partners
+        standing with the character come along, unless the act or its reason says it goes alone
+        (stage.walk). Returns the words for the audience, or None when `where` names nowhere."""
+        where = re.sub(r'^(?:move|go|walk)s?\s+(?:to\s+)?', '', (where or '').strip(), flags=re.I)
+        where = re.sub(r'^towards?\s+', '', where).strip()
+        if self.mapAgent is None or not where:
+            return None
+        alone = bool(stage.ALONE.search(f'{where} {reason or ""}'))
+        world = self.context.map
+        # a named resource wins ('Walk west toward Spring3, scanning ...'), then a person, then a direction
+        for token in [where] + re.findall(r'[A-Za-z_]+\d+', where):
+            resource = world.get_resource_by_id(token.strip())
+            if isinstance(resource, dict):   # it returns the string "path" for the path type
+                return stage.walk(self, tuple(resource['location']), resource['name'], alone)
+        for other in self.context.actors + self.context.extras + self.context.npcs:
+            if other is not self and other.mapAgent is not None and re.search(rf'\b{re.escape(other.name)}\b', where, re.I):
+                return stage.walk(self, stage.here(other), other.name, alone=True)
+        for word in sorted(re.findall(r'[A-Za-z]+', where), key=len, reverse=True):   # 'NorthWest' before 'North'
+            direction = map.Direction.from_string(word)
+            if direction:
+                dx, dy = self.mapAgent.get_direction_offset(direction)
+                x = min(world.width - 1, max(0, self.mapAgent.x + dx * stage.COMPASS_STEP_TILES))
+                y = min(world.height - 1, max(0, self.mapAgent.y + dy * stage.COMPASS_STEP_TILES))
+                return stage.walk(self, (x, y), direction.name, alone, to=False)
+        resource, _ = self.resourceRefManager.resolve_reference_with_llm(where)
+        if resource:
+            return stage.walk(self, tuple(resource['location']), resource['name'], alone)
+        return None
+
+    def _first_character(self, target, act):
+        """The character an act is aimed at, from acts()'s target argument or the act's own."""
+        for source in (target, getattr(act, 'target', None)):
+            for candidate in (source if isinstance(source, (list, tuple)) else [source]):
+                if isinstance(candidate, Character) and candidate is not self:
+                    return candidate
+        return None
+
+    async def approach(self, target):
+        """Walk to a scene partner who is out of reach before acting on or speaking to them."""
+        line = stage.approach(self, target)
+        if line:
+            self.look()
+            self.context.add_event(f'{self.name} {line}')
+            self.context.message_queue.put({'name': self.name, 'text': line, 'line_kind': 'action'})
+            self.context.transcript.append(f'{self.name} {line}')
+            await asyncio.sleep(0)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
@@ -1154,46 +1169,28 @@ End response with:
         self.visible_result = ''
             
         if act_mode == 'Move':
+            line = None
             try:
-                act_arg = re.sub(r'^(?:move|go|walk)s?\s+(?:to\s+)?', '', act_arg.strip(), flags=re.I)
-                if act_arg.startswith('toward'):
-                    act_arg = act_arg[len('toward'):]
-                    location = None
-                    if act_arg.startswith('s '): # just in case towards instead of toward
-                        act_arg = act_arg[len('s '):]
-                moved = self.move_toward(act_arg)
-                if moved and getattr(self, 'body', None) is not None:
-                    self.body.sheltered = False   # leaving shelter
-                if moved:
-                    percept = self.look(act_mode, act_arg,reason)
-                    self.show += ' moves to ' + act_arg + '.\n'#  and notices ' + percept
-                    self.context.add_event(f'{self.name} moves to {act_arg}')
-                    self.context.message_queue.put({'name':self.name, 'text':self.show})
-                    self.context.transcript.append(f'{self.name}: {self.show}')
-                    self.show = '' # has been added to message queue!
-                    await asyncio.sleep(0)
-                    self.show = '' # has been added to message queue!
-                else: 
-                    resource, canonical_name = self.resourceRefManager.resolve_reference_with_llm(act_arg)
-                    if resource:
-                        survival.travel(self, *resource['location'])   # a walk takes time, however the place was named
-                        percept = self.look(act_mode, act_arg,reason)
-                        self.show += f' moves to {resource["name"]}.\n  and notices ' + percept
-                        self.context.add_event(f'{self.name} moves to {resource["name"]}')
-                        self.context.message_queue.put({'name':self.name, 'text':self.show})
-                        self.context.transcript.append(f'{self.name}: {self.show}')
-                        self.show = '' # has been added to message queue!
-                        await asyncio.sleep(0)
-                    else:
-                        act_mode = 'Do'
-                        act_arg = 'move to ' + act_arg
-                        act.action = act_arg  # Context.do reads act.action
+                line = self.move(act_arg, reason)
             except Exception as e:
-                traceback.print_exc()
-                print(f'{self.name} move_toward failure: {e}')
- 
+                logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
+            if line == '':
+                pass   # already there: nothing to tell
+            elif line:
+                self.look(act_mode, act_arg, reason)
+                self.context.add_event(f'{self.name} {line}')
+                self.context.message_queue.put({'name': self.name, 'text': line, 'line_kind': 'action'})
+                self.context.transcript.append(f'{self.name} {line}')
+                await asyncio.sleep(0)
+            else:   # it names nowhere on the map: the narrator decides what the attempt comes to
+                act_mode = 'Do'
+                act_arg = 'move to ' + act_arg
+                act.action = act_arg  # Context.do reads act.action
+
         # Handle world interaction
         if act_mode == 'Do':
+            if not survival.acts_at_a_distance(self, act):
+                await self.approach(self._first_character(target, act))
             # Get action consequences from world
             await asyncio.sleep(0)
             consequences, world_updates, character_updates = await self.context.do(self, act)
@@ -1208,7 +1205,7 @@ End response with:
             # the audience sees the deed and what it physically did; what the character makes of
             # it ('notices': how the result bears on its goal) is the character's own
             result = (consequences or '').strip()
-            self.context.message_queue.put({'name':self.name, 'text':f"{deed.rstrip('. ')}. {result}".strip(), 'line_kind':'action'})
+            self.context.message_queue.put({'name':self.name, 'text': stage.stage_line(self.name, act_arg, result), 'line_kind':'action'})
             self.lastActResult = notices
             if source == None:
                 source = self.focus_task.peek()
@@ -1265,6 +1262,7 @@ End response with:
             await asyncio.sleep(0)
 
         elif act_mode == 'Say':# must be a say
+            await self.approach(self._first_character(target, act))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             self.show += f"{act_arg}'"
             elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
@@ -1272,6 +1270,11 @@ End response with:
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: "{act_arg}"')
             await asyncio.sleep(0)
+            done = survival.spoken_deed(self.context, self, act_arg)
+            if done:
+                self.context.add_event(f'{self.name} -> {done}')
+                self.add_perceptual_input(done, percept=False, mode='internal')
+                self.context.message_queue.put({'name': self.name, 'text': stage.stage_line(self.name, '', done).lstrip('. '), 'line_kind': 'action'})
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]
@@ -2121,6 +2124,11 @@ IMPORTANT: When evaluating a potential Act, the primary consideration is whether
 
 Dialog guidance: If speaking (mode is Say), then:
 - The specificAct must contain only the actual words to be spoken.
+- Do not name what you and the other are to each other or what the moment means ("you're my anchor", "we're bound now"); ask, refuse, offer or tease, and let that show it.
+- Words do nothing physical: to eat, drink, take, give or go somewhere, choose a Do or a Move. Never report as done what has not been done.
+- Speak only of what your character has seen, been told or can reasonably guess; do not invent facts about this place or its dangers.
+- Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
+{{$tempo}}
 - Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
     Use contractions and language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
 - If intended recipient is known  or has been spoken to before (e.g., in RecentHistory), 
@@ -2285,6 +2293,7 @@ End your response with:
                                               "affordance_line": survival.affordance_prompt_line(self),
                                               "act_note": survival.act_note(self),
                                               "already_said": self.already_said(task),
+                                              "tempo": stage.speech_tempo(self),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
                                               "scene_post_narrative": scene_post_narrative,
                                               "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
@@ -2649,6 +2658,13 @@ End your response with:
         #    return True
         if from_actor and from_actor.name.lower() == 'viewer':
             return False
+        transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
+        if f'{self.name} says: ' not in transcript:
+            # whoever is spoken to answers at least once: ending here left the speaker to repeat
+            # the same proposal three times to someone who never replied
+            return False
+        if stage.tempo(self) == 'urgent':
+            return True   # one exchange, then back to what is happening
         prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
 #Transcript
@@ -2666,7 +2682,6 @@ Do not include any introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]   
-        transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
         response = self.llm.ask({"transcript":transcript}, prompt, tag='natural_dialog_end', temp=0.1, stops=['</end>'], max_tokens=180)
         if response is None or type(response) != str:
             logger.error(f'Error parsing natural_dialog_end: {response}')
@@ -2970,15 +2985,7 @@ Keep your character's own way of speaking (see 'How you speak') from line to lin
         prompt_string = """Be faithful to your character as presented in the following.
 Disagreement is not only allowed but expected when confidence is low or relationship is in question, fear is high, or the character perceives conflicting goals or a threat.
 
-##Current dramatic context:
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
+##The scene you are playing:
 <scene>
 {{$scene}}
 </scene>
@@ -3072,9 +3079,13 @@ Guidance:
 - One turn: one to three sentences, 40 words at most. Make one point; leave the rest for later turns.
 - No slogans, paired contrasts ("X is ephemeral. Y is law.") or flourishes; say it the way the character would across a table.
 - Let your emotional state colour the line without announcing it.
+- Do not name what the two of you are to each other or what the moment means ("you're my anchor", "we're bound now", "trust is survival"): ask, refuse, offer, tease or change the subject, and let that show it.
+- Words do nothing physical. Do not say you are eating, drinking, taking or handing over something unless you are doing it this moment and it is within reach; never report as done what has not been done.
+- Speak only of what your character has seen, been told or can reasonably guess, and say a guess as a guess. Do not invent facts about this place or its dangers.
+- Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
 - Avoid phrases and images already used in the dialog to this point.
 {{$own_recent}}
-{{$scene_post_narrative}}
+{{$tempo}}
  
 Respond only with the above XML
 Do not include any additional text. 
@@ -3102,10 +3113,6 @@ End your response with:
         trying = 0
 
         emotionalState = self.emotionalStance
-        if self.context.scene_post_narrative:
-            scene_post_narrative = f"- The scene is heading toward: {self.context.scene_post_narrative}"
-        else:
-            scene_post_narrative = ''
 
         actor_genders = ''
         for actor in self.context.actors+self.context.extras:
@@ -3129,9 +3136,7 @@ End your response with:
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             'duplicative_insert': duplicative_insert,
             'own_recent': self.own_recent_lines(from_actor),
-            "scene_post_narrative": scene_post_narrative,
-            "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
-            "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
+            "tempo": stage.speech_tempo(self),
             # own view of the scene only: the full scene JSON revealed the other character's goal
             "scene": self.scene_brief(),
             "here_and_now": self.physical_context(),
@@ -3527,6 +3532,12 @@ End your response with:
     def physical_context(self):
         """Where the character is, its body, recent physical events, and what it could do here."""
         parts = [f'Surroundings: {self.look_percept or "unknown"}']
+        others = stage.whereabouts(self)
+        if others:
+            parts.append(f'Where the others are: {others}. To act on or speak to someone out of reach you first walk to them, which takes time.')
+        business = stage.pending_business(self)
+        if business:
+            parts.append(f"Still to be done by you in this scene (a Do with that #affordance; saying it is not doing it): {', '.join(business)}")
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
@@ -3744,6 +3755,9 @@ End your response with:
                 # generate_acts returns [] when the LLM call fails; pick_weighted([]) raised
                 logger.warning(f'{self.name} step_task: no actions generated for {task.name}')
                 break
+            if any(a.mode == 'Say' for a in (task.acts or [])):
+                # it has had its say in this task: take the alternative that is not more talk
+                action_alternatives = [a for a in action_alternatives if a.mode != 'Say'] or action_alternatives
             await self.request_action_choice(action_alternatives) # sets self.focus_action
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')

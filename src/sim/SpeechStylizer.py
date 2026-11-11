@@ -78,7 +78,14 @@ class SpeechStylizer:
     # PUBLIC API
     # ---------------------------------------------------------------------
     def voice_line(self) -> str:
-        """How this character speaks, in a line: the same for the whole play."""
+        """How this character speaks: the same for the whole play. A voice card written once
+        from the author's description (habits and three sample lines); the trait line below is
+        the fallback. (The trait line alone gave Joe the nerd and Samantha the same 'casual
+        register; uses slang', and they spoke alike.)"""
+        if getattr(self, '_voice_card', None) is None:
+            self._voice_card = self._write_voice_card()
+        if self._voice_card:
+            return self._voice_card
         style = self._base_style
         formality = style.get("formality", 0.5)
         quirks = style.get("lexical_quirks", {})
@@ -94,6 +101,30 @@ class SpeechStylizer:
         if quirks.get("profanity"):
             parts.append('swears')
         return '; '.join(p for p in parts if p)
+
+    def _write_voice_card(self) -> str:
+        description = getattr(self.char, 'original_character', None) or self.char.character
+        prompt = [UserMessage(content="""An actor needs to know how this character talks, so that their lines sound like nobody else in the play.
+
+<character>
+{{$description}}
+</character>
+
+Write:
+#habits one sentence, 30 words at most: what marks this character's speech (vocabulary, sentence length, what they reach for when excited or afraid). Use every speech trait the description states; add none that contradict it.
+#sample a line this character might say when calm, 12 words at most
+#sample a line when excited or showing off what they know, 12 words at most
+#sample a line when frightened or angry, 8 words at most
+
+The samples must sound different from a generic tough or generic casual speaker. No other text.
+End your response with </end>
+""")]
+        reply = self.char.llm.ask({'description': description}, prompt, tag='voice_card', temp=0.4, stops=['</end>'], max_tokens=160) or ''
+        habits = (hash_utils.find('habits', reply) or '').strip()
+        samples = [m.strip().strip('"\'') for m in re.findall(r'#sample\s+(.+)', reply)][:3]
+        if not habits:
+            return ''
+        return habits.rstrip('.') + ('. In this voice (examples of the sound, never lines to reuse): ' + ' / '.join(f"'{x}'" for x in samples) if samples else '')
 
     def voice_params(self, target_character=None) -> Dict:
         """Text-to-speech settings for the next utterance; {} when voices are off."""

@@ -11,6 +11,7 @@ what each offers, and how far each is, so a scene is set where its action can ha
 from __future__ import annotations
 
 import logging
+import re
 
 from sim import survival
 from sim.trace import trace
@@ -24,11 +25,22 @@ GAZETTEER_PLACES = 14     # places listed for the playwright, nearest first
 # One wording of the scene 'location' field and of the continuity rule, for every prompt that
 # writes scenes (character act plans, the integrated act, a replanned scene).
 LOCATION_FIELD = ('"location": string, // a place named under Places (e.g. its exact name), '
-                  'or "same" to stay where the previous scene ended')
+                  'or "same" to stay where the previous scene ended\n'
+                  ' "tempo": "calm" | "tense" | "urgent", // urgent: danger or a deadline is on them now, and nobody has time for talk\n'
+                  ' "business": {"<character name>": ["<action>@<place>"]}, // the physical actions this scene\'s ending depends on, '
+                  'as listed under Places (e.g. "drink@Spring2"); {} when it depends on none')
 SCENE_RULES = """Scenes within an act are continuous: each starts where and when the previous one ended.
 Set a scene where its action can happen: Places lists what can be done at each named place.
 Give a scene a different location only when the action must move there; the cast then walks, which takes the time shown.
-A jump in time, or to a distant place, belongs at the start of an act."""
+A jump in time, or to a distant place, belongs at the start of an act.
+What a scene's ending says about bodies and things (someone fed, watered, rested, armed, a paper signed or handed over) is true only if a character does the action in that scene: list it under business. Saying it does not make it so."""
+
+
+COMPASS_STEP_TILES = 3    # 'moves Southwest' goes this far
+# a move that leaves the others behind: said in the act or its reason
+ALONE = re.compile(r"\b(flee|flees|fleeing|fled|escap\w+|run(s|ning)? (away|off)|slip(s|ping)? (away|off|out)|sneak\w*|"
+                   r"storm(s|ing)? (off|out)|walk(s|ing)? (out|off|away)|away from|leav(e|es|ing) (him|her|them|\w+ behind)|"
+                   r"abandon\w*|alone|by (him|her|my)self|hid(e|es|ing) from|scout(s|ing)? ahead|go(es)? ahead)\b", re.I)
 
 
 def here(character):
@@ -132,8 +144,7 @@ def set_scene(context, scene, characters, opens_act):
         line = f"{names} {'is' if len(movers) == 1 else 'are'} now at {scene['place']}."
     else:
         context.simulation_time += survival.timedelta(minutes=longest)
-        line = (f"{names} walk{'s' if len(movers) == 1 else ''} to {scene['place']} "
-                f"({max(t for _, t in movers)} tiles, {round(longest)} min).")
+        line = f"{names} walk{'s' if len(movers) == 1 else ''} to {scene['place']} ({round(longest)} min)."
     trace.event('scene_place', place=scene['place'], movers=[n for n, _ in movers], walked=not opens_act,
                 minutes=round(longest, 1))
     return line
@@ -166,3 +177,118 @@ def gazetteer(context):
                      + (f', owned by {owner}' if owner else '') + f' ({reach})'
                      + (f"; can be done there: {', '.join(offers)}" if offers else ''))
     return '\n'.join(lines)
+
+
+def company(character):
+    """The scene partners standing with a character: those who come along when it walks."""
+    return [c for c in character.bystanders() if getattr(c, 'mapAgent', None) is not None]
+
+
+def walk(character, xy, place, alone=False, to=True):
+    """A character walks to a tile, and its scene partners come along unless it goes alone (a
+    scene's cast stays together: Samantha used to reach the spring an hour ahead of Joe, who was
+    then walked there by the next scene). One clock advance for the party. Returns the words for
+    the audience, said of the walker ('walks to Spring2 with Joe (14 tiles, 70 min)'), or ''
+    when nobody moves."""
+    context = character.context
+    tiles = _distance(here(character), xy)
+    if tiles == 0:
+        return ''
+    was_with = company(character)
+    # a few steps within the place (to the woodpile and back) are taken alone; a real walk takes the party
+    party = [] if alone or tiles <= character.EARSHOT_TILES else was_with
+    minutes = max(survival.travel(c, *xy, advance_clock=False) for c in [character] + party)
+    context.simulation_time += survival.timedelta(minutes=minutes)
+    names = ' and '.join(c.name for c in party)
+    line = (f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '')
+            + f" ({max(1, round(minutes))} min)")
+    for other in was_with:
+        if other not in party and not alone:
+            continue   # it has only stepped across the place
+        other.add_perceptual_input(f'You walk with {character.name} {"to " if to else ""}{place}.' if other in party
+                                   else f'You see {character.name} go off {"to " if to else ""}{place}, leaving you.',
+                                   percept=False, mode='visual' if other not in party else 'movement')
+        other.look()
+    trace.event('walk', character=character.name, place=place, party=[c.name for c in party], alone=alone,
+                tiles=tiles, minutes=round(minutes, 1))
+    return line
+
+
+def approach(character, target):
+    """Before a character acts on or speaks to a scene partner who is out of reach, it walks to
+    them (Joe thrust a branch at Samantha from three tiles off, and waved at her from five).
+    Returns the words for the audience, or ''."""
+    if (target is None or target is character or getattr(target, 'mapAgent', None) is None
+            or getattr(character, 'mapAgent', None) is None
+            or getattr(target, 'current_scene', None) is not character.context.current_scene
+            or character.context.current_scene is None):
+        return ''
+    if _distance(here(character), here(target)) <= AT_PLACE_TILES:
+        return ''
+    return walk(character, here(target), target.name, alone=True)
+
+
+def tempo(character):
+    """calm, tense or urgent: the scene's own tempo, and urgent whenever a threat is on the character."""
+    scene = character.context.current_scene or {}
+    if survival.active_threat_for(character):
+        return 'urgent'
+    value = str(scene.get('tempo') or 'calm').strip().lower()
+    return value if value in ('calm', 'tense', 'urgent') else 'calm'
+
+
+def speech_tempo(character):
+    """A line for the speech prompts when the moment is not calm."""
+    return {'urgent': "- This moment is urgent: eight words at most. A warning, an order or a cry; no banter, no explaining.",
+            'tense': "- The moment is tense: one sentence, fifteen words at most."}.get(tempo(character), '')
+
+
+def pending_business(character):
+    """The scene's planned physical actions that this character has not yet done
+    ('drink@Spring2'): what the scene's ending depends on (the scene 'business' field)."""
+    scene = getattr(character, 'current_scene', None) or {}
+    business = scene.get('business')
+    if not isinstance(business, dict):
+        return []
+    mine = next((v for k, v in business.items() if str(k).lower() == character.name.lower()), None) or []
+    mine = [mine] if isinstance(mine, str) else mine
+    done = getattr(character, 'scene_deeds', [])
+    return [str(b) for b in mine if str(b).split('@')[0].strip().lower() not in done]
+
+
+def whereabouts(character):
+    """Where the others in the scene are, seen from a character: 'Samantha is 5 tiles East of
+    you, out of reach'. The act prompt named who was visible but not how far."""
+    scene = character.context.current_scene
+    if scene is None or getattr(character, 'mapAgent', None) is None:
+        return ''
+    out = []
+    for other in character.context.actors + character.context.extras + character.context.npcs:
+        if other is character or getattr(other, 'current_scene', None) is not scene or getattr(other, 'mapAgent', None) is None:
+            continue
+        d = _distance(here(character), here(other))
+        minutes = round(d * (survival.config(character.context) or {}).get('tile_minutes', 2) * 1.5)
+        out.append(f'{other.name} is beside you' if d <= AT_PLACE_TILES
+                   else f'{other.name} is about {minutes} minutes\' walk {_direction(here(character), here(other))} of you, out of reach until one of you walks over')
+    return '; '.join(out)
+
+
+def _stems(text, skip=()):
+    return {w[:5] for w in re.findall(r"[a-z0-9_]{4,}", text.lower()) if w not in skip}
+
+
+def stage_line(name, deed, result):
+    """What the audience reads for a physical action: the deed, then only what the result adds.
+    The result used to follow whole, so a deed was told two or three times over (the actor's
+    words, the world's fact, the narrator's restatement) with the body's condition in brackets."""
+    deed = re.sub(rf'^\s*{re.escape(name)}\s+', '', (deed or '').strip()).rstrip('. ')
+    result = re.sub(r'\s*\([^()]*\bis now\b[^()]*\)', '', result or '').strip()
+    skip = {name.lower()}
+    seen, kept = [_stems(deed, skip)], []
+    for sentence in re.split(r'(?<=[.!?])\s+', result):
+        stems = _stems(sentence, skip)
+        if not stems or any(len(stems & s) / len(stems) >= 0.6 for s in seen):
+            continue
+        kept.append(sentence.strip())
+        seen.append(stems)
+    return ' '.join([deed + '.'] + kept[:2]).strip()

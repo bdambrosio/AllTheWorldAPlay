@@ -365,7 +365,7 @@ def _missing(action, body):
     if action.get('requires') and not _held(body, action['requires']):
         return f"needs a {action['requires'].lstrip('*')}"
     if action.get('transfer') and not _held(body, action['transfer']):
-        return f"needs a {action['transfer'].lstrip('*')} to give"
+        return f"has no {action['transfer'].lstrip('*')} to give"
     if action.get('transfer_money') and body.money < action['transfer_money']:
         return f"needs {action['transfer_money']:g} {body.cfg.get('currency', '')} to give".rstrip()
     if action.get('cost') and body.money < action['cost']:
@@ -435,8 +435,61 @@ def affordance_prompt_line(character):
         return ''
     offered = available_actions(character)
     example = next((p.split(' (')[0] for p in offered.split('; ') if p and not p.startswith('THREAT')), 'rest')
-    return ("\n#affordance for a Do that performs one of the actions listed under 'You could do here', "
-            f"that action's exact label (e.g. {example}); omit for any other act.")
+    return ("\n#affordance only for a Do whose action text itself performs one of the actions listed under 'You could do here' "
+            f"(the text says you {example.split('@')[0]}, not that you look at or think about it): that action's exact label "
+            f"(e.g. {example}); omit for any other act.")
+
+
+def _fits(action, text):
+    """Does the act's text describe this action? One of its verbs, or the words of its name."""
+    return _matches(text, action.get('verbs', []) + action.get('named_verbs', []) + [action['name'].lower()])
+
+
+_CLAIM = re.compile(r"\bI(?:'m|’m| am)\s+(?:\w+ly\s+)?(\w+ing)\b", re.I)
+
+
+def spoken_deed(context, character, line):
+    """A spoken line that says the speaker is doing one of the world's actions, here and now
+    ("I'm drinking"), does it, so that what was said and the body agree. (A whole scene of
+    drinking at the spring was only talk, and left both of them thirsty.) Only a first-person
+    'I am ...ing' of an action on a resource within reach. Returns the fact line, or None."""
+    cfg = config(context)
+    if not cfg or getattr(character, 'body', None) is None:
+        return None
+    for claim in _CLAIM.finditer(line or ''):
+        word = claim.group(1).lower()
+        for action in cfg.get('actions', []):
+            types = action.get('resource_types')
+            if not types or action.get('target') or action.get('remote') or not _matches(word, action.get('verbs', [])):
+                continue
+            near = _nearest(character, types)
+            if near is not None and near[2] <= CO_PRESENT_TILES:
+                return _apply(context, character, action, near, None, 'speech', line)
+    return None
+
+
+def do_business(context, character, label):
+    """Carry out a planned scene action ('drink@Spring1') for a character who has not done it.
+    Returns the fact line, or None when the label names no action of this world."""
+    if not config(context) or getattr(character, 'body', None) is None:
+        return None
+    chosen = _chosen(context, character, label)
+    if not chosen or chosen[0] != 'action':
+        return None
+    _, action, near, target = chosen
+    return _apply(context, character, action, near, target, 'business', '')
+
+
+def acts_at_a_distance(character, act):
+    """Is this Do one of the world's remote actions (sending a message)? Then the actor does
+    not walk to its target first."""
+    cfg = config(character.context)
+    if not cfg:
+        return False
+    label = (getattr(act, 'affordance', None) or '').split('@')[0].strip().lower()
+    text = (getattr(act, 'action', '') or '').lower()
+    return any(a.get('remote') and (a['name'].lower() == label or _matches(text, a.get('verbs', [])))
+               for a in cfg.get('actions', []))
 
 
 def _chosen(context, character, label):
@@ -524,6 +577,11 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     text = (act_text or '').lower()
     # the act's #affordance label, when it gave a valid one, decides; text matching is the fallback
     chosen = _chosen(context, character, affordance) if affordance else None
+    if chosen and chosen[0] == 'action' and not _fits(chosen[1], text):
+        # the label names an action the act does not describe ('Check the mushrooms' labelled
+        # 'eat mushrooms' made Joe eat them): the words of the act decide
+        trace.event('affordance_label_rejected', character=character.name, label=affordance, act=(act_text or '')[:200])
+        chosen = None
     via = 'label' if chosen else 'text'
 
     threat = active_threat_for(character)
@@ -555,8 +613,10 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
             if action.get('transfer') and action['transfer'].lstrip('*').lower() not in text:
                 continue   # 'gives Joe a look' is not giving him the bread
             target = min(present, key=lambda p: p[1])
-            # first: it needs its own verb, a present person the act names, and the item given
-            candidates.append((False, False, target[1] > CO_PRESENT_TILES, order, action, None, target))
+            # first: it needs its own verb, a present person the act names, and the item given;
+            # last when the item is not held ('plucks berries and offers one' is gathering first)
+            lacking = bool(action.get('transfer')) and not _held(character.body, action['transfer'])
+            candidates.append((lacking, False, target[1] > CO_PRESENT_TILES, order, action, None, target))
             continue
         named = bool(types) and _names_type(cfg, text, types)
         # 'named_verbs' are too generic alone ('cups his hands'): they count when the act names the thing
@@ -724,6 +784,8 @@ def _apply(context, character, action, near, target, via, act_text=''):
 
 
 def _record(character, action, fact, via, applied, resource=None, approached=False, target=None, found=None):
+    if applied:   # for the scene's planned business (stage.pending_business)
+        character.scene_deeds = getattr(character, 'scene_deeds', []) + [action['name'].lower()]
     trace.event('affordance', character=character.name, action=action['name'],
                 category=action.get('category', 'survival'), applied=applied, resource=resource,
                 target=target, found=found, fact=fact, via=via, approached=approached)

@@ -292,6 +292,8 @@ class Context():
         goal_history = '\n\t\t'.join([f'{g.name} - {g.description}; {g.completion_statement}' for g in character.goal_history]) if character.goal_history else f'None to report'
         return f'\n\n##Name: {character.name}' + \
             f'\n\tDescription: {character.character}' + \
+            (f'\n\tBody, as the world has it (what was only said did not happen): {character.body.summary()}' if getattr(character, 'body', None) is not None else '') + \
+            (f'\n\tPlanned for this scene but NOT done: {", ".join(stage.pending_business(character))}' if stage.pending_business(character) else '') + \
             f'\n\tDrives (most pressing first):\n'+drive_model.drive_lines(character) + \
             f'\n\tNarrative: {character.narrative.get_summary('medium')}'+ \
             f'\n\tGoal_history: {goal_history}' + \
@@ -1175,11 +1177,8 @@ End your response with:
         for actor in self.actors + self.extras:
             actor.add_perceptual_input(intervention_description, mode='environmental')
             
-        # Send to UI
-        self.message_queue.put({
-            'name': 'Narrative Director', 
-            'text': f'🎭 Staleness Intervention: {intervention_description}'
-        })
+        # a director's note: it reaches the characters (above) and the trace, not the audience
+        trace.event('staleness_intervention', type=intervention_type, text=intervention_description)
             
         await asyncio.sleep(0.1)
         self.previous_interventions.append(intervention_description)
@@ -1470,6 +1469,24 @@ End your response with:
         scene_goals = {}
         for character in characters_in_scene:
             character.current_scene = scene
+            character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
+
+        # A choice the scene turns on is made before the scene is played and shapes that
+        # character's goal in it. (It was asked for after the scene, from the plan, so Samantha
+        # 'decided' to follow Joe to a spring she had already reached.) The choice and its
+        # reason are the character's own: they are not lines of the play.
+        decided = {}
+        for decision in await self.check_decision_required(act, scene) or []:
+            character, character_name = self.resolve_character(decision.get('character', ''))
+            if character is None or character not in characters_in_scene or character.name in decided:
+                continue   # one choice for a character in a scene
+            choice_dict = await character.decide(decision, act=act, scene=scene)
+            if choice_dict and choice_dict.get('choice'):
+                choice, reason = choice_dict['choice'], choice_dict.get('reason', '')
+                drive_model.denied(character, choice_dict.get('drive_denied'), choice)
+                character.add_perceptual_input(f'I have decided: {choice}\n\treason: {reason}', mode='internal')
+                decided[character.name] = choice
+                trace.event('decision', character=character.name, choices=decision.get('choices'), choice=choice, reason=reason)
 
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
@@ -1486,6 +1503,11 @@ End your response with:
             except Exception as e:
                 print(f'Error getting goal for {character.name}: {e}')
                 goal_text = ''
+            if decided.get(character.name):
+                goal_text = f"{goal_text} You have decided: {decided[character.name]}."
+            business = stage.pending_business(character)
+            if business:
+                goal_text = f"{goal_text} In this scene you must actually do (a Do, not talk): {', '.join(business)}."
             # instatiate narrative goal sets goals and focus goal as side effects
             scene_goals[character.name] = character.instantiate_narrative_goal(goal_text)
             await character.request_goal_choice(scene_goals[character.name], narrative=True)
@@ -1548,30 +1570,15 @@ End your response with:
             await asyncio.sleep(1.0)
             self.scene_integrated_task_plan_index += 1
         
-        decisions = await self.check_decision_required(act, scene)
-        if decisions:
-            for decision in decisions:
-                character_name = decision.get('character', '')
-                choices = decision.get('choices', '')
-                print(f'Decision required for {character_name}: {choices}')
-                self.message_queue.put({'name':character_name, 'text':f'must decide: {choices}'})
-                character, character_name = self.resolve_character(character_name)
-                if character:
-                    choice_dict = await character.decide(decision, act=act, scene=scene)
-                    if choice_dict:
-                        choice = choice_dict.get('choice', '')
-                        reason = choice_dict.get('reason', '')
-                        drive_model.denied(character, choice_dict.get('drive_denied'), choice)
-                        character.add_perceptual_input(f'{choice}\n\treason: {reason}', mode = 'internal') # do we actually need either this or next line? Just to try to nail it home.
-                        character.reason_over(f'{choice}\n\treason:{reason}')
-                        character.character += f'\nI have decided to {choice}\n\treason: {reason}'
-                        self.message_queue.put({'name':character_name, 'text':f'decided: {choice}\n\treason: {reason}'})
-                    else:
-                        self.message_queue.put({'name':character_name, 'text':f'no decision made'})
-                    self.message_queue.put({'name':character_name, 'text':f'character_update', 'data':await character.to_json_with_image()})
-                    await asyncio.sleep(0.1)
-                else:
-                    print(f'Character {character_name} not found in scene {scene["scene_title"]}')                  
+        # The scene's planned business is done before the scene closes: what the plan and the
+        # talk both assume happened (Joe said 'my turn' at the spring and never drank) happens.
+        for character in characters_in_scene:
+            for label in stage.pending_business(character):
+                fact = survival.do_business(self, character, label)
+                if fact:
+                    self.add_event(f'{character.name} -> {fact}')
+                    character.add_perceptual_input(fact, percept=False, mode='internal')
+                    self.message_queue.put({'name': character.name, 'text': stage.stage_line(character.name, '', fact).lstrip('. '), 'line_kind': 'action'})
         true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
@@ -1595,7 +1602,7 @@ End your response with:
             character.reason_over(wrapup)
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
-        self.message_queue.put({'name':'', 'text':f' ----scene wrapup: {wrapup}\n'})
+        self.message_queue.put({'name':'', 'text': f" ---- {true_outcomes.replace(chr(10), '; ')}\n" if true_outcomes else ' ----\n'})
         await asyncio.sleep(0.1)
 
         staleness = None
@@ -2073,6 +2080,8 @@ The current state of the play is:
 {{$events}}
 ##
 
+An outcome about a body or a thing (someone fed, watered, rested, hurt, armed, holding or handing over something) is True only if the events above or the character's Body line show it. What was only said, promised or planned did not happen: such an outcome is False.
+
 The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
 the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
 Return a succint name for each possible outcome, together with True or False according to whether that outcome is so in the actual state of the play.
@@ -2139,7 +2148,7 @@ The current state of the play is:
 """
         suffix = """
 
-#Planned Act or Scene just completed
+#Planned Act or Scene, about to be performed
 {{$act_or_scene}}
 ##
 
@@ -2147,7 +2156,7 @@ The current state of the play is:
 {{$pre_state}}
 ##
 
-#Planned Post-state of the act or scene just completed
+#Planned Post-state of the act or scene
 {{$post_state}}
 ##
 
@@ -2197,7 +2206,7 @@ end your response with:
         "act_number": act_number,
         "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
         "goals": goals}, 
-        max_tokens=400, tag='check_post_state_ambiguity')
+        max_tokens=400, tag='check_decision_required')
         if response:
             decisions = []
             forms = hash_utils.findall_forms(response)
@@ -2207,6 +2216,18 @@ end your response with:
                     decisions.append(decision)
             return decisions
         return []
+
+    def told_briefly(self, account):
+        """An act's record (its scene wrap-ups) as two or three sentences for the audience."""
+        prompt = [UserMessage(content="""Here is the record of what happened in the last act of a play:
+
+{{$account}}
+
+Tell it to the audience in two or three plain sentences, 60 words at most: what happened and where it leaves the characters. Only what the record says; no scene titles, no commentary.
+End your response with </end>
+""")]
+        told = self.llm.ask({'account': account.strip()}, prompt, tag='coda_summary', temp=0.3, stops=['</end>'], max_tokens=120)
+        return (told or account).strip()
 
     async def run_coda(self, final_act, scene=None, final=False):
         """Establish outcome and wrap up the play.
@@ -2229,7 +2250,7 @@ end your response with:
             assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
             summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
         act_post_state = f'{summary.strip()}\n(The act was planned to end with: {planned})'
-        self.message_queue.put({'name':self.name, 'text':f'coda: {summary.strip()}'})
+        self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
 
         decisions = await self.check_decision_required(final_act, scene)
         if decisions:
