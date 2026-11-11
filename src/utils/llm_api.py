@@ -151,6 +151,44 @@ def _provider(name):
     raise ValueError(f'unknown provider {name}')
 
 
+# ---- reasoning by call (experiment): which engine calls think before they answer.
+# Every call ran with thinking off. set_reasoning('speech=medium') turns it on for groups of
+# calls, named by tag; the local server takes reasoning_effort low|medium|high. A thinking call
+# gets REASONING_TOKENS on top of its own max_tokens, since the thinking is spent from the same budget.
+REASONING_GROUPS = {
+    # what the audience reads, and the check on it
+    'page': ('Character.generate_acts', 'generate_dialog_turn', 'bystander_cut_in', 'Context.do', 'Context.look',
+             'record.check', 'reground_scene'),
+    # plans and judgements behind the page
+    'plan': ('NarrativeCharacter.write_narrative', 'NarrativeCharacter.replan_narrative_act', 'integrate_narratives',
+             'Character.generate_task_plan', 'instantiate_narrative_goal', 'check_post_state_ambiguity',
+             'check_decision_required', 'test_termination', 'told_briefly', 'staleness_analysis'),
+}
+REASONING_TOKENS = 3000
+_reasoning: dict = {}
+
+
+def set_reasoning(spec):
+    """spec: 'page=medium', 'page+plan=low', 'Context.do,record.check=high', or None for none."""
+    global _reasoning
+    _reasoning = {}
+    for part in (spec or '').split(';'):
+        if not part.strip():
+            continue
+        names, _, effort = part.partition('=')
+        effort = effort.strip() or 'medium'
+        if effort not in ('low', 'medium', 'high'):
+            raise ValueError(f"reasoning effort '{effort}' is not low, medium or high")
+        for name in re.split(r'[+,]', names):
+            for tag in REASONING_GROUPS.get(name.strip(), (name.strip(),)):
+                if tag:
+                    _reasoning[tag] = effort
+
+
+def reasoning():
+    return dict(_reasoning)
+
+
 class LLM():
 
     def __init__(self, server_name='local', model_name=None):
@@ -235,6 +273,11 @@ class LLM():
                     "temperature": options.temperature, "top_p": options.top_p,
                     "max_tokens": options.max_tokens, "stop": options.stops or None,
                     "chat_template_kwargs": {"enable_thinking": False}}
+            effort = getattr(options, 'reasoning', None)
+            if effort:   # set_reasoning: this call thinks first, on a budget of its own
+                del body["chat_template_kwargs"]
+                body["reasoning_effort"] = effort
+                body["max_tokens"] = options.max_tokens + REASONING_TOKENS
         else:
             body = {"messages": substituted_prompt, "temperature": options.temperature,
                     "top_p": options.top_p, "max_tokens": options.max_tokens, "stop": options.stops}
@@ -312,6 +355,7 @@ class LLM():
         start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
+        options.reasoning = _reasoning.get(tag)
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]

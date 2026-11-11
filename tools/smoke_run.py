@@ -149,7 +149,8 @@ class Run:
             if not a.speech:
                 await cmd("toggle_speech")   # engine default is speech on; toggle flips it
             print(f"load_play {a.play}")
-            await cmd("load_play", play=a.play, **({"ablate": a.ablate} if a.ablate else {}))
+            await cmd("load_play", play=a.play, **({"ablate": a.ablate} if a.ablate else {}),
+                      **({"reasoning": a.reasoning} if a.reasoning else {}))
             timings["load"] = await self.quiesce("load_play", min_secs=10)
             for i in range(1, a.steps + 1):
                 await cmd("step")
@@ -248,6 +249,7 @@ def parse():
     p.add_argument("--reload-play", help="then load this second play in the same engine and step once")
     p.add_argument("--hw", action="store_true", help="sample GPUs and vLLM /metrics during the run")
     p.add_argument("--ablate", help="comma-separated features to disable (src/sim/ablation.py)")
+    p.add_argument("--reasoning", help="calls that think first, e.g. 'page=medium' (src/utils/llm_api.py set_reasoning)")
     p.add_argument("--vllm", default="http://localhost:5000", help="vLLM server for --hw")
     return p.parse_args()
 
