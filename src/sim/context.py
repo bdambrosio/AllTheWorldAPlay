@@ -880,6 +880,17 @@ and recent history:
 {{$history}}
 </history>
 
+The body of each character present, as it is:
+<bodies>
+{{$bodies}}
+</bodies>
+What each is carrying:
+<holdings>
+{{$holdings}}
+</holdings>
+It is now {{$clock}}.
+Looking changes nobody's body and nothing anyone holds: report no bodily condition, possession or time of day that the above does not show.
+
 Respond with the information result. Target a sentence or two at most as your response length.
 Respond ONLY with the immediate information gain by the character.
 Include any effects on the physical, mental, or emotional state of {{$name}} in your response, even if not observable to other characters.
@@ -903,6 +914,9 @@ End your response with:
         local_map = xml.format_xml(local_map)
         consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map, "target": target,
                                      "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
+                                     "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
+                                     "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
+                                                         if getattr(c, 'body', None) is not None) or 'not tracked',
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, 
                                      prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
 
@@ -956,6 +970,9 @@ What each character present is carrying:
 </holdings>
 These things change hands only as the facts above say. If the action takes or moves one of them otherwise, report the attempt and leave the thing with its holder.
 
+It is now {{$clock}}. Light, dark and the time of day in your response must fit that.
+What is left at places nearby that have been drawn on: {{$stock}}. Say nothing else about how much is left anywhere.
+
 given {{$name}} local map is:
 
 <localMap>
@@ -991,6 +1008,7 @@ Do NOT:
 - introduce objects, documents, people or facts that the action and the situation did not already contain
 - extend the scenario with any follow-on actions or effects
 - explain a rule or why something cannot be: say only what is seen
+- mention 'the facts', 'Bodies' or these instructions: you describe a world, not a ruling
 
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
@@ -1007,6 +1025,7 @@ End your response with:
                                      "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
                                      "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
                                      "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
+                                     "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
                                      "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                                          if getattr(c, 'body', None) is not None) or 'not tracked',
                                      "facts": facts or 'none'},
@@ -1430,6 +1449,7 @@ End your response with:
 </planned_scene>
 
 <where_things_stand>
+It is now {{$clock}}.
 {{$places}}
 Bodies: {{$bodies}}
 What has happened lately:
@@ -1439,6 +1459,7 @@ What has happened lately:
 Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
+- The set-up and ending must fit the time it is now: no dusk, dark or sleep for the night in the morning. If the plan needs night and it is day, write the scene for the day.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
 
@@ -1452,7 +1473,7 @@ Respond with these lines only:
 """)]
         planned = {k: scene.get(k) for k in ('scene_title', 'location', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
         reply = self.llm.ask({'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                              'places': stage.gazetteer(self),
+                              'places': stage.gazetteer(self), 'clock': stage.clock(self),
                               'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                               'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()},
                              prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
@@ -1511,7 +1532,7 @@ Respond with these lines only:
         # the heading names the place the scene is actually played ('same' said nothing)
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
-        heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]} at {scene_start}'
+        heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {heading}'})
         self.current_state += f'\n{heading}'
         await asyncio.sleep(0.1)
@@ -1642,13 +1663,19 @@ Respond with these lines only:
         
         # The scene's planned business is done before the scene closes: what the plan and the
         # talk both assume happened (Joe said 'my turn' at the spring and never drank) happens.
+        # Each does their own at the same time: two four-hour sleeps took the clock on eight hours.
+        closing, latest = self.simulation_time, self.simulation_time
         for character in characters_in_scene:
+            self.simulation_time = closing
             for label in stage.pending_business(character):
                 fact = survival.do_business(self, character, label)
                 if fact:
                     self.add_event(f'{character.name} -> {fact}')
                     character.add_perceptual_input(fact, percept=False, mode='internal')
-                    self.message_queue.put({'name': character.name, 'text': stage.stage_line(character.name, '', fact).lstrip('. '), 'line_kind': 'action'})
+                    told = re.sub(rf'^{re.escape(character.name)}\s+', '', stage.stage_line(character.name, '', fact).lstrip('. '))
+                    self.message_queue.put({'name': character.name, 'text': told, 'line_kind': 'action'})
+            latest = max(latest, self.simulation_time)
+        self.simulation_time = latest
         true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
@@ -1809,7 +1836,6 @@ Respond with these lines only:
         await asyncio.sleep(0.4)
 
         for character in cast(List[NarrativeCharacter], self.actors):
-            self.message_queue.put({'name':character.name, 'text':f'---- creating narrative -----'})
             await character.write_narrative(self.summarize_scenario(), self.summarize_map(), self.central_narrative)
             await asyncio.sleep(0.1)
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
@@ -1924,8 +1950,6 @@ Keep the JSON human-readable (indent 2 spaces).
 Return **only** the JSON.  No commentary, no code fences.
 End your response with </end>
 """)]
-        self.message_queue.put({'name':self.name, 'text':f'------ integrating narratives -----'})
-        await asyncio.sleep(0.1)
 
         central_dramatic_question = self.central_narrative
         act_directives = ""
@@ -2007,8 +2031,6 @@ In performing this integration:
         else:
             return None
         self.narrative = updated_narrative_plan
-        self.message_queue.put({'name':self.name, 'text':f'------ integrated narratives -----'})
-        await asyncio.sleep(0.1)
         return updated_narrative_plan
 
     def validate_dates_in_plan(self, narrative_plan):

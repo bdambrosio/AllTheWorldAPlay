@@ -46,6 +46,16 @@ def here(character):
     return (character.mapAgent.x, character.mapAgent.y)
 
 
+def clock(context, date=False):
+    """The time in the play, with the part of the day in words: '10:12, morning'. Every prompt
+    that writes about the world gets this (a set-up written at 10:12 spoke of 'the approaching
+    dusk', and the cast then slept through the middle of the day)."""
+    t = context.simulation_time
+    part = ('night' if t.hour < 5 else 'dawn' if t.hour < 7 else 'morning' if t.hour < 12 else 'midday' if t.hour < 14
+            else 'afternoon' if t.hour < 18 else 'dusk' if t.hour < 20 else 'night')
+    return f"{t:%Y-%m-%d %H:%M} ({part})" if date else f"{t:%H:%M}, {part}"
+
+
 def _distance(a, b):
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
 
@@ -193,14 +203,17 @@ def walk(character, xy, place, alone=False, to=True):
     tiles = _distance(here(character), xy)
     if tiles == 0:
         return ''
+    left = where(context, here(character))
     was_with = company(character)
     # a few steps within the place (to the woodpile and back) are taken alone; a real walk takes the party
     party = [] if alone or tiles <= character.EARSHOT_TILES else was_with
     minutes = max(survival.travel(c, *xy, advance_clock=False) for c in [character] + party)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)
-    # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing
-    line = '' if tiles <= character.EARSHOT_TILES else (
+    # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing. A
+    # short walk that ends at another place is (Joe went from the apple tree to the thicket
+    # unseen, and the page had him handed a branch at the tree)
+    line = '' if tiles <= character.EARSHOT_TILES and where(context, xy) == left else (
         f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '') + f" ({max(1, round(minutes))} min)")
     for other in was_with:
         if other not in party and not alone:
@@ -311,5 +324,5 @@ def plain(context, text):
         return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
-    text = re.sub(r'\b([Tt]he) (\w+ )?the\b', r'\1 \2'.rstrip(), text)   # 'the dense the thicket'
+    text = re.sub(r'\b([Tt]he) (\w+ )?the\b', lambda m: f"{m.group(1)} {m.group(2) or ''}".rstrip(), text)   # 'the dense the thicket'
     return re.sub(r'(^\s*[\'"]?|[.!?]\s+)the ', lambda m: m.group(1) + 'The ', text)

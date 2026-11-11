@@ -745,9 +745,8 @@ class SimulationServer:
                                         # stop paying a failed round trip per line; tell the UI
                                         self.speech_enabled = False
                                         await self.send_result({'type': 'speech_toggle', 'enabled': False})
-                                        await self.send_result({'type': 'show_update', 'message': {
-                                            'name': 'SimulationServer',
-                                            'text': f'----- speech disabled after repeated TTS errors: {e} -----'}})
+                                        # the UI's speech switch shows it; it is not a line of the play
+                                        logger.warning(f'speech disabled after repeated TTS errors: {e}')
                                 
                                 # Read the generated audio file and add it to the event
                                 if audio_path and os.path.exists(audio_path):

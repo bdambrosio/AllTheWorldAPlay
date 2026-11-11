@@ -1233,7 +1233,7 @@ End response with:
                 self.add_perceptual_input(f'{consequences}', mode='internal')  
             self.lastActResult = consequences
             self.show += act_arg + '.\n ' + consequences
-            self.context.message_queue.put({'name':self.name, 'text':self.show})
+            self.context.message_queue.put({'name':self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences or act_arg)), 'line_kind':'action'})
             await asyncio.sleep(0)
 
         elif act_mode == 'Think': # Say is handled below
@@ -3541,6 +3541,7 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
+        parts.append(f'It is now {stage.clock(self.context)}.')
         parts.append('Recent events:\n' + self.context.recent_events_text(6))
         actions = survival.available_actions(self)
         if actions:
@@ -3880,6 +3881,7 @@ End your response with:
                 target = self.context.resolve_character(target_name)[0]
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
+        began = self.context.simulation_time
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
         logger.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
         if hasattr(action, 'duration'):
@@ -3890,7 +3892,9 @@ End your response with:
             act_duration = timedelta(minutes=2)
         else:
             act_duration = timedelta(minutes=10)
-        self.context.simulation_time += act_duration
+        # the act takes its own duration unless the world already took longer (a walk, a meal,
+        # the replies it drew): the two were added together, so a ten-minute meal took twenty
+        self.context.simulation_time = max(self.context.simulation_time, began + act_duration)
 
         return
 

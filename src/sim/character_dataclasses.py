@@ -106,7 +106,9 @@ def parse_duration(duration_str: str) -> timedelta:
     """
     if isinstance(duration_str, timedelta):
         return duration_str
-    
+    if duration_str is None:   # an act written without #duration was dropped (TypeError below)
+        return timedelta(minutes=1)
+
     try:
         # Try simple integer (minutes)
         return timedelta(minutes=int(duration_str))

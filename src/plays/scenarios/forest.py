@@ -211,7 +211,7 @@ affordances = {
          'requires': 'branch', 'consumes': 'branch', 'minutes': 20, 'sets': 'fire', 'text': 'builds a small fire'},
         {'name': 'rest', 'verbs': ['rest', 'sit down', 'catch breath', 'lie down', 'recover'], 'resource_types': None,
          'effects': {'fatigue': -0.15}, 'minutes': 20, 'text': 'rests for a while'},
-        {'name': 'gather berries', 'category': 'survival', 'verbs': ['stash', 'pocket'], 'named_verbs': ['gather', 'collect', 'save'],
+        {'name': 'gather berries', 'category': 'survival', 'verbs': ['stash', 'pocket'], 'named_verbs': ['gather', 'collect', 'save', 'pluck', 'pick', 'harvest', 'strip'],
          'resource_types': ['Berries'], 'gain': 'berries', 'minutes': 10, 'deplete': 3,
          'text': 'gathers a handful of berries from {resource} to carry'},
         {'name': 'eat carried berries', 'verbs': ['eat', 'chew', 'munch'], 'named_verbs': [], 'resource_types': None,
