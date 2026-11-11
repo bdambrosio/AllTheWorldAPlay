@@ -535,6 +535,8 @@ Tthe following interventions have already been implemented. Do not repeat any, l
 
 ###
 
+{self._world_limits()}
+
 # ANALYSIS REQUIRED:
 
 1. **Staleness Score** (0-10): Rate current narrative momentum
@@ -583,6 +585,25 @@ End your response with:
         
         return [system_prompt, analysis_prompt]
     
+    def _world_limits(self) -> str:
+        """In a world with mechanics, an intervention is made of what that world holds. (One
+        'revealed a cache of medical supplies and a radio', another 'a hollow log full of
+        water': the characters used them for the rest of the play and the world held neither.)"""
+        from sim import stage, survival
+        cfg = survival.config(self.context)
+        if not cfg:
+            return ''
+        hazards = ', '.join(f"{h['name']} ({h['description']})" for h in cfg.get('hazards', [])) or 'none'
+        return f"""###
+This world is simulated: it holds only the places below, what the characters carry, and these dangers: {hazards}.
+
+{stage.gazetteer(self.context)}
+
+An intervention must be made of those: one of the dangers arriving, something seen or learned at a listed place, a character arriving, a change in the weather, or a change in a drive.
+Do NOT bring in an object, supply, shelter, water or food source, or device that is not listed, and do NOT give anyone a wound or illness: the world would not hold it and nobody could use it. Leave new_resource and new_sprite out.
+
+###"""
+
     def _format_dict(self, data: Dict) -> str:
         """Format dictionary data for prompt"""
         if not data:

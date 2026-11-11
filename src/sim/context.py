@@ -31,6 +31,7 @@ from sim.trace import trace
 import sim.survival as survival
 import sim.stage as stage
 import sim.record as record
+from sim import ablation
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -278,6 +279,29 @@ class Context():
         places near the cast with what each offers (sim/stage.py)."""
         return f"Terrain: {', '.join(self.map.terrain_types.__members__)}\n{stage.gazetteer(self)}"
 
+
+    @property
+    def current_state(self):
+        """The Situation that prompts read. In a world with mechanics it is rendered from the
+        world (sim/record.py) each time it is read: the setting as the play gives it, where
+        things stand now, and the notes of the scene in progress (its heading, set-up, arrivals,
+        dangers). Elsewhere it is the free text it always was."""
+        if survival.config(self) and getattr(self, 'actors', None):
+            lately = ' '.join(w.split(' Assessed outcome:')[0] for w in getattr(self, 'act_scene_wrapups', [])[-2:])
+            value = f'{self.initial_state.strip()}\n\n{record.situation(self, lately)}\n{self._state_notes}'
+        else:
+            value = self._state_base + self._state_notes
+        self._state_read = value
+        return value
+
+    @current_state.setter
+    def current_state(self, value):
+        read = getattr(self, '_state_read', None)
+        if read and value.startswith(read):   # '+=': a note on the scene in progress
+            self._state_notes += value[len(read):]
+            self._state_read = None
+        else:
+            self._state_base, self._state_notes = value, ''
 
     async def start(self):
         voices = self.voice_service.get_voices()
@@ -976,6 +1000,9 @@ What each character present is carrying:
 </holdings>
 These things change hands only as the facts above say. If the action takes or moves one of them otherwise, report the attempt and leave the thing with its holder.
 
+What has happened lately:
+{{$events}}
+
 It is now {{$clock}}. Light, dark and the time of day in your response must fit that.
 Danger here now: {{$danger}}. A danger is driven off, strikes or leaves only as the facts say; otherwise it is still there, or there is none.
 What is left at places nearby that have been drawn on: {{$stock}}. Say nothing else about how much is left anywhere.
@@ -1032,7 +1059,7 @@ End your response with:
                   "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
                   "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
-                  "danger": record.danger(actor) or 'none',
+                  "danger": record.danger(actor) or 'none', "events": self.recent_events_text(6),
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked',
                   "facts": facts or 'none'}
@@ -1047,9 +1074,12 @@ End your response with:
             consequences = facts + ' ' + consequences
         if consequences.endswith('<'):
             consequences = consequences[:-1]
-        world_updates = self.world_updates_from_act_consequences(consequences)
+        # What the deed did is the settled fact and the admitted narration. (Two more LLM calls
+        # summarised the narration into 'updates' that were appended to the situation everyone
+        # reads: that is how a thing a narrator once wrote became true from then on.)
+        world_updates = re.sub(survival.BODY_NOTE, '', consequences).strip()
         self.last_consequences = consequences
-        character_updates = self.character_updates_from_act_consequences(consequences, actor)   
+        character_updates = ''
         self.last_updates = character_updates
         print(f'\nContext Do consequences:\n {consequences}')
         print(f' Context Do world_update:\n {world_updates}\n')
@@ -1083,6 +1113,10 @@ End your response with:
 
     async def update(self, local_only=False, changes_only=False):
         """Rewrite the situation description from what has happened since the last update."""
+        if local_only and survival.config(self):
+            # the situation is rendered from the world (current_state): nothing to rewrite
+            self.last_update_time = self.simulation_time
+            return
         history = self.history()
 
         prompt = [UserMessage(content="""You are a dynamic world. Your task is to update the environment description. 
@@ -1445,13 +1479,17 @@ End your response with:
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 
-    async def reground_scene(self, scene, cast):
+    async def reground_scene(self, scene, cast, opens_act=False):
         """Fit a planned scene to where the play now stands. An act's scenes are all written
         before any is played, so a later scene can assume a world that has moved on: 'March to
         the Spring' opened with the cast at the spring, and scenes walked them back to a place
         they had left so the plan could happen there. One LLM call just before the scene keeps
         its purpose and goals and corrects place, set-up and ending in place. Returns True when
-        the scene's purpose has already happened and it should not be played."""
+        the scene's purpose has already happened and it should not be played.
+        The result is then held to the world's record like any narration (sim/record.py): a plan
+        is where an injury nobody has, or a cache of supplies the world does not hold, used to
+        come in, and everything after played along. opens_act: the scene keeps its planned place
+        and is not skipped."""
         prompt = [UserMessage(content="""You are the stage manager of an improvised play. The next scene was planned before the earlier scenes of this act were played. Fit it to where things actually stand, keeping its dramatic purpose.
 
 <planned_scene>
@@ -1461,7 +1499,8 @@ End your response with:
 <where_things_stand>
 It is now {{$clock}}.
 {{$places}}
-Bodies: {{$bodies}}
+Bodies and what each carries: {{$bodies}}
+Dangers this world has: {{$hazards}}. Now: {{$danger}}.
 What has happened lately:
 {{$events}}
 </where_things_stand>
@@ -1470,8 +1509,10 @@ Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - The set-up and ending must fit the time it is now: no dusk, dark or sleep for the night in the morning. If the plan needs night and it is day, write the scene for the day.
+- The scene may use only what this world holds: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). No other animal, no object, supply, shelter, water, food or device that is not listed; no wound, illness or exhaustion that Bodies does not show. Where the plan needs one of these, keep the scene's purpose and find it in what is there.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
+{{$rejected}}
 
 Respond with these lines only:
 #skip yes or no
@@ -1481,23 +1522,50 @@ Respond with these lines only:
 #goal <character name>: that character's goal in the scene (one line for each character)
 </end>
 """)]
+        if opens_act and not survival.config(self):
+            return False   # no world to hold an opening scene to
         planned = {k: scene.get(k) for k in ('scene_title', 'location', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
-        reply = self.llm.ask({'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                              'places': stage.gazetteer(self), 'clock': stage.clock(self),
-                              'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
-                              'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()},
-                             prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
-        find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
-        if find('skip').lower().startswith('y'):
-            return True
-        changed = {}
-        for key, value in (('location', find('location')), ('pre_narrative', find('setup')), ('post_narrative', find('ending'))):
-            if value and value != scene.get(key):
-                changed[key] = scene[key] = value
-        for name, goal in re.findall(r'#goal\s+([^:\n]+):\s*(.+)', reply):
-            for key, entry in (scene.get('characters') or {}).items():
-                if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
-                    entry['goal'] = goal.strip()
+        hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
+        threat = getattr(self, 'active_threat', None)
+        inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
+                  'places': stage.gazetteer(self), 'clock': stage.clock(self),
+                  'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
+                  'hazards': ', '.join(hazards) or 'none', 'danger': threat['hazard']['description'] if threat else 'none',
+                  'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()}
+        checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
+        changed, claims, note = {}, [], ''
+        for attempt in range(2):
+            reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
+            find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
+            if find('skip').lower().startswith('y') and not opens_act:
+                return True
+            for key, value in (('location', '' if opens_act else find('location')), ('pre_narrative', find('setup')),
+                               ('post_narrative', find('ending'))):
+                if value and value != scene.get(key):
+                    changed[key] = scene[key] = value
+            for name, goal in re.findall(r'#goal\s+([^:\n]+):\s*(.+)', reply):
+                for key, entry in (scene.get('characters') or {}).items():
+                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
+                        entry['goal'] = goal.strip()
+            if not checked:
+                break
+            goals = ' '.join(f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
+            told = f"{scene.get('pre_narrative', '')}\nThe scene is to end: {scene.get('post_narrative', '')}\n{goals}"
+            found = record.check(self, cast[0], f"A scene is set at {scene.get('location') or 'the same place'}; the cast walks there if it is elsewhere.",
+                                 None, told, people=cast) or []
+            # where the scene is set is the plan's to say, and a danger of this world that the
+            # set-up brings on is made real (survival.stage_hazard)
+            claims = [(kind, words) for kind, words in found
+                      if kind != 'place' and not (kind == 'presence' and any(h in words.lower() for h in hazards))]
+            if not claims:
+                break
+            note = record.rejection(claims)
+        if claims:   # still there after one rewrite: the set-up the audience reads is cut
+            kept = record.cut(scene.get('pre_narrative', ''), [c for c in claims if c[1].lower() in scene.get('pre_narrative', '').lower()])
+            changed['pre_narrative'] = scene['pre_narrative'] = kept
+        if checked:
+            trace.event('scene_check', title=scene.get('scene_title'), outcome='cut' if claims else 'rewritten' if note else 'ok',
+                        claims=[f'{k}: {w}' for k, w in claims], note=note.strip())
         if changed:
             trace.event('scene_regrounded', title=scene.get('scene_title'), **changed)
         return False
@@ -1533,7 +1601,7 @@ Respond with these lines only:
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
-        if not opens_act and await self.reground_scene(scene, characters_in_scene):
+        if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
             return ''
@@ -1543,6 +1611,7 @@ Respond with these lines only:
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
+        self._state_notes = ''   # the situation's notes are those of the scene in progress
         self.message_queue.put({'name':self.name, 'text':f' -----scene----- {heading}'})
         self.current_state += f'\n{heading}'
         await asyncio.sleep(0.1)

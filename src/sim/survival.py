@@ -1016,7 +1016,7 @@ def stage_hazard(context, scene, cast):
     for hazard in cfg.get('hazards', []):
         # not one the sentence names only as gone or feared: 'before the boar returns' and 'the
         # wolf's shadow vanishes' each staged a fresh beast
-        named = [s for s in re.split(r'[.!?;]', told) if re.search(rf"\b{re.escape(hazard['name'].lower())}s?\b", s)]
+        named = [s for s in re.split(r'[.!?;,]', told) if re.search(rf"\b{re.escape(hazard['name'].lower())}s?\b", s)]
         if exposed and any(not re.search(NOT_NOW, s) for s in named):
             for c in exposed:
                 c.body.sheltered = False   # the scene has it upon them

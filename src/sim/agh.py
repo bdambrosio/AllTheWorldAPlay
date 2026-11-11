@@ -1088,7 +1088,6 @@ End response with:
                 for g in self.goals.copy():
                     if g.name == 'preconditions' and g.description == goal.preconditions:
                         self.goals.remove(g)
-            self.context.current_state += f"\nFollowing goal has been satisfied. This may invalidate parts of the above:\n{goal.to_string()}"
             #self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
             self.achievments.append(goal.termination)
             if goal in self.goals:
@@ -1953,7 +1952,6 @@ End your response with:
             statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
             object.completion_statement = statement
             self.add_perceptual_input(statement, mode='internal')
-            self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
             if self.context.current_state.count('Following update may invalidate') > 3:
                 #await self.context.update(local_only=True)
                 await asyncio.sleep(0)
@@ -1966,7 +1964,6 @@ End your response with:
                 statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
                 object.completion_statement = statement
                 self.add_perceptual_input(statement, mode='internal')
-                self.context.current_state += f"\n\nFollowing update may invalidate parts of above:\n{statement}"
                 if self.context.current_state.count('Following update may invalidate') > 3:
                     #await self.context.update(local_only=True)
                     await asyncio.sleep(0)
