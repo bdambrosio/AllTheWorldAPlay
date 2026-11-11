@@ -1040,6 +1040,7 @@ End response with:
             trace.event('task_end', character=self.name, task_id=task.id, task=task.name,
                         outcome='satisfied' if satisfied else 'timeout', acts=len(task.acts), progress=progress,
                         goal_id=task.goal.id if task.goal else None)
+            timed_out = not satisfied
             satisfied = True # force completion
             if task == self.focus_task.peek():
                 self.focus_task.pop()
@@ -1048,8 +1049,11 @@ End response with:
                 self.focus_goal.task_plan.remove(task)
             if self.focus_goal:
                 pass #self.focus_goal.tasks_completed.append(task)
-            self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
-            self.achievments.append(task.termination)
+            if timed_out:   # it was reported as satisfied, so the character believed it had succeeded
+                self.add_perceptual_input(f"You have set this aside, not done: {task.short_string()}", mode='internal')
+            else:
+                self.add_perceptual_input(f"Following task has been satisfied: {task.short_string()}", mode='internal')
+                self.achievments.append(task.termination)
             #await self.context.update(local_only=True) # remove confusing obsolete data, task completion is a big event
  
         return satisfied
@@ -1162,6 +1166,7 @@ End response with:
         self.thought +=  self.reason
         self.lastActResult = ''
         self.visible_result = ''
+        self.attempt_only = False
             
         if act_mode == 'Move':
             line = None
@@ -1203,6 +1208,7 @@ End response with:
             refused = getattr(self, 'last_affordance', None)
             if refused and not refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
                 result = result[len(refused['fact']):].strip()   # the world's reason is for the character, not the audience
+            self.attempt_only = bool(refused and not refused['applied'])   # the world refused it: others saw a try
             self.last_affordance = None
             self.context.message_queue.put({'name':self.name, 'text': stage.stage_line(self.name, act_arg, result), 'line_kind':'action'})
             self.lastActResult = notices
@@ -1222,9 +1228,13 @@ End response with:
                 self.add_perceptual_input(f"{world_updates}", mode='visual')
             self.act_result = world_updates +'. '+character_updates
             # what others present can see happen (they used to get the action text only)
-            visible_result = (world_updates or '').strip()
+            # what the world settled and the narration it admitted (sim/record.py); it was an
+            # LLM's summary of unchecked narration, which is how a pile of berries became an event
+            visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
-            self.context.add_event(f'{self.name} {deed}' + (f' -> {visible_result}' if visible_result else ''))
+            self.context.add_event(f"{self.name} {'tries: ' if self.attempt_only else ''}{deed}"
+                                   + (' (it does not happen)' if self.attempt_only else '')
+                                   + (f' -> {visible_result}' if visible_result else ''))
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1327,6 +1337,9 @@ End response with:
         # Notify other actors of action
         if act_mode != 'Say' and act_mode != 'Look' and act_mode != 'Think':  # everyone you do or move or look if they are visible
             seen = f"You see {self.name}: '{act_arg}'"
+            if act_mode == 'Do' and getattr(self, 'attempt_only', False):
+                # the others were told the deed as done when the world had refused it
+                seen = f"You see {self.name} try: '{act_arg}'. It does not happen"
             if act_mode == 'Do' and getattr(self, 'visible_result', '').strip(' .'):
                 seen += f". Result: {self.visible_result.strip(' .')}"
             for actor in self.context.actors+self.context.extras:

@@ -6,8 +6,9 @@ and lasts until the next load. Everything is enabled by default.
   commitments  post-dialog commitment extraction
   stance       LLM emotional stance (characters keep the default stance)
   drive_appraisal  drives that move with events (sim/cognitive/drives.py); off, they rest at their baselines
+  narration_gate   the check of narration against the world's record (sim/record.py); off, narration stands as written
 """
-FEATURES = ('commitments', 'stance', 'drive_appraisal')
+FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate')
 _disabled: set = set()
 
 

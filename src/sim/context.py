@@ -30,6 +30,7 @@ from sim.prompt import ask as default_ask
 from sim.trace import trace
 import sim.survival as survival
 import sim.stage as stage
+import sim.record as record
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -890,6 +891,8 @@ What each is carrying:
 </holdings>
 It is now {{$clock}}.
 Looking changes nobody's body and nothing anyone holds: report no bodily condition, possession or time of day that the above does not show.
+Danger here now: {{$danger}}. Report no animal, person or danger that is not listed here or on the map.
+{{$rejected}}
 
 Respond with the information result. Target a sentence or two at most as your response length.
 Respond ONLY with the immediate information gain by the character.
@@ -912,13 +915,16 @@ End your response with:
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
-        consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map, "target": target,
-                                     "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
-                                     "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
-                                     "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
-                                                         if getattr(c, 'body', None) is not None) or 'not tracked',
-                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}, 
-                                     prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
+        inputs = {"name": actor.name, "action": action, "local_map": local_map, "target": target,
+                  "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
+                  "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
+                  "danger": record.danger(actor) or 'none',
+                  "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
+                                      if getattr(c, 'body', None) is not None) or 'not tracked',
+                  "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}
+        narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
+                                                   stops=['</end>'], max_tokens=300)
+        consequences = record.settle(self, actor, f'looks: {action}', None, narrate(), narrate, kind='look') or ''
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -971,6 +977,7 @@ What each character present is carrying:
 These things change hands only as the facts above say. If the action takes or moves one of them otherwise, report the attempt and leave the thing with its holder.
 
 It is now {{$clock}}. Light, dark and the time of day in your response must fit that.
+Danger here now: {{$danger}}. A danger is driven off, strikes or leaves only as the facts say; otherwise it is still there, or there is none.
 What is left at places nearby that have been drawn on: {{$stock}}. Say nothing else about how much is left anywhere.
 
 given {{$name}} local map is:
@@ -999,17 +1006,16 @@ Do not repeat the above action statement in your response.
 The result must be consistent with the LocalMap and with the facts above.
 Include, when they apply:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
-- changes in {{$name}}'s possessions (e.g. {{$name}} 'gains ... ', 'loses ... ')
-- what {{$name}} physically finds or reads, stated as the actual content (e.g. '{{$name}} finds the ledger is two pages short'), only when the action is one that would find it
-- a change in {{$name}}'s own body (e.g. 'becomes tired', 'is injured')
+- what the facts say {{$name}} gained, lost, found or read, in the words of someone watching
 Do NOT:
+- give {{$name}} or anyone a thing, a wound, an illness or a need met that the facts, Bodies and holdings do not show; if the action uses something {{$name}} does not have, show the empty-handed attempt in a few plain words
 - say what any other character feels, thinks, decides or does in reply: their reactions are theirs to play
 - have the action succeed at controlling another character (a snatch, a shove, a forced signature): report the attempt and what is physically true so far; the other character answers it
 - introduce objects, documents, people or facts that the action and the situation did not already contain
 - extend the scenario with any follow-on actions or effects
 - explain a rule or why something cannot be: say only what is seen
 - mention 'the facts', 'Bodies' or these instructions: you describe a world, not a ruling
-
+{{$rejected}}
 Do not include any Introductory, explanatory, or discursive text.
 End your response with:
 </end>
@@ -1021,15 +1027,19 @@ End your response with:
         history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
-        consequences = self.llm.ask({"name": actor.name, "action": action, "local_map": local_map,
-                                     "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
-                                     "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
-                                     "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
-                                     "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
-                                     "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
-                                                         if getattr(c, 'body', None) is not None) or 'not tracked',
-                                     "facts": facts or 'none'},
-                                     prompt, tag='Context.do', temp=0.7, stops=['</end>'], max_tokens=300)
+        inputs = {"name": actor.name, "action": action, "local_map": local_map,
+                  "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
+                  "present": ', '.join(c.name for c in [actor] + actor.bystanders()),
+                  "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
+                  "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
+                  "danger": record.danger(actor) or 'none',
+                  "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
+                                      if getattr(c, 'body', None) is not None) or 'not tracked',
+                  "facts": facts or 'none'}
+        narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
+                                                   stops=['</end>'], max_tokens=300)
+        # the narration is held to the world's record before it is shown, remembered or built on
+        consequences = record.settle(self, actor, action, facts, narrate(), narrate, kind='do')
 
         if consequences is None:
             consequences = facts or ''
