@@ -11,7 +11,8 @@ import re
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, cast
 import sim.map as map
-from sim.cognitive.driveSignal import Drive
+from sim.cognitive import drives as drive_model
+from sim.cognitive.drives import Drive
 from sim.referenceManager import ReferenceManager
 from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
@@ -291,7 +292,7 @@ class Context():
         goal_history = '\n\t\t'.join([f'{g.name} - {g.description}; {g.completion_statement}' for g in character.goal_history]) if character.goal_history else f'None to report'
         return f'\n\n##Name: {character.name}' + \
             f'\n\tDescription: {character.character}' + \
-            f'\n\tDrives: '+', '.join([f'Drive: {d.text}; activation: {d.activation:.2f}' for d in character.drives]) + \
+            f'\n\tDrives (most pressing first):\n'+drive_model.drive_lines(character) + \
             f'\n\tNarrative: {character.narrative.get_summary('medium')}'+ \
             f'\n\tGoal_history: {goal_history}' + \
             f'\n\tMemories: {memory_text}' + \
@@ -1160,20 +1161,12 @@ End your response with:
 
         for state_change in analysis['entities']['state_change']:
             print(f"State change: {state_change['name']} - {state_change['drive']} - {state_change['value']}")
-            #find drive by text drive_text
-            drive = Drive.get_by_text(state_change['drive'])
-            drive_character = None
-            if drive is not None:
-                for character in self.actors + self.extras:
-                    if drive in character.drives:
-                        drive_character = character
-                        break
-                if drive_character and '-' in state_change['value']:
-                    drive_character.demote_drive(drive)
-                elif drive_character:
-                    drive_character.promote_drive(drive)
-            else:
-                print(f"Drive {state_change['drive']} not found")
+            # the drive is named by id, text or a paraphrase ('love_and_belonging'); it was looked
+            # up by exact text, so no intervention ever changed a drive
+            character, _ = self.resolve_character(state_change['name'])
+            drive = drive_model.nudge(character, state_change['drive'], up='-' not in state_change['value']) if character else None
+            if drive is None:
+                logger.warning(f"staleness intervention: no drive '{state_change['drive']}' for {state_change['name']}")
 
         # Inject the intervention into the world state
         self.current_state += f"\n\n{intervention_description}"
@@ -1568,6 +1561,7 @@ End your response with:
                     if choice_dict:
                         choice = choice_dict.get('choice', '')
                         reason = choice_dict.get('reason', '')
+                        drive_model.denied(character, choice_dict.get('drive_denied'), choice)
                         character.add_perceptual_input(f'{choice}\n\treason: {reason}', mode = 'internal') # do we actually need either this or next line? Just to try to nail it home.
                         character.reason_over(f'{choice}\n\treason:{reason}')
                         character.character += f'\nI have decided to {choice}\n\treason: {reason}'
@@ -1758,7 +1752,7 @@ End your response with:
 
         character_backgrounds = []
         for character in cast(List[NarrativeCharacter], self.actors):
-            drives = '\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives])
+            drives = 'Drives, most pressing first:\n' + drive_model.drive_lines(character)
             narrative = character.narrative.get_summary('medium')
             surroundings = character.look_percept
             memories = '\n'.join(memory.to_string() for memory in character.structured_memory.get_recent(8))

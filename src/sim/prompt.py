@@ -13,6 +13,7 @@ from utils import llm_api
 import utils.xml_utils as xml
 import sim.map as map
 import sim.survival as survival
+from sim.cognitive import drives
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
 #from sim.cognitive.DialogManager import Dialog
@@ -35,7 +36,7 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
 {{$character}}
 ##
 
-#Your drives (motivations compulsions)
+#Your drives, most pressing first (what you want; each is pressing, present or quiet right now, with what you have just noticed about it)
 {{$drives}}
 ##
 
@@ -124,7 +125,7 @@ The current situation in the play
         could_do = f'\nYou could do here: {actions}' if actions else ''
     bindings = {"name":character.name,
                 "character":character.get_character_description(),
-                "drives":'\n'.join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in character.drives]),
+                "drives": drives.drive_lines(character),
                 "central_narrative": character.central_narrative if character.central_narrative else 'None yet established',
                 "narrative":character.narrative.get_summary('medium'),
                 "surroundings":character.look_percept + could_do,

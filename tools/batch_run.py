@@ -6,7 +6,7 @@
         --conditions base,stance --repeats 3 --run-secs 600 [--judge local]
 
 A condition is 'base' (everything on) or a '+'-joined list of features to disable
-(src/sim/ablation.py: commitments, stance, drive_checks), e.g. 'commitments+stance'.
+(src/sim/ablation.py: commitments, stance, drive_appraisal), e.g. 'commitments+stance'.
 Each run: tools/smoke_run.py (with --hw), tools/score_play.py, then tools/judges.py.
 Writes logs/batches/<name>.json, the input to tools/compare_runs.py. Runs are sequential:
 the engine serves one play at a time. Needs the stack up (./start-local.sh).

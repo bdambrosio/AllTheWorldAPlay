@@ -19,7 +19,7 @@ import importlib
 import sim.context as context
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
-from sim.cognitive.driveSignal import Drive
+from sim.cognitive.drives import Drive
 
 # Ensure the latest config is loaded (useful inside notebooks / REPL reloads)
 importlib.reload(configuration)

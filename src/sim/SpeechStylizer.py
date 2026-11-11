@@ -204,7 +204,6 @@ Format your response as valid JSON only, no other text.
 
     # ---------------------------------------------------------------------
     def _from_emotion(self) -> Dict:
-        #ranked_signalClusters = self.char.driveSignalManager.get_scored_clusters()
         #focus_signalClusters = [rc[0] for rc in ranked_signalClusters[:3]] # first 3 in score order
         emotionalState = self.char.emotionalStance        
         style = {"tone": [], "syntactic_oddity": 0.0}

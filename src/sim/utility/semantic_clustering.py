@@ -1,7 +1,7 @@
 # sim/utility/semantic_clustering.py
 """
 Shared semantic clustering utilities for drive signals and memory consolidation.
-Extracted and adapted from driveSignal.py to enable reuse.
+Extracted from the former drive-signal clustering to enable reuse.
 """
 
 import math

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sim.survival as survival
+from sim.cognitive import drives
 import sim.stage as stage
 import asyncio
 import copy
@@ -136,8 +137,7 @@ End your response with </end>
                                  "map": map_file_content if map_file_content else '',
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat(),
-                                 "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
-                                 "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
+                                 "primary_drive": drives.standing(self, 0), "secondary_drive": drives.standing(self, 1)}, 
                                  max_tokens=200, tag='NarrativeCharacter.introduction')
         if introduction:
             self.context.message_queue.put({'name':self.name, 'text':introduction+'\n'})
@@ -261,8 +261,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "central_narrative": central_narrative,
                                  "my_narrative": self.central_narrative,
                                  "start_time": self.context.simulation_time.isoformat(),
-                                 "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
-                                 "secondary_drive": f'{self.drives[1].id}: {self.drives[1].text}; activation: {self.drives[1].activation:.2f}'}, 
+                                 "primary_drive": drives.standing(self, 0), "secondary_drive": drives.standing(self, 1)}, 
                                  max_tokens=5000, tag='NarrativeCharacter.write_narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())

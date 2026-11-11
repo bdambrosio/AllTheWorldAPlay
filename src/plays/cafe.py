@@ -6,7 +6,7 @@ import importlib
 import sim.context as context
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
-from sim.cognitive.driveSignal import Drive
+from sim.cognitive.drives import Drive
 from plays.scenarios import coastal
 
 importlib.reload(configuration)  # force reload in case cached version

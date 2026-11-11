@@ -7,7 +7,7 @@ from typing import Any
 from utils import hash_utils
 from utils.Messages import UserMessage
 import utils.xml_utils as xml
-from sim.cognitive.driveSignal import Drive
+from sim.cognitive.drives import Drive
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

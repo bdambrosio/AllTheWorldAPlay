@@ -9,7 +9,7 @@ from sim.utility.semantic_clustering import SemanticClusterManager, SemanticClus
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sim.cognitive.driveSignal import Drive
+    from sim.cognitive.drives import Drive
     from sim.cognitive.EmotionalStance import EmotionalStance
 import numpy as np
 

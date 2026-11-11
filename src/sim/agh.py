@@ -22,7 +22,8 @@ import time
 from typing import List, Dict, Optional, TYPE_CHECKING, cast
 from sim.cognitive import knownActor
 from sim.cognitive import perceptualState
-from sim.cognitive.driveSignal import Drive, DriveSignalManager
+from sim.cognitive import drives
+from sim.cognitive.drives import Drive
 from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
@@ -152,8 +153,7 @@ class Character:
         self.previous_action_name = None
         self.look_percept = ''
         self.recent_exchanges = []   # (other, what I opened with, the last thing they answered): see note_exchange
-        self.driveSignalManager = None
-       # Initialize drives
+        # the drives of a character whose play gives it none
         self.drives = [
             Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
             Drive("safety from threats including ill-health or physical threats from unknown or adversarial actors or adverse events."),
@@ -171,8 +171,6 @@ class Character:
         self.memory_retrieval:MemoryRetrieval = MemoryRetrieval()
         self.new_memory_cnt = 0
         self.next_task = None  # Add this line
-        self.driveSignalManager:DriveSignalManager = DriveSignalManager(self, self.llm, ask=default_ask)
-        self.driveSignalManager.set_context(self.context)
         self.focus_goal:Goal = None
         self.focus_goal_history:List[Goal] = []
         self.focus_task:Stack = Stack()
@@ -234,8 +232,6 @@ class Character:
             last_update=self.context.simulation_time, 
             active_drives=[]
         )
-        if self.driveSignalManager:
-            self.driveSignalManager.context = context
         if self.memory_consolidator:
             self.memory_consolidator.context = context
         self.emotionalStance = EmotionalStance.for_character(self)
@@ -349,6 +345,7 @@ End your response with:
         other_actor_name = hash_utils.find('otherActorName', goal_hash)
         preconditions = hash_utils.find('preconditions', goal_hash)
         termination = hash_utils.find('termination', goal_hash)
+        drive = drives.find(self, hash_utils.find('drive', goal_hash))   # the drive this goal serves
 
         other_actor = None
         if other_actor_name and other_actor_name.strip().lower() != 'none':
@@ -360,7 +357,7 @@ End your response with:
                         description=description, 
                         preconditions=preconditions,
                         termination=termination.replace('##','').strip(),
-                        drives=[]
+                        drives=[drive] if drive else []
             )
             trace.event('goal_created', character=self.name, goal_id=goal.id, goal=goal.name,
                         description=goal.description, termination=goal.termination)
@@ -539,18 +536,6 @@ End your response with:
         
         return '\n\n'.join(memory_text) if memory_text else ""
 
-
-    def demote_drive(self, drive: Drive):
-        """Demote a drive"""
-        if drive in self.drives:
-            self.drives.remove(drive)
-        self.drives.append(drive)
-        
-    def promote_drive(self, drive: Drive):
-        """Promote a drive"""   
-        if drive in self.drives:
-            self.drives.remove(drive)
-        self.drives.insert(0, drive)    
 
     def update(self, now=False):
         """Move time forward, update state"""
@@ -772,15 +757,6 @@ End response with:
         if hasattr(self, 'mapAgent'):
             self.look()
         """Initialize agent state"""
-        # Set up initial drives
-        if self.drives is None or len(self.drives) == 0:
-            self.drives = [
-            Drive("find food and water"),
-            Drive("stay safe from threats"),
-            Drive("explore the environment"),
-            Drive("maintain social bonds")
-        ]
-        
         # Initialize narrative with drives
         self.narrative.active_drives = [d.text for d in self.drives]
 
@@ -805,7 +781,7 @@ End response with:
                 self.add_perceptual_input(f'You see {actor.name}', mode='visual')
 
     def set_drives(self, drive_texts: List[str]) -> None:
-        """Initialize character drives with embeddings"""
+        """The character's drives, most important first (sim/cognitive/drives.py)."""
         self.drives = [Drive(text) for text in drive_texts]
 
 
@@ -814,8 +790,6 @@ End response with:
         self.llm = llm
         if self.memory_consolidator is not None:
             self.memory_consolidator.set_llm(llm)
-        if self.driveSignalManager is not None:
-            self.driveSignalManager.set_llm(llm)
 
     def save(self, filepath):
         allowed_types = (int, float, str, list, dict)  # Allowed types for serialization
@@ -1042,25 +1016,6 @@ End response with:
         else:
             return False
 
-    def update_drives(self, goal: Goal):
-        """Update drives based on goal satisfaction"""
-        if hasattr(goal, 'drives'):
-            for drive in cast(List[Drive], goal.drives):
-                drive.satisfied_goals.append(goal)
-                # don't update the primary drive
-                if drive is not self.drives[0]:
-                    if len(drive.attempted_goals) > 0:
-                        if drive in self.drives: # only update if drive still exists, may have already been rewritten
-                            drive.activation *= 0.9
-                            update = drive.update_on_goal_completion(self, goal, 'goal completed')
-                            if update:
-                                try:
-                                    self.drives.remove(drive)
-                                    # remove from any signalClusters too!
-                                except:
-                                    pass
-                                self.drives.append(update)
-
     async def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
         termination_check = task.termination if task != None else None
@@ -1136,7 +1091,7 @@ End response with:
             self.update()
 
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
-            self.update_drives(goal)
+            drives.goal_satisfied(self, goal)
             if self.focus_goal is goal:
                 self.focus_goal_history.append(goal)
                 self.focus_goal = None
@@ -1383,7 +1338,7 @@ End response with:
 
     def instantiate_narrative_goal(self, goal_statement, generate_conditions=True):
         """instantiate a goal from a narrative"""
-        self.driveSignalManager.check_drive_signals()  # updates drive.activation, shown in the prompt below
+        drives.appraise(self)   # what has reached the character since it last acted moves its drives
 
         prompt = [UserMessage(content="""You are an actor playing the character {{$name}}.
 Instantiate a goal object for the following directive. Depending on the situation and your character, you may choose to be direct, indirect, or even devious in your approach.
@@ -1405,7 +1360,7 @@ Instantiate a goal object for the following directive. Depending on the situatio
 ##
 
 Additional information about the your character to support developing your response
-Drives are the character's basic motivations. Activation indicates how strongle the drive is active at present in the character's consciousness.
+Drives are the character's basic motivations, most pressing first: each is pressing, present or quiet right now, with what the character has just noticed about it.
 
 #Drives
 {{$drives}}
@@ -1463,6 +1418,7 @@ Respond with the instantiated goal consistent with the goal directive, in the fo
     otherActorName - name of the other actor involved in this goal, or None if no other actor is involved, 
     preconditions - a statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
     termination  - a condition (5-6 words) that would mark satisficing achievement of the goal.
+    drive - the id (d..) of the one drive listed above that this goal most serves.
 
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each goal should begin with a #goal tag, and should end with ## on a separate line as shown below:
@@ -1473,6 +1429,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+#drive id (d..) of the drive this goal most serves
 ##
 
 
@@ -1487,7 +1444,7 @@ End response with:
                                  "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
                                  "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
                                  "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
-                                 "drives": "\n".join([f'{d.id}: {d.text}; activation: {d.activation:.2f}' for d in self.drives]),
+                                 "drives": drives.drive_lines(self, ids=True),
                                  "situation": self.context.current_state if self.context else "",
                                  "surroundings": self.look_percept,
                                  "character": self.get_character_description(),
@@ -1553,13 +1510,13 @@ Respond with up to three highest priority, most encompassing, next goal alternat
     preconditions - a statement of situational conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any. 
         These should be necessary pre-conditions for the expected initial tasks of this goal.
 
-Be sure to include a goal that responds to the character's primary drive in the context of the central narrative and the information above.
+Be sure to include a goal that responds to the character's most pressing drive in the context of the central narrative and the information above.
 Do NOT duplicate or significantly overlap the completed goal or generate a goal for objectives duplicating the completion statement of the completed goal.
 Other goals must not duplicate or significantly overlap this goal or the completed goal. 
 Nothing in this or other instructions limits your use of deception or surprise.
 
-#primary drive
-{{$primary_drive}}
+#Drives, most pressing first
+{{$ranked_drives}}
 ##
 
                               
@@ -1572,6 +1529,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 #otherActorName name of the other actor involved in this goal, or None if no other actor is involved
 #preconditions (3-4 words) statement of conditions necessary before attempting this goal (eg, sunrise, must be alone, etc), if any
 #termination terse (5-6 words) statement of condition that would mark achievement or partial achievement of this goal
+#drive id (d..) of the drive this goal most serves
 ##
 
 
@@ -1597,7 +1555,7 @@ End response with:
                                prefix=mission, 
                                suffix=suffix, 
                                addl_bindings={
-                                   "primary_drive": f'{self.drives[0].id}: {self.drives[0].text}; activation: {self.drives[0].activation:.2f}',
+                                   "ranked_drives": drives.drive_lines(self, ids=True),
                                    "my_narrative": self.central_narrative if self.central_narrative else '',
                                    "previous_goal": previous_goal.to_string()+f'\n\n completion statement: {previous_goal.completion_statement}' if previous_goal else '',
                                    "goal_related_memories": "\n".join([m.content for m in goal_memories])},
@@ -2773,7 +2731,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                 self.reason_over(dialog) # if we think we should think about something, then do it!
                 self.last_task = self.focus_task.peek()
                 self.focus_task.pop()
-                #self.driveSignalManager.recluster()
                 return
 
     def reason_over(self, thought):
@@ -2843,8 +2800,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                 # once both dialog tasks are off the stacks: one pass for both parties' commitments
                 await self.extract_commitments_following_conversation(from_actor, dialog)
                 await asyncio.sleep(0)
-            #self.driveSignalManager.recluster()
-            #from_actor.driveSignalManager.recluster()
             return
 
         cut_in = self.bystander_cuts_in(from_actor, message)
@@ -2947,6 +2902,10 @@ Most of the time a bystander lets them talk. Cut in only if staying silent now w
 {{$emotional_state}}
 </emotional_state>
 
+<your_drives>
+{{$drives}}
+</your_drives>
+
 The exchange between {{$a}} and {{$b}} so far:
 <dialog>
 {{$dialog}}
@@ -2965,6 +2924,7 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
 """)]
         reply = speaker.llm.ask({'character': speaker.get_character_description(), 'scene': speaker.scene_brief(),
                                  'emotional_state': speaker.emotionalStance.to_definition(), 'name': speaker.name,
+                                 'drives': drives.drive_lines(speaker),
                                  'a': from_actor.name, 'b': self.name, 'statement': message,
                                  'dialog': dialog.get_transcript(max_turns=8)},
                                 prompt, tag='bystander_cut_in', temp=0.7, stops=['</end>'], max_tokens=120) or ''
@@ -3778,7 +3738,7 @@ End your response with:
         act_count=0
         subtask_count = 0
         while act_count < MAX_ACTS_PER_TASK and self.focus_task.peek():
-            #self.look(task.name+': '+task.description)
+            drives.appraise(self)   # what the character has just taken in moves its drives before it acts
             action_alternatives: List[Act] = self.generate_acts(task)
             if not action_alternatives:
                 # generate_acts returns [] when the LLM call fails; pick_weighted([]) raised
@@ -3869,9 +3829,7 @@ End your response with:
 
     async def act_on_action(self, action: Act, task: Task):
         if task and task.goal:
-            for drive in task.goal.drives:
-                if task.goal not in drive.attempted_goals:
-                    drive.attempted_goals.append(task.goal)
+            drives.goal_attempted(task.goal)
         self.act = action
         self.last_act = action
         if task:
@@ -4110,7 +4068,7 @@ end your response with:
                 'reason': last_act.reason if last_act else ''
             },
             'decisions': self.decisions or [],  # ADD THIS LINE
-            'drives': [{'text': drive.text or '', 'activation': drive.activation} for drive in (self.drives or [])],
+            'drives': [{'text': drive.text or '', 'activation': drive.activation} for drive in drives.ranked(self)],
             # raw percept log, newest first (this was mislabelled 'emotional_state')
             'percepts': [
                 {
@@ -4173,19 +4131,8 @@ end your response with:
                 ],
                 'intensions': [intension.name for intension in self.intensions]  # List[str]
             },
-            # each drive's latest awareness check (DriveSignalManager.check_drive_signals); this
-            # listed signal clusters, which were always empty
-            'signals': [
-                {
-                    'text': signal.text,
-                    'drives': [d.text for d in signal.drives],
-                    'type': signal.type,
-                    'signals': [f'importance {signal.importance:.2f}, urgency {signal.urgency:.2f}, surprise {signal.surprise:.2f}'],
-                    'score': signal.importance,
-                    'last_seen': signal.timestamp.isoformat()
-                }
-                for drive, signal in self.driveSignalManager.recent_signals()
-            ],
+            # what the character has lately noticed about each drive (drives.appraise)
+            'signals': drives.for_ui(self),
             'debug': self._explorer_debug(),
         }
 

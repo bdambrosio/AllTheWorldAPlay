@@ -363,7 +363,7 @@ End your response with:
                         s.drive_activations.get(drive_text, 0) 
                         for s in list(snapshots)[-3:]
                     ]
-                    if len(set(recent_values)) <= 1:  # All same value
+                    if max(recent_values) - min(recent_values) < 0.03:  # unmoved over the last three turns
                         metrics.drive_flatlines += 1
                         metrics.drive_flatlines_details.append((char_name, drive_text))
         
@@ -571,7 +571,7 @@ Tthe following interventions have already been implemented. Do not repeat any, l
 <new_character   name="..." description="..." motivation="..." drives="..."/>
 <new_sprite id="..." description="..." behavior="..." lifecycle="..."/>
 <new_resource name="..." description="..." properties="..."/>
-<state_change name="character_name" drive="drive_id" value="+ / -" />
+<state_change name="character_name" drive="the drive's text, as listed" value="+ / -" />
 ```
 
 

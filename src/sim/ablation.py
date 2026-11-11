@@ -5,9 +5,9 @@ and lasts until the next load. Everything is enabled by default.
 
   commitments  post-dialog commitment extraction
   stance       LLM emotional stance (characters keep the default stance)
-  drive_checks per-drive awareness checks that update drive.activation
+  drive_appraisal  drives that move with events (sim/cognitive/drives.py); off, they rest at their baselines
 """
-FEATURES = ('commitments', 'stance', 'drive_checks')
+FEATURES = ('commitments', 'stance', 'drive_appraisal')
 _disabled: set = set()
 
 

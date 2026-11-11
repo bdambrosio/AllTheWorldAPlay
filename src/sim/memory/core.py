@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sim.agh import Character, Goal, Task  # Only imported during type checking
-    from sim.cognitive.driveSignal import Drive
+    from sim.cognitive.drives import Drive
     from sim.cognitive.EmotionalStance import EmotionalStance
 
 # At module level
