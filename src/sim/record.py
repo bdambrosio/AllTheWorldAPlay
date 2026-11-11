@@ -610,8 +610,24 @@ def deed_lacks(context, character, text):
     return lacks
 
 
+def _mode(act):
+    return str(getattr(act, 'mode', '')).split('.')[-1]
+
+
 def _is_do(act):
-    return str(getattr(act, 'mode', '')).split('.')[-1] == 'Do'
+    return _mode(act) == 'Do'
+
+
+def gone(act):
+    """The characters an act is aimed at who have left the scene."""
+    targets = act.target if isinstance(getattr(act, 'target', None), (list, tuple)) else [getattr(act, 'target', None)]
+    return [t for t in targets if t is not None and hasattr(t, 'name') and stage.off_stage(t)]
+
+
+def _unsound(context, character, act):
+    """Why this act cannot be done as written: [] when it can."""
+    lacks = [f'{t.name} has left and is not here' for t in gone(act)] if _mode(act) in ('Do', 'Say') else []
+    return lacks + (deed_lacks(context, character, act.action) if _is_do(act) else [])
 
 
 def sound_deeds(context, character, acts):
@@ -619,7 +635,7 @@ def sound_deeds(context, character, acts):
     none is sound (the chosen one is then mended)."""
     if not ablation.enabled('narration_gate'):
         return acts
-    sound = [a for a in acts if not _is_do(a) or not deed_lacks(context, character, a.action)]
+    sound = [a for a in acts if not _unsound(context, character, a)]
     if sound and len(sound) < len(acts):
         trace.event('deed_check', character=character.name, outcome='passed_over',
                     deeds=[a.action[:160] for a in acts if a not in sound])
@@ -646,17 +662,24 @@ Respond with the deed only.
 def mend_deed(context, character, act):
     """The act about to be performed, made sound: a Do that rests on what is not so is written
     again from what is. The act is changed in place; returns True when it was."""
-    if not _is_do(act) or not ablation.enabled('narration_gate'):
+    if not ablation.enabled('narration_gate'):
         return False
-    lacks = deed_lacks(context, character, act.action)
+    lacks = _unsound(context, character, act)
     if not lacks:
         return False
+    if _mode(act) == 'Say':
+        # words for someone who has gone are not said to an empty chair: they are thought
+        trace.event('deed_check', character=character.name, outcome='unsaid', lacks=lacks, before=act.action)
+        act.mode, act.target = 'Think', []
+        return True
     again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
                              'holding': ', '.join(character.body.inventory) or 'nothing',
                              'lying': ', '.join(p['name'] for p in survival.lying(context, stage.here(character))) or 'nothing'},
                             [UserMessage(content=REDO)], tag='record.redo', temp=0.5, stops=['</end>'], max_tokens=90)
     again = (again or '').strip().strip('"“”').strip()
     left = deed_lacks(context, character, again) if again else lacks
+    if again and gone(act):
+        act.target = [t for t in act.target if t not in gone(act)] if isinstance(act.target, list) else []
     outcome = 'redone' if again and not left else 'unfixed'
     trace.event('deed_check', character=character.name, outcome=outcome, lacks=lacks, before=act.action, after=again)
     if outcome == 'redone':

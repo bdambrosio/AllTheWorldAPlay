@@ -1854,6 +1854,10 @@ Respond with these lines only:
                 self.scene_integrated_task_plan_index += 1
                 continue
             character = scene_task['actor']
+            if stage.off_stage(character):   # it has left: what it had planned for here is not done here
+                trace.event('task_skipped', character=character.name, task=scene_task['task'].name, why='left the scene')
+                self.scene_integrated_task_plan_index += 1
+                continue
             character_name = character.name
             task = scene_task['task']
             character.focus_goal = scene_task['goal']
@@ -1885,6 +1889,8 @@ Respond with these lines only:
         # Each does their own at the same time: two four-hour sleeps took the clock on eight hours.
         closing, latest = self.simulation_time, self.simulation_time
         for character in characters_in_scene:
+            if stage.off_stage(character):
+                continue   # no closing business for someone who has gone (Ding walked out, then 'had a drink at Cafe')
             self.simulation_time = closing
             for label in stage.pending_business(character):
                 fact = survival.do_business(self, character, label)

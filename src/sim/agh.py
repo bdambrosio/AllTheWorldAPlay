@@ -508,6 +508,8 @@ End your response with:
             )
             # survival plays: the offered action this Do uses, by its listed name (drink@Spring3)
             act.affordance = (hash_utils.find('affordance', hash_string) or '').strip() or None
+            # does the character leave the scene with this act? its writer says (sim/stage.py presence)
+            act.leaves = (hash_utils.find('leaves', hash_string) or '').strip().lower().startswith('y')
             return act
         else:
             print(f"Invalid actionable Hash: {hash_string}")
@@ -1107,7 +1109,7 @@ End response with:
         return satisfied
 
 
-    def move(self, where, reason=''):
+    def move(self, where, reason='', alone=False):
         """Walk somewhere: a named place, a person, or a compass direction. Scene partners
         standing with the character come along, unless the act or its reason says it goes alone
         (stage.walk). Returns the words for the audience, or None when `where` names nowhere."""
@@ -1115,7 +1117,6 @@ End response with:
         where = re.sub(r'^towards?\s+', '', where).strip()
         if self.mapAgent is None or not where:
             return None
-        alone = bool(stage.ALONE.search(f'{where} {reason or ""}'))
         world = self.context.map
         # a named resource wins ('Walk west toward Spring3, scanning ...'), then a person, then a direction
         for token in [where] + stage.places_named(self.context, where):
@@ -1172,12 +1173,17 @@ End response with:
         self.visible_result = ''
         self.attempt_only = False
             
+        leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
         if act_mode == 'Move':
             line = None
             try:
-                line = self.move(act_arg, reason)
+                # with the others, unless the mover leaves them: then it goes alone, and is gone
+                line = self.move(act_arg, reason, alone=leaving)
             except Exception as e:
                 logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
+            if leaving and line is not None:
+                line = re.sub(r'^walks to ', 'leaves for ', line) if line else 'leaves.'
+                stage.leave(self)
             if line == '':
                 pass   # already there: nothing to tell
             elif line:
@@ -1247,6 +1253,8 @@ End response with:
             # what others present can see happen (they used to get the action text only)
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
+            if leaving and not self.attempt_only:
+                stage.leave(self)   # the deed has told it
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             self.context.add_event(f"{self.name} {'tries: ' if self.attempt_only else ''}{deed}"
@@ -1333,6 +1341,15 @@ End response with:
                     target = target[0]
             elif not target and act.target and isinstance(act.target, Character):
                 target = act.target
+            if leaving:
+                # a parting line: the others hear it, the speaker goes, and nobody answers the door
+                for other in self.bystanders():
+                    other.add_perceptual_input(f"{self.name} says: '{content}', and leaves.", percept=False, mode='auditory')
+                self.context.message_queue.put({'name': self.name, 'text': 'leaves.', 'line_kind': 'action'})
+                stage.leave(self)
+                target = None
+            elif target is not None and isinstance(target, Character) and stage.off_stage(target):
+                target = None   # said to someone who has gone: nobody hears it
             # open dialog
             if target:
                 if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
@@ -2207,6 +2224,7 @@ Respond in hash-formatted text:
 #action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
+#leaves yes or no. yes only when with this act your character leaves the others and goes out of the scene: walks out, goes off alone, departs. Going somewhere together with the others, or moving about the place, is no.
 ##
 
 #NOTE#
@@ -2874,6 +2892,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             # was performed anyway, shown as '' and heard by from_actor, which kept talking
             return
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
+        action.leaves = bool(getattr(self, '_reply_leaves', False))
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
@@ -3112,6 +3131,7 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 
 <response>response / next thought</response>
 <reason>terse (4-6 words) reason for this response / thought</reason>
+<leaves>yes or no: yes only when with these words your character walks out on the others and leaves the scene</leaves>
 
 {{$duplicative_insert}}
 
@@ -3197,7 +3217,8 @@ End your response with:
         # response with the reason's tag, and 'Polite deferral, no commitment yet' was spoken
         # aloud three times in a scene.)
         if response:
-            response = re.split(r'</?\s*(?:reason|response)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
+            response = re.split(r'</?\s*(?:reason|response|leaves)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
+        self._reply_leaves = (xml.find('<leaves>', answer_xml) or '').strip().lower().startswith('y')
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -3807,7 +3828,7 @@ End your response with:
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
         subtask_count = 0
-        while act_count < MAX_ACTS_PER_TASK and self.focus_task.peek():
+        while act_count < MAX_ACTS_PER_TASK and self.focus_task.peek() and not stage.off_stage(self):
             drives.appraise(self)   # what the character has just taken in moves its drives before it acts
             action_alternatives: List[Act] = self.generate_acts(task)
             if not action_alternatives:

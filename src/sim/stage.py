@@ -40,14 +40,49 @@ A jump to a distant place belongs at the start of an act.
 What a scene's ending says about bodies and things (someone fed, watered, rested, armed, a paper signed or handed over) is true only if a character does the action in that scene: list it under business. Saying it does not make it so."""
 
 
-# a move that leaves the others behind: said in the act or its reason
-ALONE = re.compile(r"\b(flee|flees|fleeing|fled|escap\w+|run(s|ning)? (away|off)|slip(s|ping)? (away|off|out)|sneak\w*|"
-                   r"storm(s|ing)? (off|out)|walk(s|ing)? (out|off|away)|away from|leav(e|es|ing) (him|her|them|\w+ behind)|"
-                   r"abandon\w*|alone|by (him|her|my)self|hid(e|es|ing) from|scout(s|ing)? ahead|go(es)? ahead)\b", re.I)
-
-
 def here(character):
     return (character.mapAgent.x, character.mapAgent.y)
+
+
+# --------------------------------------------------------------------------- presence
+# Who is in a scene. A character could say its goodbyes twice and still be standing there an
+# hour later (its exit was a task that had not come up, and words move nobody), or walk out in
+# a deed that changed nothing, and then be given a closing drink. And real walks, a misread
+# destination or going after a partner, took people across the map while the page kept them at
+# the table. A character now leaves a scene when the one who writes its line or deed says so
+# (the act and dialog formats ask: leaves, yes or no). Having left, it is off stage until the
+# scene ends: nobody's bystander, no cut-ins, no closing business, no further tasks, and an act
+# aimed at it is sent back (sim/record.py deeds).
+def off_stage(character):
+    """Has this character left the scene now being played?"""
+    scene = getattr(getattr(character, 'context', None), 'current_scene', None)
+    return scene is not None and getattr(character, 'left_scene', None) is scene
+
+
+def leave(character):
+    """`character` leaves the scene being played. The others are told; talk with it ends.
+    Returns False when there is no scene to leave or it has left already."""
+    context = character.context
+    scene = getattr(context, 'current_scene', None)
+    if scene is None or off_stage(character) or getattr(character, 'current_scene', None) is not scene:
+        return False
+    remaining = [c for c in context.actors + context.extras + context.npcs
+                 if c is not character and getattr(c, 'current_scene', None) is scene]
+    character.left_scene = scene
+    character.current_scene = None   # everything that asks 'in this scene?' now answers no
+    for other in remaining:
+        other.add_perceptual_input(f'{character.name} has left.', percept=False, mode='visual')
+        for a, b in ((other, character), (character, other)):
+            model = a.actor_models.get_actor_model(b.name)
+            if model is not None and model.dialog.active:
+                model.dialog.deactivate_dialog()
+            try:
+                a._pop_dialog_task(b)   # and the task of talking with it
+            except Exception:
+                pass
+    context.add_event(f'{character.name} leaves')
+    trace.event('exit', character=character.name, left_behind=[c.name for c in remaining])
+    return True
 
 
 def clock(context, date=False):
