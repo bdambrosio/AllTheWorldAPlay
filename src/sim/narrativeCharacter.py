@@ -350,7 +350,7 @@ Critically, the play has progressed since you originally formulated this act, pe
 {{$previous_act_post_state}}
 ####
 
-The actual previous acts performed were an integration across all characters's plans, and are:
+What has happened in the acts already played (the record of events, not what was planned):
 
 {{$previous_acts}}
 
@@ -462,7 +462,7 @@ Again, the act central narrative is:
                                "previous_act_post_state": previous_act_post_state,
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,
-                               "previous_acts": '\n'.join([json.dumps(act, default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
+                               "previous_acts": self.context.screenplay.so_far() or 'None: this is the first act.'},
                               max_tokens=1400, tag='NarrativeCharacter.replan_narrative_act')
         try:
             updated_act = None

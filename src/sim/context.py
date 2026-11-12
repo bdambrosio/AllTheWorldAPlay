@@ -138,8 +138,6 @@ class Context():
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
         self.map_file = None
-        self.previous_acts = []
-        self.previous_scenes = []
         self.narrative_level= False
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
@@ -2112,8 +2110,6 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             for character in cast(List[NarrativeCharacter], self.actors+self.extras):
                 character.add_perceptual_input(act_summary, mode = 'internal')
         trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
-        self.previous_acts.append(act)
-        self.previous_scenes.extend(scenes)
         self.current_act = None
         #await self.update()
                 
@@ -3104,7 +3100,7 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
 ## Overall Central Narrative
 {{$play_level_central_narrative}}
                               
-## Previous Act Scenes
+## What has happened in the acts already played
 {{$previous_scenes_summary}}
 
 ## Act {{$act_number}}
@@ -3168,7 +3164,7 @@ After the framework, repeat three of its elements on lines of their own, exactly
         response = self.llm.ask({"play_level_central_narrative": self.central_narrative, 
                                  "act_number": act_number,
                                  "character_act_plans": '\n'.join(character_act_plans), 
-                                 "previous_scenes_summary": '\n'.join([json.dumps(scene, indent=2, default=datetime_handler) for scene in self.previous_scenes]), 
+                                 "previous_scenes_summary": self.screenplay.so_far() or 'None: this is the first act.',   # what happened, not what was planned
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
                                  "act_specific_guidelines": act_guidance[self.screenplay.kind(act_number)],
                                  "current_situation": self.current_state}, 
@@ -3656,7 +3652,7 @@ Scene format is as follows:
                                     "intervention": intervention,
                                     "act_central_narrative": self.act_central_narrative,
                                     "central_narrative": self.central_narrative,
-                                    "previous_scenes": '\n'.join([json.dumps(scene, default=datetime_handler) for scene in self.previous_scenes]) if self.previous_scenes else ''},
+                                    "previous_scenes": '\n'.join(filter(None, [self.screenplay.so_far(), ' '.join(self.act_scene_wrapups)]))},   # what happened, not what was planned
                               max_tokens=800, tag='NarrativeCharacter.replan_scene')
         try:
             updated_scene = None

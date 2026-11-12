@@ -3624,8 +3624,8 @@ End your response with:
 
     def story_note(self):
         """The story the company is telling (the play's central question), for the actor."""
-        story = getattr(self.context, 'central_narrative', None) if self.context else None
-        return str(story).strip() if story else ''
+        play = getattr(self.context, 'screenplay', None) if self.context else None
+        return play.story_for(self.name).strip() if play else ''
 
     def act_direction(self):
         """What this act is about and this actor's part in it. Not the other characters' parts,
