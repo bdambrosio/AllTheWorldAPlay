@@ -2539,7 +2539,7 @@ End your response with:
             if intension and self.focus_goal:
                 print(f'  New task from say or think: {intension_hash.replace('\n', '; ')}')
                 self.focus_task.push(intension)
-                self.step_task('')
+                self.step_task()
                 if self.focus_goal and self.focus_goal.task_plan and len(self.focus_goal.task_plan) > 0:
                     await self.generate_task_plan(self.focus_goal)
 
@@ -3843,7 +3843,7 @@ End your response with:
     
             task = self.focus_task.peek()
             task_to_run = task
-            outcome = await self.step_task(task)
+            outcome = await self.step_task()
             task_count += 1
 
             if task == self.focus_task.peek():
@@ -3905,11 +3905,11 @@ End your response with:
         return 
             
         
-    async def step_task(self, sense_data='', ui_queue=None):
-        """Perform a single task from the current goal task_plan. 
-           Task is popped from goal plan and focus_task if completed.
-           Returns False if task is not completed.
-           However, current code always pretends task is completed. (outcome is always True, task is popped)"""
+    async def step_task(self):
+        """Play the task on top of focus_task: up to MAX_ACTS_PER_TASK acts, each followed by a
+           test of the task's termination. True when the task ended (met, or timed out by
+           clear_task_if_satisfied); False when its acts ran out with the task still standing,
+           which is recorded and remembered as left undone."""
         # if I have an active task, keep on with it.
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
@@ -4016,8 +4016,12 @@ End your response with:
             # (an unconditional 'return True' here ended every task after its first act)
 
         if self.focus_task.peek() is task:
+            # out of acts with the task not met: say so. (A third of a play's tasks ended here
+            # with no record, and the character was never told it had left the thing undone.)
+            trace.event('task_end', character=self.name, task_id=task.id, task=task.name, outcome='unfinished',
+                        acts=len(task.acts), goal_id=task.goal.id if task.goal else None)
+            self.add_perceptual_input(f"You have set this aside, not done: {task.short_string()}", mode='internal')
             return False
-            #self.focus_task.pop() # didn't get done by turn limit pretend task is done            return True # probably need to replan around step failure, but we're not going to do that here
         else: # clear assigned task and all intensions created by it, out of turns for this task
             while task in self.focus_task.stack:
                 self.focus_task.pop()

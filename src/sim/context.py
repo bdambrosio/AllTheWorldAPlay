@@ -1894,12 +1894,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             if character.name.lower() == 'interviewer':
                 print(f'{character.name} {scene["pre_narrative"]}')
 
-            try: # can fail if invented character name mismatch for some reason
-                goal_text = scene['characters'][character.name.capitalize()]['goal']
-                # (the set-up and the goal were also stored as the character's own memories)
-            except Exception as e:
-                print(f'Error getting goal for {character.name}: {e}')
-                goal_text = ''
+            # the goal the notes were just built with (it was looked up a second time here, by
+            # another spelling of the name, and could come back empty)
+            goal_text = character.direction.get('goal') or ''
             if decided.get(character.name):
                 goal_text = f"{goal_text} You have decided: {decided[character.name]}."
             business = stage.pending_business(character)
@@ -1963,7 +1960,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             await asyncio.sleep(0.2)
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
-            await character.step_task(task)
+            await character.step_task()
             survival.hazard_tick(self)
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.step = False
@@ -2064,6 +2061,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.act_events = []
         self._act_transcript_start = len(self.transcript)
         self.act_scene_wrapups = []
+        # scenes are numbered in the order they are played, through the play (a plan's own
+        # numbers gave act 3 scenes 12 to 14 and the closing act scenes 1 and 2)
+        for scene in scenes:
+            self._scenes_numbered = getattr(self, '_scenes_numbered', 0) + 1
+            scene['scene_number'] = self._scenes_numbered
         trace.event('act_start', number=act_number, title=act.get('act_title'),
                     planned_pre=act.get('act_pre_state'), planned_post=act.get('act_post_state'),
                     scenes=len(scenes))
@@ -3001,6 +3003,16 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
                 for field in ("pre_narrative", "post_narrative"):
                     if not isinstance(scene.get(field), str):
                         scene[field] = ''
+                # One spelling for each of the play's people, here, once: the cast was looked up
+                # three ways downstream (capitalised and resolved, by exact key, and without
+                # regard to case), and a name the plan spelled its own way got an empty goal
+                # from one of them and no tasks from another. A name that is nobody in the cast
+                # is left as written: the scene brings that person on.
+                cast_name = lambda name: next((c.name for c in self.actors + self.extras
+                                               if c.name.lower() == str(name).strip().lower()), str(name).strip())
+                scene["characters"] = {cast_name(name): entry for name, entry in scene["characters"].items()}
+                if isinstance(scene.get("action_order"), list):
+                    scene["action_order"] = [cast_name(name) for name in scene["action_order"]]
                 names = [name for name in scene["characters"]]
                 order = scene.get("action_order")
                 if not isinstance(order, list) or not [name for name in order if name in names]:
@@ -3271,33 +3283,33 @@ After the framework, repeat three of its elements on lines of their own, exactly
         
         used_clusters = set()
         self.scene_integrated_task_plan = []
-        actors_with_remaining_tasks = actors_in_scene
-        while len(actors_with_remaining_tasks) > 0:
+        # Each character's tasks are taken in its own order, interleaved by the scene's speaking
+        # order. The list of tasks is the one gathered above: a character whose goal step failed
+        # has none and is passed over (its focus_goal was dereferenced here, and raised).
+        remaining = [a for a in actors_in_scene if actor_tasks[a.name]['task_plan']]
+        while remaining:
             for name in scene['action_order']:
                 actor: NarrativeCharacter = self.get_actor_by_name(name)
-                if actor not in actors_with_remaining_tasks:
+                if actor not in remaining:
                     continue
+                plan = actor_tasks[actor.name]['task_plan']
                 next_task_index = actor_tasks[actor.name]['next_task_index']
-                if next_task_index >= len(actor.focus_goal.task_plan):
-                    actors_with_remaining_tasks.remove(actor)
-                    continue
-                current_task = actor.focus_goal.task_plan[next_task_index]
-                #self.evaluate_commitment_significance(actor, current_task, scene)
-                is_critical = next_task_index == len(actor.focus_goal.task_plan) - 1
-                
-                # Check if this task's cluster has already been used
+                current_task = plan[next_task_index]
+                is_critical = next_task_index == len(plan) - 1   # a character's last task is never pruned
+
+                # a task much like one already taken (its embedding in the same cluster) is
+                # dropped when the scene has more tasks than beats
                 cluster_idx = task_id_to_cluster.get(current_task.id, -1)
-                # note alternative is to merge tasks in a cluster before reaching here if prune_level > 0 and tasks are not critical
                 if cluster_idx not in used_clusters or prune_level < 1 or is_critical:
                     self.scene_integrated_task_plan.append({'actor': actor, 'goal': actor.focus_goal, 'task': current_task})
                     used_clusters.add(cluster_idx)
                 else:
-                    print(f'{actor.name} task {current_task.id} is redundant in scene {scene["scene_number"]}')
-                
+                    trace.event('task_pruned', character=actor.name, task_id=current_task.id, task=current_task.name)
+
                 actor_tasks[actor.name]['next_task_index'] += 1
-                if actor_tasks[actor.name]['next_task_index'] >= len(actor_tasks[actor.name]['task_plan']):
-                    actors_with_remaining_tasks.remove(actor)
-            
+                if actor_tasks[actor.name]['next_task_index'] >= len(plan):
+                    remaining.remove(actor)
+
         return self.scene_integrated_task_plan
     
     def format_scene_integrated_task_plan(self):
