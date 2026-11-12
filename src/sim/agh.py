@@ -3625,6 +3625,15 @@ End your response with:
                                        f"What rides on it: {frame['stakes']}" if frame.get('stakes') else '',
                                        f"Your part in it: {role}" if role else '']))
 
+    def does_not_know(self):
+        """What this character has still to find out: the director's list for the scene, and the
+        names of people it met as strangers and has not heard named (Context.strangers)."""
+        d = getattr(self, 'direction', None) or {}
+        names = sorted(getattr(self, 'unknown_names', None) or ())
+        named = [f"the name of {n}. What you are shown calls this person '{n}' so that you can aim an act; "
+                 f"{self.name} has not heard that name and cannot use it" for n in names]
+        return named + list(d.get('unknown') or [])
+
     def director_notes(self, story=True):
         """The notes as a block for a prompt, with the standing instruction on how to use them.
         story=False for a template that gives the story and the act in slots of its own."""
@@ -3642,8 +3651,9 @@ End your response with:
             choice, reason = d['decision']
             parts.append(f"In the course of the scene {self.name} comes to choose: {choice}" + (f" ({reason})" if reason else '')
                          + f". That is not yet chosen when the scene opens; {self.name} gets there.")
-        if d.get('unknown'):
-            parts.append(f"What {self.name} does not know as the scene opens:\n" + '\n'.join(f'- {u}' for u in d['unknown']))
+        missing = self.does_not_know()
+        if missing:
+            parts.append(f"What {self.name} does not know (it is found out in the scene, or not at all):\n" + '\n'.join(f'- {u}' for u in missing))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
 

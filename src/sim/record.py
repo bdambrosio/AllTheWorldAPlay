@@ -439,6 +439,16 @@ Speaker: {{$name}}
 {{$record}}
 </about>
 
+What {{$name}} has lately lived and heard:
+<heard>
+{{$heard}}
+</heard>
+
+What {{$name}} does not know (the director's list; the actor was told, the character was not):
+<does_not_know>
+{{$unknown}}
+</does_not_know>
+
 <line>
 {{$line}}
 </line>
@@ -451,10 +461,13 @@ Find only statements of these kinds. The first five are made in the first person
 - time: light, dark or a time of day that does not fit Time.
 And one that may be about anyone in the play, present or not:
 - gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
+- knows: the line states, uses or takes for granted something listed under does_not_know (a name not yet heard, another's condition or purpose not yet shown). Asking about it, guessing at it and saying so, or suspecting it aloud is not knowing it. Nor is it a finding once the thing has been shown or said in {{$name}}'s presence (see what {{$name}} has heard, and the record): it is known from then on, and a name is known in whatever form it was given.
 Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water").
 
 Also say if the line hands a thing the speaker really has to someone present, in so many words ("Here, take the branch"):
 #give <the thing, as Holdings names it> to <the person>
+And if the line tells its hearers what someone is called (the speaker's own name or another person's; a short form such as 'Sam' counts), one line for each person named:
+#names <that person, exactly as the cast list at the top names them>
 
 Respond with one line for each finding, giving the words from the line exactly:
 #claim <kind>: <the exact words>
@@ -474,9 +487,12 @@ Speaker: {{$name}}
 {{$line}}
 </line>
 
-Not so:
+Not so, or not {{$name}}'s to know:
 {{$claims}}
 (Who is who: {{$cast}})
+What {{$name}} does not know:
+{{$unknown}}
+A thing {{$name}} does not know may be asked about, or guessed at as a guess; a name not yet heard is not used ('you', or nothing).
 
 Say the line again as {{$name}} would, in the same voice, in the first person, and no longer than it was. Keep everything else it says and means; leave out what is not so.
 - Do not announce the correction: never "It's morning", "I'm not up the tree", "I have no water". Just do not say the untrue thing.
@@ -503,7 +519,7 @@ def _body_bears(speaker, low):
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender')
+SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender', 'knows')
 
 
 ME_NOW = r"\b(i'm|i’m|i am|we're|we’re|we are)\b"
@@ -544,6 +560,22 @@ def speech_claims(context, speaker, reply):
     return claims
 
 
+def _heard(speaker, listener):
+    """What the speaker has lately lived and been told: its recent memories and the talk so far
+    with the listener. The check on what a speaker 'does not know' needs it: a thing said to her
+    a line ago is known (Joe: 'software type'; her 'software guy, huh?' was sent back)."""
+    parts = []
+    try:
+        parts.append('\n'.join(m.to_string() for m in speaker.structured_memory.get_recent(8)))
+        model = speaker.actor_models.get_actor_model(listener.name) if listener is not None else None
+        talk = model.dialog.get_transcript(max_turns=10) if model is not None and getattr(model, 'dialog', None) else ''
+        if talk:
+            parts.append('The talk so far:\n' + talk)
+    except Exception:
+        pass
+    return '\n'.join(p for p in parts if p) or 'nothing yet'
+
+
 def speech(context, speaker, line, listener=None):
     """A spoken line as its speaker can truly say it: (line, give). `give` is (thing, person)
     when the line itself hands over something the speaker holds, else None. One check; one
@@ -556,10 +588,23 @@ def speech(context, speaker, line, listener=None):
     if listener is not None and listener not in people and getattr(listener, 'mapAgent', None) is not None:
         people.append(listener)
     about = of(context, speaker, people)
-    reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line}, [UserMessage(content=SPEECH)],
-                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=120)
+    missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
+    unknown = '\n'.join(f'- {m}' for m in missing) or 'nothing listed'
+    heard = _heard(speaker, listener)
+    reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
+                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=140)
     if reply is None:
         return line, None
+    # a name told in a line is known from then on to everyone who heard it
+    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', []))
+            if re.search(rf'^\s*#names\s+.*\b{re.escape(c.name)}\b', reply, re.M | re.I)}
+    if told:
+        for hearer in people:
+            if hearer is not speaker and getattr(hearer, 'unknown_names', None):
+                learned = hearer.unknown_names & told
+                if learned:
+                    hearer.unknown_names -= learned
+                    trace.event('name_learned', character=hearer.name, names=sorted(learned), said_by=speaker.name)
     claims = speech_claims(context, speaker, reply)
     give = None
     handed = re.search(r'^\s*#give\s+(.+?)\s+to\s+(\w+)', reply, re.M)
@@ -570,7 +615,7 @@ def speech(context, speaker, line, listener=None):
     if not claims:
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
         return line, give
-    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context),
+    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context), 'unknown': unknown,
                              'claims': '\n'.join(f'- {w}' for _, w in claims)}, [UserMessage(content=RESAY)],
                             tag='record.resay', temp=0.6, stops=['</end>'], max_tokens=120)
     again = (again or '').strip().strip('"“”\'').strip()

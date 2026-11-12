@@ -333,6 +333,22 @@ class Context():
     def _may_move_on(self, opens_act):
         return opens_act or getattr(self, '_act_jumps', 0) < self.MAX_JUMPS_IN_ACT
 
+    def strangers(self, *characters):
+        """The play's cast (or those named) begin as strangers: none knows another's name until it
+        is said in its hearing (record.speech reports a name given). Called from a play file. A
+        character's actor still sees the names, to aim an act; its notes say which the character
+        does not yet know, and a line that uses one is said again."""
+        people = list(characters) or list(self.actors)
+        for character in people:
+            character.unknown_names = {other.name for other in people if other is not character}
+        trace.event('strangers', cast=[c.name for c in people])
+
+    def strangers_note(self):
+        """For the pre-scene step: who does not yet know whose name."""
+        lines = [f"{c.name} does not yet know the name of: {', '.join(sorted(c.unknown_names))}."
+                 for c in self.actors if getattr(c, 'unknown_names', None)]
+        return ('These people met as strangers. ' + ' '.join(lines)) if lines else ''
+
     def _hazard_claim_stands(self, words, scene=None):
         """Is a 'presence' finding that names one of this world's dangers a real one? Speaking of
         a danger (feared, or past) claims nothing. Having it arrive does, unless it is the danger
@@ -1597,7 +1613,11 @@ Respond with these lines only:
 #setup the scene's set-up, one or two sentences, true to where things stand
 #ending what the scene should arrive at, one sentence
 #goal <character name>: that character's goal in the scene (one line for each character)
+#unknown <character name>: one thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of
 </end>
+
+On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
+{{$strangers}}
 """)]
         if opens_act and not survival.config(self):
             return False   # no world to hold an opening scene to
@@ -1614,6 +1634,7 @@ Respond with these lines only:
         threat = getattr(self, 'active_threat', None)
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
+                  'strangers': self.strangers_note(),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -1622,7 +1643,7 @@ Respond with these lines only:
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
         for attempt in range(2):
-            reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=260) or ''
+            reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=460) or ''
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
             if find('skip').lower().startswith('y') and not opens_act:
                 return True
@@ -1643,6 +1664,14 @@ Respond with these lines only:
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
                         entry['goal'] = goal.strip()
+            # what each character has still to find out: a note for its actor (Character.director_notes)
+            for entry in (scene.get('characters') or {}).values():
+                if isinstance(entry, dict):
+                    entry['unknown'] = []
+            for name, missing in re.findall(r'#unknown\s+([^:\n]+):\s*(.+)', reply):
+                for key, entry in (scene.get('characters') or {}).items():
+                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
+                        entry['unknown'].append(missing.strip())
             if not checked:
                 break
             goals = ' '.join(f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())

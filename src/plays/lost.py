@@ -54,6 +54,7 @@ W = context.Context([S, J],
     start_time='2024-06-15T07:00:00',
     scenario_module=forest,  # Pass the forest scenario module
     server_name=server_name)
+W.strangers()   # neither knows the other's name until it is said
 
 S.look() # get the initial view
 J.look()
