@@ -31,7 +31,7 @@ from sim.memory.consolidation import MemoryConsolidator
 from sim.memory.core import MemoryEntry, NarrativeSummary, StructuredMemory
 from sim.memory.core import MemoryRetrieval
 from sim.cognitive.EmotionalStance import EmotionalStance
-from utils import llm_api
+from utils import llm_api, json_reply
 from utils.llm_api import generate_image
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
@@ -1926,114 +1926,66 @@ End your response with:
                                  }, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=80)
         return response
 
-    async def test_termination(self, object, termination_check, consequences, updates='', type=''):
-        """Test if recent acts, events, or world update have satisfied termination"""
-        prompt = [SystemMessage(content="""Test if recent acts, events, or world update have satisfied the CompletionCriterion is provided below. 
-Reason step-by-step using the CompletionCriterion as a guide for this assessment.
-Consider these factors in determining task completion:
-- Sufficient progress towards goal for intended purpose
-- Diminishing returns on continued effort
-- Environmental or time constraints
-- "Good enough" vs perfect completion
+    DONE = """You keep the record of an improvised play. {{$name}} set out to do a thing. Say whether it has been done, from the record below and from nothing else.
 
-For concrete termination checks (e.g., 'sufficient food gathered'), the full completion criterion is the actual achievement of the termination check, not merely thought, conversation, or movement towards it.
-A good way to test completion is to first generate a concise statement of actual achievement, and then test if the statement satisfies the termination check.
-Do not output your reasoning or your achievment statement."""),
-                  UserMessage(content="""
-                              
-<situation>
+<what_{{$name}}_set_out_to_do>
+{{$what}}
+Done when: {{$done_when}}
+</what_{{$name}}_set_out_to_do>
+
+<what_{{$name}}_has_done_toward_it>
+{{$acts}}
+</what_{{$name}}_has_done_toward_it>
+
+<what_has_happened_and_been_said_since_it_began>
+{{$happened}}
+</what_has_happened_and_been_said_since_it_began>
+
+<where_things_stand>
 {{$situation}}
-</situation>
+</where_things_stand>
 
-<history>
-{{$history}}
-</history>
+- Done means the "done when" is so now: the record shows it happening, or where things stand shows it. Trying, asking, intending, moving toward it or talking about it is not done. A deed told as a try, or marked "(it does not happen)", did not happen.
+- If the "done when" is about what another person does or says, it is done only if the record shows that person doing or saying it.
+- Part of it done is not done. When in doubt, not done.
 
-<events>
-{{$events}}
-</events>
+Answer in JSON only:
+{"done": true or false, "shown_by": "<a few words quoted from the record that show it; empty when not done>"}
+End your response with: </end>"""
 
-<recent_memories>
-{{$memories}}
-</recent_memories>
-                              
-<relationships>
-{{$relationships}}
-</relationships>
+    async def test_termination(self, object, termination_check, consequences, updates='', type=''):
+        """Whether a task or goal has been done: (done, 100 or 0). Done means the record shows
+        it, and the reply has to quote what shows it.
 
-<completion_criterion>
-{{$termination_check}}
-</completion_criterion>
-
-Respond using this hash-formatted text:
-
-#status complete/partial/insufficient
-#progress 0-100
-##
-
-Respond ONLY with the above hash-formatted text.
-Do not include any introductory, explanatory, or discursive text.
-End your response with:
-</end>
-""")]
-
-
-        # Get recent memories
-        recent_memories = self.structured_memory.get_recent(8)
-        memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
-
-        if consequences == '':
-            consequences = self.context.last_consequences
-        if updates == '':
-            updates = self.context.last_updates
-
-        response = self.llm.ask({
-            "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
-            "situation": record.seen_by(self),
-            "memories": memory_text,  # Updated from 'memory'
-            "events": consequences + '\n' + updates,
-            "character": self.get_character_description(),
-            "history": self.format_history_for_UI(),
-            "relationships": self.narrative.get_summary('medium')
-        }, prompt, tag='test_termination', temp=0.5, stops=['</end>'], max_tokens=20)
-
-        satisfied = hash_utils.find('status', response)
-        progress = hash_utils.find('progress', response)
-        print(f'\n{self.name} testing {type} {object.name} termination: {termination_check}, ', end='')
-        try:
-            progress = int(progress.strip())
-            object.progress = progress
-        except:
-            progress = 50
-        if satisfied != None and satisfied.lower().strip() == 'complete':
-            print(f'  **Satisfied!**')
-            statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
+        (This asked for complete, partial or insufficient with a progress figure, and on
+        'partial' drew a random number against the figure: a quarter of the tasks a character
+        ended as satisfied were 40 to 70 per cent done, each then written into its memory as
+        achieved. It was given the character's narrative summary under the name
+        'relationships' and twenty tokens to 'reason step by step' in.)"""
+        context = self.context
+        events_at, lines_at = getattr(object, 'began_at', None) or getattr(context, '_scene_plan_mark', (0, 0))
+        happened = list(context.scene_events[events_at:]) + [str(l).strip() for l in context.transcript[lines_at:] if str(l).strip()]
+        if not happened:   # outside a scene: the latest of what the world has recorded
+            happened = list(context.recent_events)[-8:]
+        done_acts = [f'- {a.mode}: {str(a.action)[:200]}' for a in (getattr(object, 'acts', None) or [])]
+        reply = self.llm.ask({'name': self.name, 'what': f'{object.name}: {object.description}',
+                              'done_when': str(termination_check).strip('# '),
+                              'acts': '\n'.join(done_acts) or 'nothing yet',
+                              'happened': '\n'.join(happened + [x for x in (consequences, updates) if x and x.strip()])[-5000:] or 'nothing',
+                              'situation': record.seen_by(self)},
+                             [UserMessage(content=self.DONE)], tag='test_termination', temp=0.1, stops=['</end>'], max_tokens=90)
+        found = json_reply.parse(reply) if reply else None
+        shown_by = str(found.get('shown_by') or '').strip() if isinstance(found, dict) else ''
+        done = isinstance(found, dict) and found.get('done') is True and bool(shown_by)
+        print(f"\n{self.name} testing {type} {object.name} termination: {termination_check}: {'done' if done else 'not done'}")
+        if not isinstance(found, dict):
+            trace.event('check_unreadable', of='termination', reply=(reply or '')[:300])
+        object.progress = 100 if done else 0
+        if done:
+            statement = self.generate_completion_statement(object, termination_check, 'complete', 100, consequences, updates)
             object.completion_statement = statement
             self.add_perceptual_input(statement, mode='internal')
-            if self.context.current_state.count('Following update may invalidate') > 3:
-                #await self.context.update(local_only=True)
-                await asyncio.sleep(0)
-            return True, 100
-        elif satisfied != None and 'partial' in satisfied.lower():
-            if type == 'task': threshold = 0.0
-            else: threshold = 0.1 # goal threshold is higher
-            if progress/100.0 > random.random() + threshold:
-                print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-                statement = self.generate_completion_statement(object, termination_check, satisfied, progress, consequences, updates)
-                object.completion_statement = statement
-                self.add_perceptual_input(statement, mode='internal')
-                if self.context.current_state.count('Following update may invalidate') > 3:
-                    #await self.context.update(local_only=True)
-                    await asyncio.sleep(0)
-                return True, progress
-        #elif satisfied != None and 'insufficient' in satisfied.lower():
-        #    if progress/100.0 > random.random() + 0.5:
-        #        print(f'  **Satisfied partially! {satisfied}, {progress}%**')
-        #        self.add_perceptual_input(f"{object.name} is sufficiently complete: {termination_check}", mode='internal')
-        #        return True, progress
-            
-        print(f'  **Not satisfied! {satisfied}, {progress}%**')
-        return False, progress
+        return done, object.progress
 
     def refine_say_act(self, act: Act, task: Task):
         """Refine a say act to be more natural and concise"""
@@ -3741,6 +3693,10 @@ End your response with:
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
+        if getattr(task, 'began_at', None) is None and self.context.current_scene is not None:
+            # where the scene's record stood when this task was begun: whether it is done is
+            # judged from what has happened since (test_termination)
+            task.began_at = (len(self.context.scene_events), len(self.context.transcript))
         # iterate over task until it is no longer the focus task. 
         # This is to allow for multiple acts on the same task, clear_task_if_satisfied will stop the loop with poisson timeout or completion
         act_count=0
