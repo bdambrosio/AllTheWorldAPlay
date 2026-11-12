@@ -2173,7 +2173,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
         await asyncio.sleep(0.1)
 
-    async def integrate_narratives(self, act_index, character_narrative_blocks, act_central_narrative, previous_act_post_state):
+    async def integrate_narratives(self, act_number, character_narrative_blocks, act_central_narrative, previous_act_post_state):
         """Integrate narratives into a single coherent narrative for a single act
         character_narrative_blocks is a list of lists, each containing a character and their planned next play act
         """
@@ -2184,7 +2184,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character_narrative = self.reserialize_act_times(character_block[1])
             character_plans.append(f'{character.name}\n{character_narrative}\n')
         character_plans = '\n'.join(character_plans)
-        act_number = character_narrative_blocks[0][1]['act_number']
+        kind = self.screenplay.kind(act_number)   # opening, middle, resolving or closing: what the act is for
 
         character_backgrounds = []
         for character in cast(List[NarrativeCharacter], self.actors):
@@ -2288,7 +2288,7 @@ End your response with </end>
 
         central_dramatic_question = self.central_narrative
         act_directives = ""
-        if act_number == 1:
+        if kind == 'opening':
             act_directives = f""" 
 In performing this integration:
     1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 3 scenes maximum.
@@ -2300,7 +2300,7 @@ In performing this integration:
     5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
     6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
  """
-        elif act_number == 2:
+        elif kind == 'middle':
             act_directives = f""" 
 In performing this integration:
     1. Each scene must advance the central dramatic question: {central_dramatic_question}. Your target is 4 scenes maximum.
@@ -2313,7 +2313,7 @@ In performing this integration:
     9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
     10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
 """
-        elif act_number == 3:
+        elif kind == 'resolving':
             act_directives = f""" 
 In performing this integration:
     1. Directly answer the central dramatic question: {central_dramatic_question}. Decide how the central dramatic question will be answered now, before generating the act, and stick to it.
@@ -2327,10 +2327,10 @@ In performing this integration:
     9. No scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
 
 """
-        elif act_number == 4:
+        else:   # the closing act
             act_directives = f""" 
 In performing this integration:
-    1. Show the immediate aftermath and consequences of Act 3's resolution of: {central_dramatic_question}
+    1. Show the immediate aftermath and consequences of how the last act left: {central_dramatic_question}
     2. Maximum of 2 scenes - focus on essential closure only, avoid extended exploration.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
@@ -2425,6 +2425,7 @@ In performing this integration:
 
 - What the episode settles is the central question, or as much of it as these characters can bring about themselves, here, by what they do to and with each other: something between them, not a single errand. It is shown in an act, not announced.
 - Use only what the setting and the characters give you. Invent no object, sound, creature or event.
+- """ + survival.PLAN_RULE + """
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
 {{$clue_rule}}
@@ -2550,94 +2551,58 @@ Respond with one line for each thing, or the single line #none:
                 + (f"\n{self.screenplay.clue_note()}" if self.screenplay.clues else ''))
 
     async def run_integrated_narrative(self):
-        """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
-        Integrates on an act by act basis, assuming that, since characters had a chance to share their narratives, actwise integration is coherent"""
-        # get length of longest character narrative plan
-        integrated_act_count = 0
-        for character in cast(List[NarrativeCharacter], self.actors):
-            character_narrative_act_count = len(character.plan['acts'])
-            if character_narrative_act_count > integrated_act_count:
-                integrated_act_count = character_narrative_act_count
-
+        """Play the screenplay, an act at a time. Every act, the closing one included, goes the
+        same way: its focus is settled, each character drafts its own version of the act from
+        where things now stand, the drafts are integrated into the act that is played, the act
+        is played, and what it came to is recorded for the next.
+        (The first act used to skip the characters' drafts, so its scenes were the integrator's
+        alone; the closing act was a separate block, hard-coded as act 4, with no focus of its
+        own.)"""
         def stop(reason):
             # these early exits used to be log-only: the UI just went quiet
             logger.error(reason)
             self.message_queue.put({'name': self.name, 'text': f'----- narrative stopped: {reason} -----'})
 
-        if integrated_act_count == 0:
+        players = cast(List[NarrativeCharacter], self.actors)
+        count = self.screenplay.act_count = max((len((c.plan or {}).get('acts') or []) for c in players), default=0)
+        if count == 0:
             stop('no character has any narrative acts')
             return
-        previous_act_post_state = ''
+        post_state = ''
         try:
-            self.screenplay.act_count = integrated_act_count
-            for i in range(integrated_act_count):
-                self.screenplay.begin_act(i+1)
-                act_central_narrative = await self.generate_act_central_narrative(i+1)
-                if act_central_narrative is None:
-                    stop('could not generate the act central narrative')
+            for number in range(1, count + 2):
+                record = self.screenplay.begin_act(number)
+                closing = record.kind == 'closing'
+                focus = await self.generate_act_central_narrative(number)
+                if focus is None:
+                    stop(f'could not settle what act {number} is about')
                     return
-                if self.episode_note():   # every act is planned knowing what the episode is for
-                    act_central_narrative = f'{act_central_narrative}\n\n{self.episode_note()}'
-                character_narrative_blocks = []
-                for character in cast(List[NarrativeCharacter], self.actors):
-                    if i < len(character.plan['acts']): # what about coda?
-                        if i == 0:
-                            updated_act = character.plan['acts'][i] # no need to replan act 1
-                        else:
-                            updated_act = character.replan_narrative_act(character.plan['acts'][i], act_central_narrative, previous_act_post_state)
-                        character_narrative_blocks.append([character, updated_act])  
-                if not character_narrative_blocks:
-                    stop(f'no character has a plan for act {i+1}')
+                if self.episode_note(closing=closing):   # every act is planned knowing what the episode is for
+                    focus = f'{focus}\n\n{self.episode_note(closing=closing)}'
+                drafts = []
+                for character in players:
+                    acts = (character.plan or {}).get('acts') or []
+                    outline = acts[number - 1] if number <= len(acts) else {"act_number": number, "act_title": "Closing" if closing else f"Act {number}"}
+                    drafts.append([character, character.replan_narrative_act(outline, focus, post_state, kind=record.kind)])
+                if not drafts:
+                    stop(f'no character has a plan for act {number}')
                     return
-                next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative, previous_act_post_state)
-                if next_act is None:
-                    stop(f'act {i+1} could not be written: {self.integration_fault}')
+                act = await self.integrate_narratives(number, drafts, focus, post_state)
+                if act is None:
+                    stop(f'act {number} could not be written: {self.integration_fault}')
                     return
-                new_act = await self.request_act_choice(next_act)
-
+                act = await self.request_act_choice(act)   # the Director's chair may edit it
                 await asyncio.sleep(0.1)
-                if new_act is None:
-                    stop(f'no act {i+1} to run')
+                if act is None:
+                    stop(f'no act {number} to run')
                     return
-                else:
-                    next_act = new_act
-                await self.run_narrative_act(next_act, i+1)
-                previous_act_post_state = await self.close_act(next_act)
-
-            coda_central_narrative = []
-            for character in cast(List[NarrativeCharacter], self.actors):
-                if character.decisions and len(character.decisions) > 0:
-                    coda_central_narrative.append(f'{character.decisions[-1].get('choice', '')}: {character.decisions[-1].get('reason','')}')
-            coda_central_narrative.append(self.episode_note(closing=True)
-                                          or "Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
-            coda_central_narrative = '\n'.join(coda_central_narrative)
-            # the closing act has a record of its own: it had been played with the act before's
-            # focus and roles still standing in the actors' notes
-            self.screenplay.begin_act(integrated_act_count + 1).framework = coda_central_narrative
-
-            character_narrative_blocks = []  # fresh: this list still held the last act's plans
-            for character in cast(List[NarrativeCharacter], self.actors):
-                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, coda_central_narrative, previous_act_post_state)
-                character_narrative_blocks.append([character, updated_act])  
-            next_act = await self.integrate_narratives(i, character_narrative_blocks, coda_central_narrative, previous_act_post_state)
-            if next_act is None:
-                stop(f'the closing act could not be written: {self.integration_fault}')
-                return
-            new_act = await self.request_act_choice(next_act)
-
-            await asyncio.sleep(0.1)
-            if new_act is None:
-                stop('no coda act to run')
-                return
-            await self.run_narrative_act(new_act, i+2)  # was next_act, discarding Director's-chair edits
+                await self.run_narrative_act(act, number)
+                post_state = await self.close_act(act)
             self.message_queue.put({'name': '', 'text': '\n----- end of episode -----'})
-            trace.event('episode_end', **(getattr(self, 'episode', None) or {}))
-            
+            trace.event('episode_end', **(self.episode or {}))
         except Exception as e:
             stop(f'error running integrated narrative: {type(e).__name__}: {e}')
             traceback.print_exc()
-        
-        return
 
     async def check_post_state_ambiguity(self, act, scene=None):
         """What a scene or act came to, read from the record of it: [{'outcome', 'test'}].
@@ -3187,12 +3152,14 @@ After the framework, repeat three of its elements on lines of their own, exactly
         # (each character's narrative summary was reset to empty here every act, erasing the
         # record of what had actually happened before the plans that use it)
 
-        act_guidance = [
-            """Act 1: "ESTABLISH foundation - Introduce core conflict, form fragile alliances, set central stakes" """,
-            """Act 2: "COMPLICATE dynamics - Deepen tension, raise external stakes, force difficult choices" """,
-            """Act 3: "RESOLVE or collapse - Final confrontation, decisive action, ultimate success or failure" """,
-            """Act 4: "REFLECT aftermath - Show consequences, character transformation, new equilibrium" """
-        ]
+        # by what the act is for, not by its number: a play may plan two acts or five
+        act_guidance = {
+            'opening': "ESTABLISH foundation - Introduce core conflict, form fragile alliances, set central stakes",
+            'middle': "COMPLICATE dynamics - Deepen tension, raise external stakes, force difficult choices",
+            'resolving': "RESOLVE or collapse - Final confrontation, decisive action, ultimate success or failure",
+            'closing': "REFLECT aftermath - This is the closing act, after the question has been settled. Show consequences, "
+                       "character transformation, new equilibrium. No new conflict; nothing here succeeds or fails. " + self.episode_note(closing=True),
+        }
         character_act_plans = []
         for character in cast(List[NarrativeCharacter], self.actors):
             character.current_act = character.get_act_from_plan(act_number)
@@ -3203,7 +3170,7 @@ After the framework, repeat three of its elements on lines of their own, exactly
                                  "character_act_plans": '\n'.join(character_act_plans), 
                                  "previous_scenes_summary": '\n'.join([json.dumps(scene, indent=2, default=datetime_handler) for scene in self.previous_scenes]), 
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
-                                 "act_specific_guidelines": act_guidance[act_number-1],
+                                 "act_specific_guidelines": act_guidance[self.screenplay.kind(act_number)],
                                  "current_situation": self.current_state}, 
                                  prompt, max_tokens=420, stops=['</end>'], tag='act_central_narrative')
         if response:

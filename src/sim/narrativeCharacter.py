@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('simulation_core')
 
+# What each kind of act is for (sim/screenplay.py KINDS), for whoever drafts one. They were all
+# shown for every act, numbered 1 to 4, whichever act was being written.
+ACT_RULES = {'opening': "    1. This act should be short and to the point. Your target is 3 scenes maximum.\n    2. Sequence scenes to introduce characters and create unresolved tension.\n    3. Establish the central dramatic question clearly: {{$central_narrative}}\n    4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.\n    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.\n    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.\n", 'middle': '    1. Each scene must advance the central dramatic question: {{$central_narrative}}\n    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.\n    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..\n    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.\n    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A\'s revelation triggers Character B\'s confrontation)\n    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.\n    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters\' approach to the central question.\n    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they\'re forced to consider.\n    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.\n', 'resolving': '    1. Directly answer the central dramatic question, as far as this episode is to settle it: {{$central_narrative}}\n    2. No scene should avoid engaging with the question\'s resolution. Your target is 3 scenes maximum.\n    3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)\n    4. create response opportunities (e.g., Character A\'s revelation triggers Character B\'s confrontation)  \n    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters\' final status is.\n    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."\n    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.\n', 'closing': '    1. Show the immediate aftermath and consequences of how the last act left: {{$central_narrative}}\n    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.\n    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.\n    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).\n    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).\n    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.\n    7. Act post-state must specify: the characters\' new equilibrium, what they\'ve learned or become, and their final emotional state.\n    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.\n    9. No ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.\n'}
+ACT_KIND_WORDS = {'opening': 'the opening act', 'middle': 'a middle act', 'resolving': 'the act that resolves the question', 'closing': 'the closing act, after the question is settled'}
+
+
 class NarrativeCharacter(Character):
     def __init__(self, name, character_description= '', reference_description='', init_x=None, init_y=None, server_name='local'):
         super().__init__(name, character_description, reference_description=reference_description, init_x=init_x, init_y=init_y, server_name=server_name)
@@ -312,8 +318,9 @@ Return **only** the JSON.  No commentary, no code fences.
                 return True
         return False
     
-    def replan_narrative_act(self, act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
-        """Rewrite the act with the latest shared information"""
+    def replan_narrative_act(self, act, act_central_narrative:CentralNarrative, previous_act_post_state:str, kind='middle'):
+        """This character's draft of an act, written from where the play now stands. kind: what
+        the act is for (opening, middle, resolving, closing)."""
 
         system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
@@ -322,7 +329,6 @@ Let conflict emerge through spoken intention and subtext, as well as through the
 Characters hold real agency; they pursue goals, make trade-offs, and can fail.
 """ + survival.stakes_text(self.context, 'Survival chores are background unless they expose or escalate the core mystery.') + """
 Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve—or intentionally leave poised—the protagonist’s primary drive.
         """
         mission = """ You have already created a initial outline for the following act, and now need to update it based on the actual performance so far and the guiding central dramatic question.
 Note the tensions and relationships with other characters, as these may have changed.
@@ -357,47 +363,9 @@ Do not repeat goals that have already been attempted and completed, unless you h
 Note that in the current situation any assumptions or preconditions on which your original act and plan were based may no longer be valid.
 However, the original short-term plan above should still be used to locate your new plan within the overall narrative arc of the performance.
 
-The following act-specific guidelines supplement the general guidelines above, and override them where necessary. Again, the current act number is {{$act_number}}:
+The following guidelines for this act supplement the general guidelines above, and override them where necessary. This is act {{$act_number}}, {{$act_kind}}:
 
-** For act 1:
-    1. This act should be short and to the point. Your target is 3 scenes maximum.
-    2. Sequence scenes to introduce characters and create unresolved tension.
-    3. Establish the central dramatic question clearly: {{$central_narrative}}
-    4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.
-    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
-    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
- 
-** For act 2 (midpoint act):
-    1. Each scene must advance the central dramatic question: {{$central_narrative}}
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.
-    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
-    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
-    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
-    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
-    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
-    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
-
-** For act 3 (final act):
-    1. Directly answer the central dramatic question: {{$central_narrative}}
-    2. No scene should avoid engaging with the question's resolution. Your target is 3 scenes maximum.
-    3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)
-    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
-    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
-    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
-    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
-
-** For act 4 (coda):
-    1. Show the immediate aftermath and consequences of Act 3's resolution of: {{$central_narrative}}
-    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.
-    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
-    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
-    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
-    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
-    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
-    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
-    9. No ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
-
+{{$act_rules}}
 
 {{$scene_rules}}
 
@@ -487,6 +455,8 @@ Again, the act central narrative is:
         response = default_ask(self, view='playwright', system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
                                "act_number": act['act_number'],
+                               "act_kind": ACT_KIND_WORDS[kind],
+                               "act_rules": ACT_RULES[kind].replace('{{$central_narrative}}', str(self.context.central_narrative or '')),
                                "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
                                "places": stage.gazetteer(self.context),
                                "previous_act_post_state": previous_act_post_state,
