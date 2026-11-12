@@ -132,7 +132,7 @@ Do not include any other explanatory, discursive, or formatting text.
 End your response with </end>
 """
 
-        introduction = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix,
+        introduction = default_ask(self, view='playwright', system_prompt=system_prompt, prefix = mission, suffix = suffix,
                                 addl_bindings={"scenario": play_file_content, 
                                  "map": map_file_content if map_file_content else '',
                                  "name": self.name,
@@ -254,7 +254,7 @@ Return **only** the JSON.  No commentary, no code fences.
 
 """
 
-        narrative = default_ask(self, system_prompt=system_prompt, prefix = mission, suffix = suffix, 
+        narrative = default_ask(self, view='playwright', system_prompt=system_prompt, prefix = mission, suffix = suffix, 
                                 addl_bindings={"scenario": json.dumps(self.context.summarize_scenario(), indent=2, default=datetime_handler), 
                                  "map": self.context.summarize_map(),
                                  "name": self.name,
@@ -476,7 +476,7 @@ Again, the act central narrative is:
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.context.reserialize_acts_times(acts)
         act_number = act['act_number']
-        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix,
+        response = default_ask(self, view='playwright', system_prompt=system_prompt, prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
                                "act_number": act['act_number'],
                                "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
@@ -565,7 +565,7 @@ be careful to insert line breaks only where shown, separating a value from the n
 """
 
 
-        response = default_ask(self, prefix=mission, suffix=suffix,
+        response = default_ask(self, view='playwright', prefix=mission, suffix=suffix,
                               addl_bindings={"name": self.name, 
                                "character_description": self.character,
                                "other_characters_profiles": '\n'.join([char.character for char in self.context.actors if char.name != self.name]),
@@ -730,7 +730,8 @@ End response with:
             scene_narrative = f"\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
         else:
             scene_narrative = ''
-        scene_task_plan = '\n'.join([f'{t["actor"].name}: {t["task"].to_string()}' for t in scene_task_plan])
+        # the actor's own tasks in the scene: what the others mean to do is theirs to play
+        scene_task_plan = '\n'.join([f'{t["actor"].name}: {t["task"].to_string()}' for t in scene_task_plan if t["actor"] is self])
         logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
         response = default_ask(self, system_prompt=system_prompt,
                                prefix=mission, 
@@ -741,10 +742,10 @@ End response with:
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[:5]),
                                 "scene_narrative": scene_narrative,
-                                "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                "act_specific_narrative": self.act_direction(),
+                                "central_narrative": self.story_note(),
                                 "my_narrative": self.central_narrative if self.central_narrative else '',
-                                "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                                "scene": self.director_notes(story=False),
                                 "scene_task_plan": scene_task_plan, 
                                 "scene_history": '\n'.join(self.context.scene_history)},
                                tag = 'Character.generate_task_plan',
@@ -841,8 +842,8 @@ End your response with:
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
                                addl_bindings={
                                               "final_outcome": situation,
-                                              "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                              "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                              "act_specific_narrative": self.act_direction(),
+                                              "central_narrative": self.story_note(),
                                               "name": self.name,
                                               "dialog_transcripts": '\n'.join(self.actor_models.get_dialog_transcripts(20))}, 
                                tag = 'NarrativeCharacter.closing_acts',

@@ -138,6 +138,19 @@ class Body:
         parts += sorted(self.flags)
         return '; '.join(parts)
 
+    def visible(self):
+        """The body as another person sees it: hurt or not, what is carried, sheltered or not.
+        Thirst, hunger and tiredness are the body's own to know."""
+        harm = _harm(self.cfg)['name']
+        hidden = tuple(self.cfg.get('private_items', ()))
+        carried = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
+        parts = [_word(self.cfg, harm, self.levels.get(harm, 0.0))] if harm in self.levels else []
+        if carried:
+            parts.append('carrying ' + ', '.join(carried))
+        if self.sheltered:
+            parts.append('in shelter')
+        return '; '.join(parts) or 'nothing remarkable'
+
     def adjust(self, need, delta):
         old = self.levels.get(need, 0.0)
         self.levels[need] = min(1.0, max(0.0, old + delta))

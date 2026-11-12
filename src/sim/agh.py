@@ -668,7 +668,7 @@ End your response with:
 
         candidate = xml.find('<name>', response)
         if candidate is not None:
-            target = self.context.resolve_reference(self, candidate.strip())
+            target, _ = self.actor_models.resolve_character(candidate.strip())   # (context.resolve_reference never existed)
             if target:
                 return target.name
         return None
@@ -1510,11 +1510,11 @@ End response with:
         response = self.llm.ask({"name":self.name,
                                  "character": self.get_character_description(),
                                  "goal_statement":goal_statement,
-                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
-                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                                 "central_narrative": self.story_note(),
+                                 "act_specific_narrative": self.act_direction(),
+                                 "scene": self.director_notes(story=False),
                                  "drives": drives.drive_lines(self, ids=True),
-                                 "situation": self.context.current_state if self.context else "",
+                                 "situation": record.seen_by(self) if self.context else "",
                                  "surroundings": self.look_percept,
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
@@ -1809,10 +1809,10 @@ Place tasks least important to the dramatic context early in the plan when possi
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[:5]),
                                 "scene_narrative": scene_narrative,
-                                "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
+                                "act_specific_narrative": self.act_direction(),
+                                "central_narrative": self.story_note(),
                                 "my_narrative": self.central_narrative if self.central_narrative else '',
-                                "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                                "scene": self.director_notes(story=False),
                                 "task_plan": "\n".join([t.to_string() for t in goal.task_plan]) if goal.task_plan else '', 
                                 "new_task": new_task.to_string() if new_task else ''},
                                tag = 'Character.generate_task_plan',
@@ -1911,8 +1911,8 @@ End your response with:
                                 "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
                                 "satisfied": satisfied,
                                 "progress": progress,
-                                "situation": self.context.current_state,
-                                "world": self.context.current_state,
+                                "situation": record.seen_by(self),
+                                "world": record.seen_by(self),
                                 "consequences": consequences,
                                 "updates": updates,
                                 "events": consequences + '\n' + updates,
@@ -1986,7 +1986,7 @@ End your response with:
 
         response = self.llm.ask({
             "termination_check": termination_check.strip('##')+ ': wrt '+object.name+', '+object.description,
-            "situation": self.context.current_state,
+            "situation": record.seen_by(self),
             "memories": memory_text,  # Updated from 'memory'
             "events": consequences + '\n' + updates,
             "character": self.get_character_description(),
@@ -2108,17 +2108,11 @@ End response with:
 </goal>
 ##
 
-#In the following narrative context, the act should be consistent with the character's drives and emotional stance.
+#The act should be consistent with the character's drives and emotional stance.
 
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-##
+{{$director_notes}}
 
-In light of the narrative context above, your acts should serve story momentum as well as character psychology.
+In light of the director's notes, your acts should serve story momentum as well as character psychology.
 
 Consider how your chosen action:
 - Advances the central narrative question toward resolution or deepens the mystery
@@ -2142,7 +2136,7 @@ The acts should vary in mode and action.
 
 In choosing each act (see format below), you can choose from these Modes:
 - Say - speak, to obtain or share information, to align, coordinate with, or manipulate others in service of your goals or drives; to reason jointly, or to establish or maintain a bond. 
-    For example, if you want to build a shelter with Samantha, it might be effective to Say: 'Samantha, let's build a shelter.'
+    For example, if you want to build a shelter with Mirela, it might be effective to Say: 'Mirela, let's build a shelter.'
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - walk to a named place or person: give its name (a place listed under 'You could do here', such as Spring3, or an actor's name).
@@ -2246,42 +2240,42 @@ Response:
 ----
 
 Task:
-Establish connection with Joe given RecentHistory element: "Who is this guy?"
-Actors: Samantha
+Establish connection with Tomas given RecentHistory element: "Who is this guy?"
+Actors: Mirela
 
 Response:
 #mode Say
 #action Hi, who are you?
 #duration 1 minute
-#target Joe
-#actors Samantha
+#target Tomas
+#actors Mirela
 ##
 
 ----
 
 Task:
 Find out where I am given Situation element: "This is very very strange. Where am I?"
-Actors: Samantha
+Actors: Mirela
 
 Response:
 #mode Look
 #action look around for landmarks or signs of civilization
 #duration 1 minute
-#actors Samantha
+#actors Mirela
 ##
 
 ----
 
 Task:
 Find food.
-Actors: Joe, Samantha
+Actors: Tomas, Mirela
 
 Response:
 #mode Move
 #action berries#2
 #duration 15 minute
 #target None
-#actors Joe, Samantha
+#actors Tomas, Mirela
 ##
 
 ----
@@ -2361,10 +2355,8 @@ End your response with:
                                               "already_said": self.already_said(task),
                                               "tempo": stage.speech_tempo(self),
                                               "goal_memories": "\n".join([m.content for m in goal_memories]),
-                                              "scene_post_narrative": scene_post_narrative,
-                                              "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                              "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
-                                              "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else '',
+                                              "scene_post_narrative": '',   # where the scene is heading is in the director's notes
+                                              "director_notes": self.director_notes(),
                                               "modes": modes,
                                               "name": self.name,
                                               "actor_genders": actor_genders,
@@ -2667,9 +2659,9 @@ End your response with:
                                  "pending_tasks": self._pending_task_names(other),
                                  "name": self.name,
                                  "other_name": other.name,
-                                 "central_narrative": self.context.central_narrative if self.context.central_narrative else '',
-                                 "act_specific_narrative": self.context.act_central_narrative if self.context.act_central_narrative else '',
-                                 "scene": json.dumps(self.context.current_scene, indent=2, default=datetime_handler) if self.context.current_scene else ''},
+                                 "central_narrative": self.story_note(),
+                                 "act_specific_narrative": self.act_direction(),
+                                 "scene": self.director_notes(story=False)},
                                 prompt, tag='extract_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=300)
         added = []
         hashes = hash_utils.findall_forms(response) if response else []
@@ -3193,7 +3185,7 @@ End your response with:
             'character': self.get_character_description(),
             'emotionalState': emotionalState.to_definition(),
             'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
-            "situation": self.context.current_state,
+            "situation": record.seen_by(self),
             "name": self.name,
             "goals": mapped_goals,
             "memories": memory_text,  # Updated from 'memory'
@@ -3598,19 +3590,66 @@ End your response with:
 
 
     def scene_brief(self):
-        """The current scene as this character knows it: title, place, set-up and own goal."""
+        """The scene in progress, for a prompt that performs it: the director's notes to this actor."""
         scene = self.context.current_scene
         if not scene:
             return ''
-        own = (scene.get('characters') or {}).get(self.name.capitalize()) or (scene.get('characters') or {}).get(self.name) or {}
-        return (f"{scene.get('scene_title', '')} at {scene.get('place') or scene.get('location', '')}\n"
-                f"Set-up: {scene.get('pre_narrative', '')}\nYour goal in this scene: {own.get('goal', '')}")
+        return self.director_notes()   # the scene is the director's to describe, and is given as notes
+
+    # ------------------------------------------------------------------ the director's notes
+    # What the director tells the actor playing this character: the story, what this act is
+    # about and the actor's part in it, this scene's set-up and where it should arrive, the
+    # character's objective, and what the character does not know. They are outside the play.
+    # They are set for a scene (Context.run_scene fills self.direction) and are never stored as
+    # the character's memory or in anything made from memory: the plan used to be given to the
+    # character itself, as 'internal:' memories and in its situation, so it knew the scene
+    # before it happened.
+    NOTES_HEAD = ("######## DIRECTOR'S NOTES TO YOU, THE ACTOR PLAYING {name} ########\n"
+                  "These notes are outside the play. {name} does not know them. Use them to shape how you play the scene: "
+                  "what to want, press for, resist and arrive at. Never have {name} say or act on them as something {name} knows. "
+                  "What {name} has not seen or been told, {name} finds out in the scene, or not at all: being surprised, "
+                  "mistaken or in the dark is part of the performance.\n")
+    NOTES_FOOT = "\n######## END OF DIRECTOR'S NOTES ########"
+
+    def story_note(self):
+        """The story the company is telling (the play's central question), for the actor."""
+        story = getattr(self.context, 'central_narrative', None) if self.context else None
+        return str(story).strip() if story else ''
+
+    def act_direction(self):
+        """What this act is about and this actor's part in it. Not the other characters' parts,
+        and not the scenes still to come: an actor told the act's later beats played them at once."""
+        frame = (getattr(self.context, 'act_frame', None) or {}) if self.context else {}
+        role = next((r for n, r in (frame.get('roles') or {}).items() if n.lower() == self.name.lower()), '')
+        return '\n'.join(filter(None, [f"What this act is about: {frame['focus']}" if frame.get('focus') else '',
+                                       f"What rides on it: {frame['stakes']}" if frame.get('stakes') else '',
+                                       f"Your part in it: {role}" if role else '']))
+
+    def director_notes(self, story=True):
+        """The notes as a block for a prompt, with the standing instruction on how to use them.
+        story=False for a template that gives the story and the act in slots of its own."""
+        d = getattr(self, 'direction', None) or {}
+        parts = []
+        if story:
+            parts += [f"The story the company is telling:\n{self.story_note()}" if self.story_note() else '', self.act_direction()]
+        if d.get('setup') or d.get('title'):
+            parts.append(f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}".rstrip(': '))
+        if d.get('ending'):
+            parts.append(f"It should arrive at: {d['ending']}")
+        if d.get('goal'):
+            parts.append(f"Your objective in it: {d['goal']}")
+        if d.get('decision'):
+            choice, reason = d['decision']
+            parts.append(f"In the course of the scene {self.name} comes to choose: {choice}" + (f" ({reason})" if reason else '')
+                         + f". That is not yet chosen when the scene opens; {self.name} gets there.")
+        if d.get('unknown'):
+            parts.append(f"What {self.name} does not know as the scene opens:\n" + '\n'.join(f'- {u}' for u in d['unknown']))
+        body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
+        return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
 
     def physical_context(self):
         """Where the character is, its body, recent physical events, and what it could do here."""
         parts = [f'Surroundings: {self.look_percept or "unknown"}']
-        if self.context is not None:   # so that nobody is 'him' in one line and 'her' in the next
-            parts.append(f'Everyone in the play, and whether each is he or she: {record.cast(self.context)}.')
         others = stage.whereabouts(self)
         if others:
             parts.append(f'Where the others are: {others}. To act on or speak to someone out of reach you first walk to them, which takes time.')

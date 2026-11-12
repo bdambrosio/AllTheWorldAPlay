@@ -13,20 +13,24 @@ from utils import llm_api
 import utils.xml_utils as xml
 import sim.map as map
 import sim.survival as survival
+import sim.record as record
 from sim.cognitive import drives
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
 #from sim.cognitive.DialogManager import Dialog
 
-def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:str=None, addl_bindings:dict={}, max_tokens:int=100, log:bool=True, tag:str=''):
-
-    prompt = []
-    if system_prompt:
-        prompt.append(SystemMessage(content=system_prompt))
-    if prefix:
-        prompt.append(UserMessage(content=prefix+"""\nYou are {{$name}}."""))
-    
-    prompt.append(UserMessage(content="""    
+# The frame every prompt of a character shares.
+#
+# A character's LLM is asked two different things. As PLAYWRIGHT it helps write the plan (its
+# arc, the acts): it then sees the plan. Everywhere else it is the ACTOR playing the character,
+# or the character's own mind, and this frame is the character: who it is, what it wants, feels,
+# remembers and can perceive. Nothing of the plan belongs in it. (The frame used to open with
+# the central dramatic question and to give the play's Situation text, which carries the scene's
+# title and set-up; the plan was also stored as the character's memories. So the first thing a
+# woman said to a stranger who had not spoken was 'You really don't remember anything?')
+# A call that performs or plans a scene adds the director's notes in its own template
+# (Character.director_notes), marked as outside the play.
+PLAYWRIGHT_FRAME = """    
 
 #The central dramatic question driving the play
 {{$central_narrative}}
@@ -77,10 +81,6 @@ The current situation in the play
 {{$memories}}
 ##
 
-#Your history
-{{$history}}
-##
-
 #Previous act if any
 {{$lastAct}}
 ##
@@ -90,7 +90,76 @@ The current situation in the play
 ##
 
 
-"""))
+"""
+
+CHARACTER_FRAME = """    
+
+######## {{$name}}, THE CHARACTER ########
+Everything down to the closing line of this block is {{$name}}: who {{$name}} is, and what {{$name}} wants, feels, remembers and can perceive. {{$name}} speaks and acts from this, and from nothing else.
+
+#Who you are
+{{$character}}
+##
+
+#Your drives, most pressing first (what you want; each is pressing, present or quiet right now, with what you have just noticed about it)
+{{$drives}}
+##
+
+#Emotional stance
+{{$emotional_stance}}
+##
+
+#A short summary of your current state and recent activities
+{{$narrative}}
+##
+
+#Where things stand, as you can see for yourself
+{{$situation}}
+##
+
+#Your immediate surroundings
+{{$surroundings}}
+##
+
+#The others, as you know them: what you can see of each, what has passed between you, what you make of them
+{{$actors}}
+##
+
+#Places and things you know of
+{{$resources}}
+##
+
+#Your recently achieved goals and their outcomes
+{{$goal_history}}
+##
+
+#Your recent memories
+{{$memories}}
+##
+
+#Previous act if any
+{{$lastAct}}
+##
+
+#Observed result of that act
+{{$lastActResult}}
+##
+######## END OF {{$name}}, THE CHARACTER ########
+
+
+"""
+
+
+def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:str=None, addl_bindings:dict={}, max_tokens:int=100, log:bool=True, tag:str='', view:str='character'):
+    """view: 'playwright' for a call in which the character's LLM helps write the plan;
+    'character' (the default) for every other call."""
+    prompt = []
+    if system_prompt:
+        prompt.append(SystemMessage(content=system_prompt))
+    if prefix:
+        prompt.append(UserMessage(content=prefix+"""\nYou are {{$name}}."""))
+    
+    prompt.append(UserMessage(content=PLAYWRIGHT_FRAME if view == 'playwright' else CHARACTER_FRAME))
     if suffix:
         prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     
@@ -106,7 +175,9 @@ The current situation in the play
     
     if task and task.acts and len(task.acts) > 0:
         lastAct = task.acts[-1].mode + ' ' + task.acts[-1].action
-        lastActResult = task.result
+        # what came of it: the task's own record, else what the character took from its last act
+        # (a Look that found something was followed by 'Observed result: None to report')
+        lastActResult = task.result or getattr(character, 'lastActResult', '')
     else:
         lastAct = character.focus_action if character.focus_action else None
         if hasattr(character, 'lastActResult'):
@@ -128,15 +199,15 @@ The current situation in the play
                 "drives": drives.drive_lines(character),
                 "central_narrative": character.central_narrative if character.central_narrative else 'None yet established',
                 "narrative":character.narrative.get_summary('medium'),
-                "surroundings":character.look_percept + could_do,
+                # the act and dialog prompts give the surroundings in their own here-and-now block
+                "surroundings":(character.look_percept if 'here_and_now' not in addl_bindings else 'see the here-and-now block below') + could_do,
                 "time": character.context.simulation_time.isoformat(),
-                "situation":character.context.current_state if character.context else "",
+                "situation": (character.context.current_state if view == 'playwright' else record.seen_by(character)) if character.context else "",
                 "actor_genders":actor_genders,
                 "actors":character.actor_models.format_relationships(include_transcript=True),
                 "resources":character.resource_models.to_string(),
                 "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in character.goal_history]) if character.goal_history else 'None to report',
                 "memories": memory_text,
-                "history": "", #character.history, include heading if decide to re-add,
                 "lastAct": lastAct.action if hasattr(lastAct, 'action') else lastAct,
                 "lastActResult": lastActResult if lastActResult else 'None to report',
                 "emotional_stance":emotionalState.to_definition()}

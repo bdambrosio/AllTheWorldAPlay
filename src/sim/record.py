@@ -78,13 +78,29 @@ or, when there is none, the single line:
 """
 
 
+def seen_by(character):
+    """The situation as `character` can know it, for that character's own prompts. A character's
+    prompts read Context.current_state, the director's and narrator's text, which carries the
+    scene's title and set-up: so a character was told the scene before it happened. This is the
+    world as the character stands in it, with the play's opening description while the first
+    scene lasts. In a world without mechanics there is no world to render and the play's own
+    situation text is used, without the scene's notes."""
+    context = character.context
+    opening = '' if getattr(context, '_opening_done', False) else context.initial_state.strip() + '\n\n'
+    if not survival.config(context):
+        return getattr(context, '_state_base', '') or context.initial_state
+    lately = ' '.join(w.split(' Assessed outcome:')[0] for w in getattr(context, 'act_scene_wrapups', [])[-2:])
+    return opening + situation(context, lately, viewer=character)
+
+
 def cast(context, people=None):
     """The people of the play with what each is, for any prompt that writes about someone other
     than its own character: 'Hu (female), Xue (male), ...'. Each call used to see one
     character's description and everyone else as a bare name, and a name like Hu, Xue or Xiaoyu
     says nothing: one scene had Hu as 'him', Xiaoyu as 'her' and then 'his', and 'the lady' said
     to a man. `people`: those to list; the whole cast by default."""
-    people = people or list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
+    people = people or [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
+                        if not getattr(c, 'placeholder', False)]   # not the map's 'Cave1_owner'
     return ', '.join(f"{c.name} ({(getattr(c, 'gender', '') or '').strip().lower() or 'not stated'})" for c in people)
 
 
@@ -120,18 +136,25 @@ def of(context, actor, people=None):
     ])
 
 
-def situation(context, lately=''):
+def situation(context, lately='', viewer=None):
     """The Situation every prompt reads, in a world with mechanics: where and when things stand,
     from the world itself. It was free text that each narration added to and an LLM rewrote
-    after every scene, so whatever a narrator once wrote was the situation from then on."""
+    after every scene, so whatever a narrator once wrote was the situation from then on.
+    viewer: a character. The situation is then as that character can know it: itself and those
+    with it, and of another body only what shows (Body.visible), not its thirst or hunger."""
     cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) if getattr(c, 'mapAgent', None) is not None]
+    if viewer is not None:
+        with_it = viewer.bystanders() if getattr(context, 'current_scene', None) is not None else [c for c in cast if c is not viewer]
+        cast = [viewer] + [c for c in with_it if getattr(c, 'mapAgent', None) is not None]
     lines = [f'It is now {stage.clock(context, date=True)}.',
              'Where everyone is: ' + '; '.join(f'{c.name} {stage.where(context, stage.here(c))}' for c in cast) + '.']
-    bodies = [f'{c.name}: {c.body.summary(public=True)}' for c in cast if getattr(c, 'body', None) is not None]
+    seen = lambda c: c.body.summary() if c is viewer else c.body.visible() if viewer is not None else c.body.summary(public=True)
+    bodies = [f'{c.name}: {seen(c)}' for c in cast if getattr(c, 'body', None) is not None]
     if bodies:
-        lines.append('Bodies and what each carries: ' + '; '.join(bodies) + '.')
+        lines.append(('You, and what can be seen of the others: ' if viewer is not None else 'Bodies and what each carries: ') + '; '.join(bodies) + '.')
     threat = getattr(context, 'active_threat', None)
-    lines.append('Danger: ' + (f"{threat['hazard']['description']}, threatening {', '.join(threat['targets'])}" if threat else 'none at present') + '.')
+    if viewer is None or threat is None or viewer.name in threat['targets']:
+        lines.append('Danger: ' + (f"{threat['hazard']['description']}, threatening {', '.join(threat['targets'])}" if threat else 'none at present') + '.')
     used = '; '.join(f'{rid}: {survival._left(res)}' for rid, res in context.map.resource_registry.items() if survival._left(res))
     if used:
         lines.append(f'Drawn on so far: {used}.')

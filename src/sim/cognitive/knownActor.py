@@ -266,9 +266,35 @@ End with:
         self.tensions = []
 
     def get_relationship(self):
-        """return the relationship of the actor to the owner, including tensions and any relationships this actor has with other characters
-        """
-        return self.relationship + self.get_tensions() + '\n'+'\n'.join([f"{rel} {other}" for rel, other in self.owner.context.reference_manager.get_relationships(self.actor_agh.name)])
+        """What the owner knows and thinks of this person, in the owner's own terms: what they
+        are to it, how they look, what can be seen of them now, what has passed between the two
+        and what the owner makes of it, and what the owner takes them to be after.
+
+        Everything here is the owner's own: its eyes, its talk with them (update_relationship),
+        what it has watched them do (infer_goal). It used to carry the act's tension points,
+        which are the director's ('Samantha suspects Joe ...' in Joe's notes on Samantha, before
+        they had spoken), and every relationship the other person has with anyone (so each
+        character knew whose mistress the widow was)."""
+        owner, other = self.owner, self.actor_agh
+        if owner is other or owner.name == other.name:
+            return self.relationship
+        lines = []
+        try:
+            mine = [str(rel) for rel, whom in owner.context.reference_manager.get_relationships(other.name)
+                    if str(getattr(whom, 'name', whom)).lower() == owner.name.lower()]
+            if mine:
+                lines.append(f"What they are to you: {', '.join(mine)}.")
+            looks = owner.context._image_description(other) if getattr(other, 'character', None) else ''
+            if looks:
+                lines.append(f"How they look: {looks.rstrip('. ')}.")
+            if self.visible and getattr(other, 'body', None) is not None:
+                lines.append(f"As you see them now: {other.body.visible()}.")
+        except Exception:
+            pass
+        lines.append(self.relationship)
+        if self.goal:
+            lines.append(f"What you take them to be after: {self.goal}")
+        return '\n'.join(l for l in lines if l)
 
 class KnownActorManager:
     def __init__(self, owner, context):

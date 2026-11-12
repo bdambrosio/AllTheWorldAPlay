@@ -120,6 +120,7 @@ class Context():
             has_owner = self.check_resource_has_npc(resource)
             if has_owner:
                 owner:Character = self.get_npc_by_name(resource['name']+'_owner'.capitalize(), description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
+                owner.placeholder = True   # the map's stand-in for an owner, not a person of the play
                 resource['properties']['owner'] = owner.mapAgent
                 self.reference_manager.declare_relationship(resource['name'], 'owned by', owner.name, 'owner of')
 
@@ -1541,11 +1542,12 @@ End your response with:
                         print(f'Character {character_name} not found in act {act["act_title"]}')
                         continue
                     characters.append(character)
-                for character in characters:
-                    for other_character in characters:
-                        if other_character != character or len(characters) == 1:
-                            character.add_perceptual_input(f'Issue: {issue} {"with "+ other_character.name if len(characters) > 1 else ""}')
-                            character.actor_models.get_actor_model(other_character.name, create_if_missing=True).add_tension(issue)
+                # What is at issue in an act is the director's to know. It was written into each
+                # listed character's memory and into what it thought of the other ('Issue:
+                # Samantha suspects Joe ... with Samantha' was Joe's own memory before they had
+                # spoken). Scene goals carry it to the actors, in their notes.
+                trace.event('tension_point', characters=[c.name for c in characters], issue=issue,
+                            resolution_requirement=resolution_requirement)
             except Exception as e:
                 print(f'Error establishing tension points: {e}')
 
@@ -1786,6 +1788,12 @@ Respond with these lines only:
         # character's goal in it. (It was asked for after the scene, from the plan, so Samantha
         # 'decided' to follow Joe to a spring she had already reached.) The choice and its
         # reason are the character's own: they are not lines of the play.
+        for character in characters_in_scene:
+            planned = next((v for k, v in (scene.get('characters') or {}).items() if str(k).lower() == character.name.lower()), None) or {}
+            character.direction = {'title': scene.get('scene_title', ''), 'place': scene.get('place', ''),
+                                   'setup': scene.get('pre_narrative', ''), 'ending': scene.get('post_narrative', ''),
+                                   'goal': planned.get('goal', '') if isinstance(planned, dict) else '',
+                                   'decision': None, 'unknown': list(planned.get('unknown') or []) if isinstance(planned, dict) else []}
         decided = {}
         for decision in await self.check_decision_required(act, scene) or []:
             character, character_name = self.resolve_character(decision.get('character', ''))
@@ -1795,7 +1803,10 @@ Respond with these lines only:
             if choice_dict and choice_dict.get('choice'):
                 choice, reason = choice_dict['choice'], choice_dict.get('reason', '')
                 drive_model.denied(character, choice_dict.get('drive_denied'), choice)
-                character.add_perceptual_input(f'I have decided: {choice}\n\treason: {reason}', mode='internal')
+                # a choice the character will come to in the scene: a note for the actor, not a
+                # memory of having already made it ('I have decided: go with Joe to find water',
+                # remembered by a woman who had not yet spoken to him)
+                character.direction['decision'] = (choice, reason)
                 decided[character.name] = choice
                 trace.event('decision', character=character.name, choices=decision.get('choices'), choice=choice, reason=reason)
 
@@ -1807,10 +1818,7 @@ Respond with these lines only:
 
             try: # can fail if invented character name mismatch for some reason
                 goal_text = scene['characters'][character.name.capitalize()]['goal']
-                if self.scene_pre_narrative and character.name in self.scene_pre_narrative:
-                    character.add_perceptual_input(f'{self.scene_pre_narrative}', mode = 'internal')
-                if goal_text:
-                    character.add_perceptual_input(f'{goal_text}', mode = 'internal')
+                # (the set-up and the goal were also stored as the character's own memories)
             except Exception as e:
                 print(f'Error getting goal for {character.name}: {e}')
                 goal_text = ''
@@ -1920,9 +1928,12 @@ Respond with these lines only:
         self.current_scene['wrapup'] = wrapup
         self.act_scene_wrapups.append(wrapup)
         self.current_state += '\n' + wrapup
+        # what happened is the characters' to remember; what the director judged it came to is not
+        lived = wrapup.split(' Assessed outcome:')[0]
         for character in characters_in_scene:
-            character.add_perceptual_input(wrapup, mode='internal')
-            character.reason_over(wrapup)
+            character.direction = None   # the notes were for this scene
+            character.add_perceptual_input(lived, mode='internal')
+            character.reason_over(lived)
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
         shown = re.sub(r'\s*\([^)]*\)', '', true_outcomes.replace(chr(10), '; '))   # '(Actual State)'
@@ -1949,6 +1960,7 @@ Respond with these lines only:
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
+        self._opening_done = True   # the play's opening description was for its first scene (record.seen_by)
         return true_outcomes
 
 
@@ -3071,6 +3083,11 @@ A paragraph or two including the following elements:
 Your response should be consistent with the play-level central narrative and the previous acts.
 
 Generate the act-specific framework that will guide scene-level planning.
+
+After the framework, repeat three of its elements on lines of their own, exactly in this form, one #role line for each character:
+#focus <the Central Focus>
+#stakes <the Stakes>
+#role <character name>: <that character's role in this act>
 """)]
         # (each character's narrative summary was reset to empty here every act, erasing the
         # record of what had actually happened before the plans that use it)
@@ -3093,8 +3110,14 @@ Generate the act-specific framework that will guide scene-level planning.
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
                                  "act_specific_guidelines": act_guidance[act_number-1],
                                  "current_situation": self.current_state}, 
-                                 prompt, max_tokens=250, stops=['</end>'], tag='act_central_narrative')
+                                 prompt, max_tokens=420, stops=['</end>'], tag='act_central_narrative')
         if response:
+            # the tagged lines are what an actor is given (Character.act_direction): the act's focus
+            # and stakes and its own role, not the others' roles or the scenes still to come
+            find = lambda tag: (hash_utils.find(tag, response) or '').strip()
+            self.act_frame = {'focus': find('focus'), 'stakes': find('stakes'),
+                              'roles': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#role\s+([^:\n]+):\s*(.+)$', response, re.M)}}
+            response = re.sub(r'^\s*#(focus|stakes|role)\b.*$', '', response, flags=re.M).strip()
             self.act_central_narrative = response
         return self.act_central_narrative
     
