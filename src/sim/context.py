@@ -1635,6 +1635,7 @@ It is now {{$clock}}.
 {{$places}}
 Bodies and what each carries: {{$bodies}}
 Dangers this world has: {{$hazards}}. Now: {{$danger}}.
+{{$clues}}
 What has happened lately:
 {{$events}}
 </where_things_stand>
@@ -1683,6 +1684,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
                   'strangers': self.strangers_note(),
+                  'clues': self.screenplay.clue_note(),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -2152,13 +2154,16 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             for character in cast(List[NarrativeCharacter], self.actors):
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
                 self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
-        self.central_narrative = await self.merge_central_narratives()         
-        prologue = self.central_narrative   
-        prologue = prologue.replace('Central Dramatic Question: ','')
-        end = prologue.find('Character Roles:')
-        if end > 0:
-            prologue = prologue[:end]
+        await self.merge_central_narratives()
         self.message_queue.put({'name':'Prologue', 'text':f'{self.central_narrative}\n'})
+        # Settled before any character plans its acts, so that the plans are written knowing
+        # them: what this episode settles and leaves open, the clues that lie in the world, and
+        # what each character has with it. (They were settled after the plans, at the head of
+        # the first act: a plan resolved the mystery the frame then said must stay open, and
+        # promised a find in a hut that held nothing.)
+        self.frame_episode()
+        self.place_clues()
+        self.equip_cast()
 
         await asyncio.sleep(0.4)
 
@@ -2422,22 +2427,58 @@ In performing this integration:
 - Use only what the setting and the characters give you. Invent no object, sound, creature or event.
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
+{{$clue_rule}}
 
 Respond with these lines only, one sentence each:
 #settles what this episode settles
 #open what it leaves open
 #last the image or act it should end on
+{{$clue_format}}
 </end>
 """)]
+        places = stage.gazetteer(self) if survival.config(self) else ''
+        clue_rule = ("""- Clues are the one exception to inventing nothing. Name two or three small, ordinary things that will really lie in this world, each at one of the places listed below, that touch the open question without answering it: a second cup beside the first, a tally scratched on a wall, a torn page in a hand someone half knows. A clue makes the question sharper; it never says who, how or why. Choose places the characters can reach in this episode.
+
+<places>
+""" + places + """
+</places>""") if places else ''
+        clue_format = "#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder>   (one line for each clue)" if places else ''
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
-                              'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors)},
-                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=160) or ''
+                              'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors),
+                              'clue_rule': clue_rule, 'clue_format': clue_format},
+                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=340) or ''
         echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
         frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
         self.episode = frame if frame['settles'] and frame['open'] else {}
-        trace.event('episode', **self.episode)
+        self.screenplay.clues = [{'thing': thing.strip(' ."\''), 'place': place.strip(), 'touches': touches.strip()}
+                                 for thing, place, touches in re.findall(r'^\s*#clue\s+([^|\n]+)\|([^|\n]+)\|\s*(.+?)\s*$', reply, re.M)][:3]
+        trace.event('episode', **self.episode, clues=self.screenplay.clues)
         return self.episode
+
+    def place_clues(self):
+        """Put the episode's clues in the world, each at the place the director named for it:
+        hidden where this world has a way to search such a place, in plain sight where it has
+        not. A clue whose place is not on the map is dropped from the screenplay, so that no
+        plan is told of a thing that is not there."""
+        if not survival.config(self) or not self.actors:
+            self.screenplay.clues = []
+            return []
+        anchor = stage.here(self.actors[0])
+        placed = []
+        for clue in self.screenplay.clues:
+            spot = stage.resolve(self, clue['place'], anchor)
+            res = self.map.resource_registry.get(spot[1]) if spot else None
+            if spot is None or res is None:
+                trace.event('clue_dropped', **clue)
+                continue
+            clue['place'] = spot[1]
+            clue['hidden'] = survival.searchable(self, res)
+            if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden']):
+                placed.append(clue)
+        self.screenplay.clues = placed
+        trace.event('clues_placed', clues=placed)
+        return placed
 
     def equip_cast(self):
         """Before the first act, settle what each character has with it that the story turns on,
@@ -2505,7 +2546,8 @@ Respond with one line for each thing, or the single line #none:
                     f"It leaves standing what the episode cannot answer: {frame['open']} Do not answer it, and do not have anyone sum it up. "
                     + (f"End on this, or something as quiet: {frame['last']}" if frame.get('last') else ''))
         return (f"This episode is to settle: {frame['settles']} Each act should bring that nearer or put it in doubt. "
-                f"It leaves open: {frame['open']} That may be touched on, never answered in this episode.")
+                f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
+                + (f"\n{self.screenplay.clue_note()}" if self.screenplay.clues else ''))
 
     async def run_integrated_narrative(self):
         """Called from simulation, on input individual character narratives have been created, but not an integrated overall narrative
@@ -2527,8 +2569,6 @@ Respond with one line for each thing, or the single line #none:
             return
         previous_act_post_state = ''
         try:
-            self.frame_episode()
-            self.equip_cast()
             self.screenplay.act_count = integrated_act_count
             for i in range(integrated_act_count):
                 self.screenplay.begin_act(i+1)
@@ -2827,25 +2867,37 @@ Create a unified central dramatic question that:
 
 *Write your response as one paragraph totalling no more than 100 words, with no introductory text, code fences or markdown formatting.
 
+After the paragraph, repeat its elements on lines of their own, exactly in this form, one #role line for each character:
+#question <the Central Dramatic Question>
+#stakes <the Stakes>
+#tension <the Dramatic Tension Sources>
+#role <character name>: <that character's role>
+#success <the Success Scenario>
+#failure <the Failure Scenario>
+
 What unified central dramatic question emerges from these proposals?         
                               """)]
         drives = '\n'.join(f"{c.name}: " + ' / '.join(d.text.strip() for d in c.drives) for c in self.actors if getattr(c, 'drives', None))
         bindings = {"character_central_narratives": '\n'.join([f'{character.name}: {character.current_proposal.to_string() if character.current_proposal else ""}' for character in cast(List[NarrativeCharacter], self.actors)]),
                     "character_names_and_brief_descriptions": '\n'.join([f'{character.name}: {character.character}' for character in cast(List[NarrativeCharacter], self.actors)]),
                     "setting": self.current_state, "drives": drives or 'not given', "left_out": ''}
-        response = self.llm.ask(bindings, prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
-        left_out = self.drives_left_out(response, drives) if response and drives else []
+        strip = lambda reply: re.sub(r'^\s*#(question|stakes|tension|success|failure|role)\b.*$', '', reply or '', flags=re.M).strip()
+        response = self.llm.ask(bindings, prompt, max_tokens=480, stops=['</end>'], tag='merge_central_narratives')
+        left_out = self.drives_left_out(strip(response), drives) if response and drives else []
         if left_out:
             # the play as written gave these people wants that the question has no place for
             # (lost: a mystery and a romance planned as berries, boar, wolf): written once more
             bindings['left_out'] = ("**A first draft of the question left these out; this one gives each a place:**\n"
                                     + '\n'.join(f"- {who}: {want}" for who, want in left_out) + '\n')
-            again = self.llm.ask(bindings, prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
+            again = self.llm.ask(bindings, prompt, max_tokens=480, stops=['</end>'], tag='merge_central_narratives')
             trace.event('plan_drives', left_out=[f'{who}: {want}' for who, want in left_out], rewritten=bool(again),
                         before=response[:600], after=(again or '')[:600])
             response = again or response
         if response:
-           self.central_narrative = response
+            # the paragraph for the planning prompts and the audience; its elements, taken from
+            # the tagged lines, for each actor's notes (Screenplay.story_for)
+            self.screenplay.set_question(response)
+            trace.event('central_question', **{k: v for k, v in self.screenplay.question.items() if k != 'text'})
         return self.central_narrative
 
     def drives_left_out(self, question, drives):

@@ -90,6 +90,7 @@ class NarrativeCharacter(Character):
         system_prompt = """Imagine you are addressing the audience of a play. 
 Create a short introduction (no more than 60 tokens) to your character, including your name, terse description, role in the play, drives, and most important relationships with other characters. 
 Leave some mystery. This should be in the first person, you will speak to the audience.
+{{$strangers}}
 For example:
 #####
 Hi, I'm Maya, a brilliant artist. I live in a small coastal town with my partner Elijah.
@@ -134,6 +135,9 @@ End your response with </end>
         introduction = default_ask(self, view='playwright', system_prompt=system_prompt, prefix = mission, suffix = suffix,
                                 addl_bindings={"scenario": play_file_content, 
                                  "map": map_file_content if map_file_content else '',
+                                 # a stranger is not named to the audience by someone who has not met them
+                                 "strangers": (f"You have not met {', '.join(sorted(self.unknown_names))} and do not know their name: speak of a stranger, never by name."
+                                               if getattr(self, 'unknown_names', None) else ''),
                                  "name": self.name,
                                  "start_time": self.context.simulation_time.isoformat()},
                                  max_tokens=200, tag='NarrativeCharacter.introduction')
@@ -145,7 +149,7 @@ End your response with </end>
 
     async def write_narrative(self, play_file_content:dict, map_file_content:str, central_narrative:CentralNarrative):
 
-        system_prompt = """You are a seasoned writer designing a 2-3 act narrative arc for a 30 minute screenplay.
+        system_prompt = """You are a seasoned writer designing a {{$act_count}} act narrative arc for a 30 minute screenplay.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
 Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
@@ -180,7 +184,10 @@ Focus your personal lifeplan on what you see as your role in the play*: {{$my_na
 5. Success Scenario: Brief description of what "winning" looks like
 6. Failure Scenario: Brief description of what "losing" looks like
 
-After processing the above information and in light of the following information, generate a 3 act outline for the play.
+The company has also settled what this episode of the play is for, and what really lies in its world to be found:
+{{$episode}}
+
+After processing the above information and in light of the following information, generate a {{$act_count}} act outline for the play.
 
 Consider the following guidelines:
 ** For act 1:
@@ -216,7 +223,7 @@ Remember, you are {{$name}}
 Generate a single JSON document that outlines the narrative arc for yourself.
 The narrative should start at the current time: {{$start_time}}
 """ + survival.stakes_text(self.context, 'Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.') + """
-By the end of the narrative, the primary drive should be resolved.
+By the end of the narrative, what the episode is to settle is settled, one way or the other; what it leaves open is still open.
 
 ### Structure
 Return exactly one JSON object with these keys:
@@ -240,7 +247,7 @@ You will have the opportunity to revise your plan as you go along, observe the r
 
 ### 2.2  Guidelines
 1. Base every character’s *stated goal* on their drives, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft 3 acts - keep the momentum going, don't add acts just to add acts. By the end there should be some resolution of the dramatic tension and the characters' primary drives.
+2. Craft exactly {{$act_count}} acts - keep the momentum going. By the end there should be some resolution of the dramatic tension: of what the episode settles, not of what it leaves open.
 3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
 4. Set scenes at the named places listed under Physical World, where their action can happen.  
 5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
@@ -258,6 +265,8 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "name": self.name,
                                  "central_narrative": central_narrative,
                                  "my_narrative": self.central_narrative,
+                                 "episode": self.context.episode_note() or 'Nothing further.',
+                                 "act_count": self.context.screenplay.act_count,
                                  "start_time": self.context.simulation_time.isoformat()},
                                  max_tokens=5000, tag='NarrativeCharacter.write_narrative')
         try:
@@ -267,9 +276,23 @@ Return **only** the JSON.  No commentary, no code fences.
             self.plan = self.context.repair_json(narrative, e)
         valid, reason = self.context.validate_narrative_json(self.plan, require_scenes=False)
         if not valid:
+            # an unusable plan is an empty one: its acts are headings, filled in act by act
             print(f'Invalid narrative: {reason}')
-            return self.plan
-        self.current_act = self.plan["acts"][0]
+            trace.event('plan_refused', character=self.name, reason=str(reason))
+            self.plan = {"title": f"{self.name}'s part", "acts": []}
+        # every character's plan has the acts the screenplay counts on, numbered 1..n: a longer
+        # plan is cut, a shorter one gets an act with a heading only, which the rewrite before
+        # that act is played fills in (a character with a shorter plan was left out of the
+        # later acts altogether)
+        count = self.context.screenplay.act_count
+        acts = self.plan["acts"][:count]
+        for n in range(len(acts), count):
+            acts.append({"act_number": n + 1, "act_title": f"Act {n + 1}"})
+            self.context.validate_narrative_act(acts[-1], require_scenes=False)
+        for n, act in enumerate(acts):
+            act["act_number"] = n + 1
+        self.plan["acts"] = acts
+        self.current_act = acts[0]
         self.current_scene = None
         return self.plan
 

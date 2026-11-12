@@ -679,13 +679,22 @@ def place_kinds(context):
     return kinds
 
 
-def lying(context, xy):
-    """The things lying at or near a spot."""
-    return [p for p in getattr(context, 'props', []) if _distance(p['at'], xy) <= CO_PRESENT_TILES]
+def lying(context, xy, hidden=False):
+    """The things lying at or near a spot, in plain sight; hidden=True for those that are found
+    only by searching (a clue the director placed, see searchable)."""
+    return [p for p in getattr(context, 'props', [])
+            if _distance(p['at'], xy) <= CO_PRESENT_TILES and bool(p.get('hidden')) == hidden]
 
 
-def add_thing(context, name, holder=None, at=None):
-    """A thing comes into the world: in `holder`'s hands, or lying at `at`. Returns the fact."""
+def searchable(context, res):
+    """Whether this world has an action that finds things at a place of this kind."""
+    return any(a.get('finds') and (not a.get('resource_types') or str(res.get('type')) in a['resource_types'])
+               for a in (config(context) or {}).get('actions', []))
+
+
+def add_thing(context, name, holder=None, at=None, hidden=False):
+    """A thing comes into the world: in `holder`'s hands, or lying at `at` (hidden: not seen
+    until someone searches there). Returns the fact."""
     name = re.sub(r'^(a|an|the|some)\s+', '', name.strip().lower())[:40]
     if not name:
         return ''
@@ -696,7 +705,7 @@ def add_thing(context, name, holder=None, at=None):
     else:
         context.props = getattr(context, 'props', [])
         if not any(p['name'] == name for p in lying(context, at)):
-            context.props.append({'name': name, 'at': tuple(at)})
+            context.props.append({'name': name, 'at': tuple(at), **({'hidden': True} if hidden else {})})
         fact = f"There is {_a(name)} here."
     trace.event('thing_added', name=name, holder=holder.name if holder is not None else None)
     return fact
@@ -1023,7 +1032,14 @@ def _apply(context, character, action, near, target, via, act_text=''):
     if action.get('reveals') and other is not None:
         revealed = [i for i in other.body.inventory if i.startswith(action['reveals'])]
     found = None
-    if action.get('finds'):
+    concealed = lying(context, _here(character), hidden=True) if action.get('finds') else []
+    if concealed:
+        # what was put there to be found is found before the luck of the search is tried; it
+        # stays where it lies, in plain sight from now on, for anyone to take or point at
+        concealed[0].pop('hidden', None)
+        found = concealed[0]['name']
+        trace.event('thing_found', name=found, character=character.name)
+    elif action.get('finds'):
         roll = _rng.random()
         for f in action['finds']:
             roll -= f.get('chance', 0)
