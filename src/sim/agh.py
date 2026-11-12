@@ -1034,17 +1034,14 @@ End response with:
     async def clear_task_if_satisfied(self, task: Task, consequences='', world_updates=''):
         """Check if task is complete and update state"""
         termination_check = task.termination if task != None else None
-        if termination_check is None or termination_check == '':
+        if task is None:
             return True
-
-        # Test completion through cognitive processor's state system
-        satisfied, progress = await self.test_termination(
-            task,
-            termination_check, 
-            consequences,
-            world_updates, 
-            type='task'
-        )
+        if not termination_check:
+            # nothing says when it is done: it is done when it has been acted on. (It was
+            # reported satisfied and left on the stack, to be played for all its acts.)
+            satisfied, progress = bool(task.acts), 100
+        else:
+            satisfied, progress = await self.test_termination(task, termination_check, consequences, world_updates, type='task')
 
         weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode in ('Say', Mode.Say)])
         trace.event('task_check', character=self.name, task_id=task.id, task=task.name,
@@ -1200,8 +1197,9 @@ End response with:
                 self.context.transcript.append(f'{self.name} {line}')
                 await asyncio.sleep(0)
             else:   # it names nowhere on the map: the narrator decides what the attempt comes to
+                # in the actor's own words ('move to ' was put in front of them: 'move to Start
+                # walking Northwest towards the spring' was a line of the play)
                 act_mode = 'Do'
-                act_arg = 'move to ' + act_arg
                 act.action = act_arg  # Context.do reads act.action
 
         # Handle world interaction
@@ -1248,12 +1246,13 @@ End response with:
 
             # Update displays
 
-            if len(consequences.strip()) > 2:
-                #self.show += 'Resulting in ' + consequences.strip()
-                #self.context.message_queue.put({'name':self.name, 'text':self.show})
-                self.context.transcript.append(f'{self.name}: {self.show}')
-                await asyncio.sleep(0)
-            self.show = '' # has been added to message queue!
+            # the deed goes in the play's transcript as the audience was shown it. (self.show was
+            # appended here after it had been emptied: every deed was a bare 'Joe:', and what
+            # reads the transcript, the outcome check and the task review, saw speech only.)
+            shown = re.sub(rf'^{re.escape(self.name)}\s+', '', told)
+            self.context.transcript.append(f'{self.name} {shown}')
+            await asyncio.sleep(0)
+            self.show = ''
             if len(world_updates) > 0:
                 self.add_perceptual_input(f"{world_updates}", mode='visual')
             self.act_result = world_updates +'. '+character_updates
@@ -2338,12 +2337,8 @@ End your response with:
             for tm in memories:
                 if tm not in goal_memories:
                     goal_memories.append(tm)
-        task = self.focus_task.peek()
-        if self.context.scene_post_narrative:
-            scene_post_narrative = f"\n\nThe scene is heading toward: {self.context.scene_post_narrative}"
-        else:
-            scene_post_narrative = ''
-
+        # (the task was replaced here by whatever stood on top of the focus stack: called for a
+        # scene task while a dialog task was above it, this wrote acts for the dialog)
         response = default_ask(self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
                                               "done_in_task": self.done_in_task(task),
@@ -2535,19 +2530,6 @@ End your response with:
                         speaker=other.name, listener=self.name, joint=len(owners) > 1,
                         significance=significance, in_scene=bool(in_scene), owner_tasks=owner_tasks)
         return added
-
-    def tell(self, to_actor, message, source=None, respond=True):
-        """Initiate or continue dialog with dialog context tracking"""
-        if source.name.startswith('dialog'):
-            
-            if self.actor_models.get_actor_model(to_actor.name, create_if_missing=True).dialog.active is False:
-                self.actor_models.get_actor_model(to_actor.name).dialog.activate()
-                # Remove text between ellipses - thoughts don't count as dialog
-                content = re.sub(r'\.\.\..*?\.\.\.', '', message)
-                self.actor_models.get_actor_model(to_actor.name).dialog.add_turn(self, content)
-        
-        self.acts(Act(mode='Say', target=[to_actor], action=message, reason=message, duration=1, source=source), to_actor, 'tell', message, self.reason, source)
-        
 
     def natural_dialog_end(self, from_actor):
         """ called from acts when a character says something to this character """
@@ -3900,9 +3882,6 @@ End your response with:
         elif self.focus_task.peek() and self.focus_task.peek().name.startswith('internal dialog'):
             target_name = self.name
             target = self
-        elif act_mode == 'Say':
-            if target_name != None and target is None:
-                target = self.context.resolve_character(target_name)[0]
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         began = self.context.simulation_time
