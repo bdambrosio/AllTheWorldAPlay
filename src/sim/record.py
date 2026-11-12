@@ -88,6 +88,15 @@ def cast(context, people=None):
     return ', '.join(f"{c.name} ({(getattr(c, 'gender', '') or '').strip().lower() or 'not stated'})" for c in people)
 
 
+def cast_note(context):
+    """The cast for the head of every prompt (llm_api.set_preamble): those whose sex is known."""
+    try:
+        known = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) if (getattr(c, 'gender', '') or '').strip()]
+        return ('The people of this play, and whether each is he or she: ' + cast(context, known) + '.') if known else ''
+    except Exception:
+        return ''
+
+
 def of(context, actor, people=None):
     """The record as it bears on what may be said of `actor` and those with it (or of `people`,
     a scene's cast)."""
@@ -368,15 +377,15 @@ def settle(context, actor, action, facts, narration, rewrite, kind='do', source=
     if not claims:
         trace.event('narration_check', character=actor.name, of=kind, outcome='ok' if claims is not None else 'unchecked', claims=[])
         return narration
-    made, refused, remaining = admit(context, actor, claims, f'{action}\n{narration}', source)
+    made, refused, remaining = ([], [], claims) if kind == 'look' else admit(context, actor, claims, f'{action}\n{narration}', source)
     if not remaining:   # everything found was a new thing, and is now real
         trace.event('narration_check', character=actor.name, of=kind, outcome='admitted',
                     claims=[f'{k}: {w}' for k, w in claims], made=made, before=narration, after=narration)
         return Settled(narration, made)
-    if any(k == 'gender' for k, _ in remaining):
-        refused = refused + [f'Cast: {cast(context)}.']
     settled = ' '.join(filter(None, [facts or ''] + made + refused))
-    again = rewrite(rejection(remaining, made, refused, settled=re.sub(survival.BODY_NOTE, '', facts or '').strip()))
+    # who is he and who is she is for the rewrite only: it is not a fact about what happened
+    so = refused + ([f'Cast: {cast(context)}.'] if any(k == 'gender' for k, _ in remaining) else [])
+    again = rewrite(rejection(remaining, made, so, settled=re.sub(survival.BODY_NOTE, '', facts or '').strip()))
     still = check(context, actor, action, settled, again) if again else None
     if again and still == []:
         result, outcome = again, 'rewritten'

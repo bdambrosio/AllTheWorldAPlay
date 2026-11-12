@@ -171,6 +171,19 @@ REASONING_TOKENS = 3000
 _reasoning: dict = {}
 
 
+# A line put at the head of every prompt of the play in progress: what no call may be left
+# without. The engine has some forty kinds of call, each with its own prompt; the people of the
+# play and whether each is he or she had been added to five of them, and the sixth (a bystander
+# cutting in) called a man 'her', after which the lines that followed copied it.
+_preamble = None
+
+
+def set_preamble(fn):
+    """fn() -> a short text, or '' for none; None to clear."""
+    global _preamble
+    _preamble = fn
+
+
 def set_reasoning(spec):
     """spec: 'page=medium', 'page+plan=low', 'Context.do,record.check=high', or None for none."""
     global _reasoning
@@ -243,6 +256,12 @@ class LLM():
                         print(f' var not in bindings {var} {bindings}')
                         raise ValueError(f'unbound prompt variable {var}')
                 substituted_prompt.append({'role': message.role, 'content': new_content})
+        note = _preamble() if _preamble is not None else ''
+        if note and substituted_prompt:   # what every call of this play is told (set_preamble)
+            first = dict(substituted_prompt[0])
+            if isinstance(first.get('content'), str):
+                first['content'] = f"{note}\n\n{first['content']}"
+                substituted_prompt = [first] + substituted_prompt[1:]
         self._last_prompt = substituted_prompt   # as sent, for the run's prompt log (sim/trace.py)
 
         if trace:

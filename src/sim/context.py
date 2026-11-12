@@ -73,6 +73,7 @@ class Context():
 
         self.initial_state = description
         self.current_state = description
+        llm_api.set_preamble(lambda: record.cast_note(self))   # every call of this play knows who is he and who is she
         self.actors: List[Character] = characters
         self.npcs = []
         self.extras = extras # created as needed
@@ -994,7 +995,7 @@ End your response with:
                                                    stops=['</end>'], max_tokens=300)
         nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else text
         settled = record.settle(self, actor, f'looks: {action}', None, nothing(narrate()), lambda note: nothing(narrate(note)), kind='look') or ''
-        consequences = ' '.join(filter(None, list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ())) + [settled]))
+        consequences = str(settled)   # what was seen; a look settles nothing in the world
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
