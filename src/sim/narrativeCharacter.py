@@ -599,11 +599,11 @@ Done when: {{$done_when}}
 
 The intent is yours and it is kept: it is what you brought to this scene. Decide only whether the planned action is still the way to pursue it.
 - keep: the action has not been done and can still be played as planned. When in doubt, keep. The same action in other words is not a change: answer keep.
-- adapt: the action has already been done (by you or by someone else), has been overtaken by what happened, or cannot be done now. Give a new action that pursues the same intent from where things now stand.
-- respond: the intent itself has been met, or what another character has just done makes it pointless. Give what {{$name}} now wants in answer to that, and why. This is rare.
+- adapt: the action has already been done (by you or by someone else), has been overtaken by what happened, or cannot be done now. Give a new action that pursues the same intent from where things now stand. First say, in "serves", how the new action gets {{$name}} what the intent is after; if you cannot say that plainly, it is not an adaptation.
+- respond: the intent itself has been met, or what another character has just done makes it pointless, or {{$name}} has turned to something else. Give what {{$name}} now wants in answer to what happened, and why. If the action you have in mind does not serve the planned intent, this is the honest answer, not adapt.
 {{$final}}
 Answer in JSON only. For keep, the verdict alone is enough.
-{"verdict": "keep" | "adapt" | "respond", "action": "<4 to 8 words naming the new action>", "how": "<one plain sentence: what is done or said>", "done_when": "<5 to 8 words: something that can be seen or heard>", "why": "<for respond only: the new intent, 6 to 10 words>"}
+{"verdict": "keep" | "adapt" | "respond", "serves": "<for adapt only: how the new action gets what the intent is after>", "action": "<4 to 8 words naming the new action>", "how": "<one plain sentence: what is done or said>", "done_when": "<5 to 8 words: something that can be seen or heard>", "why": "<for respond only: the new intent, 6 to 10 words>"}
 End your response with: </end>"""
 
     def refresh_task(self, task, scene_task_plan, final_task=False):
@@ -638,13 +638,16 @@ End your response with: </end>"""
                               'later': '\n'.join(later) or 'none',
                               'happened': '\n'.join(events + lines)[-5000:],
                               'final': 'This is your last task in the scene.\n' if final_task else ''},
-                             [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=220)
+                             [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=280)
         found = json_reply.parse(reply) if reply else None
         verdict = str(found.get('verdict') or '').strip().lower() if isinstance(found, dict) else ''
         action, how = (str(found.get(k) or '').strip() for k in ('action', 'how')) if isinstance(found, dict) else ('', '')
-        if verdict not in ('adapt', 'respond') or not action or not how:
-            # keep; or a reply that cannot be read, or that names no action: the plan stands
-            trace.event('task_review', character=self.name, task_id=task.id, verdict='keep' if verdict == 'keep' else 'unreadable',
+        serves = str(found.get('serves') or '').strip() if isinstance(found, dict) else ''
+        if verdict not in ('adapt', 'respond') or not action or not how or (verdict == 'adapt' and not serves):
+            # keep; or a reply that cannot be read, names no action, or changes the action
+            # without saying how the new one serves the intent: the plan stands
+            trace.event('task_review', character=self.name, task_id=task.id,
+                        verdict='keep' if verdict == 'keep' else 'unserved' if verdict == 'adapt' and action and how else 'unreadable',
                         reply='' if verdict == 'keep' else (reply or '')[:300])
             return task
         why = str(found.get('why') or '').strip()
@@ -653,7 +656,7 @@ End your response with: </end>"""
                         start_time=task.start_time, duration=task.duration)
         trace.event('task_review', character=self.name, task_id=task.id, verdict=verdict, new_task_id=new_task.id,
                     before=f'{task.name}: {task.description}', after=f'{action}: {how}', reason=new_task.reason,
-                    reason_kept=new_task.reason == task.reason)
+                    reason_kept=new_task.reason == task.reason, serves=serves)
         if goal is not None:
             goal.task_plan = [new_task]
         return new_task

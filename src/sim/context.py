@@ -2521,6 +2521,7 @@ Things this world's own actions produce, which are not to be handed out here: {{
 - List only what a character's description, or the premise of the story, says or plainly implies they have with them when the play opens and that the story turns on: evidence, a letter, a keepsake, the tool of their trade.
 - Most characters need nothing. Someone who begins with nothing (lost, stranded, robbed) gets nothing. At most two things each.
 - No weapon, food, drink, medicine or money, and nothing they could only have by something happening in the play.
+- What a person is wearing is not something they have with them: no clothes, shoes or anything else a description says they are dressed in.
 
 Respond with one line for each thing, or the single line #none:
 #has <character name> | <the thing, two or three plain words>
