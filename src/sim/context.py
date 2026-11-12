@@ -31,6 +31,7 @@ from sim.trace import trace
 import sim.survival as survival
 import sim.stage as stage
 import sim.record as record
+from sim.screenplay import Screenplay
 from sim import ablation
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
@@ -71,6 +72,7 @@ class Context():
             character.context = self
             # Additional character initialization as needed
 
+        self.screenplay = Screenplay()   # what the company has settled above the scene level (sim/screenplay.py)
         self.initial_state = description
         self.current_state = description
         llm_api.set_preamble(lambda: record.cast_note(self))   # every call of this play knows who is he and who is she
@@ -139,8 +141,6 @@ class Context():
         self.previous_acts = []
         self.previous_scenes = []
         self.narrative_level= False
-        self.central_narrative: str = ''
-        self.act_central_narrative: str = ''
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
         # concrete physical events (acts with visible results, travel, hazards), newest last; fed to
@@ -283,6 +283,35 @@ class Context():
         places near the cast with what each offers (sim/stage.py)."""
         return f"Terrain: {', '.join(self.map.terrain_types.__members__)}\n{stage.gazetteer(self)}"
 
+
+    # The screenplay's parts under the names the prompts have always read them by.
+    @property
+    def central_narrative(self):
+        """The play's central dramatic question, as the playwright wrote it."""
+        return self.screenplay.question_text
+
+    @central_narrative.setter
+    def central_narrative(self, text):
+        self.screenplay.question['text'] = text or ''
+
+    @property
+    def episode(self):
+        """What this episode settles and leaves open (frame_episode)."""
+        return self.screenplay.frame
+
+    @episode.setter
+    def episode(self, frame):
+        self.screenplay.frame = frame or {}
+
+    @property
+    def act_frame(self):
+        """The focus, stakes and roles of the act now planned or played ({} before the first)."""
+        return self.screenplay.act.focus if self.screenplay.act else {}
+
+    @property
+    def act_central_narrative(self):
+        """The dramatic framework of the act now planned or played ('' before the first)."""
+        return self.screenplay.act.framework if self.screenplay.act else ''
 
     @property
     def current_state(self):
@@ -2025,6 +2054,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self._act_jumps = 0   # the play moves on at most MAX_JUMPS_IN_ACT times within an act
         self.establish_tension_points(act)
         self.current_act = act
+        if self.screenplay.act:
+            self.screenplay.act.plan = act
         scenes = act.get('scenes', [])
         if len(scenes) == 0:
             logger.error(f'No scenes in act: {act["act_title"]}')
@@ -2498,7 +2529,9 @@ Respond with one line for each thing, or the single line #none:
         try:
             self.frame_episode()
             self.equip_cast()
+            self.screenplay.act_count = integrated_act_count
             for i in range(integrated_act_count):
+                self.screenplay.begin_act(i+1)
                 act_central_narrative = await self.generate_act_central_narrative(i+1)
                 if act_central_narrative is None:
                     stop('could not generate the act central narrative')
@@ -2538,6 +2571,9 @@ Respond with one line for each thing, or the single line #none:
             coda_central_narrative.append(self.episode_note(closing=True)
                                           or "Reflect on the aftermath - Show consequences, character transformation, new equilibrium")
             coda_central_narrative = '\n'.join(coda_central_narrative)
+            # the closing act has a record of its own: it had been played with the act before's
+            # focus and roles still standing in the actors' notes
+            self.screenplay.begin_act(integrated_act_count + 1).framework = coda_central_narrative
 
             character_narrative_blocks = []  # fresh: this list still held the last act's plans
             for character in cast(List[NarrativeCharacter], self.actors):
@@ -2743,6 +2779,8 @@ End your response with </end>
             summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
         post_state = summary.strip() + (f'\n(The act was planned to end with: {planned})' if planned else '')
         self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
+        if self.screenplay.act:
+            self.screenplay.act.summary, self.screenplay.act.post_state = summary.strip(), post_state
         for character in cast(List[NarrativeCharacter], self.actors):
             character.reason_over(post_state)
         return post_state
@@ -3120,11 +3158,11 @@ After the framework, repeat three of its elements on lines of their own, exactly
             # the tagged lines are what an actor is given (Character.act_direction): the act's focus
             # and stakes and its own role, not the others' roles or the scenes still to come
             find = lambda tag: (hash_utils.find(tag, response) or '').strip()
-            self.act_frame = {'focus': find('focus'), 'stakes': find('stakes'),
-                              'roles': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#role\s+([^:\n]+):\s*(.+)$', response, re.M)}}
-            response = re.sub(r'^\s*#(focus|stakes|role)\b.*$', '', response, flags=re.M).strip()
-            self.act_central_narrative = response
-        return self.act_central_narrative
+            act = self.screenplay.act
+            act.focus = {'focus': find('focus'), 'stakes': find('stakes'),
+                         'roles': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#role\s+([^:\n]+):\s*(.+)$', response, re.M)}}
+            act.framework = re.sub(r'^\s*#(focus|stakes|role)\b.*$', '', response, flags=re.M).strip()
+        return self.act_central_narrative or None
     
     def embed_task(self, task):
         """Embed a task"""
