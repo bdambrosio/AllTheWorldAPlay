@@ -333,20 +333,28 @@ class Context():
     def _may_move_on(self, opens_act):
         return opens_act or getattr(self, '_act_jumps', 0) < self.MAX_JUMPS_IN_ACT
 
-    def strangers(self, *characters):
+    def strangers(self, *characters, land=True):
         """The play's cast (or those named) begin as strangers: none knows another's name until it
         is said in its hearing (record.speech reports a name given). Called from a play file. A
         character's actor still sees the names, to aim an act; its notes say which the character
-        does not yet know, and a line that uses one is said again."""
+        does not yet know, and a line that uses one is said again.
+        They are strangers to the country too, unless land=False: a character then knows only
+        the places it has seen. What lies at the others reaches its actor as stage directions
+        (survival.available_actions part='unseen'), not the character."""
         people = list(characters) or list(self.actors)
         for character in people:
             character.unknown_names = {other.name for other in people if other is not character}
+            character.unknown_land = bool(land)
         trace.event('strangers', cast=[c.name for c in people])
 
     def strangers_note(self):
         """For the pre-scene step: who does not yet know whose name."""
         lines = [f"{c.name} does not yet know the name of: {', '.join(sorted(c.unknown_names))}."
                  for c in self.actors if getattr(c, 'unknown_names', None)]
+        new = [c.name for c in self.actors if getattr(c, 'unknown_land', False)]
+        if new:
+            lines.append(f"{', '.join(new)}: new to this country, knowing only the places each has seen. A set-up or goal may send "
+                         f"them looking for water or shelter; it does not have them know where an unseen place lies.")
         return ('These people met as strangers. ' + ' '.join(lines)) if lines else ''
 
     def _hazard_claim_stands(self, words, scene=None):

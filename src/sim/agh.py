@@ -3632,7 +3632,12 @@ End your response with:
         names = sorted(getattr(self, 'unknown_names', None) or ())
         named = [f"the name of {n}. What you are shown calls this person '{n}' so that you can aim an act; "
                  f"{self.name} has not heard that name and cannot use it" for n in names]
-        return named + list(d.get('unknown') or [])
+        places = survival.unseen_places(self)
+        seen_none = stage.plain(self.context, 'x ' + ', '.join(places))[2:]   # 'the spring, the cave'
+        land = ([f"this country beyond what {self.name} has seen. {self.name} has not seen {seen_none}, "
+                 f"and cannot say that such a place is there, where it lies or how far; {self.name} can hope for it, look for it, "
+                 f"or follow a sign (a sound, a trail, the lie of the land), and knows it once there or once told of it"] if places else [])
+        return named + land + list(d.get('unknown') or [])
 
     def director_notes(self, story=True):
         """The notes as a block for a prompt, with the standing instruction on how to use them.
@@ -3651,6 +3656,11 @@ End your response with:
             choice, reason = d['decision']
             parts.append(f"In the course of the scene {self.name} comes to choose: {choice}" + (f" ({reason})" if reason else '')
                          + f". That is not yet chosen when the scene opens; {self.name} gets there.")
+        beyond = survival.available_actions(self, part='unseen')
+        if beyond:
+            parts.append(f"Stage directions, for choosing where to head. These lie at places {self.name} has not seen: {beyond}. "
+                         f"You may Move toward one; play it as a search or a hunch with a reason {self.name} could have, "
+                         f"never as knowing the way. {self.name} must not name, locate or count on such a place before reaching it.")
         missing = self.does_not_know()
         if missing:
             parts.append(f"What {self.name} does not know (it is found out in the scene, or not at all):\n" + '\n'.join(f'- {u}' for u in missing))
@@ -3671,7 +3681,7 @@ End your response with:
             parts.append(f'Your body: {body.summary()}')
         parts.append(f'It is now {stage.clock(self.context)}.')
         parts.append('Recent events:\n' + self.context.recent_events_text(6))
-        actions = survival.available_actions(self)
+        actions = survival.available_actions(self, part='known')
         if actions:
             parts.append('You could do here: ' + actions)
         return '\n'.join(parts)

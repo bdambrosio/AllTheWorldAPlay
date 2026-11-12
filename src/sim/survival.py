@@ -459,8 +459,27 @@ def stock(character, within=6):
                      if _left(res) and _distance(here, res['location']) <= within)
 
 
-def available_actions(character):
-    """One line listing what the character could physically do here (act and dialog prompts)."""
+def _unseen(character, rid):
+    """True when the character is new to this country (Context.strangers) and has not yet seen
+    this place: it is then the actor's to know of (a stage direction), not the character's."""
+    if not getattr(character, 'unknown_land', False):
+        return False
+    known = getattr(getattr(character, 'resource_models', None), 'known_resources', None)
+    return known is not None and rid not in known
+
+
+def unseen_places(character):
+    """The places behind the stage directions of available_actions(part='unseen')."""
+    return sorted(set(re.findall(r'@(\w+) \(', available_actions(character, part='unseen'))))
+
+
+def available_actions(character, part='all'):
+    """One line listing what the character could physically do here (act and dialog prompts).
+    part='known': what the character itself can know of (at hand, or at a place it has seen);
+    part='unseen': what lies at places it has not seen, for the director's notes to its actor.
+    The two are the same list divided, and differ from 'all' only for a character new to the
+    country. (Joe, woken in a forest he had never seen, was shown 'drink@Spring2 (4 tiles
+    Northeast)' among his surroundings and told Samantha where the spring was.)"""
     cfg = config(character.context) if character.context else None
     body = getattr(character, 'body', None)
     if not cfg or body is None:
@@ -500,14 +519,20 @@ def available_actions(character):
         if action.get('deplete') and _left(res) == 'nearly gone':
             missing = (missing + '; ' if missing else '') + 'nearly gone'
         if d <= 1:
-            out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})"))
+            if getattr(character, 'unknown_land', False) and hasattr(character, 'resource_models'):
+                character.resource_models.add_resource_model(rid)   # standing at a place is having seen it
+            out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})", False))
         else:
             out.append((1 + bool(missing), f"{action['name']}@{rid} ({d} tiles {_direction(_here(character), res['location'])}; "
-                                           f"first Move: {rid}{'; ' + missing if missing else ''})"))
+                                           f"first Move: {rid}{'; ' + missing if missing else ''})", _unseen(character, rid)))
     # what can be done now comes first; what needs a walk or something not held is cut first
     # (the list was cut at 12 in config order, which dropped every action with a person: a
     # father standing with his son was never offered 'sign over the farm')
-    out = [text for _, text in sorted(out, key=lambda o: o[0])][:14]
+    out = [o if len(o) == 3 else (*o, False) for o in out]
+    out = sorted(out, key=lambda o: o[0])[:14]
+    if part == 'unseen':
+        return '; '.join(text for _, text, unseen in out if unseen)
+    out = [text for _, text, unseen in out if part == 'all' or not unseen]
     threat = active_threat_for(character)
     if threat:
         h = threat['hazard']

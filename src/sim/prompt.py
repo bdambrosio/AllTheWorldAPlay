@@ -192,7 +192,7 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
     # its own here-and-now block
     could_do = ''
     if 'here_and_now' not in addl_bindings:
-        actions = survival.available_actions(character)
+        actions = survival.available_actions(character, part='known')
         could_do = f'\nYou could do here: {actions}' if actions else ''
     bindings = {"name":character.name,
                 "character":character.get_character_description(),
