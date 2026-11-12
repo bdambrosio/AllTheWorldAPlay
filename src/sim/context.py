@@ -1131,7 +1131,7 @@ Everyone in the play, and whether each is he or she: {{$cast}}.
 You are the stage, not a character: report what the action physically brings about, and nothing more.
 Respond in exactly two lines:
 #seen <the action as someone standing there saw it, in one short plain sentence>
-#result <what the action brought about that #seen does not already say, as someone standing there could see or hear it: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, something put down or pushed across), write: nothing>
+#result <what the action brought about that #seen does not already say, as someone standing there could see or hear it: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, something put down or pushed across), write: nothing. That a thing stays as it was (still knotted, still in a hand, undisturbed) is not a result: write nothing>
 The audience reads the character's own words for the action, then only your #result.
 The result must be consistent with the LocalMap and with the facts above.
 Include, when they apply:
@@ -1866,6 +1866,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         for character in characters_in_scene:
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
+        self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
 
         # A choice the scene turns on is made before the scene is played and shapes that
         # character's goal in it. (It was asked for after the scene, from the plan, so Samantha

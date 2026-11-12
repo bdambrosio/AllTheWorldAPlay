@@ -484,7 +484,13 @@ def unseen_places(character):
 
 
 def available_actions(character, part='all'):
-    """One line listing what the character could physically do here (act and dialog prompts).
+    """One line listing what the character could physically do here (act and dialog prompts):
+    offered_actions, joined."""
+    return '; '.join(offered_actions(character, part))
+
+
+def offered_actions(character, part='all'):
+    """What the character could physically do here, one entry for each thing.
     part='known': what the character itself can know of (at hand, or at a place it has seen);
     part='unseen': what lies at places it has not seen, for the director's notes to its actor.
     The two are the same list divided, and differ from 'all' only for a character new to the
@@ -493,7 +499,7 @@ def available_actions(character, part='all'):
     cfg = config(character.context) if character.context else None
     body = getattr(character, 'body', None)
     if not cfg or body is None:
-        return ''
+        return []
     out, seen = [], set()
     for action in cfg.get('actions', []):
         missing = _missing(action, body)
@@ -541,14 +547,14 @@ def available_actions(character, part='all'):
     out = [o if len(o) == 3 else (*o, False) for o in out]
     out = sorted(out, key=lambda o: o[0])[:14]
     if part == 'unseen':
-        return '; '.join(text for _, text, unseen in out if unseen)
+        return [text for _, text, unseen in out if unseen]
     out = [text for _, text, unseen in out if part == 'all' or not unseen]
     threat = active_threat_for(character)
     if threat:
         h = threat['hazard']
         out.insert(0, f"THREAT: {h['description']} is {threat_position(character, threat)}; "
                       f"you could {', '.join(h.get('responses', {}).keys())}")
-    return '; '.join(out)
+    return out
 
 
 def affordance_prompt_line(character):
@@ -658,7 +664,7 @@ def holdings(character):
 # Made real, a thing is one of: a prop (something nobody acts on through the world's rules: a
 # sickle, a phone), an item the world's actions use, a place of a kind the world has, or a
 # change to a body. Props are held, or lie where they were left, and change hands by the three
-# plain deeds in _prop_deed.
+# deeds in prop_offers / _prop_do.
 def item_kinds(context):
     """The things this world's actions use (gain, need, hand over or find), by name."""
     kinds = []
@@ -747,49 +753,96 @@ def change_body(character, need, worse, size):
     return f"{character.name} is now {body.summary(public=True)}."
 
 
-HANDING = ['give', 'hand', 'pass', 'return']
-# sent across the ground or through the air, a thing lands; it is the other's when they take it
-# ('slides the branch across the dirt to Samantha's feet' put it in her hands, and Joe went on
-# gripping, raising and planting a branch he no longer had)
-DROPPING = ['drop', 'put down', 'set down', 'lay down', 'leave', 'place', 'slide', 'toss', 'throw', 'kick', 'roll']
+# Things that no action of this world covers (a shoe found in a hut, a tally stick, a page) are
+# handed over, held out, taken and put down all the same. What can be done with them is read from
+# the world each time (who holds what, what lies here, who is in reach) and offered to the same
+# judgement that picks any other action of a deed (choose_action).
+# (This was done by matching the deed's verbs: 'give', 'hand', 'take', 'grab', a list of words for
+# the ground. 'Samantha takes the shoe from Joe's hands' matched none of the world's actions it
+# was offered and was settled as searching the hut; a stick was told as handed over, twice,
+# while the world kept it where it was.)
+PROP_GLOSS = {'give': "puts it in {other}'s hands", 'offer': 'offers or shows it; {other} may then take it',
+              'put down': 'leaves it lying here', 'take': 'it is lying here',
+              'take from': '{other} is holding it: it comes away only if {other} has held it out'}
 
 
-def _prop_deed(context, character, text, names):
-    """Handing over, picking up or putting down a thing that no action of this world covers.
-    Returns the fact, or None."""
+def prop_offers(character):
+    """{label: (kind, item, other)}: what the character could do now with the things it holds,
+    the things lying here, and the things those in reach are holding."""
+    context, body = character.context, getattr(character, 'body', None)
+    cfg = config(context) if context else None
+    if not cfg or body is None:
+        return {}
+    private = tuple(cfg.get('private_items', ())) or ('\0',)
+    near = [o for o, d in _present(character) if d <= CO_PRESENT_TILES and getattr(o, 'body', None) is not None]
+    out = {}
+    for item in dict.fromkeys(body.inventory):
+        for other in near:
+            if not _give_label(cfg, item, other.name):   # the world's own 'give berries' stands where it has one
+                out[f'give {item}@{other.name}'] = ('give', item, other)
+            out[f'hold out {item}@{other.name}'] = ('offer', item, other)
+        out[f'put down {item}'] = ('put down', item, None)
+    for prop in lying(context, _here(character)):
+        out.setdefault(f"take {prop['name']}", ('take', prop['name'], None))
+    for other in near:
+        for item in dict.fromkeys(other.body.inventory):
+            if not item.startswith(private):
+                out[f'take {item}@{other.name}'] = ('take from', item, other)
+    return out
+
+
+def _prop_do(context, character, kind, item, other):
+    """Do one of prop_offers. A thing in someone's hands is theirs to give: it is taken from
+    them only when they have held it out to the taker (context.held_out, kept for the scene);
+    otherwise the reach is an attempt, and the holder is told what is wanted."""
     body = character.body
-    said = lambda item: re.search(rf"\b{re.escape(item.split()[-1])}\b", text)
-    # a verb form after 'her', 'the', ... is a thing, not a deed: 'wiping her mouth with the back of
-    # her hand ... raising her branch' handed Joe the branch
-    deeds = re.sub(r"\b(his|her|their|its|my|your|our|the|a|an|\w+'s)\s+\w+", r'\1', text.replace('’', "'"))
-    for item in [i for i in body.inventory if said(i)]:
-        if _matches(deeds, HANDING) and not re.search(r"\b(feet|ground|dirt|floor|toward|towards|across)\b", text):
-            for other, d in _present(character):
-                if d <= CO_PRESENT_TILES and (other.name.lower() in names or other.name.lower() in text):
-                    body.inventory.remove(item)
-                    other.body.inventory.append(item)
-                    other.add_perceptual_input(f'{character.name} hands you the {item}', mode='internal')
-                    fact = f"{character.name} hands {other.name} the {item}."
-                    _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'text', applied=True, target=other.name)
-                    return fact
-        if _matches(deeds, DROPPING):
-            body.inventory.remove(item)
-            context.props = getattr(context, 'props', []) + [{'name': item, 'at': _here(character)}]
-            fact = f"{character.name} puts down the {item}."
-            _record(character, {'name': 'put down', 'category': 'survival'}, fact, 'text', applied=True)
-            return fact
-    if _matches(deeds, TAKING + ['pick up', 'pocket', 'collect']):
-        for prop in lying(context, _here(character)):
-            if said(prop['name']):
-                context.props.remove(prop)
-                body.inventory.append(prop['name'])
-                fact = f"{character.name} takes the {prop['name']}."
-                _record(character, {'name': 'pick up', 'category': 'survival'}, fact, 'text', applied=True)
-                return fact
-    return None
-
-
-TAKING = ['take', 'grab', 'snatch', 'seize', 'lift', 'pull', 'wrest', 'carry', 'relieve', 'ask for', 'demand', 'reach for']
+    held_out = context.__dict__.setdefault('held_out', [])
+    forget = lambda holder: held_out.__setitem__(slice(None), [h for h in held_out if not (h[0] == item and h[1] == holder.name)])
+    if kind == 'give' and item in body.inventory:
+        body.inventory.remove(item)
+        other.body.inventory.append(item)
+        forget(character)
+        other.add_perceptual_input(f'{character.name} hands you the {item}', mode='internal')
+        fact = f"{character.name} hands {other.name} the {item}."
+        _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
+    elif kind == 'offer' and item in body.inventory:
+        if (item, character.name, other.name) not in held_out:
+            held_out.append((item, character.name, other.name))
+        other.add_perceptual_input(f'{character.name} holds out the {item} to you. It is yours to take.', mode='internal')
+        fact = f"{character.name} holds out the {item} to {other.name}; {character.name} still has it."
+        _record(character, {'name': 'hold out', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
+    elif kind == 'put down' and item in body.inventory:
+        body.inventory.remove(item)
+        forget(character)
+        context.props = getattr(context, 'props', []) + [{'name': item, 'at': _here(character)}]
+        fact = f"{character.name} puts down the {item}."
+        _record(character, {'name': 'put down', 'category': 'survival'}, fact, 'model', applied=True)
+    elif kind == 'take':
+        prop = next((p for p in lying(context, _here(character)) if p['name'] == item), None)
+        if prop is None:
+            return None
+        context.props.remove(prop)
+        body.inventory.append(item)
+        fact = f"{character.name} takes the {item}."
+        _record(character, {'name': 'pick up', 'category': 'survival'}, fact, 'model', applied=True)
+    elif kind == 'take from' and item in other.body.inventory:
+        if (item, other.name, character.name) in held_out:
+            other.body.inventory.remove(item)
+            body.inventory.append(item)
+            forget(other)
+            other.add_perceptual_input(f'{character.name} takes the {item} you held out', mode='internal')
+            fact = f"{character.name} takes the {item} that {other.name} holds out."
+            _record(character, {'name': 'take', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
+        else:
+            label = _give_label(config(context), item, character.name) or f'give {item}@{character.name}'
+            other.add_perceptual_input(f"{character.name} wants the {item} you are holding. It is yours to hand over or keep "
+                                       f"(to hand it over: {label}).", mode='internal')
+            fact = f"{character.name} reaches for the {item} that {other.name} is holding; {other.name} still has it."
+            _record(character, {'name': 'ask for', 'category': 'social'}, fact, 'model', applied=False, target=other.name)
+    else:
+        return None
+    trace.event('prop_deed', character=character.name, deed=kind, item=item, other=other.name if other is not None else None)
+    return fact
 
 
 def _give_label(cfg, item, to_name):
@@ -801,43 +854,17 @@ def _give_label(cfg, item, to_name):
     return ''
 
 
-def _asks_for(context, character, text, targets=None):
-    """A Do that takes or asks for something another character present is holding. Things
-    change hands by their holder's act, so nothing moves: the fact reports the attempt, and the
-    holder is told what is wanted and how to hand it over. None when the act is not that."""
-    cfg = config(context)
-    if not _matches(text, TAKING):
-        return None
-    names = [t.name.lower() for t in (targets or []) if hasattr(t, 'name')]
-    hidden = tuple(cfg.get('private_items', ())) or ('\0',)
-    for other, d in _present(character):
-        if d > CO_PRESENT_TILES or not (other.name.lower() in text or other.name.lower() in names):
-            continue
-        for item in other.body.inventory:
-            # the thing is named in the act by its last word ('sack of wheat' -> 'wheat', "Hu's contract" -> 'contract')
-            noun = item.split()[-1].lower()
-            if item.startswith(hidden) or item in character.body.inventory or not re.search(rf'\b{re.escape(noun)}\b', text):
-                continue
-            label = _give_label(cfg, item, character.name)
-            other.add_perceptual_input(f"{character.name} wants the {item} you are holding. It is yours to hand over or keep"
-                                       + (f" (to hand it over: {label})." if label else '.'), mode='internal')
-            fact = f"{character.name} reaches for the {item} that {other.name} is holding; {other.name} still has it."
-            _record(character, {'name': 'ask for', 'category': 'social'}, fact, 'text', applied=False, target=other.name)
-            return fact
-    return None
-
-
 DEED_ACTION = """A character in a play does the deed below. The world it lives in has rules for some actions, listed under Actions. Say which one of them, if any, the deed itself performs.
 
 {{$name}} does:
 <deed>
 {{$deed}}
 </deed>
-{{$hint}}
-Actions ({{$name}} could do these now; each is 'name@where', with how far off it is):
+
+Actions ({{$name}} could do these now; each is 'name@where', with how far off it is or what it does):
 {{$offered}}
 
-A deed performs an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring, talking about water, holding out a cup, sitting back, leaning, gesturing, waiting, or handling a thing is none of them. An action some way off is performed only if the deed goes there to do it ("walks to the spring and drinks"). If the deed does one of them and more besides, name the one it does. When you are not sure, it is none.
+A deed performs an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring, talking about water, sitting back, leaning, gesturing or waiting is none of them. A thing is given only when the deed puts it in the other's hands; holding it out, offering it or showing it is 'hold out'. Looking at, turning over or using a thing already in hand is none of them. An action some way off is performed only if the deed goes there to do it ("walks to the spring and drinks"). If the deed does one of them and more besides, name the one it does. When you are not sure, it is none.
 
 Respond ONLY with JSON, no prose, in this shape:
 {"action": "<the action exactly as listed, the part before the bracket, e.g. drink@Spring1>"}
@@ -856,11 +883,17 @@ def choose_action(context, character, act_text, label=None):
     narrator's, and no rule applies (the safe side: nothing is used up, nobody walks)."""
     from utils import json_reply
     from utils.Messages import UserMessage
-    offered = [o.strip() for o in available_actions(character).split('; ') if o.strip()]
+    # each offer is one line (the joined line was split on '; ', which an entry may contain:
+    # 'take a branch@Fallen_Branch4 (9 tiles Southeast; first Move: ...)' reached the model as
+    # two broken ones), with what can be done with the things held and lying here (prop_offers)
+    offered = [o.strip() for o in offered_actions(character) if o.strip()]
+    offered += [f"{name} ({PROP_GLOSS[kind].format(other=other.name if other is not None else '')})"
+                for name, (kind, item, other) in prop_offers(character).items()]
     if not offered:
         return None
-    hint = f"(The actor said this deed is: {label}. Hold it to the deed.)\n" if label else ''
-    reply = context.llm.ask({'name': character.name, 'deed': act_text, 'hint': hint,
+    # (the actor's own label for the deed was given here as a hint, and drew the answer to it:
+    # two deeds with a shoe, labelled 'search', were settled as searching)
+    reply = context.llm.ask({'name': character.name, 'deed': act_text,
                              'offered': '\n'.join(f'- {o}' for o in offered)},
                             [UserMessage(content=DEED_ACTION)], tag='survival.choose_action', temp=0.1,
                             stops=['</end>'], max_tokens=60)
@@ -893,6 +926,9 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     text = (act_text or '').lower().replace('’', "'").replace('‘', "'")
     # which of the world's actions the deed performs is the model's to say (choose_action)
     label = choose_action(context, character, act_text, affordance)
+    prop = next((v for k, v in prop_offers(character).items() if k.lower() == label.lower()), None) if label else None
+    if prop:   # a thing handed over, held out, taken or put down
+        return _prop_do(context, character, *prop)
     chosen = _chosen(context, character, label) if label else None
     via = 'label' if affordance and label else 'model'
 
@@ -907,10 +943,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
         _, action, near, target = chosen
         return _apply(context, character, action, near, target, via, act_text or '')
 
-    asked = _asks_for(context, character, text, targets)
-    if asked:
-        return asked
-    return _prop_deed(context, character, text, [t.name.lower() for t in (targets or []) if hasattr(t, 'name')])
+    return None
 
 
 def _can_approach(context, character, d):
