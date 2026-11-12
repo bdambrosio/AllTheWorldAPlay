@@ -1753,7 +1753,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     changed[key] = scene[key] = kept
             for name, entry in (scene.get('characters') or {}).items():
                 if isinstance(entry, dict) and entry.get('goal'):
-                    entry['goal'] = record.strip(entry['goal'], claims) or f"Meet what this scene brings ('{scene.get('scene_title', '')}') as it is."
+                    # a goal that was nothing but the refused thing: the character's part in
+                    # this act, which is what it is there for (it used to become a line that
+                    # asked nothing of anyone: 'Meet what this scene brings as it is')
+                    role = next((r for n, r in ((self.act_frame or {}).get('roles') or {}).items() if n.lower() == str(name).lower()), '')
+                    entry['goal'] = (record.strip(entry['goal'], claims) or role
+                                     or f"Meet what this scene brings ('{scene.get('scene_title', '')}') as it is.")
         if checked:
             trace.event('scene_check', title=scene.get('scene_title'),
                         outcome='cut' if claims else 'rewritten' if note else 'admitted' if brought else 'ok',
@@ -2428,6 +2433,7 @@ In performing this integration:
 - What the episode settles is the central question, or as much of it as these characters can bring about themselves, here, by what they do to and with each other: something between them, not a single errand. It is shown in an act, not announced.
 - Use only what the setting and the characters give you. Invent no object, sound, creature or event.
 - """ + survival.PLAN_RULE + """
+- What the characters do to settle it must be something this world lets them do: where places are listed below, the actions named at each are what can be done there (a thing can be handed over only if it can first be picked up or carried).
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
 {{$clue_rule}}

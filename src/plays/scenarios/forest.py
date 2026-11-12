@@ -222,6 +222,16 @@ affordances = {
          'minutes': 20, 'deplete': 2, 'text': 'searches {resource} carefully'},
         {'name': 'give berries', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share'],
          'transfer': 'berries', 'minutes': 1, 'text': 'gives {target} the berries'},
+        # an apple can be picked, carried, eaten later and handed over, like berries (a play
+        # planned 'she picks an apple and holds it out to him': the tree could only be eaten at)
+        {'name': 'pick an apple', 'category': 'survival', 'verbs': ['stash', 'pocket'], 'named_verbs': ['pick', 'pluck', 'gather', 'collect', 'take', 'harvest'],
+         'resource_types': ['Apple_Tree'], 'gain': 'apple', 'minutes': 5, 'deplete': 1,
+         'text': 'picks an apple from {resource} to carry'},
+        {'name': 'eat carried apple', 'verbs': ['eat', 'chew', 'munch', 'bite'], 'named_verbs': [], 'resource_types': None,
+         'requires': 'apple', 'consumes': 'apple', 'effects': {'hunger': -0.3}, 'minutes': 5,
+         'text': 'eats the apple they were carrying'},
+        {'name': 'give apple', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share'],
+         'transfer': 'apple', 'minutes': 1, 'text': 'gives {target} the apple'},
         {'name': 'give branch', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'pass', 'shove'],
          'transfer': 'branch', 'minutes': 1, 'text': 'hands {target} the branch'},
         {'name': 'tend wound', 'category': 'social', 'target': 'character', 'verbs': ['tend', 'bandage', 'dress', 'treat', 'clean'],
