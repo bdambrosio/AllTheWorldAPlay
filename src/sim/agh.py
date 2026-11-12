@@ -1290,19 +1290,13 @@ End response with:
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
 
-            if self.focus_task.peek() and not self.focus_task.peek().name.startswith('internal dialog with '+self.name): # no nested inner dialogs for now
-                    # initiating an internal dialog
-                dialog_task = Task(name = 'internal dialog with '+self.name, 
-                                    description=self.name + ' thinks ' + act_arg, 
-                                    reason=reason, 
-                                    termination='natural end of internal dialog', 
-                                    goal=None,
-                                    start_time=self.context.simulation_time,
-                                    duration=0,
-                                    actors=[self])
-                self.focus_task.push(dialog_task)
-                self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate()
-            await self.think(act_arg, source)
+            # A thought is shown, remembered and reasoned over. (It was run as a dialog with
+            # oneself: a task pushed, a model of the character kept by the character, a dialog
+            # opened in it and closed at once, and a model call to update the character's
+            # relationship with itself. That self-model is what gave a character its own lines
+            # back as things it had heard.)
+            self.add_perceptual_input(f'Internal monologue:\n {act_arg}', percept=False, mode='internal')
+            self.reason_over(act_arg)
             await asyncio.sleep(0)
 
         elif act_mode == 'Say':# must be a say
@@ -1407,13 +1401,22 @@ End response with:
                 seen = f"You see {self.name} try: '{act_arg}'. It does not happen"
             if act_mode == 'Do' and getattr(self, 'visible_result', '').strip(' .'):
                 seen += f". Result: {self.visible_result.strip(' .')}"
-            for actor in self.context.actors+self.context.extras:
-                if actor != self:
-                    # (the target was excluded here and only got an unread sense_input)
-                    actor_model = self.actor_models.get_actor_model(actor.name)
-                    if actor_model != None and actor_model.visible:
-                        percept = actor.add_perceptual_input(seen, percept=False, mode='visual')
-                        actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
+            # Those who are there see it: the others in the scene and within reach of it, and
+            # whoever it was done to. (It was told to every member of the cast whom the DOER'S
+            # model marked visible, a flag set when the doer last looked: someone who had left
+            # the scene went on seeing what was done in it, and someone standing by who had not
+            # been looked at saw nothing.) Outside a scene, as before.
+            if self.context.current_scene is not None:
+                watchers = list(self.bystanders())
+                aimed_at = self._first_character(target, act)
+                if isinstance(aimed_at, Character) and aimed_at is not self and aimed_at not in watchers and not stage.off_stage(aimed_at):
+                    watchers.append(aimed_at)
+            else:
+                watchers = [a for a in self.context.actors + self.context.extras
+                            if a is not self and getattr(self.actor_models.get_actor_model(a.name), 'visible', False)]
+            for actor in watchers:
+                percept = actor.add_perceptual_input(seen, percept=False, mode='visual')
+                actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         self.previous_action_mode = act_mode           
 
     def instantiate_narrative_goal(self, goal_statement, generate_conditions=True):
@@ -2553,32 +2556,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             self.add_perceptual_input(f'Reflecting:\n {response}', percept=False, mode='internal')
         return
             
-    async def think(self, message: str, source: Task=None, respond: bool=True):
-        """ called from acts when a character says something to itself """
-        # Initialize dialog manager if needed
-        print(f'\n{self.name} thinks: {message}')
-       
-        # Remove text between ellipses - thoughts don't count as dialog
-        message = re.sub(r'\.\.\..*?\.\.\.', '', message)
-        if self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.active is False:
-            print(f'{self.name} has no active dialog, assertion error')
-            return
-        # otherwise, we have an active dialog in progress, decide whether to close it or continue it
-        else:
-            dialog_model = self.actor_models.get_actor_model(self.name, create_if_missing=True).dialog
-            dialog_model.add_turn(self, message)
-            if True: #self.natural_dialog_end(self): short-circuit for testing
-
-                dialog = dialog_model.get_current_dialog()
-                self.add_perceptual_input(f'Internal monologue:\n {dialog}', percept=False, mode='internal')
-                dialog_as_list = dialog.split('\n') 
-                self.actor_models.get_actor_model(self.name).short_update_relationship(dialog_as_list, use_all_texts=True)
-                dialog_model.deactivate_dialog()
-                self.reason_over(dialog) # if we think we should think about something, then do it!
-                self.last_task = self.focus_task.peek()
-                self.focus_task.pop()
-                return
-
     def reason_over(self, thought):
         """reason over the dialog"""
         system_prompt = """You are a rational agent reasoning over a thought, capable also of making intuitive leaps."""
@@ -3835,9 +3812,6 @@ End your response with:
             if action.target[0] and isinstance(action.target[0], Character):
                 target_name = action.target[0].name
                 target = action.target[0]
-        elif self.focus_task.peek() and self.focus_task.peek().name.startswith('internal dialog'):
-            target_name = self.name
-            target = self
         #self.context.message_queue.put({'name':self.name, 'text':f'character_update'})
         #await asyncio.sleep(0.1)
         began = self.context.simulation_time
