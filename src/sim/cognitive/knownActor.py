@@ -410,8 +410,12 @@ class KnownActorManager:
 
     def get_known_relationships(self, include_transcript=False):
         relationships = {}
+        cast = self.context.actors + self.context.extras if self.context is not None else []
         for actor in self.known_actors.values():
-            if actor == self:
+            # the people of the play and anyone spoken with. Not the owner's model of itself
+            # (it held Joe's own lines back to him as thoughts), nor someone only inferred
+            # ('Cave1_owner', a paragraph on a person nobody had met, in every prompt)
+            if actor.actor_agh is self.owner or not (actor.actor_agh in cast or actor.dialog.transcript):
                 continue
             relationship = actor.get_relationship()
             transcript = actor.format_transcript(include_transcript)

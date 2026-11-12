@@ -25,3 +25,15 @@ import os
 if os.environ.get('ATWAP_LLM'):
     server_name = os.environ['ATWAP_LLM']
     model_name = os.environ.get('ATWAP_MODEL') or None
+
+# The plan of a play (its central question, each character's acts, the acts merged, each scene's
+# set-up) is written by this server whatever plays the parts: a small local model, given the
+# same characters and drives, planned berries, boar, wolf and left out the play's mystery.
+# The calls are named in utils/llm_api.py PLAN_TAGS. None, or ATWAP_PLAN_LLM=same: no planner.
+plan_server_name = 'fireworks'
+plan_model_name = None
+if os.environ.get('ATWAP_PLAN_LLM'):
+    plan_server_name = os.environ['ATWAP_PLAN_LLM']
+    plan_model_name = os.environ.get('ATWAP_PLAN_MODEL') or None
+if plan_server_name in ('same', 'none', '', server_name):
+    plan_server_name = None

@@ -208,6 +208,29 @@ def reasoning():
     return dict(_reasoning)
 
 
+# ---- the planner: the calls that write the play's plan go to the server named in
+# plays/config.py (plan_server_name), whichever model plays the parts.
+PLAN_TAGS = frozenset((
+    'NarrativeCharacter.negotiate_central_narrative', 'merge_central_narratives',
+    'NarrativeCharacter.write_narrative', 'integrate_narratives', 'act_central_narrative',
+    'frame_episode', 'NarrativeCharacter.replan_narrative_act', 'NarrativeCharacter.replan_scene',
+    'reground_scene', 'plan_serves_drives'))
+_planner = False   # False: not looked up yet; None: no planner; else the planner's LLM
+
+
+def planner():
+    global _planner
+    if _planner is False:
+        _planner = None
+        try:
+            import plays.config as config
+            if getattr(config, 'plan_server_name', None):
+                _planner = LLM(config.plan_server_name, getattr(config, 'plan_model_name', None))
+        except Exception as e:
+            print(f'no planner: {e}')
+    return _planner
+
+
 class LLM():
 
     def __init__(self, server_name='local', model_name=None):
@@ -333,8 +356,13 @@ class LLM():
                 "stop": options.stops or None, "reasoning_effort": getattr(self, 'reasoning_effort', 'low')}
         delay = 2.0
         for attempt in range(retries):
-            response = requests.post(f'{FIREWORKS_URL}/chat/completions', json=body, timeout=300,
-                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+            try:   # a connection that hung held the play for five minutes: give up sooner, try again
+                response = requests.post(f'{FIREWORKS_URL}/chat/completions', json=body, timeout=(10, 120),
+                                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                if attempt >= 1:
+                    raise
+                continue
             if response.status_code == 200:
                 reply = response.json()
                 choice = reply['choices'][0]
@@ -385,6 +413,13 @@ class LLM():
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
         options.reasoning = _reasoning.get(tag)
+        if tag in PLAN_TAGS and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
+            plan.owner = self.owner
+            response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
+                                top_p=top_p, stops=stops, stop_on_json=stop_on_json, model=model, log=log, trace=trace)
+            if response is not None:
+                return response
+            print(f'planner failed on {tag}: the playing model writes it')
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]

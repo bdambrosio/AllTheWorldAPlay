@@ -305,8 +305,6 @@ Return **only** the JSON.  No commentary, no code fences.
     def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
         """Rewrite the act with the latest shared information"""
 
-        self.do_actions = self.generate_action_vocabulary()  
-
         system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
 Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
 Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
@@ -873,91 +871,6 @@ End your response with:
                 print(f"Error parsing Hash, Invalid Act. (act_hash: {act_hash}) {e}")
         self.actions = act_alternatives
         return act_alternatives
-    
-
-    def generate_action_vocabulary(self):
-        """
-        Generate a vocabulary of physical actions for an actor to consider when embodying this character.
-        Actions should range from subtle micro-expressions to bold physical choices.
-        """
-    
-        system_prompt = """You are an expert acting coach and movement director. 
-Your task is to generate an evocative vocabulary of physical actions that an actor can draw from 
-to authentically embody their character. Focus on actions that reveal character, express emotion, 
-and serve the dramatic narrative."""
-
-        prefix = """Based on the character information below, generate a comprehensive vocabulary of 
-physical "Do" actions this character might perform. Consider how their personality, emotional state, 
-relationships, and current dramatic situation would manifest in physical behavior."""
-
-        suffix = """Generate 15-20 distinct physical action types organized into these categories:
-
-## MICRO-ACTIONS (subtle, continuous behaviors)
-- Gesture patterns and nervous habits
-- Eye contact and facial expression tendencies  
-- Breathing and posture patterns
-- How they handle objects and personal space
-
-## RELATIONAL ACTIONS (how they physically interact with others)
-- Approach patterns (how they enter others' space)
-- Touch tendencies (or avoidance thereof)
-- Protective or aggressive body positioning
-- Comfort-seeking or distance-creating behaviors
-
-## ENVIRONMENTAL ACTIONS (how they interact with space and objects)
-- Movement through the space (confident stride, cautious steps, etc.)
-- Object manipulation (gentle handling, forceful grip, etc.)
-- Territory claiming or space-sharing behaviors
-- Ritual or habitual interactions with their environment
-
-## EMOTIONAL EXPRESSION ACTIONS (physical manifestations of internal state)
-- How they process good news vs bad news physically
-- Stress responses and comfort behaviors
-- Joy, anger, fear, and sadness expressions unique to this character
-- Transition actions between emotional states
-
-## POWER DYNAMIC ACTIONS (status and hierarchy through physicality)
-- How they assert or defer authority
-- Intimidation or submission behaviors
-- Confidence vs vulnerability displays
-- Protective or dependent positioning
-
-For each action type, provide:
-- A concise name (2-4 words)
-- Terse (4-5 words) statement focusing on the physical specifics
-- Terse (4-5 words) statement of when/why this character would use this action
-- Terse (4-5 words) statement of how it serves the dramatic tension
-
-Consider:
-- This character's profession, background, and physical capabilities
-- Their current emotional stakes and relationships
-- The specific dramatic pressure they're under
-- How actions can reveal subtext and hidden motivations
-- Both realistic human behavior and heightened theatrical expression
-
-Make each action specific enough for an actor to embody, but flexible enough to adapt to moment-by-moment discoveries in performance.
-
-**Additional Physical Context:**
-- What is this character's relationship to their own body? (graceful, clumsy, athletic, frail, etc.)
-- How do they typically occupy space? (expansive, contracted, shifting, rooted)
-- What are their default tension patterns? (shoulders, jaw, hands, etc.)
-- How does this character's body language change around different people?
-- What physical habits emerge under stress vs comfort?
-- How do they use touch, distance, and positioning to communicate?
-- Which actions could reveal hidden motivations or secrets?
-- How might physical choices contradict or support their words?
-- What actions could escalate or de-escalate the current tension?"""
-
-        # Simply call the existing ask function with the specialized prompts
-        response = default_ask(self, 
-                    system_prompt=system_prompt, 
-                    prefix=prefix, 
-                    suffix=suffix, 
-                    max_tokens=1000, 
-                    log=True, 
-                    tag='NarrativeCharacter.generate_do_actions')
-    
-        return response
     
 
     async def decide(self, decision, act=None, scene=None):

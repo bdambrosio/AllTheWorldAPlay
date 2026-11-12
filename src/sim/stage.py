@@ -334,7 +334,7 @@ def tempo(character):
 def speech_tempo(character):
     """A line for the speech prompts when the moment is not calm."""
     return {'urgent': "- This moment is urgent: twelve words at most, and no explaining; but it is still your character's own voice and way with words, not a generic shout.",
-            'tense': "- The moment is tense: one sentence, fifteen words at most."}.get(tempo(character), '')
+            'tense': "- The moment is tense: keep it short, a sentence or two, as this person talks when on edge."}.get(tempo(character), '')
 
 
 def pending_business(character):

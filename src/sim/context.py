@@ -18,7 +18,7 @@ from sim.cognitive.EmotionalStance import EmotionalStance
 from sim.narrativeCharacter import NarrativeCharacter
 from sim.memory.core import NarrativeSummary
 from utils.VoiceService import VoiceService
-from utils import hash_utils, llm_api
+from utils import hash_utils, llm_api, json_reply
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
 from datetime import datetime, timedelta
@@ -497,10 +497,9 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
         if not isinstance(scene, dict):
             return False, "Root must be a JSON object"
         reserialized = copy.deepcopy(scene)
-        if isinstance(scene["time"], datetime):
-            reserialized["time"] = reserialized["time"].isoformat()
-        elif not isinstance(scene["time"], str):  # str = already serialized, fine
-            print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]!r}')
+        when = scene.get("time")
+        if not isinstance(when, str):   # a string is already serialized; a missing time is now
+            reserialized["time"] = (when if isinstance(when, datetime) else self.simulation_time).isoformat()
         return reserialized
     
     def reserialize_acts_times(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -515,10 +514,13 @@ Respond with the repaired JSON string. Make sure the string is in a format that 
             if "scenes" not in act or not isinstance(act["scenes"], list):
                 continue
             for scene in act["scenes"]:
-                if isinstance(scene["time"], datetime):
-                    scene["time"] = scene["time"].isoformat()
-                elif not isinstance(scene["time"], str):  # str = already serialized, fine
-                    print(f'Invalid time format in scene {scene["scene_number"]}: {scene["time"]!r}')
+                # a plan's scene times are not what sets the clock (run_scene), and a rewritten
+                # act may leave one out: that ended a play at the head of its third act
+                when = scene.get("time")
+                if isinstance(when, datetime):
+                    scene["time"] = when.isoformat()
+                elif not isinstance(when, str):
+                    scene["time"] = self.simulation_time.isoformat()
         return reserialized
 
     def reserialize_act_times(self, act: Dict[str, Any]) -> str:
@@ -1614,7 +1616,10 @@ Rules:
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - when: first settle what part of the day the scene is played in. {{$moving}}
 - Then write the set-up and ending for the time the scene is played in, and make the title fit it. Do not state the time of day in the set-up unless it matters to what happens: the heading gives it.
-- The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a wound or a need newly felt, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
+- The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
+- The world, not you, decides what happens to bodies and how a danger ends, and it decides when the scene is played. The set-up may bring a danger on; neither set-up, ending nor goals say that it strikes, whom it hurts, that it is driven off, or that anyone is wounded, healed or fed. Where the plan says so, keep what the scene is for and leave that out.
+- If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall), the set-up puts that thing in the scene and says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
+- The ending is the turn the scene should reach between the characters: something chosen, said, refused, admitted or found out, or how they now stand with each other. It is not an event of the body or of the danger.
 - If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
@@ -1758,6 +1763,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
+        self._scene_transcript_start = len(self.transcript)
 
         #construct a list of characters in the scene in the order in which they appear
         characters_in_scene: List[Character] = []
@@ -2026,6 +2032,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             return
         print(f'Running act: {act["act_title"]}')
         self.act_events = []
+        self._act_transcript_start = len(self.transcript)
         self.act_scene_wrapups = []
         trace.event('act_start', number=act_number, title=act.get('act_title'),
                     planned_pre=act.get('act_pre_state'), planned_post=act.get('act_post_state'),
@@ -2196,6 +2203,8 @@ The following additional information about the state of the performance will be 
 
 {{$backgrounds}}
 
+{{$plan_rule}}
+
 Respond with the updated act, using the following format:
 
 ```json
@@ -2304,7 +2313,8 @@ In performing this integration:
                                  "act_directives": act_directives,
                                  "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
                                  "places": stage.gazetteer(self),
-                                 "previous_act_post_state": previous_act_post_state},
+                                 "previous_act_post_state": previous_act_post_state,
+                                 "plan_rule": survival.PLAN_RULE if survival.config(self) else ''},
                               prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
         try:
             updated_narrative_plan = None
@@ -2538,91 +2548,67 @@ Respond with one line for each thing, or the single line #none:
         
         return
 
-    def validate_outcome(self, form):
-        """Validate an outcome form"""
-        outcome = hash_utils.find('Outcome', form)
-        test = hash_utils.find('Test', form)
-        if outcome and test and test.lower() == 'true':
-            return {'outcome': outcome, 'test': True}
-        elif outcome and test and test.lower() == 'false':
-            return {'outcome': outcome, 'test': False}
-        else:
-            return None
-
-
     async def check_post_state_ambiguity(self, act, scene=None):
-        """Check if the post state is ambiguous"""
-        prefix = """You are a skilled playwright and narrative integrator.
-You are given a planned post state for an act or scene.
-You are checking if the post state statement is unambiguous, or presents a set of possible outcomes.
-In either case, test each possible outcome against the current state of the play to determine if it is the case.
-The current state of the play is:
-"""
-        suffix = """
+        """What a scene or act came to, read from the record of it: [{'outcome', 'test'}].
+        It used to be given the plan (all of it) and asked which planned outcome was so: an act
+        was closed with its own planned ending word for word ('Wolf repelled; alliance forged'
+        when no wolf had appeared), a scene with one of the plan's failure cases ('Separation
+        occurs; one or both are killed') and with alternatives ('established dominance or
+        secured food'). Now it is given what happened and what was said, and the planned ending
+        only as the thing to compare: an outcome stands on a line of the record or it is false."""
+        prompt = [UserMessage(content="""You keep the record of an improvised play. A {{$unit}} has just been played. Say what it came to, from the record below and from nothing else.
 
-#Planned Act or Scene just completed
-{{$act_or_scene}}
-##
-
-#Planned Act or Scene Pre-state
-{{$pre_state}}
-##
-
-#Planned Post-state of the act or scene just completed
+<planned_ending>
 {{$post_state}}
-##
+</planned_ending>
 
-#Planned Act central narrative
-{{$act_central_narrative}}
-##
-
-#What actually happened (physical events, most recent last)
+<what_happened>
 {{$events}}
-##
+</what_happened>
 
-An outcome about a body or a thing (someone fed, watered, rested, hurt, armed, holding or handing over something) is True only if the events above or the character's Body line show it. What was only said, promised or planned did not happen: such an outcome is False.
+<what_was_said_and_shown>
+{{$lines}}
+</what_was_said_and_shown>
 
-The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
-the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
-Return a succint name for each possible outcome, together with True or False according to whether that outcome is so in the actual state of the play.
-Use hash-formatted text for your response, as shown below. 
-the required tags are Outcome and Test. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
-be careful to insert line breaks only where shown, separating a value from the next tag:
+<bodies_now>
+{{$bodies}}
+</bodies_now>
 
+Rules:
+- Take the planned ending apart into its separate claims, and for each say whether the record shows it happened. A plan is not evidence: what was planned, intended, feared or only spoken of as a possibility did not happen.
+- An animal, a person or a danger did not appear unless the record shows it appearing. Nobody is hurt, healed, fed, armed or dead unless what happened or the bodies say so.
+- Then add what the record shows that matters and the plan did not foresee: a choice made, a thing handed over or refused, a parting, an injury, something admitted.
+- A line written between dots (...like this...) is a private thought: it shows what someone thinks, not that anything happened.
+- Each outcome is one plain statement of one thing, ten words or so. Never "X or Y". For each, quote a few words of the record that show it (fifteen words at most); with no such words, it did not happen.
+- Six outcomes at most: the claims of the planned ending first, then only what changed how things stand. Not every deed is an outcome.
 
-#Outcome succint name of the possible outcome 1
-#Test True or False
-##
-
-#Outcome succint name of the possible outcome 2
-#Test True or False
-##
-
-...
-"""
+Answer in JSON only:
+{"outcomes": [{"outcome": "<one plain statement>", "happened": true or false, "shown_by": "<words quoted from the record, or empty>"}]}
+End your response with: </end>""")]
         if scene:
-            # scenes carry pre_narrative / post_narrative (scene_pre_state did not exist: both were empty)
-            pre_state = scene.get('pre_narrative', '')
             post_state = scene.get('post_narrative', '')
-            act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
+            start = getattr(self, '_scene_transcript_start', 0)
         else:
-            pre_state = act.get('act_pre_state', '')
             post_state = act.get('act_post_state', '')
-            act_or_scene = json.dumps(act, indent=2, default=datetime_handler)
-            
-        response = await self.context_ask(prefix=prefix, suffix=suffix, addl_bindings={"act_or_scene": act_or_scene, 
-        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
-        "events": '\n'.join(self.scene_events if scene else self.act_events) or 'none recorded'},
-        max_tokens=300, tag='check_post_state_ambiguity')
-        if response:
-            outcomes = []
-            forms = hash_utils.findall_forms(response)
-            for form in forms:
-                outcome = self.validate_outcome(form)
-                if outcome:
-                    outcomes.append(outcome)
-            return outcomes
-        return []
+            start = getattr(self, '_act_transcript_start', 0)
+        cast = [c for c in self.actors + self.extras if getattr(c, 'body', None) is not None]
+        reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given',
+                              'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
+                              'lines': '\n'.join(str(l).strip() for l in self.transcript[start:] if str(l).strip())[-6000:] or 'nothing',
+                              'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'},
+                             prompt, tag='check_post_state_ambiguity', temp=0.1, stops=['</end>'], max_tokens=700)
+        found = json_reply.parse(reply) if reply else None
+        if not isinstance(found, dict):
+            trace.event('check_unreadable', of='outcomes', reply=(reply or '')[:300])
+            return []
+        outcomes = []
+        for entry in found.get('outcomes') or []:
+            if isinstance(entry, dict) and str(entry.get('outcome') or '').strip():
+                shown_by = str(entry.get('shown_by') or '').strip()
+                # an outcome with nothing of the record behind it is not counted as having happened
+                outcomes.append({'outcome': str(entry['outcome']).strip(), 'test': entry.get('happened') is True and bool(shown_by),
+                                 'shown_by': shown_by[:200]})
+        return outcomes
 
     def validate_decision(self, form):
         """Validate a decision form"""
@@ -2808,10 +2794,12 @@ It is NOT your job to decide now how that conflict will be resolved. That will e
 ## Cast & Context
 **Characters:** {{$character_names_and_brief_descriptions}}
 **Setting:** {{$setting}}
-
+**What each character wants, most pressing first (from the play as written):**
+{{$drives}}
+{{$left_out}}
 ## Integration Task
 Create a unified central dramatic question that:
-1. **Synthesizes character interests** - Incorporates core elements from multiple proposals
+1. **Synthesizes character interests** - Incorporates core elements from multiple proposals. The question is larger than staying alive: it gives a place to what each character most wants (a mystery to solve, a person to win or to keep at a distance, something hidden). Survival is the pressure on the question, not the question.
 2. **Assigns clear dramatic roles** - Each character has a specific function in the conflict
 4. **Has binary resolution potential** - Can succeed or fail clearly
 5. **Creates character interdependence** - No one can resolve it alone
@@ -2830,13 +2818,46 @@ Create a unified central dramatic question that:
 
 What unified central dramatic question emerges from these proposals?         
                               """)]
-        response = self.llm.ask({"character_central_narratives": '\n'.join([f'{character.name}: {character.current_proposal.to_string() if character.current_proposal else ""}' for character in cast(List[NarrativeCharacter], self.actors)]), 
-                                 "character_names_and_brief_descriptions": '\n'.join([f'{character.name}: {character.character}' for character in cast(List[NarrativeCharacter], self.actors)]), 
-                                 "setting": self.current_state}, 
-                                 prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
+        drives = '\n'.join(f"{c.name}: " + ' / '.join(d.text.strip() for d in c.drives) for c in self.actors if getattr(c, 'drives', None))
+        bindings = {"character_central_narratives": '\n'.join([f'{character.name}: {character.current_proposal.to_string() if character.current_proposal else ""}' for character in cast(List[NarrativeCharacter], self.actors)]),
+                    "character_names_and_brief_descriptions": '\n'.join([f'{character.name}: {character.character}' for character in cast(List[NarrativeCharacter], self.actors)]),
+                    "setting": self.current_state, "drives": drives or 'not given', "left_out": ''}
+        response = self.llm.ask(bindings, prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
+        left_out = self.drives_left_out(response, drives) if response and drives else []
+        if left_out:
+            # the play as written gave these people wants that the question has no place for
+            # (lost: a mystery and a romance planned as berries, boar, wolf): written once more
+            bindings['left_out'] = ("**A first draft of the question left these out; this one gives each a place:**\n"
+                                    + '\n'.join(f"- {who}: {want}" for who, want in left_out) + '\n')
+            again = self.llm.ask(bindings, prompt, max_tokens=300, stops=['</end>'], tag='merge_central_narratives')
+            trace.event('plan_drives', left_out=[f'{who}: {want}' for who, want in left_out], rewritten=bool(again),
+                        before=response[:600], after=(again or '')[:600])
+            response = again or response
         if response:
            self.central_narrative = response
         return self.central_narrative
+
+    def drives_left_out(self, question, drives):
+        """Which of the cast's wants (from the play file) the central question gives no place to:
+        [(name, want)]. [] when all have one, or when the check cannot be read."""
+        reply = self.llm.ask({'question': question, 'drives': drives}, [UserMessage(content="""A play's central dramatic question has been written. Below it is what each character wants, as the play's author wrote it.
+
+<question>
+{{$question}}
+</question>
+
+<wants>
+{{$drives}}
+</wants>
+
+For each want, decide whether the question and its stakes, roles and tensions give it a place: could a scene that pursues this want be part of answering the question? A want for water, food, rest or safety from danger has a place in any play about survival. A want to solve a mystery, to find love or belonging, or for adventure has a place only if the question or its tensions speak of it.
+
+Answer in JSON only, listing the wants that have NO place (an empty list if every want has one):
+{"left_out": [{"name": "<character>", "want": "<the want, in a few of its own words>"}]}
+End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=['</end>'], max_tokens=200)
+        found = json_reply.parse(reply) if reply else None
+        names = {c.name for c in self.actors}
+        return [(e['name'], e['want']) for e in json_reply.items(found, 'left_out', fields=('name', 'want')) if e['name'] in names]
 
     async def request_act_choice(self, act_data):
         """Request an act choice from the UI - following request_goal_choice pattern"""

@@ -41,10 +41,17 @@ class KnownResourceManager:
         self.known_resources = {}
 
     def to_string(self):
-        if self.known_resources:
-            return '\n'.join([resource.to_string() for resource in self.known_resources.values()])
-        else:
+        if not self.known_resources:
             return 'None to report'
+        # one line for each kind of place, with the names of those known (twenty-odd lines of
+        # 'Fallen_Branch12: A large fallen tree branch' stood in every prompt)
+        kinds = {}
+        for resource in self.known_resources.values():
+            try:
+                kinds.setdefault(resource.description(), []).append(resource.name())
+            except Exception as e:
+                print(f"Error listing resource: {e}")
+        return '\n'.join(f"{description or 'Other'}: {', '.join(names)}" for description, names in kinds.items())
 
     def names(self):
         return [resource.name for resource in self.known_resources.values()]

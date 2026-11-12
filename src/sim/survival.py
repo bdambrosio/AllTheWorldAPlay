@@ -81,7 +81,17 @@ def stakes_text(context, fallback=''):
     """The scenario's sentence on what is at stake physically and socially in its world, for the
     planning and act prompts; `fallback` (the engine's old wording) when the scenario has none."""
     module = getattr(getattr(context, 'map', None), 'scenario_module', None)
-    return (getattr(module, 'stakes', None) or fallback).strip()
+    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{PLAN_RULE}' if config(context) else '')
+
+
+# For every prompt that writes or rewrites the plan. A plan wrote 'the boar swerves, goring Joe's
+# leg' as a scene's ending: the actor played the wound from his first line, the world's own boar
+# then struck the other character, and the play carried two accounts of who was hurt.
+PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the world when the scene is played, never by the plan. "
+             "A plan may put the characters in a danger's way. It does not say that someone is wounded, bitten, healed, fed or killed, "
+             "nor that an animal is driven off or strikes. "
+             "States and endings say where the characters stand with each other and with the central question: "
+             "what has been chosen, said, refused, found out or lost between them.")
 
 
 def act_note(character):
@@ -993,7 +1003,12 @@ def _apply(context, character, action, near, target, via, act_text=''):
         other.body.money += action['transfer_money']
     if other is not None:
         for need, delta in (action.get('target_effects') or {}).items():
+            was = other.body.level(need)
             other.body.adjust(need, delta)
+            if need == _harm(cfg)['name'] and delta < 0 and was >= NEED_FELT:
+                # a wound that is tended is still a wound: one bandaging took a gored leg to
+                # 'unhurt' within the scene, and the next deed on that leg was refused
+                other.body.levels[need] = max(other.body.level(need), NEED_FELT)
     used = _held(body, action.get('consumes'))
     if used:
         body.inventory.remove(used)
