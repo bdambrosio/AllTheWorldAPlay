@@ -3495,12 +3495,17 @@ End your response with:
                     return True
         return False
 
-    async def cognitive_cycle(self, sense_data='', narrative=False, ui_queue=None):
-        """Perform a complete cognitive cycle"""
+    async def cognitive_cycle(self):
+        """One turn of a character in an UNPLANNED play (a play file with narrative=False:
+        simulation.step calls this for each character in turn). The character keeps a goal of
+        its own, plans tasks for it, and plays one task a turn with step_task, the same step a
+        planned play uses.
+        A planned play does not come here: Context.run_scene gives each character its goal and
+        tasks for the scene and calls step_task itself. (This took a 'narrative' flag for that
+        case, which nothing passed.)"""
         print(f'{self.name} cognitive_cycle')
         logger.info(f'{self.name} cognitive_cycle')
-        if not narrative:
-            self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})    
+        self.context.message_queue.put({'name':'\n\n'+self.name, 'text':f'-----cognitive cycle----- {self.context.simulation_time.isoformat()}'})
         await asyncio.sleep(0)
         self.thought = ''
         if self.focus_goal: 
@@ -3524,83 +3529,69 @@ End your response with:
                 })
                 await asyncio.sleep(0.1)
 
-        if not narrative:
-            if self.focus_goal:
-                goal = self.focus_goal
-                satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
-                if satisfied:
-                    self.focus_goal_history.append(goal)
-                    await self.generate_goals(previous_goal=goal)
-                    await self.request_goal_choice(self.goals)
-
-            if not self.focus_goal and (not self.goals or len(self.goals) == 0):
-                await self.generate_goals()
+        if self.focus_goal:
+            goal = self.focus_goal
+            satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+            if satisfied:
+                self.focus_goal_history.append(goal)
+                await self.generate_goals(previous_goal=goal)
                 await self.request_goal_choice(self.goals)
-                for goal in self.goals.copy():
-                    if goal is self.focus_goal:
-                        pass
-                    else:
-                        self.goals.remove(goal) # once we've selected a goal, remove all other goals -why?
-        
-            if not self.focus_goal and self.goals and len(self.goals) > 0:
-                await self.request_goal_choice(self.goals)
-                if not self.focus_goal: # if we don't have a goal
-                    return
 
-            if self.focus_goal and (not self.focus_goal.task_plan or (len(self.focus_goal.task_plan) == 0)):
-                await self.generate_task_plan(self.focus_goal)
-
-        else: #narrative  
-            if not self.focus_goal:
+        if not self.focus_goal and (not self.goals or len(self.goals) == 0):
+            await self.generate_goals()
+            await self.request_goal_choice(self.goals)
+            for goal in self.goals.copy():
+                if goal is self.focus_goal:
+                    pass
+                else:
+                    self.goals.remove(goal) # once we've selected a goal, remove all other goals -why?
+    
+        if not self.focus_goal and self.goals and len(self.goals) > 0:
+            await self.request_goal_choice(self.goals)
+            if not self.focus_goal: # if we don't have a goal
                 return
 
+        if self.focus_goal and (not self.focus_goal.task_plan or (len(self.focus_goal.task_plan) == 0)):
+            await self.generate_task_plan(self.focus_goal)
+
+        if not self.focus_goal:   # no goal could be made this turn (a failed model call): nothing to play
+            return
         logger.debug(f'{self.name} cognitive_cycle: focus goal {self.focus_goal.name} task plan {self.focus_goal.task_plan}')
 
         await self.request_task_choice(self.focus_goal.task_plan)
         if not self.focus_task.peek(): # prev task completed, proceed to next task in plan
-            print(f'{self.name} narrative cognitive_cycle: no focus task')
+            print(f'{self.name} cognitive_cycle: no focus task')
             if self.focus_goal:
                 self.focus_goal_history.append(self.focus_goal)
                 self.focus_goal = None
             return
             
-        # input - a task on top of self.focus_task, the next task to run for self.focus_goal
-        task_to_run = self.focus_task.peek()
+        # a task is on top of self.focus_task: play it
         await self.step_tasks()
 
-        delay = 0.0
-        #delay = await self.context.choose_delay()
         self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
         self.context.message_queue.put({'name':self.name, 'text':f'character_detail', 'data':self.get_explorer_state()})
-        try:
-            old_time = self.context.simulation_time
-            self.context.simulation_time += timedelta(hours=delay)
-            if old_time.day!= self.context.simulation_time.day:
-                pass # need to figure out out to force UI to no sho old image
-            if delay > 15.0:
-                self.context.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.context.world_image_json()})
-                await asyncio.sleep(0)
-        except Exception as e:
-            print(f'{self.name} cognitive_cycle error: {e}')
 
-        if not narrative:
-            goal = self.focus_goal
-            satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
-            if satisfied:
-                await self.generate_goals(previous_goal=goal)
-                await self.request_goal_choice(self.goals)
+        goal = self.focus_goal
+        satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
+        if satisfied:
+            await self.generate_goals(previous_goal=goal)
+            await self.request_goal_choice(self.goals)
         return
 
        
-    async def step_tasks(self, n: int=2):
-        #runs through up to n tasks in a task_plan
-        # like step_task, the invariant is that the task stack is empty on return, and the first task in focus_goal task_plan is the next task to run, if it exists
+    async def step_tasks(self, n: int=1):
+        """For an unplanned play (cognitive_cycle): play up to n tasks of the focus goal's plan,
+        one by default, and when the plan runs out settle what becomes of the goal. On return
+        the task stack is empty and the first task in focus_goal.task_plan, if any, is next.
+        (The default was 2 and the guard 'task_count < n-1', so it played one: the default now
+        says so.) A task left unfinished by step_task is dropped from the plan: the character
+        remembers setting it aside, and plans again when the plan is empty."""
         task_count = 0
         logger.info(f'{self.name} step_tasks: {self.focus_task.peek()}')
         while task_count < n and self.focus_task.peek():
     
             task = self.focus_task.peek()
-            task_to_run = task
             outcome = await self.step_task()
             task_count += 1
 
@@ -3651,16 +3642,9 @@ End your response with:
                 else:
                     logger.debug(f'{self.name} step_tasks: assertion error: focus goal {self.focus_goal.name} not handled')
                     return False
-            if task_count < n-1: # if we're not at the last task, push the next task onto the stack
-                    self.focus_task.push(self.focus_goal.task_plan[0])
-                    self.focus_goal.task_plan.pop(0)
-
-            if self.focus_task.peek() == task_to_run:
-                self.focus_task.pop()
-                print(f'{self.name} step_tasks: task {task_to_run.name} still on focus stack, invariant violated')
-            #if self.focus_goal:
-            #    self.clear_goal_if_satisfied(self.focus_goal)
-        return 
+            if task_count < n and self.focus_goal and self.focus_goal.task_plan:   # another task this turn
+                self.focus_task.push(self.focus_goal.task_plan.pop(0))
+        return
             
         
     async def step_task(self):
@@ -3676,7 +3660,7 @@ End your response with:
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
-        if getattr(task, 'began_at', None) is None and self.context.current_scene is not None:
+        if getattr(task, 'began_at', None) is None:
             # where the scene's record stood when this task was begun: whether it is done is
             # judged from what has happened since (test_termination)
             task.began_at = (len(self.context.scene_events), len(self.context.transcript))
