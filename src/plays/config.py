@@ -1,6 +1,7 @@
 model_name=None
 #server_name='deepseek'
-server_name='vllm'
+#server_name='vllm'       # the local model (Qwen under vLLM on :5000)
+server_name='fireworks'   # GLM-5.3-Flash on Fireworks; needs FIREWORKS_PROJECT_KEY in ~/.config/secrets.env
 #server_name='openai'; model_name='Qwen3-14B'
 #server_name = 'local'
 #server_name='Claude'
@@ -18,8 +19,8 @@ server_name='vllm'
 #server_name='openrouter'; model_name='qwen/qwen3-32b'
 #server_name='openrouter'; model_name='moonshotai/kimi-k2'
 
-# One run on another model without editing this file: ATWAP_LLM=fireworks ./start-local.sh
-# (GLM-5.3-Flash on Fireworks; needs FIREWORKS_PROJECT_KEY). ATWAP_MODEL names a model for it.
+# One run on another model without editing this file: ATWAP_LLM=vllm ./start-local.sh
+# (the local model). ATWAP_MODEL names a model for the chosen server.
 import os
 if os.environ.get('ATWAP_LLM'):
     server_name = os.environ['ATWAP_LLM']
