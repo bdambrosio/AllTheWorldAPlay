@@ -2090,7 +2090,7 @@ Choose actions that drive narrative forward, not just maintain status quo.
 {{$already_said}}
 
 Respond with two alternative acts, including their Mode, action, target, and expected duration. 
-The acts should vary in mode and action.
+Give first the act you would play now: the one that most directly does what the task is for. Then one alternative, in a different mode, that goes at it another way.
 
 In choosing each act (see format below), you can choose from these Modes:
 - Say - speak, to obtain or share information, to align, coordinate with, or manipulate others in service of your goals or drives; to reason jointly, or to establish or maintain a bond. 
@@ -2269,7 +2269,7 @@ Again, the task to translate into alternative acts is:
 
 {{$scene_post_narrative}}
 
-Do not include any introductory, explanatory, or discursive text. Remember, respond with 2 or at most 3 alternative acts.
+Do not include any introductory, explanatory, or discursive text. Remember, respond with 2 or at most 3 alternative acts, your first choice first.
 End your response with:
 </end>
 """
@@ -3264,12 +3264,18 @@ End your response with:
         else:
             return ''
 
-    async def request_action_choice(self, actions):
-        """Request an act choice from the UI"""
+    async def request_action_choice(self, actions, first_choice=False):
+        """Settle which of the alternatives is played (self.focus_action): by the Director's
+        chair when this character's acts are chosen there, else by the engine.
+        The engine's pick is weighted chance, for variety: the second alternative is often a
+        deed where the first was another line. But the first act toward a task is the actor's
+        first choice (first_choice=True): chance passed over the one act a task was for, three
+        times running ('Propose separation test' never proposed it), and put a thought about
+        whether to act after the act."""
         if self.autonomy.action:
-            #if len(acts) > 0 and acts[0].mode != 'Think':
-            #    self.focus_action = acts[0]
-            #    return self.focus_action
+            if first_choice and actions:
+                self.focus_action = actions[0]
+                return self.focus_action
             self.focus_action = choice.pick_weighted(list(zip(actions, [self.ActWeight(len(actions), n, action) for n, action in enumerate(actions)])))[0]
             if not self.focus_action and len(actions) > 0:
                 self.focus_action = actions[0]
@@ -3694,7 +3700,10 @@ End your response with:
             # a deed is looked at before it is done: one that rests on a thing the actor does not
             # have is passed over for another it offered, or written again (sim/record.py deeds)
             action_alternatives = record.sound_deeds(self.context, self, action_alternatives)
-            await self.request_action_choice(action_alternatives) # sets self.focus_action
+            offered = list(action_alternatives)
+            await self.request_action_choice(action_alternatives, first_choice=not task.acts) # sets self.focus_action
+            trace.event('act_choice', character=self.name, task_id=task.id, offered=len(offered),
+                        played=next((i for i, a in enumerate(offered) if a is self.focus_action), None), first_of_task=not task.acts)
             record.mend_deed(self.context, self, self.focus_action)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
