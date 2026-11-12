@@ -214,7 +214,8 @@ PLAN_TAGS = frozenset((
     'NarrativeCharacter.negotiate_central_narrative', 'merge_central_narratives',
     'NarrativeCharacter.write_narrative', 'integrate_narratives', 'act_central_narrative',
     'frame_episode', 'NarrativeCharacter.replan_narrative_act', 'NarrativeCharacter.replan_scene',
-    'reground_scene', 'plan_serves_drives'))
+    'reground_scene', 'plan_serves_drives',
+    'check_decision_required'))   # whether a scene turns on a choice is the director's judgement
 _planner = False   # False: not looked up yet; None: no planner; else the planner's LLM
 
 

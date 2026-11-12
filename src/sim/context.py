@@ -1926,6 +1926,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.scene_history = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.scene_task_budget = len(self.scene_integrated_task_plan)  # see place_commitment
+        # where the scene stood when its tasks were planned: a task is looked at again
+        # (refresh_task) only in the light of what has happened since
+        self._scene_plan_mark = (len(self.scene_events), len(self.transcript))
         trace.event('scene_plan', entries=[{'actor': e['actor'].name, 'task_id': e['task'].id, 'task': e['task'].name}
                                            for e in self.scene_integrated_task_plan])
         while self.scene_integrated_task_plan_index < len(self.scene_integrated_task_plan):

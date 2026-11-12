@@ -13,7 +13,7 @@ import os, sys, re, traceback, requests, json
 from sim.character_dataclasses import Act, Goal, Task, CentralNarrative, datetime_handler
 from sim.cognitive.EmotionalStance import EmotionalStance
 from utils.Messages import UserMessage
-from utils import hash_utils
+from utils import hash_utils, json_reply
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
 from enum import Enum
@@ -571,182 +571,93 @@ be careful to insert line breaks only where shown, separating a value from the n
 
         
         
+    REVIEW = """You are the actor playing {{$name}} in an improvised play. Before this scene began you planned what {{$name}} would do in it; that plan is your own idea for the scene. Earlier beats have now been played. Look again at the task you planned to do next.
+
+{{$notes}}
+
+<character>
+{{$character}}
+</character>
+
+<what_{{$name}}_is_after_in_this_scene>
+{{$goal}}
+</what_{{$name}}_is_after_in_this_scene>
+
+<planned_task>
+What you meant to do: {{$task}}
+Why (your intent): {{$intent}}
+Done when: {{$done_when}}
+</planned_task>
+
+<your_later_tasks_in_this_scene>
+{{$later}}
+</your_later_tasks_in_this_scene>
+
+<what_has_happened_in_the_scene_since_you_planned>
+{{$happened}}
+</what_has_happened_in_the_scene_since_you_planned>
+
+The intent is yours and it is kept: it is what you brought to this scene. Decide only whether the planned action is still the way to pursue it.
+- keep: the action has not been done and can still be played as planned. When in doubt, keep. The same action in other words is not a change: answer keep.
+- adapt: the action has already been done (by you or by someone else), has been overtaken by what happened, or cannot be done now. Give a new action that pursues the same intent from where things now stand.
+- respond: the intent itself has been met, or what another character has just done makes it pointless. Give what {{$name}} now wants in answer to that, and why. This is rare.
+{{$final}}
+Answer in JSON only. For keep, the verdict alone is enough.
+{"verdict": "keep" | "adapt" | "respond", "action": "<4 to 8 words naming the new action>", "how": "<one plain sentence: what is done or said>", "done_when": "<5 to 8 words: something that can be seen or heard>", "why": "<for respond only: the new intent, 6 to 10 words>"}
+End your response with: </end>"""
+
     def refresh_task(self, task, scene_task_plan, final_task=False):
-        """Refresh the task to ensure it is up to date with the latest information
-        adapted from Character.generate_task_plan"""
+        """Look again at a planned task just before it is played, in the light of what has
+        happened in the scene since the plans were made. Returns the task to play.
 
-        if not self.focus_goal:
-            raise ValueError(f'No focus goal for {self.name}')
-        """generate task alternatives to achieve a focus goal"""
-        goal = self.focus_goal        
-        system_prompt = """You are an actor in an improvisational play. Review the following planned task for the character you are playing {{$name}} in light of recent events. 
+        Each character plans its tasks for a scene on its own, before the scene: that is where
+        the scene's surprises come from, and the plan is the character's idea of the scene.
+        This step is to keep that idea playable, not to have another one. It answers keep,
+        adapt (the same intent, another action) or respond (the intent is spent: answer what
+        just happened). On keep and adapt the task's reason, the character's own statement of
+        why, is carried over by this code and cannot be rewritten; only respond gives a new one.
 
-##Previously Planned Task
-{{$planned_task}}
+        (The step before this one was asked to keep, revise or replace, and rewrote four tasks
+        in five: most of them the same task in other words, some with the reason softened or
+        hardened on the way, one in eight cut off at its token limit and silently dropped. It
+        was shown the names of the tasks begun, not what had come of them, and it ran even
+        when nothing had yet been played.)"""
+        context = self.context
+        events_at, lines_at = getattr(context, '_scene_plan_mark', (0, 0))
+        events, lines = context.scene_events[events_at:], [str(l).strip() for l in context.transcript[lines_at:] if str(l).strip()]
+        if not events and not lines:
+            trace.event('task_review', character=self.name, task_id=task.id, verdict='keep', why='nothing has happened since it was planned')
+            return task
+        goal = task.goal or self.focus_goal
+        later = [t['task'].to_string() for t in scene_task_plan if t['actor'] is self and t['task'] is not task
+                 and scene_task_plan.index(t) > context.scene_integrated_task_plan_index]
+        reply = self.llm.ask({'name': self.name, 'notes': self.director_notes(story=False),
+                              'character': self.get_character_description(),
+                              'goal': f'{goal.name}: {goal.description}' if goal else 'not said',
+                              'task': f'{task.name}: {task.description}', 'intent': task.reason, 'done_when': task.termination or 'not said',
+                              'later': '\n'.join(later) or 'none',
+                              'happened': '\n'.join(events + lines)[-5000:],
+                              'final': 'This is your last task in the scene.\n' if final_task else ''},
+                             [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=220)
+        found = json_reply.parse(reply) if reply else None
+        verdict = str(found.get('verdict') or '').strip().lower() if isinstance(found, dict) else ''
+        action, how = (str(found.get(k) or '').strip() for k in ('action', 'how')) if isinstance(found, dict) else ('', '')
+        if verdict not in ('adapt', 'respond') or not action or not how:
+            # keep; or a reply that cannot be read, or that names no action: the plan stands
+            trace.event('task_review', character=self.name, task_id=task.id, verdict='keep' if verdict == 'keep' else 'unreadable',
+                        reply='' if verdict == 'keep' else (reply or '')[:300])
+            return task
+        why = str(found.get('why') or '').strip()
+        new_task = Task(action, how, why if verdict == 'respond' and why else task.reason, task.actors, goal,
+                        termination=str(found.get('done_when') or '').strip() or task.termination,
+                        start_time=task.start_time, duration=task.duration)
+        trace.event('task_review', character=self.name, task_id=task.id, verdict=verdict, new_task_id=new_task.id,
+                    before=f'{task.name}: {task.description}', after=f'{action}: {how}', reason=new_task.reason,
+                    reason_kept=new_task.reason == task.reason)
+        if goal is not None:
+            goal.task_plan = [new_task]
+        return new_task
 
-##Instructions
-Review your planned task against current conditions and decide if it should be:
-1. **KEPT** - Still appropriate and achievable as planned
-2. **REVISED** - Core intent is good but details need adjustment  
-3. **REPLACED** - Circumstances have made a different approach better
-
-Consider these factors:
-- Has the scene dynamic shifted from your expectations?
-- Are the planned actors still available/relevant?
-- Do recent events create better opportunities?
-- Does your task conflict with or duplicate others in the scene plan?
-
-Respond with either:
-- "KEEP" (if no changes needed)
-- The revised task in hash format (if changes would improve effectiveness)
-
-Following will be a large set of background information about the play, the scene, and the task.
-
-"""
-
-        mission = """
-
-You previously planned to pursue this task next:
-
-{{$planned_task}}
-
-The scene will end with this task:
-{{$final_task}}
-
-You are performing a in play with the following Dramatic Context:
-
-##Dramatic Context
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
-You have your own plans that may or may not be consistent with the central dramatic question. 
-Potential conflict between your own plans and the central dramatic question is real, only you can decide.
-
-<my_narrative>
-{{$my_narrative}}
-</my_narrative>
-
-##Scene
-The current scene you will be acting in is:
-<scene>
-{{$scene}}
-</scene>
-
-and, importantly, the scene narrative is:
-<scene_narrative>
-{{$scene_narrative}}
-</scene_narrative>
-
-The overall task plan for this scene is as follows, although as yet unperformed tasks may be revised as events unfold:
-<scene_task_plan>
-{{$scene_task_plan}}
-</scene_task_plan>
-
-And the following set of tasks has already been performed within the scene:
-<scene_history>
-{{$scene_history}}
-</scene_history>
-
-##Previous Achievments
-{{$achievments}}
-
-"""
-
-        suffix = """    
-##Instructions
-Review your planned task against current conditions and decide if it should be kept, revised, or replaced. Keep your thinking to yourself. Do not output your thinking.
-1. Choose to keep the task if it is still appropriate and achievable as planned
-2. Choose to revise the task if the core intent is good but details need significant adjustment  
-3. Choose to replace the task if circumstances have made a different approach better
-
-Consider these factors:
-- Has the scene dynamic shifted significantlyfrom your expectations?
-- Have the relationships among planned actors changed in ways that make your task no longer appropriate?
-- Do recent events create better opportunities?
-- Does your task conflict with or duplicate others in the scene plan? Avoid duplication. Review past goals and their completion status to ensure you are not repeating yourself.
-
-Respond ONLY with either:
-- "KEEP" (if no changes needed) *OR*
-- The revised /replaced task in hash format (if changes would improve effectiveness)
-
-Remember, if you choose to make any changes:                             
- - A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
- - The task(s) should be distinct from one another, and each should advance the focus goal.
- - Use known actor names in the task description unless deliberately introducing a new actor. Characters known to this character include:
-    {{$known_actors}}
-
- - Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
- - In refering to other actors, always use their name, without other labels like 'Agent', 
- and do not use pronouns or referents like 'he', 'she', 'that guy', etc.
-
-
-##Task Format
-A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
-Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
-Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#name brief (4-6 words) task name
-#description terse (6-8 words) statement of the action to be taken.
-#reason (6-7 words) on why this action is important now
-#actors the names of any other actors involved in this task, comma separated. if no other actors, use None
-#start_time (2-3 words) expected start time of the action
-#duration (2-3 words) expected duration of the action in minutes
-#termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
-##
-
-Respond ONLY with KEEP, if you choose to leave the proposed task unchanged, or with the revised task in hash-formatted-text format and ending with ## as shown above.
-
-End response with:
-</end>
-"""
-
-        if self.context.scene_post_narrative:
-            scene_narrative = f"\nThe narrative arc of the scene is from:  {self.context.scene_pre_narrative} to  {self.context.scene_post_narrative}\nThe task sequence should be consistent with this theme."
-        else:
-            scene_narrative = ''
-        # the actor's own tasks in the scene: what the others mean to do is theirs to play
-        scene_task_plan = '\n'.join([f'{t["actor"].name}: {t["task"].to_string()}' for t in scene_task_plan if t["actor"] is self])
-        logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
-        response = default_ask(self, system_prompt=system_prompt,
-                               prefix=mission, 
-                               suffix=suffix, 
-                               addl_bindings={"focus_goal":goal.to_string(),
-                                "planned_task": task.to_string(),
-                                "final_task": "\nThis is your final task in this scene." if final_task else '',
-                                "known_actors": "\n".join([name for name in self.actor_models.names()]),
-                                "achievments": '\n'.join(self.achievments[:5]),
-                                "scene_narrative": scene_narrative,
-                                "act_specific_narrative": self.act_direction(),
-                                "central_narrative": self.story_note(),
-                                "my_narrative": self.central_narrative if self.central_narrative else '',
-                                "scene": self.director_notes(story=False),
-                                "scene_task_plan": scene_task_plan, 
-                                "scene_history": '\n'.join(self.context.scene_history)},
-                               tag = 'Character.generate_task_plan',
-                               max_tokens=100, log=True)
-
-
-        # add each new task, but first check for and delete any existing task with the same name
-        forms = hash_utils.findall_forms(response)
-        if forms and len(forms) > 0:
-            task_hash = forms[0]
-            print(f'\n{self.name} new task: {task_hash.replace('\n', '; ')}')
-            if not self.focus_goal:
-                print(f'{self.name} generate_plan: no focus goal, skipping task')   
-            new_task = self.validate_and_create_task(task_hash, goal)
-            if new_task:
-                goal.task_plan = [new_task] # only use the first task, that's all we asked for.
-                return new_task
-            else:
-                print(f'{self.name} generate_plan: no new task')
-        return task
-    
     async def decide(self, decision, act=None, scene=None):
         """Decide on a choice for a decision"""
         system_prompt = """You are {{$name}}, a character in an improvisational play.
