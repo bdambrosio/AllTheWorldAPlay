@@ -29,11 +29,9 @@ import re
 from sim import ablation, stage, survival
 from sim.trace import trace
 from utils.Messages import UserMessage
+from utils import json_reply
 
 NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed at, spoken of
-BODILY = (r"hung|starv|fed\\b|thirst|quench|parch|tired|exhaust|rested|fatigue|sleep|hurt|wound|injur|pain|ache|sore|swol|swell|"
-          r"sprain|twist|broke|bleed|blood|bruis|fever|sick|ill\\b|nause|cramp|limp|lame|burn|bandag|sling|faint|dizz|weak")
-COMMON = {'their', 'there', 'while', 'which', 'about', 'after', 'before', 'still', 'being', 'where', 'other', 'again', 'hands', 'holds', 'takes'}
 KINDS = ('item', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
@@ -61,19 +59,19 @@ A statement is unsupported when it is one of these:
 - condition: of the body only (fear, shock, a scare, relief and calm are of the mind and never a condition): a wound, illness or pain from injury, or a need met or unmet (hungry, fed, thirsty, quenched, tired, rested), that Bodies and Settled do not show. A stronger or weaker word for what Bodies shows (exhausted for tired) is supported.
 - presence: an animal or person that Present, Danger and Settled do not mention; or the danger listed under Danger gone, struck or beaten when Settled does not say so. (A danger leaving as Settled says is supported. Anyone listed under Present is there, wherever the narration puts them within the place. Places, plants, wind, noises and things in the landscape are never 'presence'.)
 - place: a character standing at, or having moved to, a place other than where Present puts them, when Settled has no walk. Seeing, facing, pointing at, turning or taking a few steps toward a place in sight is not moving there.
-- time: light, dark or a time of day that does not fit Time.
+- time: light, dark or a time of day that does not fit Time. Words that do fit it are supported, in any form ('early morning light' at nine in the morning).
 - stock: how much is left somewhere, other than as Stock says.
 - gender: someone called he or she, him or her, sir or madam, a man or a woman, against what Cast says they are.
 - outcome: only when Settled refuses the action (it says 'cannot', 'must move there first', 'still has it', 'nothing to') and the narration has it done all the same; or Settled has it done and the narration has it fail. When Settled is 'none' there is no outcome claim: one character touching, pushing, pinning, gripping or striking another, or handling a thing it holds, is allowed.
 Everything the record does not keep is allowed: the ground, plants, weather that fits the time, the clothes a person wears, sounds, gestures, how a thing looks or feels, whatever the action itself says the character does with its own body, and everything of the mind: what anyone thinks, feels, fears, wants, knows, remembers or has forgotten is never a 'condition'.
 
 Saying that something is NOT there (a hand that closes on nothing, an empty desk, 'no file lies there') is never unsupported: it claims nothing.
+What Settled says happened is supported, in the narration's own words (he bites into the apple Settled says he ate).
 Most narration has nothing unsupported. When you are not sure, it is supported.
 
-Respond with one line for each unsupported statement, giving the narration's own words exactly:
-#claim <kind>: <the exact words from the narration>
-or, when there is none, the single line:
-#ok
+Respond ONLY with JSON, no prose, no markdown, in this shape:
+{"findings": [{"kind": "<item, condition, presence, place, time, stock, outcome or gender>", "words": "<the narration's own words, exactly>"}]}
+with "findings": [] when nothing is unsupported.
 </end>
 """
 
@@ -169,63 +167,20 @@ def danger(actor):
     return f"{threat['hazard']['description']}, {survival.threat_position(actor, threat)}, not yet driven off" if threat else ''
 
 
-DAYPARTS = {'night': r'night|dark|moon|star|midnight', 'dawn': r'dawn|sunrise|first light|early morning|morning',
-            'morning': r'morning|sunlit|sunlight|daylight', 'midday': r'midday|noon|sunlit|sunlight|daylight|high sun',
-            'afternoon': r'afternoon|sunlit|sunlight|daylight|long shadows', 'dusk': r'dusk|twilight|sunset|evening|fading light|dim'}
-
-
-def _fits_clock(context, low):
-    """Do these words name the part of the day it is? (The check called 'early morning light' at
-    nine in the morning a mistake.)"""
-    part = stage.clock(context).split(', ')[-1]
-    return bool(re.search(DAYPARTS.get(part, r'$^'), low))
-
-
-def _elsewhere(context, actor, words):
-    """Do these words put someone at a named place other than where the actor is?"""
-    at = stage.here(actor)
-    for rid in stage.places_named(context, words):
-        if stage._distance(at, context.map.resource_registry[rid]['location']) > stage.AT_PLACE_TILES:
-            return True
-    return bool(re.search(r'\b\d+ tiles?\b|\b(two|three|four|five|six|seven|eight|nine|ten) tiles\b', words.lower())) and \
-        bool(re.search(r'\b(walk|run|sprint|cross|march|hurr|stride|flee|rush|mov)\w*', words.lower()))
-
-
 def check(context, actor, action, facts, narration, people=None):
     """The claims in `narration` that the record does not support: [(kind, words)]. None when
     the check itself failed (the narration then stands: a broken check must not silence the play)."""
     reply = context.llm.ask({'name': actor.name, 'action': action, 'facts': facts or 'none', 'narration': narration,
                              # what was just settled is part of the record (a boar that Settled drives off is no longer under Danger)
                              'record': of(context, actor, people) + f"\nJust settled, and true: {facts or 'nothing'}"},
-                            [UserMessage(content=CHECK)], tag='record.check', temp=0.1, stops=['</end>'], max_tokens=160)
+                            [UserMessage(content=CHECK)], tag='record.check', temp=0.1, stops=['</end>'], max_tokens=220)
     if reply is None:
         return None
-    claims = []
-    names = [c.name.lower() for c in (people or [actor] + actor.bystanders())]
-    hazards = [h['name'].lower() for h in (survival.config(context) or {}).get('hazards', [])]
-    done = (facts or '').lower()
-    if re.search(r"\bcannot\b|must move|must go|still has it|nothing to|there is no\b", done):
-        done = ''   # a refusal settles that the thing was not done
-    for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply, re.M):
-        kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
-        if kind not in KINDS or not words.strip('.'):
-            continue
-        # two things the check gets wrong often enough to settle here: someone who is present
-        # called a 'presence', and a state of mind ('recovered from a scare') called a condition
-        if kind == 'presence' and any(n in low for n in names) and not any(h in low for h in hazards):
-            continue
-        if kind == 'condition' and not re.search(BODILY, low):
-            continue
-        if kind == 'place' and not _elsewhere(context, actor, words):
-            continue   # a turn, a step, a walk 'toward the trail': only arriving at another named place is a move
-        if kind == 'time' and _fits_clock(context, low):
-            continue
-        if kind == 'item' and re.search(r"\b(no|not|nothing|none|empty|without|bare|absent|missing)\b", low):
-            continue   # the narration saying a thing is not there claims nothing
-        if kind == 'item' and done and any(w in done for w in _words(words) if len(w) >= 5 and w not in names and w not in COMMON):
-            continue   # the thing is in what the world just settled (Joe 'bites into the unripe apple' he was settled to have eaten)
-        claims.append((kind, words))
-    return claims
+    found = json_reply.parse(reply)
+    if not isinstance(found, dict):
+        trace.event('check_unreadable', of='narration', reply=reply[:300])
+        return None   # unreadable: the narration stands (a broken check must not silence the play)
+    return [(f['kind'], f['words'].strip(' "\'')) for f in json_reply.items(found, 'findings', KINDS)]
 
 
 PROPOSE = """A simulated world keeps track of certain kinds of thing. A text has brought in something the world does not hold yet. Put each new thing in the world's own terms.
@@ -293,8 +248,17 @@ def admit(context, actor, claims, text, source, people=None, at=None):
             usual = form == 'prop' and len(fields) > 2 and fields[2].lower().startswith('ordinary')
             if form == 'item' and name not in survival.item_kinds(context):
                 form = 'prop'   # not one of the world's own: a prop, and from a deed an unusual one
-            noun = name.split()[-1]
-            if any(noun in i.lower() for c in people for i in c.body.inventory) or any(noun in p['name'] for p in survival.lying(context, at)):
+            same = lambda held: held.lower() == name or held.lower().endswith(' ' + name) or name.endswith(' ' + held.lower())
+            holders = [c for c in people if any(same(i) for i in c.body.inventory)]
+            lying_here = any(same(p['name']) for p in survival.lying(context, at))
+            if holder is not None and holders and holder not in holders:
+                # it is here, but not where the text puts it ('the rest stays in the can with Lanya'
+                # when the can had gone to Kidd): that is not a new thing, and it is not so
+                refused.append(f"{', '.join(c.name for c in holders)} has the {name}; {holder.name} does not.")
+                if new[index] not in remaining:
+                    remaining.append(new[index])
+                continue
+            if holders or lying_here:
                 continue   # it is already here (Joe 'releases the branch' he is carrying): nothing new, nothing refused
             if source == 'director' or usual:
                 fact = survival.add_thing(context, name, holder=holder, at=at)
@@ -453,26 +417,21 @@ What {{$name}} does not know (the director's list; the actor was told, the chara
 {{$line}}
 </line>
 
-Find only statements of these kinds. The first five are made in the first person, about right now:
-- holds: {{$name}} has, holds, offers or hands over a thing it does not have ("Here, clean water" with none in hand; "take my knife").
-- body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested).
-- doing: {{$name}} says it is doing, this moment, a physical thing that it is not ("I'm climbing down" while sitting).
-- where: {{$name}} says it, or someone present, is at a place other than where Present puts them.
-- time: light, dark or a time of day that does not fit Time.
-And one that may be about anyone in the play, present or not:
+Find only statements of these kinds. The first four are said of now:
+- holds: {{$name}} says it has, holds, offers or hands over a thing that Holdings does not give it ("Here, clean water" with no water in hand; "take one" when it holds none of the thing meant). A thing Holdings does give it is no finding, whatever it is called ("this", "it", "one"). Fetching or finding a thing later is not holding it.
+- body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested). Saying what Bodies does show, in any words ("my throat's dry" when thirsty), is no finding; fear, relief and other states of mind are not the body.
+- where: {{$name}} says it, or someone present, is now at a place other than where Present puts them. Naming a place, pointing at it, heading for it or talking about going there is not being there.
+- time: {{$name}} speaks of the hour, the light or the part of the day as it is now, against Time: a greeting counts ("Morning" said at night). Speaking of a time to come ("before dark", "tonight", "tomorrow") is no finding, nor is a colour or a thing ("the dark fruit").
+And two that may be about anyone in the play, present or not:
 - gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
 - knows: the line states, uses or takes for granted something listed under does_not_know (a name not yet heard, another's condition or purpose not yet shown). Asking about it, guessing at it and saying so, or suspecting it aloud is not knowing it. Nor is it a finding once the thing has been shown or said in {{$name}}'s presence (see what {{$name}} has heard, and the record): it is known from then on, and a name is known in whatever form it was given.
-Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water").
+Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water"). When you are not sure, it is no finding.
 
-Also say if the line hands a thing the speaker really has to someone present, in so many words ("Here, take the branch"):
-#give <the thing, as Holdings names it> to <the person>
-And if the line tells its hearers what someone is called (the speaker's own name or another person's; a short form such as 'Sam' counts), one line for each person named:
-#names <that person, exactly as the cast list at the top names them>
+Also say whether the line hands a thing the speaker really has (in Holdings) to someone present, in so many words ("Here, take the branch"), and whether it tells its hearers what someone is called (the speaker's own name or another's; a short form such as 'Sam' counts).
 
-Respond with one line for each finding, giving the words from the line exactly:
-#claim <kind>: <the exact words>
-and the #give line if there is one; or, when there is neither, the single line:
-#ok
+Respond ONLY with JSON, no prose, no markdown, in this shape:
+{"findings": [{"kind": "holds", "words": "<the words of the line that say it, exactly>"}], "give": {"thing": "<the thing, as Holdings names it>", "to": "<the person>"}, "names": ["<each person named, exactly as Cast names them>"]}
+with "findings": [] when there is none, "give": null when nothing is handed over, and "names": [] when nobody is named.
 </end>
 """
 
@@ -502,62 +461,18 @@ Respond with the spoken words only.
 </end>
 """
 
-FELT_WORDS = {'thirst': r'thirst|parch|dry|water', 'hunger': r'hung|starv|empty|food|eat', 'fatigue': r'tired|exhaust|weary|worn|sleep|spent|fatigue'}
-
-
-def _body_bears(speaker, low):
-    """Does the speaker's body bear out these words about itself? ('My throat's dry', thirsty.)"""
-    levels = speaker.body.levels
-    harm = survival._harm(speaker.body.cfg)['name']
-    for need, level in levels.items():
-        pattern = FELT_WORDS.get(need) or (r'hurt|wound|injur|pain|ache|sore|bleed|blood|bruis|limp|swol' if need == harm else re.escape(need[:5]))
-        if re.search(pattern, low):
-            return level >= survival.NEED_FELT
-    return False
-
-
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
 SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender', 'knows')
 
 
-ME_NOW = r"\b(i'm|i’m|i am|we're|we’re|we are)\b"
-LATER = r"\b(i'll|i’ll|i will|we'll|we’ll|going to|gonna|let me|let's|let’s|should|could|would|can|if|when|until|before|after)\b"
-SENSING = r"\b(see|saw|hear|heard|watch|look|notice|know|feel|felt|think|smell|sense|remember|understand|believe|hope|want|need)\w*"
-HOUR_NOW = (r"\b(it'?s|it’s|it is|getting|nearly|almost|already|now)\b.{0,24}\b(dark|night|dusk|dawn|late|evening|morning|noon|midday|sunset|sunrise)\b"
-            r"|\b(sun|light|day)\b.{0,16}\b(setting|fading|going|gone|rising|up|down|dying)\b")
-
-
-def speech_claims(context, speaker, reply):
-    """The findings in a speech check's reply that hold up: [(kind, words)]. The model finds
-    more than the narrow list allows, so each kind has a test of its own. (In its first run it
-    took 'Thicket3 is just a bigger room to hide in' for a claim to be there, 'the dark fruit'
-    for a time of day, 'I see them' for a deed and 'I'll scout the perimeter' for one under
-    way: five lines resaid, none of them wrong.)"""
-    claims = []
-    held = [i.split()[-1].lower() for i in speaker.body.inventory]
-    for kind, words in re.findall(r'^\s*#claim\s+(\w+)\s*:\s*(.+?)\s*$', reply or '', re.M):
-        kind, words, low = kind.lower(), words.strip(' "\''), words.lower()
-        if kind not in SPEECH_KINDS or not words.strip('.'):
-            continue
-        if kind in ('holds', 'body', 'doing') and not re.search(r"\b(i|i'm|i’m|i've|i’ve|my|me|mine|here)\b", low):
-            continue   # not said of the speaker ("You're sweating")
-        if kind == 'holds' and (any(h in low for h in held) or (held and re.search(r'\b(this|these|it|them|that|those|one)\b', low))
-                                or re.search(LATER, low)):
-            continue   # it does hold one, or speaks of what it will do
-        if kind == 'body' and (not re.search(BODILY, low) or _body_bears(speaker, low)):
-            continue
-        if kind == 'doing' and (not re.search(ME_NOW + r"\s+(\w+\s+)?\w+ing\b|" + ME_NOW + r"\s+(already\s+)?(up|in|on|inside|under|behind)\b", low)
-                                or re.search(LATER, low) or re.search(ME_NOW + r"\s+(\w+\s+)?" + SENSING, low)):
-            continue   # only a deed said to be under way: not sensing, not what is to come
-        if kind == 'time' and (not re.search(HOUR_NOW, low) or _fits_clock(context, low)
-                               or re.search(r'\b(before|until|by|when|after|tonight|soon|comes?|will|later|tomorrow)\b', low)):
-            continue   # only the hour said of now ('the dark fruit' is not one)
-        if kind == 'where' and not (re.search(ME_NOW + r"|\b(you're|you’re|you are|he's|she's|he is|she is)\b", low) and _elsewhere(context, speaker, words)):
-            continue   # only someone said to be at another place now; naming a place is not being there
-        claims.append((kind, words))
-    return claims
+def speech_claims(context, speaker, found):
+    """The findings of a speech check: [(kind, words)]. The model decides; nothing here second-
+    guesses it by the words it quoted. (Word tests here threw out correct findings: "Here, take
+    one" was kept because the line said "one" and the speaker held a notebook; "Morning" said
+    at 02:26 because a greeting matched no phrase for the hour.)"""
+    return [(f['kind'], f['words'].strip(' "\'')) for f in json_reply.items(found, 'findings', SPEECH_KINDS)]
 
 
 def _heard(speaker, listener):
@@ -592,12 +507,14 @@ def speech(context, speaker, line, listener=None):
     unknown = '\n'.join(f'- {m}' for m in missing) or 'nothing listed'
     heard = _heard(speaker, listener)
     reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
-                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=140)
-    if reply is None:
-        return line, None
+                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=200)
+    found = json_reply.parse(reply)
+    if not isinstance(found, dict):
+        trace.event('check_unreadable', of='speech', reply=(reply or '')[:300])
+        return line, None   # unreadable: the line stands as written
     # a name told in a line is known from then on to everyone who heard it
-    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', []))
-            if re.search(rf'^\s*#names\s+.*\b{re.escape(c.name)}\b', reply, re.M | re.I)}
+    said = {str(n).strip().lower() for n in (found.get('names') or []) if isinstance(n, str)}
+    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', [])) if c.name.lower() in said}
     if told:
         for hearer in people:
             if hearer is not speaker and getattr(hearer, 'unknown_names', None):
@@ -605,12 +522,14 @@ def speech(context, speaker, line, listener=None):
                 if learned:
                     hearer.unknown_names -= learned
                     trace.event('name_learned', character=hearer.name, names=sorted(learned), said_by=speaker.name)
-    claims = speech_claims(context, speaker, reply)
+    claims = speech_claims(context, speaker, found)
     give = None
-    handed = re.search(r'^\s*#give\s+(.+?)\s+to\s+(\w+)', reply, re.M)
+    handed = found.get('give') if isinstance(found.get('give'), dict) else None
     if handed and not claims:
-        thing = next((i for i in speaker.body.inventory if i.split()[-1].lower() in handed.group(1).lower()), None)
-        person = next((c for c in people if c is not speaker and c.name.lower() == handed.group(2).lower()), None)
+        named = str(handed.get('thing') or '').strip().lower()
+        thing = next((i for i in speaker.body.inventory if i.lower() == named), None) \
+            or next((i for i in speaker.body.inventory if named and (named in i.lower() or i.lower() in named)), None)
+        person = next((c for c in people if c is not speaker and c.name.lower() == str(handed.get('to') or '').strip().lower()), None)
         give = (thing, person) if thing and person is not None else None
     if not claims:
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
@@ -747,7 +666,9 @@ def mend_deed(context, character, act):
     if _mode(act) == 'Say':
         # words for someone who has gone are not said to an empty chair: they are thought
         trace.event('deed_check', character=character.name, outcome='unsaid', lacks=lacks, before=act.action)
-        act.mode, act.target = 'Think', []
+        # kept as the character's own thought, not shown: a line in quotes as a thought read as
+        # speech nobody heard (..."Aight, I'm down"...)
+        act.mode, act.target, act.unshown = 'Think', [], True
         return True
     again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
                              'holding': ', '.join(character.body.inventory) or 'nothing',

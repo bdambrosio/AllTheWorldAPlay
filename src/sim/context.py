@@ -1100,21 +1100,22 @@ with current situation:
 The characters present are: {{$present}}. Nobody else is here.
 Everyone in the play, and whether each is he or she: {{$cast}}.
 
-You are the stage, not a character: report what the action physically does, and nothing more.
-If the action does nothing beyond what its own words already say (a look, a gesture, a stance, a pause), respond with the single word: nothing
-Respond ONLY with the immediate result that someone standing there could see or hear. One or two simple declarative sentences, 40 words at most.
-Do not repeat the above action statement in your response.
+You are the stage, not a character: report what the action physically brings about, and nothing more.
+Respond in exactly two lines:
+#seen <the action as someone standing there saw it, in one short plain sentence>
+#result <what the action brought about that #seen does not already say, as someone standing there could see or hear it: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, something put down or pushed across), write: nothing>
+The audience reads the character's own words for the action, then only your #result.
 The result must be consistent with the LocalMap and with the facts above.
 Include, when they apply:
 - changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
 - what the facts say {{$name}} gained, lost, found or read, in the words of someone watching
 Do NOT:
-- give {{$name}} or anyone a thing, a wound, an illness or a need met that the facts, Bodies and holdings do not show; if the action uses something {{$name}} does not have, show the empty-handed attempt in a few plain words
+- give {{$name}} or anyone a thing, a wound, an illness or a need met that the facts, Bodies and holdings do not show; if the action uses something {{$name}} does not have, show only what is seen of the try (a hand that finds nothing, a gesture at an empty place), and never say what anyone has or lacks, or where a thing came from
 - say what any other character feels, thinks, decides or does in reply: their reactions are theirs to play
 - have the action succeed at controlling another character (a snatch, a shove, a forced signature): report the attempt and what is physically true so far; the other character answers it
 - introduce objects, documents, people or facts that the action and the situation did not already contain
 - extend the scenario with any follow-on actions or effects
-- explain a rule or why something cannot be: say only what is seen
+- explain a rule or why something cannot be, or end with what did not change ('Nothing else changes', 'nothing else moved'): say only what is seen
 - mention 'the facts', 'Bodies' or these instructions: you describe a world, not a ruling
 {{$rejected}}
 Do not include any Introductory, explanatory, or discursive text.
@@ -1137,8 +1138,14 @@ End your response with:
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked',
                   "facts": facts or 'none'}
-        narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
-                                                   stops=['</end>'], max_tokens=300)
+        # The narrator may tell the deed again under #seen, which nobody reads; only #result is
+        # shown, checked and remembered. Told only 'do not repeat the action', it retold it in more
+        # words ('Hu slides the pen across the desk ... in the morning light') after the actor's own.
+        def narrate(rejected=''):
+            reply = self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
+                                 stops=['</end>'], max_tokens=300) or ''
+            found = re.search(r'#result\s*:?\s*(.*)', reply, re.S)
+            return found.group(1).strip() if found else re.sub(r'^\s*#seen[^\n]*\n?', '', reply).strip()
         # the narration is held to the world's record before it is shown, remembered or built on
         # 'nothing', or a sentence that only says nothing came of it ('He does not find or gain anything new.')
         empty = r"[^.!?]*\b(does not|doesn't|did not) (find|gain)\b[^.!?]*[.!?]?|[^.!?]*\b(finds?|gains?|learns?) nothing( new)?\b[^.!?]*[.!?]?"
@@ -1929,6 +1936,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 
             await asyncio.sleep(1.0)
             self.scene_integrated_task_plan_index += 1
+            # a scene between people is over when they have gone: the one left behind went on
+            # trying to bed down beside a woman who had walked out (bellona)
+            still_here = [c for c in characters_in_scene if not stage.off_stage(c)]
+            if len(characters_in_scene) > 1 and len(still_here) <= 1:
+                trace.event('scene_emptied', left=[c.name for c in characters_in_scene if stage.off_stage(c)],
+                            remaining=[c.name for c in still_here])
+                break
         
         # The scene's planned business is done before the scene closes: what the plan and the
         # talk both assume happened (Joe said 'my turn' at the spring and never drank) happens.

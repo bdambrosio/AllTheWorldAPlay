@@ -427,33 +427,95 @@ def style(context):
 
 
 def _looks(context, character):
-    """A character as it looks: the first sentence of its description, without its name."""
-    return context._image_description(character).rstrip('. ')
+    """A character as it looks: the first sentence of its description, without its name. The
+    whole name goes ('Hu Manli, a healthy ...' had become 'Manli, a healthy ...')."""
+    text = context._image_description(character).rstrip('. ')
+    # a family or given name left at the head, before the first comma: 'Manli, a healthy ...'
+    head, sep, rest = text.partition(',')
+    lead = re.sub(r'^(you are|i am)\s+', '', character.character.strip(), flags=re.I)
+    if sep and head.strip() and lead.startswith(f'{character.name} {head.strip()}'):
+        text = rest.strip()
+    return text
+
+
+# Terrain a place stands in that makes it a room: a picture of it is an interior.
+INDOOR_TERRAIN = {'Building', 'House'}
+
+
+def _place_name(context, place, res):
+    """An author-named place in words: 'XiaoyuOffice' -> "Xiaoyu's office", 'HuDingApartment' ->
+    "Hu and Ding's apartment", 'HotelBar' -> 'the hotel bar'. Engine-numbered names go through
+    plain()."""
+    if not re.fullmatch(r'[A-Z][A-Za-z]*', place or ''):
+        return plain(context, place)
+    words = re.findall(r'[A-Z][a-z]*', place)
+    cast = {c.name for c in list(context.actors) + list(getattr(context, 'extras', []))}
+    owners = []
+    while words and words[0] in cast:
+        owners.append(words.pop(0))
+    thing = ' '.join(w.lower() for w in words) or 'place'
+    if owners:
+        return f"{' and '.join(owners)}'s {thing}"
+    return f'the {thing}'
 
 
 def _place_words(context, cast):
+    """(words for the place, whether it is a room)."""
     scene = context.current_scene or {}
-    place = scene.get('place') or where(context, here(cast[0])).removeprefix('at ')
+    place = scene.get('place') or scene.get('location') or where(context, here(cast[0])).removeprefix('at ')
     res = context.map.resource_registry.get(place)
-    words = plain(context, place)
+    words = _place_name(context, place, res) if res else plain(context, place)
     told = (res or {}).get('description')
-    return f"{words} ({told})" if told and told.lower() not in words.lower() else words
+    indoor = False
+    if res and res.get('location'):
+        x, y = res['location']
+        indoor = context.map.patches[x][y].terrain_type.name in INDOOR_TERRAIN
+    return (f"{words} ({told[0].lower() + told[1:]})" if told and told.lower() not in words.lower() else words), indoor
+
+
+def _on_stage(context):
+    """Who is in the scene: the scene plan's cast where there is one (extras too: Xiaoyu was
+    never in a picture of his own office), else those marked as in it, else the main cast. The
+    scene picture is taken before the cast is marked, and showed the whole main cast."""
+    everyone = [c for c in list(context.actors) + list(getattr(context, 'extras', []))
+                if getattr(c, 'mapAgent', None) is not None]
+    scene = context.current_scene
+    named = []
+    if isinstance(scene, dict):
+        for n in scene.get('action_order') or list((scene.get('characters') or {}).keys()):
+            c = next((c for c in everyone if c.name.lower() == str(n).strip().lower()), None)
+            if c is not None and c not in named and not off_stage(c):
+                named.append(c)
+    if named:
+        return named
+    marked = [c for c in everyone if scene is not None and getattr(c, 'current_scene', None) is scene]
+    return marked or [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
 
 
 def picture(context, doing=''):
     """The prompt for a picture of the stage as it stands, or None where there is no map to
-    stand on. doing: what is being done in the foreground, in plain words."""
+    stand on. doing: what is being done in the foreground, in plain words. The place comes
+    first, and a room is shown from inside: the play's opening sentence ('a modern chinese
+    urban setting with a mix of buildings, roads ...') led every picture, after 'Wide view',
+    and a meeting in an office was drawn round a desk in the street."""
     world = getattr(context, 'map', None)
-    cast = [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
-    if world is None or not cast:
+    if world is None or not context.actors:
         return None
-    scene = context.current_scene
-    on_stage = [c for c in cast if scene is not None and getattr(c, 'current_scene', None) is scene] or cast
-    setting = ' '.join(context.initial_state.split('.')[0].split()).strip()
+    on_stage = _on_stage(context)
+    if not on_stage:
+        return None
+    setting = ' '.join(context.initial_state.split('.')[0].split()).strip().rstrip('.')
+    place, indoor = _place_words(context, on_stage)
+    light = LIGHT[part_of(context.simulation_time)]
     people = '; '.join(_looks(context, c) for c in on_stage[:4])
     threat = getattr(context, 'active_threat', None)
-    parts = [style(context), 'Wide view', setting, f"{_place_words(context, on_stage)}, {LIGHT[part_of(context.simulation_time)]}",
-             f"{'One person' if len(on_stage) == 1 else str(len(on_stage)) + ' people'}: {people}"]
+    if indoor:
+        # the play's opening sentence describes the town, not the room: given here it brought the street in
+        where_ = [f"Interior: inside {place}, {light}"]
+    else:
+        where_ = ['Wide view', f"{place}, {light}", setting]
+    parts = [style(context), *where_,
+             f"{'One person' if len(on_stage) == 1 else str(len(on_stage)) + ' people, no others'}: {people}"]
     if threat:
         parts.append(f"Close by, {threat['hazard']['description']}")
     if doing:
@@ -464,7 +526,7 @@ def picture(context, doing=''):
 def portrait(context, character, mood=''):
     """The prompt for a character's portrait: how it looks, how it feels, where it is."""
     cast = [character] if getattr(character, 'mapAgent', None) is not None else []
-    where_ = f"{_place_words(context, cast)}, {LIGHT[part_of(context.simulation_time)]}" if cast and getattr(context, 'map', None) else ''
+    where_ = f"{_place_words(context, cast)[0]}, {LIGHT[part_of(context.simulation_time)]}" if cast and getattr(context, 'map', None) else ''
     parts = [style(context), f"Head and shoulders portrait of {_looks(context, character)}",
              f"Expression: {mood.strip().rstrip('.')}" if mood and mood.strip() else '',
              f"Behind, out of focus: {where_}" if where_ else '']

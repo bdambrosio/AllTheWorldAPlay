@@ -31,7 +31,10 @@ LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'http://localhost:5000/v1')
 # settings follow Cognitive_workbench measure/models/fw_glm53flash.yaml. Key: FIREWORKS_PROJECT_KEY.
 FIREWORKS_URL = 'https://api.fireworks.ai/inference/v1'
 FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
-FIREWORKS_HEADROOM = 96
+# GLM-5.3 on Fireworks is thinking-only: reasoning_effort 'low' is the least it takes ('none',
+# enable_thinking False and thinking disabled are refused). It spent up to ~250 reasoning tokens
+# on a check, from the same budget as the answer: at 96 the JSON was cut off. Used only if spent.
+FIREWORKS_HEADROOM = 512
 IMAGE_URL = os.environ.get('IMAGE_URL', 'http://127.0.0.1:5008/generate_image')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)

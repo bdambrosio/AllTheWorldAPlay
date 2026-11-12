@@ -193,6 +193,14 @@ affordances = {
          'transfer': 'canned food', 'minutes': 2, 'text': 'gives {target} a can of food'},
         {'name': 'give bottled water', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share', 'trade', 'barter'],
          'transfer': 'bottled water', 'minutes': 2, 'text': 'gives {target} a bottle of water'},
+        # sharing what one has: both eat or drink, and it is used up (a can split onto cardboard
+        # was taken as handing over the whole can, and the one who split it then had none to eat)
+        {'name': 'share canned food', 'category': 'social', 'target': 'character', 'requires': 'canned food',
+         'consumes': 'canned food', 'effects': {'hunger': -0.3}, 'target_effects': {'hunger': -0.3}, 'minutes': 10,
+         'text': 'opens a can and shares it with {target}; they eat'},
+        {'name': 'share bottled water', 'category': 'social', 'target': 'character', 'requires': 'bottled water',
+         'consumes': 'bottled water', 'effects': {'thirst': -0.35}, 'target_effects': {'thirst': -0.35}, 'minutes': 3,
+         'text': 'shares a bottle of water with {target}; they drink'},
         {'name': 'give batteries', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'trade', 'barter'],
          'transfer': 'batteries', 'minutes': 2, 'text': 'gives {target} the batteries'},
         {'name': 'tend wound', 'category': 'social', 'target': 'character', 'verbs': ['tend', 'bandage', 'dress', 'treat', 'clean'],

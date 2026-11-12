@@ -509,7 +509,7 @@ End your response with:
             # survival plays: the offered action this Do uses, by its listed name (drink@Spring3)
             act.affordance = (hash_utils.find('affordance', hash_string) or '').strip() or None
             # does the character leave the scene with this act? its writer says (sim/stage.py presence)
-            act.leaves = (hash_utils.find('leaves', hash_string) or '').strip().lower().startswith('y')
+            act.leaves = self.leaving_party(hash_utils.find('leaves', hash_string))
             return act
         else:
             print(f"Invalid actionable Hash: {hash_string}")
@@ -1178,12 +1178,12 @@ End response with:
             line = None
             try:
                 # with the others, unless the mover leaves them: then it goes alone, and is gone
-                line = self.move(act_arg, reason, alone=leaving)
+                line = self.move(act_arg, reason, alone=leaving == 'alone')
             except Exception as e:
                 logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
             if leaving and line is not None:
                 line = re.sub(r'^walks to ', 'leaves for ', line) if line else 'leaves.'
-                stage.leave(self)
+                self._leave_with(act)
             if line == '':
                 pass   # already there: nothing to tell
             elif line:
@@ -1279,7 +1279,8 @@ End response with:
             self.show += f" \n...{self.thought}..."
             #self.add_perceptual_input(f"\nYou {act_mode}: {act_arg}", percept=False, mode='internal')
             elevenlabs_params = self.speech_stylizer.voice_params(self)
-            self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
+            if not getattr(act, 'unshown', False):   # words meant for someone who had gone are kept, not shown
+                self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
             self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
 
@@ -1343,10 +1344,14 @@ End response with:
                 target = act.target
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
+                party = act.leaves if isinstance(act.leaves, list) else []
                 for other in self.bystanders():
-                    other.add_perceptual_input(f"{self.name} says: '{content}', and leaves.", percept=False, mode='auditory')
-                self.context.message_queue.put({'name': self.name, 'text': 'leaves.', 'line_kind': 'action'})
-                stage.leave(self)
+                    if other not in party:
+                        other.add_perceptual_input(f"{self.name} says: '{content}', and leaves.", percept=False, mode='auditory')
+                gone = 'leaves.' if not party else f"leaves with {', '.join(c.name for c in party)}."
+                self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
+                self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
+                self._leave_with(act)
                 target = None
             elif target is not None and isinstance(target, Character) and stage.off_stage(target):
                 target = None   # said to someone who has gone: nobody hears it
@@ -2218,7 +2223,7 @@ Respond in hash-formatted text:
 #action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
-#leaves yes or no. yes only when with this act your character leaves the others and goes out of the scene: walks out, goes off alone, departs. Going somewhere together with the others, or moving about the place, is no.
+#leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise, and for moving about the place.
 ##
 
 #NOTE#
@@ -2884,7 +2889,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             # was performed anyway, shown as '' and heard by from_actor, which kept talking
             return
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
-        action.leaves = bool(getattr(self, '_reply_leaves', False))
+        action.leaves = getattr(self, '_reply_leaves', None)
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
@@ -3123,7 +3128,7 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 
 <response>response / next thought</response>
 <reason>terse (4-6 words) reason for this response / thought</reason>
-<leaves>yes or no: yes only when with these words your character walks out on the others and leaves the scene</leaves>
+<leaves>no, alone, or with <names>: whether with these words your character goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise</leaves>
 
 {{$duplicative_insert}}
 
@@ -3210,7 +3215,7 @@ End your response with:
         # aloud three times in a scene.)
         if response:
             response = re.split(r'</?\s*(?:reason|response|leaves)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
-        self._reply_leaves = (xml.find('<leaves>', answer_xml) or '').strip().lower().startswith('y')
+        self._reply_leaves = self.leaving_party(xml.find('<leaves>', answer_xml))
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -3624,6 +3629,30 @@ End your response with:
         return '\n'.join(filter(None, [f"What this act is about: {frame['focus']}" if frame.get('focus') else '',
                                        f"What rides on it: {frame['stakes']}" if frame.get('stakes') else '',
                                        f"Your part in it: {role}" if role else '']))
+
+    def leaving_party(self, field):
+        """The #leaves field of an act or line: None (stays), 'alone', or the characters who go with
+        it. (A yes/no field marked 'follow me' and 'lead the way' as walking out: each left the
+        scene by itself and the pair were never seen to go together.)"""
+        value = ' '.join((field or '').strip().lower().split())
+        if not value or value.startswith('no'):
+            return None
+        if not value.startswith('with'):
+            return 'alone'
+        here = [c for c in self.context.actors + self.context.extras + self.context.npcs
+                if c is not self and getattr(c, 'current_scene', None) is self.context.current_scene
+                and not stage.off_stage(c)]
+        names = {n.strip() for n in value[4:].split(',')}
+        party = [c for c in here if c.name.lower() in names]
+        return party or 'alone'
+
+    def _leave_with(self, act):
+        """Leave the scene, and the ones going along leave with it."""
+        party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
+        stage.leave(self)
+        for other in party:
+            if stage.leave(other):
+                trace.event('leaves_with', character=other.name, led_by=self.name)
 
     def does_not_know(self):
         """What this character has still to find out: the director's list for the scene, and the

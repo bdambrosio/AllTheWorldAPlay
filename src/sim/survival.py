@@ -552,11 +552,6 @@ def affordance_prompt_line(character):
             f"(e.g. {example}); omit for any other act.")
 
 
-def _fits(action, text):
-    """Does the act's text describe this action? One of its verbs, or the words of its name."""
-    return _matches(text, action.get('verbs', []) + action.get('named_verbs', []) + [action['name'].lower()])
-
-
 _CLAIM = re.compile(r"\bI(?:'m|’m| am)\s+(?:\w+ly\s+)?(\w+ing)\b", re.I)
 
 
@@ -813,6 +808,62 @@ def _asks_for(context, character, text, targets=None):
     return None
 
 
+DEED_ACTION = """A character in a play does the deed below. The world it lives in has rules for some actions, listed under Actions. Say which one of them, if any, the deed itself performs.
+
+{{$name}} does:
+<deed>
+{{$deed}}
+</deed>
+{{$hint}}
+Actions ({{$name}} could do these now; each is 'name@where', with how far off it is):
+{{$offered}}
+
+A deed performs an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring, talking about water, holding out a cup, sitting back, leaning, gesturing, waiting, or handling a thing is none of them. An action some way off is performed only if the deed goes there to do it ("walks to the spring and drinks"). If the deed does one of them and more besides, name the one it does. When you are not sure, it is none.
+
+Respond ONLY with JSON, no prose, in this shape:
+{"action": "<the action exactly as listed, the part before the bracket, e.g. drink@Spring1>"}
+or, when the deed performs none of them:
+{"action": null}
+</end>
+"""
+
+
+def choose_action(context, character, act_text, label=None):
+    """The world action a deed performs, as a label for _chosen ('drink@Spring1', a threat
+    response), or None. Asked of the model, with the actor's own #affordance label as a hint:
+    the deed was matched to actions by their verbs ('sits back against the counter' was resting,
+    at a bus stop six tiles off, and walked her out of the scene), and an actor's label was
+    checked by the same verbs. None when the reply cannot be read: the deed is then the
+    narrator's, and no rule applies (the safe side: nothing is used up, nobody walks)."""
+    from utils import json_reply
+    from utils.Messages import UserMessage
+    offered = [o.strip() for o in available_actions(character).split('; ') if o.strip()]
+    if not offered:
+        return None
+    hint = f"(The actor said this deed is: {label}. Hold it to the deed.)\n" if label else ''
+    reply = context.llm.ask({'name': character.name, 'deed': act_text, 'hint': hint,
+                             'offered': '\n'.join(f'- {o}' for o in offered)},
+                            [UserMessage(content=DEED_ACTION)], tag='survival.choose_action', temp=0.1,
+                            stops=['</end>'], max_tokens=60)
+    found = json_reply.parse(reply)
+    if not isinstance(found, dict):
+        trace.event('check_unreadable', of='deed_action', reply=(reply or '')[:300])
+        return None
+    chosen = found.get('action')
+    if not isinstance(chosen, str) or not chosen.strip() or chosen.strip().lower() in ('null', 'none'):
+        if label:
+            trace.event('affordance_label_rejected', character=character.name, label=label, act_text=(act_text or '')[:200])
+        return None
+    chosen = chosen.strip().split(' (')[0]
+    names = {o.split(' (')[0].split(': ')[0].lower() for o in offered}
+    threat = active_threat_for(character)
+    responses = set(threat['hazard'].get('responses', {}).keys()) if threat else set()
+    if chosen.lower() not in names and chosen.split('@')[0].lower() not in responses:
+        trace.event('check_unreadable', of='deed_action', reply=f'not offered: {chosen}')
+        return None
+    return chosen
+
+
 def resolve_do(context, character, act_text, affordance=None, targets=None):
     """Apply the mechanics of a Do, if it is one of the world's actions. Returns a fact line for the
     narration, or None when it is not (the LLM decides as before). `targets`: the act's characters."""
@@ -821,15 +872,10 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     if not cfg or body is None:
         return None
     text = (act_text or '').lower().replace('’', "'").replace('‘', "'")
-    # the act's #affordance label, when it gave a valid one, decides; text matching is the fallback
-    chosen = _chosen(context, character, affordance) if affordance else None
-    rejected = False
-    if chosen and chosen[0] == 'action' and not _fits(chosen[1], text):
-        # the label names an action the act does not describe ('Check the mushrooms' labelled
-        # 'eat mushrooms' made Joe eat them)
-        trace.event('affordance_label_rejected', character=character.name, label=affordance, act_text=(act_text or '')[:200])
-        chosen, rejected = None, True
-    via = 'label' if chosen else 'text'
+    # which of the world's actions the deed performs is the model's to say (choose_action)
+    label = choose_action(context, character, act_text, affordance)
+    chosen = _chosen(context, character, label) if label else None
+    via = 'label' if affordance and label else 'model'
 
     threat = active_threat_for(character)
     if threat and not (chosen and chosen[0] == 'action'):
@@ -845,54 +891,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
     asked = _asks_for(context, character, text, targets)
     if asked:
         return asked
-    if rejected:
-        # the actor meant one action and did not do it; a verb in passing must not do another
-        # (plucking berries to hold them out, labelled 'gather berries', ate them instead)
-        return _prop_deed(context, character, text, [t.name.lower() for t in (targets or []) if hasattr(t, 'name')])
-
-    # candidate actions: verbs match; rank those whose resource (or person) the act names, then
-    # those in reach, then config order (so 'eat berries' is not taken as eating mushrooms)
-    names = [t.name.lower() for t in (targets or []) if hasattr(t, 'name')]
-    # what someone else is doing is not the actor's deed: 'watches Joe drink' drank for Samantha
-    for other in _embodied(context):
-        if other is not character:
-            text = re.sub(rf"\b({re.escape(other.name.lower())}(?:'s)?)\s+\w+", r'\1', text)
-    text = re.sub(r'\b(watch\w*|see\w*|let\w*|wait\w* for)\s+(him|her|them)\s+\w+', r'\1 \2', text)
-    # a verb form after 'his', 'the', ... is a thing, not a deed: 'eyes locked on his hands' handed
-    # over a branch, and 'the bandaged joint' tended a wound (acts on a person only: their
-    # verbs are loose, and resource actions name their thing with 'the')
-    deeds = re.sub(r"\b(his|her|their|its|my|your|our|the|a|an|\w+'s)\s+\w+", r'\1', text)
-    candidates = []
-    for order, action in enumerate(cfg.get('actions', [])):
-        types = action.get('resource_types')
-        if action.get('target') == 'character':
-            present = [p for p in _present(character) if p[0].name.lower() in names or p[0].name.lower() in text]
-            named = bool(present)
-            if not (named and (_matches(deeds, action.get('verbs', [])) or _matches(deeds, action.get('named_verbs', [])))):
-                continue
-            if action.get('transfer') and action['transfer'].lstrip('*').lower() not in text:
-                continue   # 'gives Joe a look' is not giving him the bread
-            target = min(present, key=lambda p: p[1])
-            # first: it needs its own verb, a present person the act names, and the item given
-            if action.get('transfer') and not _held(character.body, action['transfer']):
-                continue   # nothing of the kind to give: a loose match ('eyes on his hands'), not a refused gift
-            candidates.append((False, False, target[1] > CO_PRESENT_TILES, order, action, None, target))
-            continue
-        named = bool(types) and _names_type(cfg, text, types)
-        # 'named_verbs' are too generic alone ('cups his hands'): they count when the act names the thing
-        if not (_matches(text, action.get('verbs', [])) or (named and _matches(text, action.get('named_verbs', [])))):
-            continue
-        near = _nearest(character, types, mentioned=text) if types else None
-        if types and not named and any(_names_type(cfg, text, a.get('resource_types') or [])
-                                       for a in cfg.get('actions', []) if a is not action and a.get('resource_types')):
-            continue   # the act names a different kind of thing
-        in_reach = (not types) or (near is not None and near[2] <= 1)
-        candidates.append((True, not named, not in_reach, order, action, near, None))
-    if not candidates:
-        return _prop_deed(context, character, text, names)
-    candidates.sort(key=lambda c: c[:4])
-    _, _, _, _, action, near, target = candidates[0]
-    return _apply(context, character, action, near, target, via, act_text or '')
+    return _prop_deed(context, character, text, [t.name.lower() for t in (targets or []) if hasattr(t, 'name')])
 
 
 def _can_approach(context, character, d):
@@ -945,7 +944,7 @@ def _apply(context, character, action, near, target, via, act_text=''):
             minutes = travel(character, *_here(other))
             approach = f"{character.name} walks {d} tiles to {other.name} ({round(minutes)} min). "
         relief = action.get('target_effects') or {}
-        if relief and not (action.get('transfer') or action.get('transfer_money') or action.get('target_gain')) and all(
+        if relief and not (action.get('transfer') or action.get('transfer_money') or action.get('target_gain') or action.get('consumes')) and all(
                 delta < 0 and other.body.levels.get(need, 0.0) < NEED_FELT for need, delta in relief.items()):
             # Joe's shoulder was bandaged twice while his body was 'unhurt'
             state = ' and '.join(_word(cfg, need, other.body.levels.get(need, 0.0)) for need in relief)
