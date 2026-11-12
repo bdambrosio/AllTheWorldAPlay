@@ -52,6 +52,8 @@ W = context.Context([J, F],
     start_time='1860-07-15T17:00:00',
     scenario_module=rural,  # Pass the entire module
     server_name=server_name)
+# how this play's pictures are made (sim/stage.py picture and portrait); the default is photographic
+W.image_style = 'Watercolor painting in soft pastel tones, loose brushwork, 19th century French countryside'
 
 J.mapAgent.move_to_resource('MarquartFarm')
 # each farm belongs to the father (an NPC), not to the '<Farm>_owner' placeholder the map creates
