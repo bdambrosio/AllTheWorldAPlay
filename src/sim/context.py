@@ -1897,8 +1897,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # the goal the notes were just built with (it was looked up a second time here, by
             # another spelling of the name, and could come back empty)
             goal_text = character.direction.get('goal') or ''
-            if decided.get(character.name):
-                goal_text = f"{goal_text} You have decided: {decided[character.name]}."
+            # (a choice made before the scene was added here as 'You have decided: ...', and the
+            # character's goal was then built from the choice, not from the plan; the choice is
+            # in the actor's notes, as something the character comes to)
             business = stage.pending_business(character)
             if business:
                 goal_text = f"{goal_text} In this scene you must actually do (a Do, not talk): {', '.join(business)}."
@@ -2664,98 +2665,51 @@ End your response with: </end>""")]
                                  'shown_by': shown_by[:200]})
         return outcomes
 
-    def validate_decision(self, form):
-        """Validate a decision form"""
-        decision = hash_utils.find('Decision', form)
-        try:
-            choices = hash_utils.find('Choices', form).split(',')
-        except:
-            choices = []
-        character = hash_utils.find('Character', form)
-        if decision and choices and len(choices) > 0 and character:
-            return {'decision': decision, 'choices': choices, 'character': character}
-        else:
-            return None
+    async def check_decision_required(self, act, scene):
+        """Whether the scene about to be played turns on a choice one of its characters makes:
+        [] or [{'character', 'decision', 'choices'}], one at most.
+        It used to be asked of nearly every scene (18 decisions in a play of 12 scenes) with
+        no word on what the scene was for, and offered choices that walked out of it: a scene
+        planned as 'survive the charge without abandoning Joe' got 'run away to save herself',
+        and a closing act planned as 'ask nothing about the ribbon' got 'demand she reveal all
+        hidden resources'. A choice now is a way of playing the character's planned goal, and
+        the closing act, which holds no new conflict, is not asked."""
+        if self.screenplay.act and self.screenplay.act.kind == 'closing':
+            return []
+        prompt = [UserMessage(content="""You are directing an improvised play. A scene is about to be played. Say whether it turns on a choice.
 
-    async def check_decision_required(self, act, scene=None):
-        """Check if the a decision is required in this act or scene"""
-        system_prompt = """You are a skilled playwright analyzing a planned act or scene.
-Your task is to determine if a decision is required by one or more of the characters in the act or scene.
-If so, return a list of the characters who require a decision, and a brief description of the decision each needs to make.
-If no decision is required, return an empty list.
+<act>
+{{$act_focus}}
+</act>
 
-The current state of the play is:
-"""
-        suffix = """
-
-#Planned Act or Scene, about to be performed
-{{$act_or_scene}}
-##
-
-#Planned Act or Scene Pre-state
-{{$pre_state}}
-##
-
-#Planned Post-state of the act or scene
-{{$post_state}}
-##
-
-#Planned Act central narrative
-{{$act_central_narrative}}
-##
-
-#Goals for this act or scene
+<scene>
+Title: {{$title}}
+Set-up: {{$setup}}
+Where it is heading: {{$ending}}
+What each character is after in it:
 {{$goals}}
-##
+</scene>
 
-Your task is to determine if a decision is required by one or more of the characters in the act or scene.
-If no decision is required, return an empty list.
-The most important decisions are those that are required to resolve a tension point in this act or scene, or to achieve a goal, or to resolve a conflict.
-The current Act is {{$act_number}}. Except in Act 1, do not include 'delay the decision' or any other choice that simply postpones the decision.
-A decision that is key to resolving the central dramatic question can be deferred till act 3, but not later, so if 'delay the decision' is a choice, and it is not act three, omit the decision.
+- Most scenes turn on no choice: what happens in them follows from what each character is after. For those, answer with an empty list.
+- A scene turns on a choice only when where it is heading depends on one character choosing, during the scene, between real alternatives: to tell or to withhold, to stay or to go, to accept or to refuse.
+- One decision at most, for one character.
+- Give two or three choices. Each is a way that character could go after what it is after in this scene, said in a few plain words as something it does or says. No choice gives up the scene, drops what the character is after, or abandons the other person; none is 'wait' or 'decide later'.
 
-The post_state should be evaluated in the context of the act central narrative, the primary dramatic focus of this act or scene, the act or scene pre-state, 
-the situation assumed before the act or scene starts, and the act or scene planned post-narrative.
-
-Return a succint name for each decision required, together with a comma separated list of the choices available to the character and the name of the character.
-Use hash-formatted text for your response, as shown below. 
-the required tags are Decision, Choices, and Character. Each tag must be preceded by a # and followed by a single space, followed by its value and a single line feed, as shown below.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-
-#Decision succint name for the decision required 
-#Choices choice1 ..., choice2 ..., choice3 ... comma separated list of the choices available to the character
-#Character character name
-##
-
-end your response with:
-</end>
-"""
-        act_number = act.get('act_number', 1)
-        if scene:
-            pre_state = scene.get('pre_narrative', '')
-            post_state = scene.get('post_narrative', '')
-            act_or_scene = json.dumps(scene, indent=2, default=datetime_handler)
-            goals = '\n\t'.join([f'{key}: {(value or {}).get("goal", "")}' for key, value in (scene.get('characters') or {}).items()])   # a plan may leave 'characters' out
-        else:
-            pre_state = act.get('act_pre_state', '')
-            post_state = act.get('act_post_state', '')
-            act_or_scene = json.dumps(act, indent=2, default=datetime_handler)
-            goals = json.dumps(act.get('act_goals', []), indent=2, default=datetime_handler)
-        response = await self.context_ask(system_prompt=system_prompt, suffix=suffix, addl_bindings={"act_or_scene": act_or_scene, 
-        "act_number": act_number,
-        "pre_state": pre_state, "post_state": post_state, "act_central_narrative": self.act_central_narrative if self.act_central_narrative else '',
-        "goals": goals}, 
-        max_tokens=400, tag='check_decision_required')
-        if response:
-            decisions = []
-            forms = hash_utils.findall_forms(response)
-            for form in forms:
-                decision = self.validate_decision(form)
-                if decision:
-                    decisions.append(decision)
-            return decisions
-        return []
+Answer in JSON only:
+{"decisions": [{"character": "<name>", "decision": "<what has to be chosen>", "choices": ["<choice>", "<choice>"]}]}
+End your response with: </end>""")]
+        goals = '\n'.join(f"- {name}: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict))
+        reply = self.llm.ask({'act_focus': (self.act_frame or {}).get('focus') or self.act_central_narrative or 'not given',
+                              'title': scene.get('scene_title', ''), 'setup': scene.get('pre_narrative', '') or 'none given',
+                              'ending': scene.get('post_narrative', '') or 'not said', 'goals': goals or 'none given'},
+                             prompt, tag='check_decision_required', temp=0.2, stops=['</end>'], max_tokens=220)
+        found = json_reply.parse(reply) if reply else None
+        decisions = []
+        for entry in (found.get('decisions') or []) if isinstance(found, dict) else []:
+            choices = [str(c).strip() for c in (entry.get('choices') or []) if str(c).strip()] if isinstance(entry, dict) else []
+            if len(choices) >= 2 and str(entry.get('character') or '').strip() and str(entry.get('decision') or '').strip():
+                decisions.append({'character': str(entry['character']).strip(), 'decision': str(entry['decision']).strip(), 'choices': choices[:3]})
+        return decisions[:1]
 
     def told_briefly(self, account):
         """An act's record (its scene wrap-ups) as two or three sentences for the audience."""

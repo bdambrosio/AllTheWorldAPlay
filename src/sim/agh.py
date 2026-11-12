@@ -1422,7 +1422,7 @@ End response with:
         drives.appraise(self)   # what has reached the character since it last acted moves its drives
 
         prompt = [UserMessage(content="""You are an actor playing the character {{$name}}.
-Instantiate a goal object for the following directive. Depending on the situation and your character, you may choose to be direct, indirect, or even devious in your approach.
+Instantiate a goal object for the following directive: the director's objective for you in this scene, stated as the character's own aim. Keep to what it asks, in this person's terms; make it neither more hostile nor more guarded than it is written.
 
 #Character
 {{$character}}

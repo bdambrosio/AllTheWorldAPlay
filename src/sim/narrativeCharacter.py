@@ -753,7 +753,9 @@ End response with:
 You are given a decision to make, and a list of choices.
 Your task is to decide which choice to make, and why.
 """
-        prefix = """The decision to make is:
+        prefix = """In the scene about to be played you are after: {{$scene_goal}}
+
+The decision to make is:
 #Decision
 {{$decision}}
 ##
@@ -775,9 +777,8 @@ You will be asked to identify the drive you are denying in the choice you are ma
 {{$previous_decisions}}
 ##
 
-Any decision you make must be consisten with previous irrevocable decisions. 
-If act is greater than 2 or avoidance is greater than 5 you must make an irrevocable decision, rather than choose to delay, avoid, or persue compromise.
-Don't be fooled: a 'firm commitment to balanced future' is avoidance / compromise, not a hard irrevocable decision. Make the hard choice, and don't be afraid to be ruthless.
+Choose as this person would: from who you are, what you want, and what has passed between you and the others so far.
+The choice is how you go after what you are after in this scene; it is not a break with it. It should fit what you have already decided.
 Respond ONLY with the choice you have decided on, and why. The why should be terse, and will be revealed to no-one but yourself.
 Use the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 Each choice should be closed by a ## tag on a separate line.
@@ -794,7 +795,10 @@ End your response with:
 </end>
 """
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
+                               # ('make the hard choice, and don't be afraid to be ruthless' stood in this
+                               # prompt: every character was ruthless, in every scene)
                                addl_bindings={"decision": decision.get('decision', ''), "choices": '\n\t'+'\n\t'.join(decision.get('choices', '')),
+                                               "scene_goal": (getattr(self, 'direction', None) or {}).get('goal') or 'not said',
                                                "act_number": act['act_number'] if act else 0, "avoidance_cnt": self.avoidance_cnt,
                                                "previous_decisions": '\n'.join(json.dumps(d) for d in self.decisions if d['delay'] == False)}, 
                                tag = 'NarrativeCharacter.decide',
