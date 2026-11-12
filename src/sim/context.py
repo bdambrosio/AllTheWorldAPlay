@@ -127,7 +127,6 @@ class Context():
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
         self.last_update_time = self.simulation_time
-        self.narrative = None
         self.current_scene = None
         # world-image throttle (see act_image_json): last render time, scene and file index
         self._world_image_at = 0.0
@@ -2247,6 +2246,7 @@ Never break JSON validity.  Ensure the returned form is parseable by the json.lo
 Keep the JSON human-readable (indent 2 spaces).
 
 Return **only** the JSON.  No commentary, no code fences.
+{{$rejected}}
 End your response with </end>
 """)]
 
@@ -2305,7 +2305,7 @@ In performing this integration:
     9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution..
 """
 
-        response = self.llm.ask({"time": self.simulation_time.isoformat(), 
+        bindings = {"time": self.simulation_time.isoformat(), 
                                  "plans": character_plans, 
                                  "backgrounds": character_backgrounds, 
                                  "act_central_narrative": act_central_narrative, 
@@ -2314,24 +2314,35 @@ In performing this integration:
                                  "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
                                  "places": stage.gazetteer(self),
                                  "previous_act_post_state": previous_act_post_state,
-                                 "plan_rule": survival.PLAN_RULE if survival.config(self) else ''},
-                              prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
-        try:
-            updated_narrative_plan = None
+                                 "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
+        # The act that is performed is held to the same form as a character's draft of one
+        # (validate_narrative_act); it had been checked for its dates alone, and a scene with
+        # no speaking order or no cast reached the scene loop. One more try with the reason.
+        self.integration_fault = ''
+        for attempt in range(2):
+            response = self.llm.ask(bindings, prompt, max_tokens=4000, stops=['</end>'], tag='integrate_narratives')
             if not response:
-                return None
+                self.integration_fault = 'the playwright gave no answer'
+                continue
             response = response.replace("```json", "").replace("```", "").strip()
-            updated_narrative_plan = json.loads(response)
-            logger.info(f'Integrated act: {self.reserialize_act_times(updated_narrative_plan)}')
-        except Exception as e:
-            print(f'Error parsing updated act: {e}')
-            updated_narrative_plan = self.repair_json(response, e)
-        if updated_narrative_plan is not None:
-            self.validate_dates_in_plan(updated_narrative_plan)
-        else:
-            return None
-        self.narrative = updated_narrative_plan
-        return updated_narrative_plan
+            try:
+                act = json.loads(response)
+            except Exception as e:
+                print(f'Error parsing integrated act: {e}')
+                act = self.repair_json(response, e)
+            if isinstance(act, dict) and isinstance(act.get('acts'), list) and act['acts']:
+                act = act['acts'][0]   # 'a sequence of acts' was asked for in one place: take the act
+            if isinstance(act, dict) and not isinstance(act.get('act_number'), int):
+                act['act_number'] = act_number
+            valid, result = self.validate_narrative_act(act, require_scenes=True) if isinstance(act, dict) else (False, 'not a JSON object')
+            if valid:
+                self.validate_dates_in_plan(result)
+                logger.info(f'Integrated act: {self.reserialize_act_times(result)}')
+                return result
+            self.integration_fault = str(result)
+            trace.event('act_refused', act=act_number, reason=self.integration_fault, attempt=attempt + 1)
+            bindings['rejected'] = f"\nYour last answer could not be used: {self.integration_fault}. Return the whole act again, corrected.\n"
+        return None
 
     def validate_dates_in_plan(self, narrative_plan):
         """Make scene times in a plan run forward from now: a scene starts no earlier than the
@@ -2484,7 +2495,6 @@ Respond with one line for each thing, or the single line #none:
             stop('no character has any narrative acts')
             return
         previous_act_post_state = ''
-        previous_act = None  # the act just performed; replan_narrative_act adapts the next act to it
         try:
             self.frame_episode()
             self.equip_cast()
@@ -2501,11 +2511,16 @@ Respond with one line for each thing, or the single line #none:
                         if i == 0:
                             updated_act = character.plan['acts'][i] # no need to replan act 1
                         else:
-                            updated_act = character.replan_narrative_act(character.plan['acts'][i], previous_act, act_central_narrative, previous_act_post_state)
+                            updated_act = character.replan_narrative_act(character.plan['acts'][i], act_central_narrative, previous_act_post_state)
                         character_narrative_blocks.append([character, updated_act])  
+                if not character_narrative_blocks:
+                    stop(f'no character has a plan for act {i+1}')
+                    return
                 next_act = await self.integrate_narratives(i, character_narrative_blocks, act_central_narrative, previous_act_post_state)
+                if next_act is None:
+                    stop(f'act {i+1} could not be written: {self.integration_fault}')
+                    return
                 new_act = await self.request_act_choice(next_act)
-                #outcomes = await self.check_post_state_ambiguity(next_act) # testing
 
                 await asyncio.sleep(0.1)
                 if new_act is None:
@@ -2514,10 +2529,7 @@ Respond with one line for each thing, or the single line #none:
                 else:
                     next_act = new_act
                 await self.run_narrative_act(next_act, i+1)
-                previous_act = next_act
-                previous_act_post_state = await self.run_coda(next_act, final=False)
-
-            #await self.run_coda(next_act, final=True)
+                previous_act_post_state = await self.close_act(next_act)
 
             coda_central_narrative = []
             for character in cast(List[NarrativeCharacter], self.actors):
@@ -2529,9 +2541,12 @@ Respond with one line for each thing, or the single line #none:
 
             character_narrative_blocks = []  # fresh: this list still held the last act's plans
             for character in cast(List[NarrativeCharacter], self.actors):
-                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, previous_act, coda_central_narrative, previous_act_post_state)
+                updated_act = character.replan_narrative_act({"act_number":4, "act_title":"coda"}, coda_central_narrative, previous_act_post_state)
                 character_narrative_blocks.append([character, updated_act])  
             next_act = await self.integrate_narratives(i, character_narrative_blocks, coda_central_narrative, previous_act_post_state)
+            if next_act is None:
+                stop(f'the closing act could not be written: {self.integration_fault}')
+                return
             new_act = await self.request_act_choice(next_act)
 
             await asyncio.sleep(0.1)
@@ -2715,64 +2730,22 @@ End your response with </end>
         told = self.llm.ask({'account': account.strip()}, prompt, tag='coda_summary', temp=0.3, stops=['</end>'], max_tokens=120)
         return (told or account).strip()
 
-    async def run_coda(self, final_act, scene=None, final=False):
-        """Establish outcome and wrap up the play.
-        establish unambiguous post state
-        update everyone
-        give major actors a chance to say goodbye
-        """
-
-        # establish unambiguous post state
-        act_post_state = final_act.get('act_post_state', '')
-        if not act_post_state:
-            act_post_state = 'The characters have resolved the central dramatic question and are now in a new equilibrium.'
-        # What the next act starts from: the act's record (scene wrap-ups, assessed outcome, from
-        # run_narrative_act) with the planned post-state. This used to be the True outcome labels
-        # only, and None (wiping the next act's starting state) when no label tested True.
-        planned = act_post_state
-        summary = final_act.get('act_summary')
-        if summary is None:
-            outcomes = await self.check_post_state_ambiguity(final_act)
+    async def close_act(self, act):
+        """An act is over: tell the audience what it came to, let each character think it over,
+        and return what the next act starts from (the act's record, with what was planned).
+        (This was run_coda, which also held a second, uncalled half that played a closing
+        'Coda' task; the play's closing act is an act like the others.)"""
+        planned = act.get('act_post_state') or ''
+        summary = act.get('act_summary')
+        if summary is None:   # an act with no planned post-state was not summed up by run_narrative_act
+            outcomes = await self.check_post_state_ambiguity(act)
             assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
             summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
-        act_post_state = f'{summary.strip()}\n(The act was planned to end with: {planned})'
+        post_state = summary.strip() + (f'\n(The act was planned to end with: {planned})' if planned else '')
         self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
-
-        decisions = await self.check_decision_required(final_act, scene)
-        if decisions:
-            for decision in decisions:
-                character = decision.get('character', '')
-                choices = decision.get('choices', '')
-                print(f'Decision required for {character}: {choices}')
-
         for character in cast(List[NarrativeCharacter], self.actors):
-            character.reason_over(act_post_state)
-            """goal = Goal(name='Coda', description='think about the state of affairs and your role in it', 
-                        actors=[character], drives=[]))
-            task = Task(name='Coda', description='think over the state of affairs and your role in it', 
-                        reason='An act is over. time to reflect on the journey so far and your role in it.', 
-                        termination=None, goal=goal, actors=[character], start_time=self.simulation_time, duration=1) # TODO: duration?
-            character.goals = [goal]
-            character.focus_goal = goal
-            character.focus_goal.task_plan = [task]
-            character.focus_task.push(task)
-            await character.step_task(task)
-            """
-        if not final:
-            return act_post_state
-        for character in cast(List[NarrativeCharacter], self.actors):
-            goal = Goal(name='Coda', description='reflect on the past, face the future.', actors=[character], drives=[])
-            task = Task(name='Coda', description='think over the state of affairs and your role in it', 
-                        reason='An act is over. time to reflect on the journey so far and your role in it.', 
-                        termination=None, goal=goal, actors=[character], start_time=self.simulation_time, duration=1)
-            character.goals = [goal]
-            character.focus_goal = goal
-            character.focus_goal.task_plan = [task]
-            acts = character.closing_acts(act_post_state, task, goal)
-            character.focus_task.push(task)
-            for act in acts:
-                await character.act_on_action(act, task)
-        return act_post_state
+            character.reason_over(post_state)
+        return post_state
 
 
     async def merge_central_narratives(self):
@@ -2939,101 +2912,61 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
         if not isinstance(act, dict):
             return False, "Act must be a JSON object"
                 
-        # Check required act fields
+        # An act needs a number; the rest of its heading is filled in when missing (an act
+        # written without tension points is still an act that can be played)
         if "act_number" not in act or not isinstance(act["act_number"], int):
             return False, "Missing or invalid 'act_number'"
-        if "act_description" not in act or not isinstance(act["act_description"], str):
-            return False, "Missing or invalid 'act_description'"
-        if "act_goals" not in act or not isinstance(act["act_goals"], dict):
-            return False, "Missing or invalid 'act_goals'"
-        if "act_pre_state" not in act or not isinstance(act["act_pre_state"], str):
-            return False, "Missing or invalid 'act_pre_state'"
-        if "act_post_state" not in act or not isinstance(act["act_post_state"], str):
-            return False, "Missing or invalid 'act_post_state'"
-        if "tension_points" not in act or not isinstance(act["tension_points"], list):
-            return False, "Missing or invalid 'tension_points'"
+        for field in ("act_title", "act_description", "act_pre_state", "act_post_state"):
+            if not isinstance(act.get(field), str):
+                act[field] = '' if field != "act_title" else f"Act {act['act_number']}"
+        if not isinstance(act.get("act_goals"), dict):
+            act["act_goals"] = {}
+        act["tension_points"] = [t for t in (act.get("tension_points") if isinstance(act.get("tension_points"), list) else [])
+                                 if isinstance(t, dict) and isinstance(t.get("characters"), list) and isinstance(t.get("issue"), str)]
         for tension_point in act["tension_points"]:
-            if not isinstance(tension_point, dict):
-                return False, "Tension point must be a JSON object"
-            if "characters" not in tension_point or not isinstance(tension_point["characters"], list):  
-                return False, "Tension point must have 'characters' array"
-            if "issue" not in tension_point or not isinstance(tension_point["issue"], str):
-                return False, "Tension point must have 'issue' string"
-            if "resolution_requirement" not in tension_point or not isinstance(tension_point["resolution_requirement"], str):
-                return False, "Tension point must have 'resolution_requirement' string"
-        if require_scenes:
-            if act["act_number"] == 1:
-                if "scenes" not in act or not isinstance(act["scenes"], list):
-                    return False, "First act must have 'scenes' array"
+            if not isinstance(tension_point.get("resolution_requirement"), str):
+                tension_point["resolution_requirement"] = "partial"
+        if require_scenes and (not isinstance(act.get("scenes"), list) or not act["scenes"]):
+            return False, "The act has no scenes"
         if "scenes" in act:
-            # Validate each scene
-            for scene in act["scenes"]:
+            # Validate each scene. A scene is refused only for what the scene loop cannot do
+            # without (a title, its people and their goals). What the engine settles itself is
+            # filled in: the clock sets a scene's time and the least it lasts, the cast walks to
+            # "same" if no place is named, and the people speak in the order they are listed.
+            # (An act was refused for a scene with no 'time', a field that is not used.)
+            for n, scene in enumerate(act["scenes"]):
                 if not isinstance(scene, dict):
                     return False, "Scene must be a JSON object"
-                        
-                # Check required scene fields
-                required_fields = {
-                    "scene_number": int,
-                    "scene_title": str,
-                    "location": str,
-                    "time": str,
-                    "duration": int, # in minutes
-                    "characters": dict,
-                    "action_order": list,
-                    "pre_narrative": str,
-                    "post_narrative": str
-                }
-                    
-                for field, field_type in required_fields.items():
-                    if field not in scene or not isinstance(scene[field], field_type):
-                        if field == 'pre_narrative' or field == 'post_narrative':
-                            scene[field] = ''
-                        elif field == 'duration':
-                            scene[field] = 15
-                        else:
-                            return False, f"Missing or invalid '{field}' in scene"
-                    
-                # Validate time field
-                scene_time = self.validate_scene_time(scene)
-                if scene_time is None:
-                    return False, f"Invalid time format in scene {scene['scene_number']}"
+                if not isinstance(scene.get("scene_title"), str) or not scene["scene_title"].strip():
+                    return False, f"Scene {n + 1} has no 'scene_title'"
+                if not isinstance(scene.get("characters"), dict) or not scene["characters"]:
+                    return False, f"Scene '{scene['scene_title']}' has no 'characters'"
+                if not isinstance(scene.get("scene_number"), int):
+                    scene["scene_number"] = n + 1
+                if not isinstance(scene.get("location"), str) or not scene["location"].strip():
+                    scene["location"] = "same"
+                if not isinstance(scene.get("duration"), int):
+                    scene["duration"] = 15
+                for field in ("pre_narrative", "post_narrative"):
+                    if not isinstance(scene.get(field), str):
+                        scene[field] = ''
+                names = [name for name in scene["characters"]]
+                order = scene.get("action_order")
+                if not isinstance(order, list) or not [name for name in order if name in names]:
+                    scene["action_order"] = list(names)
                 else:
-                    scene["time"] = scene_time # update the time field with the validated datetime object
-                    
-                # Validate characters structure
-                for char_name, char_data in scene["characters"].items():
-                    if not isinstance(char_data, dict) or "goal" not in char_data:
-                        return False, f"Invalid character data for {char_name}"
-                    
-                # Validate action_order
-                if not 1 <= len(scene["action_order"]) <= 2*len(scene["characters"]):
-                    logger.info(f'validate_narrative_act: scene {scene["scene_number"]} has {len(scene["action_order"])} actions')
-                    if len(scene["characters"]) > 4:
-                        # too many characters
-                        return False, f"Scene {scene['scene_number']} must have 2-4 characters"
-                    action_order = scene["action_order"]
-                    characters_in_scene = []
-                    new_action_order = []
-                    for character in action_order:
-                        if character not in characters_in_scene:
-                            characters_in_scene.append(character)
-                            new_action_order.append(character)
-                    scene["action_order"] = new_action_order
+                    scene["action_order"] = [name for name in order if name in names]
+                scene["time"] = self.validate_scene_time(scene)   # a datetime: the plan's, or now
 
-                # Validate optional task_budget
-                if "task_budget" in scene and not isinstance(scene["task_budget"], int):
-                    return False, f"Invalid task_budget in scene {scene['scene_number']}"
-                elif "task_budget" in scene and scene["task_budget"] > 2*len(scene["action_order"]):
-                    logger.debug(f"task_budget in scene {scene['scene_number']} is too high")
-                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
-                elif "task_budget" not in scene:
-                    scene["task_budget"] = int(1.75*len(scene["action_order"])+1)
-
-                # Validate narrative lengths
-                if len(scene["pre_narrative"].split()) > 120:
-                    return False, f"Pre-narrative too long in scene {scene['scene_number']}"
-                if len(scene["post_narrative"].split()) > 120:
-                    return False, f"Post-narrative too long in scene {scene['scene_number']}"
+                # each person in the scene has a goal (a bare string is taken as the goal)
+                for char_name, char_data in list(scene["characters"].items()):
+                    if isinstance(char_data, str) and char_data.strip():
+                        scene["characters"][char_name] = char_data = {"goal": char_data.strip()}
+                    if not isinstance(char_data, dict) or not str(char_data.get("goal") or '').strip():
+                        return False, f"Scene '{scene['scene_title']}' gives {char_name} no goal"
+                budget = int(1.75*len(scene["action_order"])+1)
+                if not isinstance(scene.get("task_budget"), int) or scene["task_budget"] > 2*len(scene["action_order"]):
+                    scene["task_budget"] = budget
         
         return True, act
         
@@ -3686,5 +3619,4 @@ Scene format is as follows:
             print(f'{self.name} failed to update scene {scene_id}')
             updated_scene = scene
         self.current_scene = updated_scene
-        self.current_scene_index = scene_number
         return updated_scene    

@@ -3882,7 +3882,7 @@ End your response with:
                     old_goal = self.focus_goal
                     satisfied = await self.clear_goal_if_satisfied(self.focus_goal)
                     if not satisfied: # goal not satisfied and no remaining tasks
-                        if not self.context.narrative: # extend task plan
+                        if not self.context.narrative_level: # extend the task plan, unless this is a planned play (its scenes set the tasks)
                             await self.generate_task_plan(self.focus_goal)
                             await self.request_task_choice(self.focus_goal.task_plan)
                     elif old_goal in self.goals: #satisfied.
@@ -4226,8 +4226,6 @@ end your response with:
                 'central_narrative': getattr(self, 'central_narrative', None),
                 'act': self.get_current_act_info(),
                 'scene': self.get_current_scene_info(),
-                'act_index': getattr(self, 'current_act_index', None),
-                'scene_index': getattr(self, 'current_scene_index', None),
             }
 
         def llm_calls():

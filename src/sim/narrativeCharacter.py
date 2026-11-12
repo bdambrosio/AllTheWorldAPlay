@@ -2,6 +2,7 @@ from __future__ import annotations
 import sim.survival as survival
 from sim.cognitive import drives
 import sim.stage as stage
+from sim.trace import trace
 import asyncio
 import copy
 from datetime import datetime
@@ -37,8 +38,6 @@ class NarrativeCharacter(Character):
         self.plan = None
         self.current_act = None
         self.current_scene = None
-        self.current_act_index = 0
-        self.current_scene_index = 0
         print(f'{self.name}: {self.__class__.__name__}')
         self.previous_proposal = None
         self.current_proposal = None
@@ -136,8 +135,7 @@ End your response with </end>
                                 addl_bindings={"scenario": play_file_content, 
                                  "map": map_file_content if map_file_content else '',
                                  "name": self.name,
-                                 "start_time": self.context.simulation_time.isoformat(),
-                                 "primary_drive": drives.standing(self, 0), "secondary_drive": drives.standing(self, 1)}, 
+                                 "start_time": self.context.simulation_time.isoformat()},
                                  max_tokens=200, tag='NarrativeCharacter.introduction')
         if introduction:
             self.context.message_queue.put({'name':self.name, 'text':introduction+'\n'})
@@ -260,8 +258,7 @@ Return **only** the JSON.  No commentary, no code fences.
                                  "name": self.name,
                                  "central_narrative": central_narrative,
                                  "my_narrative": self.central_narrative,
-                                 "start_time": self.context.simulation_time.isoformat(),
-                                 "primary_drive": drives.standing(self, 0), "secondary_drive": drives.standing(self, 1)}, 
+                                 "start_time": self.context.simulation_time.isoformat()},
                                  max_tokens=5000, tag='NarrativeCharacter.write_narrative')
         try:
             self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
@@ -272,10 +269,7 @@ Return **only** the JSON.  No commentary, no code fences.
         if not valid:
             print(f'Invalid narrative: {reason}')
             return self.plan
-        # initialize the current act and scene
-        self.current_act_index = 0
-        self.current_scene_index = 0    
-        self.current_act = self.plan["acts"][self.current_act_index]
+        self.current_act = self.plan["acts"][0]
         self.current_scene = None
         return self.plan
 
@@ -287,22 +281,15 @@ Return **only** the JSON.  No commentary, no code fences.
 
 
     def update_act(self, new_act):
-        valid, reason = self.context.validate_narrative_act(new_act, require_scenes=True)
-        if not valid:
-            print(f'Invalid act: {reason}')
-            return False
-        act_num = new_act["act_number"]
+        """Put a rewritten (and already validated) act in this character's plan, in place of the
+        act with its number. False when the plan has no such act (the closing act)."""
         for i, act in enumerate(self.plan["acts"]):
-            if act["act_number"] == act_num:
+            if act["act_number"] == new_act["act_number"]:
                 self.plan["acts"][i] = new_act
-                if self.current_act_index == i:
-                    self.current_act = new_act
-                    self.current_scene = new_act["scenes"][0]
-                    self.current_scene_index = 0
                 return True
-        return False        
+        return False
     
-    def replan_narrative_act(self, act, previous_act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
+    def replan_narrative_act(self, act, act_central_narrative:CentralNarrative, previous_act_post_state:str):
         """Rewrite the act with the latest shared information"""
 
         system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
@@ -482,7 +469,6 @@ Again, the act central narrative is:
                                "previous_act_post_state": previous_act_post_state,
                                "act_central_narrative": act_central_narrative,
                                "central_narrative": self.context.central_narrative,
-                               "play": json.dumps(self.plan, indent=1, default=datetime_handler),
                                "previous_acts": '\n'.join([json.dumps(act, default=datetime_handler) for act in self.context.previous_acts]) if self.context.previous_acts else ''},
                               max_tokens=1400, tag='NarrativeCharacter.replan_narrative_act')
         try:
@@ -497,14 +483,17 @@ Again, the act central narrative is:
             logger.error(f'Error parsing updated act: {e}')
             logger.error(traceback.format_exc())
             updated_act = self.context.repair_json(response, e)
-        if updated_act:
-            print(f'{self.name} updates act {act_id}')
-            self.update_act(updated_act)
-        else:
-            print(f'{self.name} failed to update act {act_id}')
-            updated_act = act
+        # A rewrite that is not a usable act is not used: the act as it stood goes to the
+        # integrator. (It was returned whatever update_act said, and a scene without a time
+        # ended a play three calls later.)
+        valid, reason = self.context.validate_narrative_act(updated_act, require_scenes=True) if isinstance(updated_act, dict) else (False, 'no act in the reply')
+        if not valid:
+            print(f'{self.name} keeps act {act_id} as it was: {reason}')
+            trace.event('act_rewrite_refused', character=self.name, act=act_id, reason=str(reason))
+            return act
+        print(f'{self.name} updates act {act_id}')
+        self.update_act(updated_act)
         self.current_act = updated_act
-        self.current_act_index = act_number
         return updated_act
 
     async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content=None):
@@ -765,114 +754,6 @@ End response with:
                 print(f'{self.name} generate_plan: no new task')
         return task
     
-    def closing_acts(self, situation: str, task: Task, goal: Goal=None):
-
-        system_prompt = """You are {{$name}}, a character at the end of an improvisational play. 
-This is your chance to reflect on the past, face the future, and decide if you have anything to say to any of the other characters.
-You have two goals in this.
-First, reach some closure with the other characters, as part of your improvisational performance in your role as {{$name}}.
-Second, give the audience a feeling of closure, even if the overall dramatic question is left unresolved.
-
-To achieve these goals, you will be given the option below to engage in a final dialog with one or more of the other characters.
-"""
-        
-        prefix = """The overall dramatic question has been
-#Central Dramatic Question
-{{$central_narrative}}
-##
-
-In the final act it narrowed down to
-#Act Specific Narrative
-{{$act_specific_narrative}}
-##
-
-And the current state of resolution of that question is:
-#Final Outcome
-{{$final_outcome}}
-##
-
-"""
-        suffix = """
-
-First, identify the other characters you want to reach closure with.
-Then, for each identified character, generate at most one Say action.
-The Say action should be a short statement of your feelings about the experience you had with that character, and any remaining unexpressed thoughts or intentions wrt that character that need closure.
-It should be one or two sentences, no more than 20 words.
-
-Review your character and current emotional stance when choosing what to say.. 
-Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression.
-Remember, this is your final chance to reach closure with the other characters, and to give the audience a feeling of closure, even if the overall dramatic question is left unresolved.
-Your may, as examples, wish to:
-- Acknowledge the other character's role in the play.
-- Ask the other character a question to resolve a remaining ambiguity about the Central Dramatic Question of the Act Specific Narrative.
-- Express gratitude for the other character's help.
-- Express regret or anger for your own or the other character's actions.
-- Express hope for the other character's future.
-- Express a desire to work together in the future.
-
-Dialog (Say) guidance:
-- The specificAct must contain only the actual words to be spoken.
-- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
-    Use contractions and language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
-- If intended recipient is known  or has been spoken to before (e.g., in RecentHistory), 
-    then pronoun reference is preferred to explicit naming, or can even be omitted. 
-- In any case, when using pronouns, always match the pronoun gender (he, she, his, her, they, their,etc) to the sex of the referent, or use they/their if a group. 
-- Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
-- Avoid repeating stereotypical past dialog.
-- Avoid repeating dialog from 
-{{$dialog_transcripts}}.
-                              
-Respond using the following hash-formatted text for each , where each tag is preceded by a # and followed by a single space, followed by its content.
-Each intension should be closed by a ## tag on a separate line.
-Be careful to insert line breaks only where shown, separating a value from the next tag.
-
-#mode Say
-#action thoughts, words to speak. Be concise, limit your response to 30 words max for mode Say.
-#target name of the actor you are speaking to.
-#duration 2 minutes
-##
-
-Do not include any introductory, explanatory, or discursive text. Remember, respond with 2 or at most 3 alternative acts.
-End your response with:
-</end>
-"""
-
-        response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, 
-                               addl_bindings={
-                                              "final_outcome": situation,
-                                              "act_specific_narrative": self.act_direction(),
-                                              "central_narrative": self.story_note(),
-                                              "name": self.name,
-                                              "dialog_transcripts": '\n'.join(self.actor_models.get_dialog_transcripts(20))}, 
-                               tag = 'NarrativeCharacter.closing_acts',
-                               max_tokens=200, log=True)
-        if response is not None:
-            response = response.strip()
-        # Rest of existing while loop...
-        act_hashes = hash_utils.findall_forms(response)
-        act_alternatives = []
-        if len(act_hashes) == 0:
-            print(f'No act found in response: {response}')
-            self.actions = []
-            return []
-        if not task.goal:
-            print(f'{self.name} generate_act_alternatives: task {task.name} has no goal!')
-            if not self.focus_goal:
-                print(f'{self.name} generate_act_alternatives: no focus goal either!')
-            task.goal = self.focus_goal
-        if len(act_hashes) < 2:
-            print(f'{self.name} generate_act_alternatives: only {len(act_hashes)} acts found')
-        for act_hash in act_hashes:
-            try:
-                act = self.validate_and_create_act(act_hash, task)
-                if act:
-                    act_alternatives.append(act)
-            except Exception as e:
-                print(f"Error parsing Hash, Invalid Act. (act_hash: {act_hash}) {e}")
-        self.actions = act_alternatives
-        return act_alternatives
-    
-
     async def decide(self, decision, act=None, scene=None):
         """Decide on a choice for a decision"""
         system_prompt = """You are {{$name}}, a character in an improvisational play.

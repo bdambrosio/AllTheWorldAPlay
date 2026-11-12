@@ -37,7 +37,7 @@ Set a scene where its action can happen: Places lists what can be done at each n
 Give a scene a different location only when the action must move there; the cast then walks, which takes the time shown.
 A scene's title, set-up and ending must fit its "when": a scene called a night watch has "when": "night". When a scene moves the play on, hours pass off stage and the cast is taken to have eaten, drunk and rested as it could: do not spend the scene on that. Move the play on at most once within an act; the clock times you write are not used for this.
 A jump to a distant place belongs at the start of an act.
-What a scene's ending says about bodies and things (someone fed, watered, rested, armed, a paper signed or handed over) is true only if a character does the action in that scene: list it under business. Saying it does not make it so."""
+A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is listed under business, and is so only if a character does it in that scene."""
 
 
 def here(character):
