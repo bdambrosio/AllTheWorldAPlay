@@ -192,7 +192,11 @@ REASONING_GROUPS = {
 REASONING_TOKENS = 3000
 _reasoning: dict = {}
 
-# Every call thinks first, on every model that can think, except the simple mechanical ones below
+# Every call thinks first, on every model that can think, except the simple mechanical ones below.
+# A call reasons when it writes what the play is made of (audience text, a plan, a character's
+# lasting state) or makes a judgement that needs inference across facts where a wrong answer
+# changes what happens. It is mechanical when its answer can be read off the input or written by
+# compressing it: a label the text states, an extraction, a summary of given facts, a format.
 # (Bruce, 2026-11-13: the play, its acts and scenes, the actors' lines, the characters' state and
 # its updates, the world's judgements all reason; only mechanical extraction and formatting does
 # not). The effort is the server's: Qwen under vLLM medium, GLM on Fireworks (and a local GLM,
@@ -204,7 +208,12 @@ MECHANICAL_TAGS = frozenset((
     'relationship_style', 'scene_style', 'perceptual_input',            # labels: a speech style, a sense
     'Agh.say_target', 'ResourceReferenceManager.resolve_reference_with_llm', 'Context.extract_simulation_time',
     'repair_json', 'repair_xml', 'repetitive',                          # format repair, a likeness test
-    'NarrativeStaleness.action_similarity', 'NarrativeStaleness.extract_dialog_topics', 'NarrativeStaleness.detect_discoveries'))
+    'NarrativeStaleness.action_similarity', 'NarrativeStaleness.extract_dialog_topics', 'NarrativeStaleness.detect_discoveries',
+    # answers read off the record or written by compressing given facts (Bruce, 2026-11-13): whether
+    # 'done when' is so, quoting the record; summaries of given memories; which given consequences
+    # matter; a sentence restating a check; a 1-10 rating mixed with chance; quoted pieces of the past
+    'test_termination', 'MemoryConsolidator.semantic_summary', 'MemoryConsolidator.enhance_summary', 'do_consequences',
+    'completion_statement', 'natural_dialog_end', 'record.told'))
 THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
 
 
