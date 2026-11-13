@@ -16,6 +16,7 @@ class SensoryMode(Enum):
     AUDITORY = "auditory" 
     MOVEMENT = "movement"
     INTERNAL = "internal"
+    THOUGHT = "thought"   # the character's own guesses and reasoning: remembered, but not events (drives.appraise)
     UNCLASSIFIED = "unclassified"
 
 @dataclass

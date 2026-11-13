@@ -301,10 +301,14 @@ End your response with:
         pass
 
     def update_cognitive_model(self, memory: StructuredMemory, narrative: NarrativeSummary, knownActorManager: KnownActorManager,
-                        current_time: datetime, character_desc: str, cycle: int = 0, relationsOnly: bool = True) -> None:
-        """Update narrative summary based on recent memories and abstractions"""
-        
-        if not narrative.needs_update(current_time):
+                        current_time: datetime, character_desc: str, cycle: int = 0, relationsOnly: bool = True,
+                        force: bool = False) -> None:
+        """Update narrative summary based on recent memories and abstractions.
+        force: rewrite now whatever the interval. A scene's start asks for that: with the
+        interval alone, a scene that began under half an hour after the one before it, and
+        every first scene, was played on the account of a scene earlier."""
+
+        if not force and not narrative.needs_update(current_time):
             return
         
         narrative.last_update = current_time

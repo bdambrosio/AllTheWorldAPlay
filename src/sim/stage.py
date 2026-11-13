@@ -59,8 +59,10 @@ def off_stage(character):
     return scene is not None and getattr(character, 'left_scene', None) is scene
 
 
-def leave(character):
+def leave(character, party=()):
     """`character` leaves the scene being played. The others are told; talk with it ends.
+    Those of `party`, who are going with it, are not told it has left them (Kidd was told
+    'Lanya has left.' as they walked out together, and reasoned from there that he was alone).
     Returns False when there is no scene to leave or it has left already."""
     context = character.context
     scene = getattr(context, 'current_scene', None)
@@ -71,7 +73,8 @@ def leave(character):
     character.left_scene = scene
     character.current_scene = None   # everything that asks 'in this scene?' now answers no
     for other in remaining:
-        other.add_perceptual_input(f'{character.name} has left.', percept=False, mode='visual')
+        if other not in party:
+            other.add_perceptual_input(f'{character.name} has left.', percept=False, mode='visual')
         for a, b in ((other, character), (character, other)):
             model = a.actor_models.get_actor_model(b.name)
             if model is not None and model.dialog.active:

@@ -33,6 +33,7 @@ from weakref import WeakValueDictionary
 import numpy as np
 
 from sim import ablation
+from sim.cognitive.perceptualState import SensoryMode
 from sim.trace import trace
 from utils.Messages import UserMessage
 
@@ -45,6 +46,7 @@ PRESSING, PRESENT = 0.7, 0.4        # activation at or above: 'pressing', 'prese
 RAISE, EASE = 0.6, 0.6              # how far a full-strength threat/chance raises, or a satisfaction eases
 FLOOR = 0.1
 EVOLVE_AFTER = 3                    # achieved goals before a drive (other than the first) is rewritten
+THOUGHT = f'{SensoryMode.THOUGHT.value}: '   # how a memory of the character's own thinking begins (PerceptualState.add_input)
 MAX_PERCEPTS = 12                   # most recent new memories read by one appraisal
 NOTICES_KEPT = 3
 NOTICE_MINUTES = 90                 # a noticed event stays 'on the mind' this long
@@ -90,7 +92,7 @@ class Drive:
     def touch(self, kind, strength, text, now):
         """A noticed event moves the drive: a threat or chance raises it, a satisfaction eases it."""
         strength = min(1.0, max(0.0, strength))
-        if kind == 'eased':
+        if kind in ('eased', 'given_up'):
             self.activation -= EASE * strength * max(0.0, self.activation - FLOOR)
         else:
             self.activation += RAISE * strength * (1.0 - self.activation)
@@ -104,7 +106,7 @@ class Drive:
         latest = self.notices[-1]
         if now is not None and (now - latest.time).total_seconds() > NOTICE_MINUTES * 60:
             return ''
-        return f'{latest.kind}: {latest.text}'
+        return f"{latest.kind.replace('_', ' ')}: {latest.text}"
 
     def line(self, now=None, ids=False):
         mind = self.on_mind(now)
@@ -226,10 +228,14 @@ def appraise(character):
         return
     memories = character.structured_memory.concrete_memories
     seen = getattr(character, '_appraised_upto', -1)
-    new = [m for m in memories if m.memory_id > seen][-MAX_PERCEPTS:]
+    # What the character has thought is not an event. (Its own guesses were listed with what
+    # it saw and heard, and came back as things noticed: 'Lanya walked off, leaving Kidd
+    # alone', of a woman who had left with him.)
+    new = [m for m in memories if m.memory_id > seen and not m.text.startswith(THOUGHT)][-MAX_PERCEPTS:]
+    if memories:
+        character._appraised_upto = memories[-1].memory_id
     if not new:
         return
-    character._appraised_upto = memories[-1].memory_id
     now = _now(character)
     body = getattr(character, 'body', None)
     prompt = [UserMessage(content="""You are tracking what presses on {{$name}}, a character in a play, as events reach them.
@@ -237,7 +243,7 @@ def appraise(character):
 {{$name}}'s drives:
 {{$drives}}
 {{$body}}
-What {{$name}} has just seen, heard and thought, oldest first:
+What {{$name}} has just seen, heard and lived through, oldest first:
 {{$events}}
 
 For each drive these events touch, write one line; leave out the drives they do not touch.
@@ -245,7 +251,7 @@ For each drive these events touch, write one line; leave out the drives they do 
 
 threat: something endangers or blocks the drive.
 chance: an opening to advance the drive.
-eased: the drive has just been satisfied, in part or in full.
+eased: the drive has just been satisfied, in part or in full, by something that happened. Still having a thing is not eased.
 strength: 0.2 a passing matter, 0.5 it matters, 0.9 it cannot be ignored.
 
 Example:
@@ -304,7 +310,7 @@ def denied(character, ref, choice):
         return
     settle(character)
     drive.baseline *= 0.5
-    drive.touch('eased', 0.5, f'given up by choosing: {choice}'[:120], _now(character))
+    drive.touch('given_up', 0.5, f'by choosing: {choice}'[:120], _now(character))
 
 
 def nudge(character, ref, up):

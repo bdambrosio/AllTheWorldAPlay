@@ -121,19 +121,15 @@ Previous Relationship Status:
 Recent Interactions:
 {chr(10).join(f"- {text}" for text in char_memories)}
 
-Describe their current relationship in a brief statement that captures:
-1. Character's perception of the other character's nature: predictability, honesty, trustworthiness, reliability.
-2. Character's assessment of the other character's capabilities and motivations.
-3. Character's assessment of other character's emotional state.
-4. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
-5. Character's assessment of evidence for recent changes in relationship with other character?
+Say how {self.owner.name} now stands with {self.actor_agh.name}, as {self.owner.name} sees it: what has passed between them, what {self.owner.name} believes {self.actor_agh.name} wants, and what {self.owner.name} now thinks of them.
+Write in the third person, in plain sentences, 60 words at most. Say only what the interactions listed show; what has not been shown is not known, and is left out. Keep what still holds from the previous status, and drop what the interactions have overtaken. No list of qualities, and no verdicts the interactions do not bear out.
 
-Respond with a concise updated relationship description of up to 160 tokens plus a single True / False assement of whether the self-model has changed significantly"
+Respond with that, plus a single True / False assessment of whether the relationship has changed significantly.
 Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #Change True / False
-#Relationship updated relationship paragraph of up to 160 tokens with no newline characters
+#Relationship how they now stand, 60 words at most, with no newline characters
 ##
 
 End with:

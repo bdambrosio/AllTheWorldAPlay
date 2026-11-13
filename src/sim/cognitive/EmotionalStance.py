@@ -99,11 +99,12 @@ class EmotionalStance:
         import sim.ablation as ablation
         if not ablation.enabled('stance'):
             return EmotionalStance()
-        key = hash(character.character)
+        seen = EmotionalStance._seen(character)
+        key = hash(tuple(sorted(seen.items())))
         cached = getattr(character, '_stance_cache', None)
         if cached and cached[0] == key:
             return cached[1]
-        stance = EmotionalStance._stance_from_llm(character)
+        stance = EmotionalStance._stance_from_llm(character, seen)
         character._stance_cache = (key, stance)
         from sim.trace import trace
         trace.event('stance', character=character.name, arousal=stance.arousal.value,
@@ -111,13 +112,29 @@ class EmotionalStance:
         return stance
 
     @staticmethod
-    def _stance_from_llm(character: Character):
+    def _seen(character):
+        """What the stance is read from: who the character is, its body as it is now, and what
+        presses on it. (It was read from the description alone, so it changed once a scene at
+        most, and took the body from whatever the description happened to say of it.)"""
+        from sim.cognitive import drives
+        body = getattr(character, 'body', None)
+        return {'character': character.character,
+                'body': body.summary() if body is not None else 'not known',
+                'drives': drives.drive_lines(character) if getattr(character, 'drives', None) else 'none'}
+
+    @staticmethod
+    def _stance_from_llm(character: Character, seen: dict):
         prompt = [UserMessage(content="""You are an expert in emotional tone and orientation.
 Your task is to infer the current arousal, tone and orientation of the character described below, from the description and the situation and decisions it records.
 Identify the dominant arousal, tone, and orientation of the character: imagine a quasi-stable emotional equilibrium, more or less labile and volatile according to the character.
 
 Character:
-{{$character}} 
+{{$character}}
+
+Their body now: {{$body}}
+
+What they want, and what presses on each want now:
+{{$drives}}
 
 There are three dimensions to your response:
 
@@ -138,6 +155,7 @@ There are three dimensions to your response:
     Disgusted
     Surprised
     Curious
+    Confident
     Joyful
     Content
 
@@ -166,7 +184,7 @@ End your response with the:
 <end/>
 """)]
         
-        response = character.llm.ask({"character": character.character},
+        response = character.llm.ask(seen,
                                      prompt, tag='EmotionalStance.for_character', stops=["<end/>"], max_tokens = 100)
         response = hash_utils.clean(response)
 

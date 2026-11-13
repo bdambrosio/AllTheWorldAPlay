@@ -564,7 +564,8 @@ End your response with:
                 knownActorManager=self.actor_models,
                 current_time=self.context.simulation_time,
                 character_desc=self.character,
-                relationsOnly=False
+                relationsOnly=False,
+                force=now   # a scene starts on an account that is up to date, however little time has passed
             )
        # Reset new memory counter
         self.new_memory_cnt = 0
@@ -580,40 +581,42 @@ Carry forward your character's fundamental personality and commitments. Otherwis
 Preserve your character's fundamental decision-making capability - acknowledge doubt, but don't allow it to become dominant.
 This description will inform the next scene and remainder of the play.
 """
-        mission = """
-
-#Original description
-{{$original_description}}
-##
-
-#Current description
-{{$current_description}}
-##
-
-"""
+        # (The two descriptions were given twice, before the frame and after it, and the answer
+        # was asked for 'present appearance and condition': it came back as a copy of the body
+        # and of what was carried as they stood when the scene began, and was then read all
+        # scene beside the body as it really was. The reply also took up the label it saw.)
         suffix = """
 
 #Original description
 {{$original_description}}
 ##
 
-#Current description
-{{$current_description}}
+#What you last wrote had changed since
+{{$lately}}
 ##
 
 The original description stays as it is. Respond only with what has changed for your character since it was written: one to three sentences, 50 words at most,
-on their present appearance and condition, and any lasting change of mind or commitment. Plain statements of fact about the character; do not restate the original, and write no slogans or morals.
-Do not include any reasoning, introductory, explanatory, or discursive text, or any markdown or other formatting. 
+on what they now believe, want or have committed themselves to, and how they stand with the others. Plain statements of fact about the character; do not restate the original, and write no slogans or morals.
+Leave out hunger, thirst, tiredness, injuries and what is carried: the world keeps those, and they are shown wherever they matter.
+Do not include any reasoning, introductory, explanatory, or discursive text, any label or heading, or any markdown or other formatting.
 
 """
-        response = default_ask(self, system_prompt=system_prompt, prefix=mission, suffix=suffix, 
-                                addl_bindings={"original_description":self.original_character, "current_description":self.character}, 
+        lately = self.character.partition('\n' + self.LATELY)[2].strip()
+        response = default_ask(self, system_prompt=system_prompt, prefix='', suffix=suffix,
+                                addl_bindings={"original_description":self.original_character,
+                                               "lately":lately or 'nothing yet'},
                                 tag='Agh.update', max_tokens=300)
         if response:
             # the author's description is kept whole (rewriting all of it each scene wore away
-            # traits such as how the character speaks); only the 'Lately' paragraph changes
-            self.character = f'{self.original_character.strip()}\nLately: {response.strip()}'
+            # traits such as how the character speaks); only the 'Lately' paragraph changes.
+            # The label is the code's: one the reply brought with it is dropped.
+            changed = response.strip()
+            while changed.lower().startswith(self.LATELY.lower()):
+                changed = changed[len(self.LATELY):].strip()
+            self.character = f'{self.original_character.strip()}\n{self.LATELY} {changed}'
         return response
+
+    LATELY = 'Lately:'
 
 
 
@@ -1336,7 +1339,7 @@ End response with:
             # opened in it and closed at once, and a model call to update the character's
             # relationship with itself. That self-model is what gave a character its own lines
             # back as things it had heard.)
-            self.add_perceptual_input(f'Internal monologue:\n {act_arg}', percept=False, mode='internal')
+            self.add_perceptual_input(f'Internal monologue:\n {act_arg}', percept=False, mode='thought')
             self.reason_over(act_arg)
             await asyncio.sleep(0)
 
@@ -2578,7 +2581,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
 """
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, addl_bindings={"dialog":dialog}, tag='reflect_on_dialog', max_tokens=70)
         if response and response.strip().lower() != 'none':
-            self.add_perceptual_input(f'Reflecting:\n {response}', percept=False, mode='internal')
+            self.add_perceptual_input(f'Reflecting:\n {response}', percept=False, mode='thought')
         return
             
     def reason_over(self, thought):
@@ -2601,7 +2604,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         response = default_ask(self, system_prompt=system_prompt, prefix=prefix, suffix=suffix, addl_bindings={"thought":thought}, tag='reason_over', max_tokens=70)
         if response and response.strip().lower() != 'none':
             print(f'{self.name} reason_over: {response}')
-            self.add_perceptual_input(f'Reasoning over thought:\n {response}', percept=False, mode='internal')
+            self.add_perceptual_input(f'Reasoning over thought:\n {response}', percept=False, mode='thought')
         return
 
 
@@ -3438,9 +3441,9 @@ End your response with:
     def _leave_with(self, act):
         """Leave the scene, and the ones going along leave with it."""
         party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
-        stage.leave(self)
+        stage.leave(self, party)
         for other in party:
-            if stage.leave(other):
+            if stage.leave(other, [self] + party):
                 trace.event('leaves_with', character=other.name, led_by=self.name)
 
     def does_not_know(self):
