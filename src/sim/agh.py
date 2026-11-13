@@ -182,7 +182,6 @@ class Character:
         self.goals:List[Goal] = []
         self.goal_history:List[Goal] = []
         #self.tasks = [] 
-        self.intensions:List[Task] = []
         self.actions:List[Act] = []
         self.achievments:List[str] = [] # a list of short strings summarizing the character's achievments
         self.autonomy:Autonomy = Autonomy()
@@ -1056,6 +1055,7 @@ End response with:
                         goal_id=task.goal.id if task.goal else None)
             timed_out = not satisfied
             satisfied = True # force completion
+            task.outcome, self.last_task = 'timeout' if timed_out else 'satisfied', task
             if task == self.focus_task.peek():
                 self.focus_task.pop()
                 self.focus_action = None
@@ -3025,15 +3025,6 @@ End your response with:
         # (response, source task, the LLM's <reason> -- parsed but dropped before)
         return response, response_source, reason
     
-    def format_tasks(self, tasks, labels):
-        task_list = []
-        for label, task in zip(labels, tasks):
-            task_dscp = f'{label} - {hash_utils.find("name", task)} ({hash_utils.find("description", task)}), {hash_utils.find("reason", task)}.' 
-            task_dscp += f'needs: {hash_utils.find("needs", task)}. committed: {hash_utils.find("committed", task)}'
-            task_list.append(task_dscp)
-        return '\n'.join(task_list)
-    
-
     async def admissible_goals(self, goals):
         """test if any of the goals meet preconditions"""
         admissible_goals = []
@@ -3798,11 +3789,12 @@ End your response with:
             trace.event('task_end', character=self.name, task_id=task.id, task=task.name, outcome='unfinished',
                         acts=len(task.acts), goal_id=task.goal.id if task.goal else None)
             self.add_perceptual_input(f"You have set this aside, not done: {task.short_string()}", mode='internal')
+            task.outcome, self.last_task = 'unfinished', task
             return False
-        else: # clear assigned task and all intensions created by it, out of turns for this task
+        else: # clear the assigned task and anything pushed on top of it: out of turns for this task
             while task in self.focus_task.stack:
                 self.focus_task.pop()
-        return True # probably need to replan around step failure, maybe we pushed an intension and exhausted our turns, who knows?
+        return True
 
 
     async def act_on_action(self, action: Act, task: Task):
@@ -4026,18 +4018,21 @@ end your response with:
 
     def get_explorer_state(self):
         """Return detailed state for explorer UI"""
+        # Between turns the task just played is shown, with how it ended. (The panel is sent
+        # after a turn, by when a finished task has been popped: it read 'idle' with no acts
+        # for every task that was done or timed out.)
         focus_task = self.focus_task.peek()
+        shown = focus_task or self.last_task
         # act_on_action records self.last_act (action_history was never appended to)
         last_act = getattr(self, 'last_act', None)
 
         return {
             'character': self.character,
-            'currentTask': focus_task.to_string() if focus_task else 'idle',
-            'actions': [act.to_string() for act in (focus_task.acts if focus_task else [])],
+            'currentTask': focus_task.to_string() if focus_task else f'{shown.to_string()} [{shown.outcome}]' if shown else 'idle',
+            'actions': [act.to_string() for act in (shown.acts if shown else [])],
             'lastAction': {
                 'mode': last_act.mode if last_act else '',
                 'action': last_act.action if last_act else '',
-                'result': last_act.result if last_act else '',
                 'reason': last_act.reason if last_act else ''
             },
             'decisions': self.decisions or [],  # ADD THIS LINE
@@ -4096,13 +4091,12 @@ end your response with:
                         'description': p.description,
                         'reason': p.reason,
                         'actors': [a.name for a in p.actors],
-                        'needs': p.needs or '',
+                        'outcome': p.outcome,
                         'termination': p.termination,
                         'progress': p.progress,
                         'acts_done': len(p.acts),
-                    } for p in (self.focus_task.stack or [])
+                    } for p in (self.focus_task.stack or ([shown] if shown else []))
                 ],
-                'intensions': [intension.name for intension in self.intensions]  # List[str]
             },
             # what the character has lately noticed about each drive (drives.appraise)
             'signals': drives.for_ui(self),

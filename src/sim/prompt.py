@@ -175,9 +175,9 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
     
     if task and task.acts and len(task.acts) > 0:
         lastAct = task.acts[-1].mode + ' ' + task.acts[-1].action
-        # what came of it: the task's own record, else what the character took from its last act
+        # what came of it: what the character took from its last act
         # (a Look that found something was followed by 'Observed result: None to report')
-        lastActResult = task.result or getattr(character, 'lastActResult', '')
+        lastActResult = getattr(character, 'lastActResult', '')
     else:
         lastAct = character.focus_action if character.focus_action else None
         if hasattr(character, 'lastActResult'):

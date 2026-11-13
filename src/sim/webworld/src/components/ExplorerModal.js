@@ -181,7 +181,6 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
             <h4>Last Action</h4>
             <div className="action-details">
               <div>Action: {explorerState.lastAction?.mode ? `${explorerState.lastAction.mode}: ${explorerState.lastAction.action}` : 'None'}</div>
-              <div>Result: {explorerState.lastAction?.result || 'None'}</div>
               <div>Reason: {explorerState.lastAction?.reason || 'None'}</div>
             </div>
 
@@ -317,17 +316,12 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
                   <div className="task-description">{task.description}</div>
                   <div className="task-reason">Reason: {task.reason}</div>
                   <div className="task-actors">Actors: {task.actors?.join(', ')}</div>
-                  <div className="task-needs">Needs: {Array.isArray(task.needs) ? task.needs.join(', ') : (task.needs || 'none')}</div>
                   <div className="task-termination">Termination: {task.termination}</div>
-                  <div className="task-progress">Progress: {task.progress} · Acts: {task.acts_done}</div>
+                  <div className="task-progress">Progress: {task.progress} · Acts: {task.acts_done}{task.outcome ? ` · ${task.outcome}` : ''}</div>
                 </div>
               ))}
             </div>
 
-            <h4>Intentions</h4>
-            <div className="tasks-list">
-              {explorerState.cognitive?.intensions?.length ? explorerState.cognitive.intensions.join(', ') : 'none'}
-            </div>
           </div>
         )}
 

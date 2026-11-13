@@ -148,8 +148,7 @@ class Task:
         self.termination = termination
         self.goal = goal
         self.actors = actors
-        self.needs = ''
-        self.result = ''
+        self.outcome = ''   # how it ended: satisfied, timeout or unfinished (the task_end trace values)
         self.acts = []
         self.completion_statement = ''
         self.progress = 0
@@ -183,7 +182,7 @@ class Act:
     _id_counter = 0
     _instances = WeakValueDictionary()  # id -> instance mapping that won't prevent garbage collection
     
-    def __init__(self, mode, action, actors, reason='', duration=1, source=None, target=None, result=''):
+    def __init__(self, mode, action, actors, reason='', duration=1, source=None, target=None):
         Act._id_counter += 1
         self.id = f"a{Act._id_counter}"
         Act._instances[self.id] = self
@@ -194,14 +193,13 @@ class Act:
         self.duration = parse_duration(duration)
         self.source = source  # a task
         self.target = target  # an actor
-        self.result = result
 
     @classmethod
     def get_by_id(cls, id: str):
         return cls._instances.get(id)
 
     def to_string(self):
-        return f'Act t{self.id} {self.mode}: {self.action}; reason: {self.reason}; result: {self.result}'
+        return f'Act t{self.id} {self.mode}: {self.action}; reason: {self.reason}'
 
 class Autonomy:
     def __init__(self, act=True, scene=True, signal=True, goal=True, task=True, action=True):

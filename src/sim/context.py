@@ -1460,34 +1460,6 @@ End your response with:
         return self.widget_refs.get(entity)
 
 
-    def format_tasks(self, tasks, labels):
-        task_list = []
-        for task, label in zip(tasks, labels):
-            task_text = f'{label} - {hash_utils.find("name", task)} ({hash_utils.find("description", task)}), {hash_utils.find("reason", task)}; ' 
-            task_dscp= task_text + f' Needs: {hash_utils.find("needs", task)}; committed: {hash_utils.find("committed", task)}'
-            task_actor_names = hash_utils.find('actors', task).split(',')
-            task_memories = set()  
-            for actor_name in task_actor_names:
-                actor, actor_name = self.resolve_character(actor_name.strip())
-                if actor is None:
-                    print(f'\n** Context format_tasks: Actor {actor_name.strip()} not found**')
-                    continue
-                else:
-                    memories = actor.memory_retrieval.get_by_text(
-                        memory=actor.structured_memory,
-                        search_text=task_text,
-                        threshold=0.1,
-                        max_results=5
-                    )
-                # More explicit memory text collection
-                for memory in memories:
-                    task_memories.add(memory.to_string())  # Add each memory text individually
-
-            task_memories = '\n\t'.join(task_memories)
-            task_list.append(task_dscp + '\n\t' + task_memories)
-        return '\n\n'.join(task_list)
-    
-
     def map_actor(self, actor):
         mapped_actor = f"""<actor>
     <name>{actor.name}</name>
