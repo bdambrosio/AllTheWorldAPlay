@@ -192,14 +192,20 @@ REASONING_GROUPS = {
 REASONING_TOKENS = 3000
 _reasoning: dict = {}
 
-# Lines are always written thinking first, on every model that can think (Bruce, 2026-11-13: there
-# is no reason ever to write lines with reasoning off). Lines: the acts and what is said, a
-# bystander cutting in, a line refined or rewritten. The effort is the server's: Qwen under vLLM
-# medium, GLM on Fireworks (and a local GLM, whose template knows low and high) high, Claude
-# Haiku medium. set_reasoning still overrides a call by tag.
-LINE_TAGS = frozenset(('Character.generate_acts', 'generate_dialog_turn', 'bystander_cut_in', 'refine_say_act',
-                       'record.resay', 'record.redo'))
-LINE_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
+# Every call thinks first, on every model that can think, except the simple mechanical ones below
+# (Bruce, 2026-11-13: the play, its acts and scenes, the actors' lines, the characters' state and
+# its updates, the world's judgements all reason; only mechanical extraction and formatting does
+# not). The effort is the server's: Qwen under vLLM medium, GLM on Fireworks (and a local GLM,
+# whose template knows low and high) high, Claude Haiku medium. A mechanical call runs with
+# thinking off where the model allows it (GLM is thinking-only: 'low'). set_reasoning still
+# overrides a call by tag; a caller that sets its own effort turns this off (LLM.auto_reasoning).
+MECHANICAL_TAGS = frozenset((
+    'reference_dscp', 'looks', 'image_description', 'voice_traits', 'voice_card', 'extract_style',   # descriptions to reuse
+    'relationship_style', 'scene_style', 'perceptual_input',            # labels: a speech style, a sense
+    'Agh.say_target', 'ResourceReferenceManager.resolve_reference_with_llm', 'Context.extract_simulation_time',
+    'repair_json', 'repair_xml', 'repetitive',                          # format repair, a likeness test
+    'NarrativeStaleness.action_similarity', 'NarrativeStaleness.extract_dialog_topics', 'NarrativeStaleness.detect_discoveries'))
+THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
 
 
 # A line put at the head of every prompt of the play in progress: what no call may be left
@@ -317,7 +323,8 @@ class LLM():
         if self.server_name == 'haiku':
             import anthropic
             self.model = model_name or HAIKU_MODEL
-            self.effort = os.environ.get('ATWAP_EFFORT', 'medium').strip().lower()
+            # the effort of a mechanical call (MECHANICAL_TAGS); every other call thinks at THINK_EFFORT
+            self.effort = os.environ.get('ATWAP_EFFORT', 'off').strip().lower()
             if self.effort not in HAIKU_EFFORTS:
                 raise ValueError(f"ATWAP_EFFORT '{self.effort}' is not one of {', '.join(HAIKU_EFFORTS)}")
             key = os.environ.get('ANTHROPIC_API_KEY') or os.environ.get('CLAUDE_API_KEY')
@@ -561,7 +568,8 @@ class LLM():
         start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
-        options.reasoning = _reasoning.get(tag) or (LINE_EFFORT.get(self.server_name) if tag in LINE_TAGS else None)
+        options.reasoning = _reasoning.get(tag) or (THINK_EFFORT.get(self.server_name)
+                                                    if getattr(self, 'auto_reasoning', True) and tag not in MECHANICAL_TAGS else None)
         if tag in _routed() and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
             plan.owner = self.owner
             response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,

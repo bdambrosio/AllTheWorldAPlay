@@ -199,6 +199,7 @@ class Judge:
             return self._ask_claude(system, user, effort)
         if hasattr(self.llm, 'reasoning_effort'):
             self.llm.reasoning_effort = effort
+            self.llm.auto_reasoning = False   # the judge's effort, not the play's default
         if temp is None:
             temp = 0.7 if self.name == 'local' else 1.0
         return self.llm.ask({}, [SystemMessage(content=system), UserMessage(content=user.replace(CACHE_BREAK, '\n'))],
