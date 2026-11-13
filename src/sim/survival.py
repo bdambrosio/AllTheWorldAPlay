@@ -148,6 +148,11 @@ class Body:
         parts += sorted(self.flags)
         return '; '.join(parts)
 
+    def condition(self):
+        """How the body is, in words, without what it carries: 'very thirsty; tired; in shelter'."""
+        return '; '.join([_word(self.cfg, n, v) for n, v in self.levels.items()]
+                         + (['in shelter'] if self.sheltered else []) + sorted(self.flags))
+
     def visible(self):
         """The body as another person sees it: hurt or not, what is carried, sheltered or not.
         Thirst, hunger and tiredness are the body's own to know."""

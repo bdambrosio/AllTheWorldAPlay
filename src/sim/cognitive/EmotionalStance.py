@@ -100,7 +100,7 @@ class EmotionalStance:
         if not ablation.enabled('stance'):
             return EmotionalStance()
         seen = EmotionalStance._seen(character)
-        key = hash(tuple(sorted(seen.items())))
+        key = EmotionalStance._key(character)
         cached = getattr(character, '_stance_cache', None)
         if cached and cached[0] == key:
             return cached[1]
@@ -110,6 +110,16 @@ class EmotionalStance:
         trace.event('stance', character=character.name, arousal=stance.arousal.value,
                     tone=stance.tone.value, orientation=stance.orientation.value)
         return stance
+
+    @staticmethod
+    def _key(character):
+        """When the stance is read again: the description changed, the body's condition changed
+        (not what it carries), or a drive moved between quiet, present and pressing. (It was read
+        again whenever any of its inputs changed, and a drive's latest notice changes nearly every
+        act: 46 readings in three scenes, 127 in a play.)"""
+        body = getattr(character, 'body', None)
+        return hash((character.character, body.condition() if body is not None else '',
+                     tuple((d.text, d.state) for d in (getattr(character, 'drives', None) or []))))
 
     @staticmethod
     def _seen(character):
