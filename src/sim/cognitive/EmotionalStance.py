@@ -113,13 +113,19 @@ class EmotionalStance:
 
     @staticmethod
     def _key(character):
-        """When the stance is read again: the description changed, the body's condition changed
-        (not what it carries), or a drive moved between quiet, present and pressing. (It was read
+        """When the stance is read again: the description changed, the character was hurt or
+        healed, or a drive moved between quiet, present and pressing. (It was read
         again whenever any of its inputs changed, and a drive's latest notice changes nearly every
         act: 46 readings in three scenes, 127 in a play.)"""
         body = getattr(character, 'body', None)
-        return hash((character.character, body.condition() if body is not None else '',
-                     tuple((d.text, d.state) for d in (getattr(character, 'drives', None) or []))))
+        hurt = ''
+        if body is not None:
+            from sim import survival
+            harm = survival._harm(body.cfg)['name']
+            hurt = survival._word(body.cfg, harm, body.levels.get(harm, 0.0))
+        # harm and the drives, not every need word: thirst and hunger words change by the hour,
+        # and a pressing need already shows as a pressing drive (90 and 105 readings in two plays)
+        return hash((character.character, hurt, tuple((d.text, d.state) for d in (getattr(character, 'drives', None) or []))))
 
     @staticmethod
     def _seen(character):

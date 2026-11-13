@@ -1166,6 +1166,10 @@ End response with:
         if map.Direction.from_string(where):
             return ''   # a bare compass direction leads nowhere: a walk goes to a place or a person
         resource, _ = self.resourceRefManager.resolve_reference_with_llm(where)
+        # the way and then the place ('Trail toward the hut'): the place is where the walk goes
+        tail = re.split(r'\b(?:towards?|to|for)\b', where, flags=re.I)[-1].strip()
+        if not resource and tail and tail != where:
+            resource, _ = self.resourceRefManager.resolve_reference_with_llm(tail)
         if resource:
             return stage.walk(self, tuple(resource['location']), resource['name'], alone)
         return None
@@ -1232,7 +1236,7 @@ End response with:
                 logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
             if leaving and line is not None:
                 line = re.sub(r'^walks to ', 'leaves for ', line) if line else 'leaves.'
-                self._leave_with(act)
+                self._leave_with(act, told=bool(line))   # the line is recorded just below
             if line == '':
                 pass   # already there: nothing to tell
             elif line:
@@ -1245,7 +1249,8 @@ End response with:
                 # in the actor's own words ('move to ' was put in front of them: 'move to Start
                 # walking Northwest towards the spring' was a line of the play)
                 act_mode = 'Do'
-                act.action = act_arg  # Context.do reads act.action
+                # a deed, not a label: 'Trail toward the hut.' was a line of the play
+                act.action = act_arg if re.match(r'^[a-z]', act_arg or '') else f"heads {act_arg[:1].lower()}{act_arg[1:]}"   # Context.do reads act.action
 
         # Handle world interaction
         if act_mode == 'Do':
@@ -1305,7 +1310,7 @@ End response with:
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
             if leaving and not self.attempt_only:
-                stage.leave(self)   # the deed has told it
+                stage.leave(self, told=True)   # the deed has told it (its event follows)
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             self.context.add_event(f"{self.name} {'tries: ' if self.attempt_only else ''}{deed}"
@@ -1396,7 +1401,7 @@ End response with:
                 gone = 'leaves.' if not party else f"leaves with {', '.join(c.name for c in party)}."
                 self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
                 self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
-                self._leave_with(act)
+                self._leave_with(act, told=True)
                 target = None
             elif target is not None and isinstance(target, Character) and stage.off_stage(target):
                 target = None   # said to someone who has gone: nobody hears it
@@ -3430,12 +3435,13 @@ End your response with:
         party = [c for c in here if c.name.lower() in names]
         return party or 'alone'
 
-    def _leave_with(self, act):
-        """Leave the scene, and the ones going along leave with it."""
+    def _leave_with(self, act, told=False):
+        """Leave the scene, and the ones going along leave with it. told: the departure, with
+        who went along, is already in the scene's record."""
         party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
-        stage.leave(self, party)
+        stage.leave(self, party, told=told)
         for other in party:
-            if stage.leave(other, [self] + party):
+            if stage.leave(other, [self] + party, told=told):
                 trace.event('leaves_with', character=other.name, led_by=self.name)
 
     def does_not_know(self):

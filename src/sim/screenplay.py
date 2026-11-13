@@ -116,11 +116,17 @@ class Screenplay:
         return '\n\n'.join(f"Act {a.number}, '{a.title}': {a.summary}" for a in self.performed())
 
     # ----------------------------------------------------------------- the clues
-    def clue_note(self):
-        """The clues and where they lie, for whoever writes a plan."""
+    def clue_note(self, now=None):
+        """The clues and where each is, for whoever writes a plan. now(clue): where it is at this
+        point of the play in a few words ('held by Samantha'), or '' when it lies where it was
+        placed. (Each was given as lying where it was planted for the whole play: a set-up laid
+        the wristwatch at the spring again while Samantha held it.)"""
         if not self.clues:
             return ''
-        return ("Things that are really there to be found, and what each touches on:\n"
-                + '\n'.join(f"- {c['thing']}, at {c['place']}: {c['touches']}" for c in self.clues)
+        def where(c):
+            moved = now(c) if now else ''
+            return moved or f"at {c['place']}" + (', not yet found' if c.get('hidden') else '')
+        return ("Things that are really there to be found, where each is now, and what each touches on:\n"
+                + '\n'.join(f"- {c['thing']}, {where(c)}: {c['touches']}" for c in self.clues)
                 + "\nA scene may lead a character to one and turn on its being found. "
                   "None of them answers the open question; nothing else is hidden in this world.")

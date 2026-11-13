@@ -60,10 +60,13 @@ def off_stage(character):
     return scene is not None and getattr(character, 'left_scene', None) is scene
 
 
-def leave(character, party=()):
+def leave(character, party=(), told=False):
     """`character` leaves the scene being played. The others are told; talk with it ends.
     Those of `party`, who are going with it, are not told it has left them (Kidd was told
     'Lanya has left.' as they walked out together, and reasoned from there that he was alone).
+    told: the deed that takes it out is already in the scene's record ('Samantha leaves with
+    Joe.'); the exit is not recorded again (wrap-ups read 'Samantha leaves with Joe. Samantha
+    leaves. Joe leaves.', and the wrap-up is what each character remembers of the scene).
     Returns False when there is no scene to leave or it has left already."""
     context = character.context
     scene = getattr(context, 'current_scene', None)
@@ -73,6 +76,11 @@ def leave(character, party=()):
                  if c is not character and getattr(c, 'current_scene', None) is scene]
     character.left_scene = scene
     character.current_scene = None   # everything that asks 'in this scene?' now answers no
+    exit_ = {'time': context.simulation_time.strftime('%H:%M'), 'who': character.name,
+             'with': [c.name for c in party if c is not character]}
+    for record in ('scene_exits', 'act_exits'):   # what the outcome check reads of who went
+        if isinstance(getattr(context, record, None), list):
+            getattr(context, record).append(exit_)
     for other in remaining:
         if other not in party:
             other.add_perceptual_input(f'{character.name} has left.', percept=False, mode='visual')
@@ -84,7 +92,8 @@ def leave(character, party=()):
                 a._pop_dialog_task(b)   # and the task of talking with it
             except Exception:
                 pass
-    context.add_event(f'{character.name} leaves')
+    if not told:
+        context.add_event(f'{character.name} leaves')
     trace.event('exit', character=character.name, left_behind=[c.name for c in remaining])
     return True
 
@@ -365,7 +374,7 @@ def whereabouts(character):
         if other is character or getattr(other, 'current_scene', None) is not scene or getattr(other, 'mapAgent', None) is None:
             continue
         d = _distance(here(character), here(other))
-        minutes = round(d * (survival.config(character.context) or {}).get('tile_minutes', 2) * 1.5)
+        minutes = survival.walk_minutes(character.context, d)
         out.append(f'{other.name} is beside you' if d <= AT_PLACE_TILES
                    else f'{other.name} is about {minutes} minutes\' walk {_direction(here(character), here(other))} of you, out of reach until one of you walks over')
     return '; '.join(out)
@@ -394,6 +403,14 @@ def stage_line(name, deed, result):
     return ' '.join(([deed + '.'] if deed else []) + kept[:2]).strip()
 
 
+NUMBER_WORDS = ('one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'a few', 'several')
+
+
+def _far(count):
+    n = int(count) if count.isdigit() else (NUMBER_WORDS.index(count.lower()) + 1 if count.lower() in NUMBER_WORDS[:10] else 4)
+    return 'a few paces' if n <= 1 else 'a short way' if n <= 4 else 'some way' if n <= 10 else 'a long way'
+
+
 def plain(context, text):
     """Audience text in the words of the world: the engine's numbered place names become ordinary
     ones ('Fallen_Branch9' -> 'the fallen branch', 'Berries15' -> 'the berries') and tile counts
@@ -409,6 +426,9 @@ def plain(context, text):
         return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
+    # a count of tiles before punctuation or spelled out ('visibility to 32 tiles,', 'three tiles
+    # off'): the map's unit has no meaning on the page; how far it is in plain words
+    text = re.sub(rf"\b(\d+|{'|'.join(NUMBER_WORDS)}) tiles?\b", lambda m: _far(m.group(1)), text, flags=re.I)
     text = re.sub(r'\b([Tt]he) (\w+ )?the\b', lambda m: f"{m.group(1)} {m.group(2) or ''}".rstrip(), text)   # 'the dense the thicket'
     return re.sub(r'(^\s*[\'"]?|[.!?]\s+)the ', lambda m: m.group(1) + 'The ', text)
 

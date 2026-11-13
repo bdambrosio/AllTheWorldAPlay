@@ -145,8 +145,10 @@ class Context():
         # dialog and act prompts so characters respond to what actually happens (add_event)
         self.recent_events = collections.deque(maxlen=16)
         self.scene_events = []   # this scene's events (scene wrap-up, outcome check)
+        self.scene_exits = []    # who left this scene, and with whom (stage.leave): the outcome check reads it
         self.act_scene_wrapups = []
         self.act_events = []     # this act's events
+        self.act_exits = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
         self.embedding_model = None
@@ -1660,7 +1662,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
                   'strangers': self.strangers_note(),
-                  'clues': self.screenplay.clue_note(),
+                  'clues': self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -1780,6 +1782,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
+        self.scene_exits = []
         self._scene_transcript_start = len(self.transcript)
 
         #construct a list of characters in the scene in the order in which they appear
@@ -2072,6 +2075,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             return
         print(f'Running act: {act["act_title"]}')
         self.act_events = []
+        self.act_exits = []
         self._act_transcript_start = len(self.transcript)
         self.act_scene_wrapups = []
         # scenes are numbered in the order they are played, through the play (a plan's own
@@ -2561,7 +2565,7 @@ Respond with one line for each thing, or the single line #none:
                     + (f"End on this, or something as quiet: {frame['last']}" if frame.get('last') else ''))
         return (f"This episode is to settle: {frame['settles']} Each act should bring that nearer or put it in doubt. "
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
-                + (f"\n{self.screenplay.clue_note()}" if self.screenplay.clues else ''))
+                + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
@@ -2643,11 +2647,18 @@ Respond with one line for each thing, or the single line #none:
 {{$bodies}}
 </bodies_now>
 
+<who_left_and_where_they_are>
+{{$who_is_where}}
+</who_left_and_where_they_are>
+
 Rules:
 - Take the planned ending apart into its separate claims, and for each say whether the record shows it happened. A plan is not evidence: what was planned, intended, feared or only spoken of as a possibility did not happen.
 - An animal, a person or a danger did not appear unless the record shows it appearing. Nobody is hurt, healed, fed, armed or dead unless what happened or the bodies say so.
 - Then add what the record shows that matters and the plan did not foresee: a choice made, a thing handed over or refused, a parting, an injury, something admitted.
 - A line written between dots (...like this...) is a private thought: it shows what someone thinks, not that anything happened.
+- A claim in parts happened only if every part did: "she leaves at dawn, he stays behind" did not happen if they left together, or if nobody left.
+- What someone says shows only that it was said. "I found it in the woods" is an outcome as "she says she found it in the woods"; where she found it is what happened shows. Pretending (a feigned limp) does not undo what the bodies show.
+- Who left, who went together and who stayed are read from who_left_and_where_they_are, not from the lines.
 - Each outcome is one plain statement of one thing, ten words or so. Never "X or Y". For each, quote a few words of the record that show it (fifteen words at most); with no such words, it did not happen.
 - Six outcomes at most: the claims of the planned ending first, then only what changed how things stand. Not every deed is an outcome.
 
@@ -2661,7 +2672,11 @@ End your response with: </end>""")]
             post_state = act.get('act_post_state', '')
             start = getattr(self, '_act_transcript_start', 0)
         cast = [c for c in self.actors + self.extras if getattr(c, 'body', None) is not None]
-        reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given',
+        exits = getattr(self, 'scene_exits' if scene else 'act_exits', [])
+        placed = [f"{c.name}: {stage.where(self, stage.here(c))}" for c in cast if getattr(c, 'mapAgent', None) is not None]
+        who_is_where = '\n'.join([f"{e['time']} {e['who']} left" + (f" together with {', '.join(e['with'])}" if e['with'] else '')
+                                  for e in exits] or ['Nobody left.']) + '\nWhere each is now: ' + '; '.join(placed)
+        reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given', 'who_is_where': who_is_where,
                               'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
                               'lines': '\n'.join(str(l).strip() for l in self.transcript[start:] if str(l).strip())[-6000:] or 'nothing',
                               'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'},

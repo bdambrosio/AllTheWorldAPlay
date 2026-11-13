@@ -275,10 +275,10 @@ def admit(context, actor, claims, text, source, people=None, at=None):
             felt = who.body.levels.get(need, 0.0) >= survival.NEED_FELT
             if felt == fields[2].lower().startswith('worse'):
                 continue   # the body already shows it (a 'bruised thigh' on a bruised body made it 'badly hurt')
-            if source == 'director':
-                fact = survival.change_body(who, fields[1].lower(), fields[2].lower().startswith('worse'), fields[3].lower())
-            else:
-                why = f"{who.name} is {who.body.summary(public=True)}, and nothing else."
+            # a plan does not decide bodies either (survival.PLAN_RULE): set-ups that had someone
+            # 'still desperately thirsty despite this morning's drink' made it so, and the scene
+            # went on another drink
+            why = f"{who.name} is {who.body.summary(public=True)}, and nothing else."
         if fact:
             facts.append(fact)
         else:

@@ -544,7 +544,7 @@ def offered_actions(character, part='all'):
                 character.resource_models.add_resource_model(rid)   # standing at a place is having seen it
             out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})", False))
         else:
-            out.append((1 + bool(missing), f"{action['name']}@{rid} ({d} tiles {_direction(_here(character), res['location'])}; "
+            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {walk_minutes(character.context, d)} minutes' walk {_direction(_here(character), res['location'])}; "
                                            f"first Move: {rid}{'; ' + missing if missing else ''})", _unseen(character, rid)))
     # what can be done now comes first; what needs a walk or something not held is cut first
     # (the list was cut at 12 in config order, which dropped every action with a person: a
@@ -646,7 +646,13 @@ def _chosen(context, character, label):
             return ('action', action, None, None)
         res = context.map.resource_registry.get(ref) if ref else None
         if res is not None and str(res.get('type')) in types:
-            return ('action', action, (ref, res, _distance(_here(character), res['location'])), None)
+            d = _distance(_here(character), res['location'])
+            at_hand = _nearest(character, types)
+            if d > 1 and at_hand is not None and at_hand[2] <= 1:
+                # a deed is done where the doer stands: searching under the cot in the hut was
+                # resolved to a cave out of sight, and 'the cave searched carefully' was told
+                return ('action', action, at_hand, None)
+            return ('action', action, (ref, res, d), None)
         return ('action', action, _nearest(character, types, mentioned=ref.lower() if ref else None), None)
     return None
 
@@ -688,6 +694,28 @@ def place_kinds(context):
             if context.map.get_resource_type(kind) is not None:
                 kinds.setdefault(kind, []).append(action['name'])
     return kinds
+
+
+def whereabouts_of(context, name):
+    """Where a thing is now, in a few words: 'held by Samantha', 'lying at Spring1', or '' when
+    the world does not hold it. Matched as record.admit matches a thing ('watch', 'wristwatch')."""
+    name = re.sub(r'^(a|an|the|some)\s+', '', (name or '').strip().lower())[:40]   # as add_thing names it
+    same = lambda held: held.lower() == name or held.lower().endswith(' ' + name) or name.endswith(' ' + held.lower())
+    for person in list(context.actors) + list(getattr(context, 'extras', [])):
+        body = getattr(person, 'body', None)
+        if body is not None and any(same(i) for i in body.inventory):
+            return f'held by {person.name}'
+    for prop in getattr(context, 'props', []):
+        if same(prop['name']):
+            near = _nearest_resource_id(context, prop['at'])
+            return f"lying at {near}" + (', not yet found' if prop.get('hidden') else '') if near else 'lying out of sight'
+    return ''
+
+
+def _nearest_resource_id(context, xy):
+    best = min(((_distance(xy, res['location']), rid) for rid, res in context.map.resource_registry.items()
+                if res.get('location')), default=None)
+    return best[1] if best else ''
 
 
 def lying(context, xy, hidden=False):
@@ -1202,6 +1230,13 @@ def _eligible(character, action):
     return min(found, key=lambda f: f[:2]) if found else None
 
 
+def walk_minutes(context, tiles):
+    """About how long a walk of `tiles` takes, for what characters are told (stage.whereabouts says
+    it the same way). Actors were told '3 tiles Southeast' and guessed: the spring was 'three
+    minutes' away, then 'nine', then a fifteen-minute walk."""
+    return max(1, round(tiles * (config(context) or {}).get('tile_minutes', 2) * 1.5))
+
+
 def travel(character, x, y, advance_clock=True):
     """Walk a character to (x, y); returns the minutes it takes (distance x terrain cost) and,
     unless told not to (several characters walking together), moves the clock on by them."""
@@ -1273,7 +1308,10 @@ def active_threat_for(character):
 
 def threat_position(character, threat):
     d = _distance(_here(character), threat['location'])
-    return 'right here' if d == 0 else f"{d} tiles {_direction(_here(character), threat['location'])}"
+    # in words a person would use: '3 tiles Northeast' went into set-ups ('the boar stands three
+    # tiles off') and from there onto the page
+    far = 'close by' if d <= 2 else 'a short way off' if d <= 6 else 'some way off'
+    return 'right here' if d == 0 else f"{far} to the {_direction(_here(character), threat['location']).lower()}"
 
 
 def _where(anchor, threat):

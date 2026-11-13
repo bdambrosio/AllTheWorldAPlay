@@ -97,6 +97,7 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
 
 
 RECENT_CALLS = 30
+END_MARKER = re.compile(r'</?\s*end\s*/?>', re.I)   # every spelling of the prompts' end marker
 CUT_OFF = ('length', 'max_tokens')   # a reply's finish_reason when it ran out of budget (OpenAI-style, Anthropic)
 
 # A local server that crashes restarts itself (the vLLM container: ~2-3 minutes to reload the
@@ -557,6 +558,9 @@ class LLM():
                     eos_index = response.rfind(stop)
                     if eos_index > -1:
                         response = response[:eos_index]
+            # an end marker in another spelling than the stop asked for ('<end>', '<end/>'):
+            # 'nothing<end>' was a line of the play
+            response = END_MARKER.split(response)[0]
             if log:
                 logger.info(f'Response:\n{response}\n')
             self._record_call(tag, start, response)
