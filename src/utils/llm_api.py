@@ -236,7 +236,41 @@ PLAN_TAGS = frozenset((
     'reground_scene', 'plan_serves_drives',
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
     'check_post_state_ambiguity'))   # what a scene or act came to: the acting model passed an ending that was not played
+# More of the play's calls can go to the planner, by group, so that the acting model writes the
+# lines and nothing else (ATWAP_PLAN_GROUPS, default 'world,character' whenever there is a
+# planner; 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it
+# had planted: the narration of deeds, the checks against the world and the characters' own
+# scene goals and task plans were Qwen's, though the plan of the play was GLM's.
+PLAN_GROUPS = {
+    # keeping the world: what a deed comes to, checks of deeds and speech against the record,
+    # whether a task is done, what the act came to
+    'world': ('Context.do', 'Context.look', 'do_consequences', 'record.check', 'record.speech', 'record.admit',
+              'record.redo', 'record.resay', 'survival.choose_action', 'test_termination', 'completion_statement',
+              'Context.identify_state_changes', 'Context.world_updates_from_act_consequences',
+              'Context.character_updates_from_act_consequences', 'coda_summary', 'equip_cast'),
+    # a character's planning: its scene goal, its task plan, the review of a task, a choice,
+    # what a talk committed it to
+    'character': ('instantiate_narrative_goal', 'Character.generate_task_plan', 'Character.generate_goals', 'review_task',
+                  'NarrativeCharacter.decide', 'extract_commitments_following_conversation', 'evaluate_commitment_significance'),
+}
+
+
+def plan_tags():
+    """The calls the planner writes: PLAN_TAGS and the groups ATWAP_PLAN_GROUPS names."""
+    spec = os.environ.get('ATWAP_PLAN_GROUPS', 'world,character').strip().lower()
+    groups = [] if spec in ('', 'none') else [g.strip() for g in spec.split(',') if g.strip()]
+    unknown = [g for g in groups if g not in PLAN_GROUPS]
+    if unknown:
+        raise ValueError(f"ATWAP_PLAN_GROUPS: no group {', '.join(unknown)} (groups: {', '.join(PLAN_GROUPS)})")
+    return PLAN_TAGS | frozenset(t for g in groups for t in PLAN_GROUPS[g])
+
+
 _planner = False   # False: not looked up yet; None: no planner; else the planner's LLM
+
+
+@lru_cache(maxsize=1)
+def _routed():
+    return plan_tags()
 
 
 def planner():
@@ -512,7 +546,7 @@ class LLM():
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
         options.reasoning = _reasoning.get(tag)
-        if tag in PLAN_TAGS and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
+        if tag in _routed() and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
             plan.owner = self.owner
             response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
                                 top_p=top_p, stops=stops, stop_on_json=stop_on_json, model=model, log=log, trace=trace)
