@@ -44,6 +44,13 @@ FIREWORKS_HEADROOM = 512
 # the time is nearly all thinking.
 HAIKU_MODEL = 'claude-haiku-5-5'
 HAIKU_EFFORTS = ('off', 'low', 'medium', 'high')
+# The engine's max_tokens were set for other tokenizers and, on Fireworks, were never met (512
+# of headroom there). This model spends about 1.4 tokens where GLM spends one: on the first
+# play 16 of 20 relationship notes of 'up to 10 words' were cut off at 24 tokens ('still wat'),
+# and every completion statement and account of recent events. The prompt says how long an
+# answer is; the budget is only a stop on a runaway.
+def haiku_budget(max_tokens):
+    return 2 * max_tokens + 64
 IMAGE_URL = os.environ.get('IMAGE_URL', 'http://127.0.0.1:5008/generate_image')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -383,7 +390,8 @@ class LLM():
         if not turns:
             turns, system = [{'role': 'user', 'content': system}], ''
         effort = getattr(options, 'reasoning', None) or self.effort
-        request = {'model': self.model, 'messages': turns, 'max_tokens': options.max_tokens}
+        budget = haiku_budget(options.max_tokens)
+        request = {'model': self.model, 'messages': turns, 'max_tokens': budget}
         if system:
             request['system'] = system
         stops = [s for s in (options.stops or []) if s and s.strip()]
@@ -393,7 +401,7 @@ class LLM():
             request['thinking'] = {'type': 'disabled'}
         else:   # the thinking is spent from the same budget as the answer
             request.update(thinking={'type': 'adaptive'}, output_config={'effort': effort},
-                           max_tokens=options.max_tokens + REASONING_TOKENS)
+                           max_tokens=budget + REASONING_TOKENS)
         reply = self.anthropic_client.messages.create(**request)
         usage = reply.usage
         cached = getattr(usage, 'cache_read_input_tokens', 0) or 0
