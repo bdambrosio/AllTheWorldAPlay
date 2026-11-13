@@ -192,6 +192,15 @@ REASONING_GROUPS = {
 REASONING_TOKENS = 3000
 _reasoning: dict = {}
 
+# Lines are always written thinking first, on every model that can think (Bruce, 2026-11-13: there
+# is no reason ever to write lines with reasoning off). Lines: the acts and what is said, a
+# bystander cutting in, a line refined or rewritten. The effort is the server's: Qwen under vLLM
+# medium, GLM on Fireworks (and a local GLM, whose template knows low and high) high, Claude
+# Haiku medium. set_reasoning still overrides a call by tag.
+LINE_TAGS = frozenset(('Character.generate_acts', 'generate_dialog_turn', 'bystander_cut_in', 'refine_say_act',
+                       'record.resay', 'record.redo'))
+LINE_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
+
 
 # A line put at the head of every prompt of the play in progress: what no call may be left
 # without. The engine has some forty kinds of call, each with its own prompt; the people of the
@@ -393,10 +402,13 @@ class LLM():
             if options.stops:   # TabbyAPI fails on "stop": null
                 body["stop"] = options.stops
             effort = getattr(options, 'reasoning', None)
-            if effort:   # set_reasoning: this call thinks first, on a budget of its own
+            if effort:   # a line, or set_reasoning: this call thinks first, on a budget of its own
                 del body["chat_template_kwargs"]
                 body["reasoning_effort"] = effort
                 body["max_tokens"] = options.max_tokens + REASONING_TOKENS
+                # vLLM matches a stop string inside the thinking too ('End with </end>' read back
+                # while thinking ended the reply before a word of it): stops are cut here (LLM.ask)
+                body.pop("stop", None)
             if getattr(self, 'thinks', False):
                 self._as_thinker(body, effort)
         else:
@@ -412,7 +424,8 @@ class LLM():
             self._last_usage = (reply.get('usage') or {}, reply['choices'][0].get('finish_reason'))
         except (ValueError, KeyError, IndexError):
             return response.content.decode('utf-8')
-        if 'vllm' in self.server_name and not getattr(self, 'thinks', False) and (message.get('reasoning_content') or message.get('reasoning')):
+        if ('vllm' in self.server_name and not getattr(self, 'thinks', False) and not getattr(options, 'reasoning', None)
+                and (message.get('reasoning_content') or message.get('reasoning'))):   # it thought though asked not to
             # the served model thinks whatever it is asked: from now on it is asked as one that
             # does, and this call, which may have stopped inside the thinking, is asked again
             self.thinks = True
@@ -484,9 +497,12 @@ class LLM():
             raise RuntimeError('FIREWORKS_PROJECT_KEY is not set (source ~/.config/secrets.env)')
         # the engine's budgets are for the answer alone (some are 10 or 20 tokens); this model
         # spends a few reasoning tokens from the same budget even at 'low', so it gets headroom
+        effort = getattr(options, 'reasoning', None) or getattr(self, 'reasoning_effort', 'low')
         body = {"model": self.model, "messages": messages, "temperature": options.temperature,
-                "top_p": options.top_p, "max_tokens": options.max_tokens + FIREWORKS_HEADROOM,
-                "stop": options.stops or None, "reasoning_effort": getattr(self, 'reasoning_effort', 'low')}
+                "top_p": options.top_p, "max_tokens": options.max_tokens + (REASONING_TOKENS if effort != 'low' else FIREWORKS_HEADROOM),
+                "stop": options.stops or None, "reasoning_effort": effort}
+        if effort != 'low':   # longer thinking reads back 'End with </end>', and a stop matched there ends the reply: cut here (LLM.ask)
+            body["stop"] = None
         delay = 2.0
         for attempt in range(retries):
             try:   # a connection that hung held the play for five minutes: give up sooner, try again
@@ -545,7 +561,7 @@ class LLM():
         start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
-        options.reasoning = _reasoning.get(tag)
+        options.reasoning = _reasoning.get(tag) or (LINE_EFFORT.get(self.server_name) if tag in LINE_TAGS else None)
         if tag in _routed() and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
             plan.owner = self.owner
             response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
