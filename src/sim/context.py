@@ -1647,7 +1647,7 @@ Rules:
 - The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
 - The world, not you, decides what happens to bodies and how a danger ends, and it decides when the scene is played. The set-up may bring a danger on; neither set-up, ending nor goals say that it strikes, whom it hurts, that it is driven off, or that anyone is wounded, healed or fed. Where the plan says so, keep what the scene is for and leave that out.
 - If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall), the set-up puts that thing in the scene and says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
-- The ending is the turn the scene should reach between the characters: something chosen, said, refused, admitted or found out, or how they now stand with each other. It is not an event of the body or of the danger.
+- The ending is the turn the scene should reach between the characters: something chosen, refused, admitted or found out, or how they now stand with each other, shown in what they do. Nobody announces a feeling or a choice: 'he says aloud that he stays' is not an ending; his staying is. It is not an event of the body or of the danger.
 - If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
@@ -2291,7 +2291,7 @@ Each **scene** object must have:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
  // OPTIONAL: 
  "task_budget": 3 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
  }
@@ -2457,7 +2457,7 @@ Respond with these lines only, one sentence each:
 </end>
 """)]
         places = stage.gazetteer(self) if survival.config(self) else ''
-        clue_rule = ("""- Clues are the one exception to inventing nothing. Name two or three small, ordinary things that will really lie in this world, each at one of the places listed below, that touch the open question without answering it: a second cup beside the first, a tally scratched on a wall, a torn page in a hand someone half knows. A clue makes the question sharper; it never says who, how or why. Choose places the characters can reach in this episode.
+        clue_rule = ("""- Clues are the one exception to inventing nothing. Name two or three small, ordinary things that will really lie in this world, each at one of the places listed below, that touch the open question without answering it. Draw them from this setting and these people's lives, so that they could belong to no other play. A clue makes the question sharper; it never says who, how or why. Choose places the characters can reach in this episode.
 
 <places>
 """ + places + """
@@ -3642,7 +3642,7 @@ Scene format is as follows:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
- "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
  }

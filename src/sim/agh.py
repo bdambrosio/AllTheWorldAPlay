@@ -2107,12 +2107,13 @@ Give first the act you would play now: the one that most directly does what the 
 In choosing each act (see format below), you can choose from these Modes:
 - Say - speak, to obtain or share information, to align, coordinate with, or manipulate others in service of your goals or drives; to reason jointly, or to establish or maintain a bond. 
     For example, if you want to build a shelter with Mirela, it might be effective to Say: 'Mirela, let's build a shelter.'
+    Anything your character speaks, reads, recites or sings aloud is a Say, and the action is the words themselves.
 - Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
     points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
 - Move - walk to a named place or person: give its name (a place listed under 'You could do here', such as Spring3, or an actor's name).
     The walk takes time and those with you come along, unless you say you go alone. A bare compass direction is not a Move.
 - Do - perform an act (other than move) to achieve physical consequences in the world or demonstrate to others your commitment to a goal or drive (whether real or performative). 
-    This is often appropriate when the task involves interacting physically with a resource or actor.
+    This is often appropriate when the task involves interacting physically with a resource or actor. A Do carries no words: what is said or read aloud is a Say.
 - Think - mental reasoning about the current situation wrt your state and the task.
     Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking. Thoughts are not revealed to others.
 
@@ -2136,14 +2137,14 @@ An act is:
 - Does NOT repeat, literally or substantively, a previous act by you in RecentHistory, unless it is a continuation of the same action.
 - Significantly advances the story or task at hand, and so may be deceptive or surprising to others.
 - Is stated in the appropriate person (voice):
-        If a thought (mode is 'Think') or speech (mode is 'Say'), is stated in the first person.
-        If an act in the world (mode is 'Do'), is stated in the third person.
+        Think and Say: in the first person, as your character thinks or says it.
+        Do and Look: in the third person, present tense, as the audience would see it: '{{$name}} hands her the cup', never 'Hand her the cup' or 'I hand her the cup'.
  
 Prioritize actions that lead to meaningful progress in the narrative.
 IMPORTANT: When evaluating a potential Act, the primary consideration is whether it can directly result in achievment of the task goal. 
 
 Dialog guidance: If speaking (mode is Say), then:
-- The specificAct must contain only the actual words to be spoken.
+- The action is only the words spoken.
 - Do not name what you and the other are to each other or what the moment means ("you're my anchor", "we're bound now"); ask, refuse, offer or tease, and let that show it.
 - Words do nothing physical: to eat, drink, take, give or go somewhere, choose a Do or a Move. Never report as done what has not been done.
 - If your character is deliberately saying something untrue about itself (a lie or a bluff, meant to deceive), end the line with the mark (lie); it will not be shown. Otherwise say nothing of what you hold, are doing, or your body's state that is not so.
@@ -2177,15 +2178,12 @@ Consider the previous act. E.G.:
                               
 Respond in hash-formatted text:
 
-#mode one of {{$modes}}, corresponding to whether the act is a physical act, speech, or reasoning. Note that Move can take either a direction or a resource name.
-#action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
+#mode one of {{$modes}}.
+#action for Say, only the words spoken (30 words at most); for Do or Look, what your character does, in the third person (20 words at most); for Move, the name of the place or person walked to; for Think, the thought.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
 #leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene.
 ##
-
-#NOTE#
-mode can only be one of {{$modes}}.
 
 ===Examples===
 
@@ -2195,7 +2193,7 @@ Actors: Annie, Madam
 
 Response:
 #mode Do
-#action Call the building management to discuss increased security measures for Annie and the household.
+#action Madam calls the building management to ask for tighter security for Annie and the household.
 #target building management
 #actors Annie, Madam
 #duration 10 minutes
@@ -2222,7 +2220,7 @@ Actors: Mirela
 
 Response:
 #mode Look
-#action look around for landmarks or signs of civilization
+#action Mirela looks around for landmarks or signs of people.
 #duration 1 minute
 #actors Mirela
 ##
@@ -2256,22 +2254,8 @@ Response:
 
 ===End Examples===
 
-Use the following hash-formatted text format for each act.
-Each act should be closed by a ## tag on a separate line.
-be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#mode Think, Say, Do, Look, or Move
-#action thoughts, words to say, direction to move, or physical action
-#duration expected duration of the action in minutes
-#target name of the actor you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, if applicable. Otherwise omit.
-#actors name(s) of the actor(s) of this act, comma separated.
-##
-
-Respond ONLY with the above hash-formatted text for each alternative act.
-Your name is {{$name}}, phrase the statement of specific action in your voice.
-If the mode is Say, the action should be the actual words to be spoken.
-    e.g. 'Maya, how do you feel about the letter from the city gallery?' rather than a description like 'ask Maya about the letter from the city gallery and how it's making her feel'. 
-Ensure you do not duplicate content of a previous specific act.
+Respond ONLY with the hash-formatted text above for each alternative act, each closed by ## on a line of its own.
+Your name is {{$name}}.
 
 Again, the task to translate into alternative acts is:
 <task>

@@ -405,7 +405,7 @@ Each **scene** object must have:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Laura doesnt love you', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+ "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
  // OPTIONAL: 
  "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or slightly higer for scenes with complex goals or interactions.
  }
@@ -433,7 +433,7 @@ Each **scene** object must have:
       "characters": { "Character 1": { "goal": "Goal 1" }, ... },
       "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
       "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I killed Joe', not 'there is a secret.'", 
-      "post_narrative": "Short prose (≤20 words) summarising end state and what emotional residue or new tension lingers." 
+      "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
       // OPTIONAL: 
       "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order or slightly higher for scenes with complex goals or interactions. 
     },
