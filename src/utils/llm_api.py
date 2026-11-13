@@ -96,6 +96,7 @@ def generate_image(llm=None, description='', size='512x512', filepath='test.png'
 
 
 RECENT_CALLS = 30
+CUT_OFF = ('length', 'max_tokens')   # a reply's finish_reason when it ran out of budget (OpenAI-style, Anthropic)
 
 # A local server that crashes restarts itself (the vLLM container: ~2-3 minutes to reload the
 # model). Calls made meanwhile wait for it instead of failing, which used to ruin the play.
@@ -493,6 +494,16 @@ class LLM():
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
             print(f'{tag}...', end='')
             response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
+            if isinstance(response, str) and (self._last_usage or (None, None))[1] in CUT_OFF:
+                # The answer ran into its budget and stops mid-sentence. Nothing downstream can
+                # tell (a relationship note ending 'still wat', a completion statement, the
+                # account of recent events were all stored as they came). It is recorded as cut
+                # off, and asked once more with room to finish.
+                self._record_call(tag, start, response)
+                start = time.time()
+                options.max_tokens = 2 * max_tokens + 200
+                print(f'{tag} cut off at {max_tokens} tokens, asked again...', end='')
+                response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
             elapsed = time.time() - start
             print(f'{elapsed:.2f}')
             tag = tag or 'default'

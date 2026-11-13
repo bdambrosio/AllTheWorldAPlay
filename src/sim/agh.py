@@ -116,7 +116,7 @@ class Character:
         else:
             self.reference_dscp = self.llm.ask({}, [SystemMessage(content='generate a concise single sentence description for this character useful for reference resolution. Respond only with the description. End your response with: </end>'), 
                                                     UserMessage(content=f"""character name {self.name}\ncharacter description:\n{character_description}\n\nEnd your response with: </end>""")
-        ], tag='reference_dscp', max_tokens=40, stops=["</end>"])
+        ], tag='reference_dscp', max_tokens=90, stops=["</end>"])
         if self.reference_dscp:
             self.reference_dscp = self.reference_dscp.strip()
         else:
@@ -700,7 +700,7 @@ End response with:
 </end>
 """)]
         response = self.llm.ask({"name":self.name, "act_arg":act_arg, "reason":reason, "consequences":consequences}, 
-                                prompt, tag='do_consequences', temp=0.2, stops=['</end>'], max_tokens=50)
+                                prompt, tag='do_consequences', temp=0.2, stops=['</end>'], max_tokens=100)
         return response
 
     def look(self, act_mode=None, act_arg=None, reason=None):
@@ -870,7 +870,7 @@ adjective, adjective, adjective
             recent_memories = self.structured_memory.get_recent(8)
             recent_memories = '\n'.join(memory.to_string() for memory in recent_memories)
             #print("Char generate image description", end=' ')
-            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=10)
+            response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=24)
             # how the character looks, how it feels, where it is (sim/stage.py). It was the first
             # two sentences of the description, then 'Background:' and the opening of the Situation
             # cut off at 96 characters.
@@ -1970,7 +1970,7 @@ End your response with:
                                 "history": self.format_history_for_UI(),
                                 "relationships": self.narrative.get_summary('medium'),
                                 "memories": memory_text
-                                 }, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=80)
+                                 }, prompt, tag='completion_statement', temp=0.5, stops=['</end>'], max_tokens=120)
         return response
 
     DONE = """You keep the record of an improvised play. {{$name}} set out to do a thing. Say whether it has been done, from the record below and from nothing else.

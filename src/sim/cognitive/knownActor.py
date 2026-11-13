@@ -233,7 +233,7 @@ End with:
 </end>
 """)]
 
-        relation_update = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=24, stops=["</end>"])
+        relation_update = self.owner.llm.ask({}, prompt, tag='KnownActor.update_relationship', max_tokens=40, stops=["</end>"])
         if relation_update and relation_update.strip() != '':
             self._add_relationship_note(relation_update.strip())
             self.recent_relationship_update = True

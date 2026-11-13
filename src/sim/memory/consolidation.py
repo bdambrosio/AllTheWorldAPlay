@@ -383,7 +383,7 @@ End with:
 """)]
 
         if not relationsOnly:
-            new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events', max_tokens=240)
+            new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events', max_tokens=340)
             if new_events:
                 narrative.recent_events = new_events.strip()
         
