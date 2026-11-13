@@ -37,6 +37,7 @@ class ActRecord:
     plan: Optional[dict] = None        # the integrated act that is performed
     summary: str = ''                  # what happened: scene wrap-ups and assessed outcomes
     post_state: str = ''               # what the next act starts from
+    choices: list = field(default_factory=list)   # choices its scenes turned on: {'scene', 'character', 'decision', 'choice'}
 
     @property
     def title(self):

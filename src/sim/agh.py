@@ -1091,7 +1091,6 @@ End response with:
         trace.event('goal_check', character=self.name, goal_id=goal.id, goal=goal.name,
                     satisfied=bool(satisfied), progress=progress)
         if satisfied:
-            self.goal_history.append(goal)
             if goal.name != 'preconditions':
                 # remove preconditions goal if it is satisfied
                 # (this loop reused 'goal', so the rest of the method recorded, removed and
@@ -1099,18 +1098,48 @@ End response with:
                 for g in self.goals.copy():
                     if g.name == 'preconditions' and g.description == goal.preconditions:
                         self.goals.remove(g)
-            #self.add_perceptual_input(f"Following goal has been satisfied. This may invalidate parts of the above:\n{goal.short_string()}", mode='internal')
-            self.achievments.append(goal.termination)
             if goal in self.goals:
-                self.goals.remove(goal)           
+                self.goals.remove(goal)
             self.update()
 
             await self.context.update(local_only=True) # remove confusing obsolete data, goal completion is a big event
-            drives.goal_satisfied(self, goal)
+            self._goal_met(goal)
             if self.focus_goal is goal:
                 self.focus_goal_history.append(goal)
                 self.focus_goal = None
         return satisfied
+
+    def _goal_met(self, goal: Goal):
+        """A goal has been got: it is remembered as achieved, and the drives it served ease."""
+        self.goal_history.append(goal)
+        if goal.termination:
+            self.achievments.append(goal.termination)
+        drives.goal_satisfied(self, goal)
+
+    async def close_scene_goal(self):
+        """The scene is over: was what this character was after in it got? Judged from the
+        scene's record (test_termination). Got, it is an achievement and eases the drives it
+        served; not got, the character remembers that. Either way the goal is put away.
+
+        (In a planned play nothing judged a scene goal: clear_goal_if_satisfied is reached only
+        from the unplanned turn. 'Recently achieved goals' read 'None to report' in every
+        prompt of a play, no drive was ever eased by a want being met, and the goal stood until
+        the next scene wrote over it. The character's account is not rewritten here as it is in
+        clear_goal_if_satisfied: the next scene's start does that.)"""
+        goal = self.focus_goal
+        if goal is None:
+            return None
+        met, progress = await self.test_termination(goal, goal.termination or goal.description, '', '', type='goal')
+        trace.event('goal_check', character=self.name, goal_id=goal.id, goal=goal.name,
+                    satisfied=bool(met), progress=progress)
+        if met:
+            self._goal_met(goal)
+        else:
+            self.add_perceptual_input(f"You did not get what you were after here: {goal.name}", percept=False, mode='internal')
+        self.focus_goal_history.append(goal)
+        self.focus_goal = None
+        self.goals = []
+        return met
 
 
     def move(self, where, reason='', alone=False):

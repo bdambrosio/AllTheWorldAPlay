@@ -1885,11 +1885,18 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                                    'setup': scene.get('pre_narrative', ''), 'ending': scene.get('post_narrative', ''),
                                    'goal': planned.get('goal', '') if isinstance(planned, dict) else '',
                                    'decision': None, 'unknown': list(planned.get('unknown') or []) if isinstance(planned, dict) else []}
+        # A character is given one such choice in an act at most. (Nine scenes in ten were said
+        # to turn on a choice, nearly always the same character's, and each choice gives up one
+        # of that character's drives: by the last act it had none left standing.)
+        act_record = self.screenplay.act
         decided = {}
         for decision in await self.check_decision_required(act, scene) or []:
             character, character_name = self.resolve_character(decision.get('character', ''))
             if character is None or character not in characters_in_scene or character.name in decided:
                 continue   # one choice for a character in a scene
+            if act_record and any(c['character'] == character.name for c in act_record.choices):
+                trace.event('decision_skipped', character=character.name, why='has chosen once in this act')
+                continue
             choice_dict = await character.decide(decision, act=act, scene=scene)
             if choice_dict and choice_dict.get('choice'):
                 choice, reason = choice_dict['choice'], choice_dict.get('reason', '')
@@ -1899,7 +1906,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 # remembered by a woman who had not yet spoken to him)
                 character.direction['decision'] = (choice, reason)
                 decided[character.name] = choice
-                trace.event('decision', character=character.name, choices=decision.get('choices'), choice=choice, reason=reason)
+                if act_record:
+                    act_record.choices.append({'scene': scene.get('scene_title', ''), 'character': character.name,
+                                               'decision': decision.get('decision', ''), 'choice': choice})
+                trace.event('decision', character=character.name, decision=decision.get('decision'),
+                            choices=decision.get('choices'), choice=choice, reason=reason)
 
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
@@ -2012,6 +2023,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     self.message_queue.put({'name': character.name, 'text': told, 'line_kind': 'action'})
             latest = max(latest, self.simulation_time)
         self.simulation_time = latest
+        # each character's goal in the scene is judged and put away (Character.close_scene_goal)
+        for character in characters_in_scene:
+            await character.close_scene_goal()
         true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
@@ -2711,6 +2725,11 @@ What each character is after in it:
 {{$goals}}
 </scene>
 
+<choices_already_made_in_this_play>
+{{$earlier}}
+</choices_already_made_in_this_play>
+
+- A play in which every scene turns on a choice, or the choices are always the same person's, is flat. A character who has already made a choice in this act is not given another in it.
 - Most scenes turn on no choice: what happens in them follows from what each character is after. For those, answer with an empty list.
 - A scene turns on a choice only when where it is heading depends on one character choosing, during the scene, between real alternatives: to tell or to withhold, to stay or to go, to accept or to refuse.
 - One decision at most, for one character.
@@ -2720,7 +2739,9 @@ Answer in JSON only:
 {"decisions": [{"character": "<name>", "decision": "<what has to be chosen>", "choices": ["<choice>", "<choice>"]}]}
 End your response with: </end>""")]
         goals = '\n'.join(f"- {name}: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict))
-        reply = self.llm.ask({'act_focus': (self.act_frame or {}).get('focus') or self.act_central_narrative or 'not given',
+        earlier = '\n'.join(f"- Act {a.number}{' (this act)' if a is self.screenplay.act else ''}, '{c['scene']}': {c['character']} had to choose {c['decision']}, and chose: {c['choice']}"
+                            for a in self.screenplay.acts for c in a.choices)
+        reply = self.llm.ask({'earlier': earlier or 'none yet', 'act_focus': (self.act_frame or {}).get('focus') or self.act_central_narrative or 'not given',
                               'title': scene.get('scene_title', ''), 'setup': scene.get('pre_narrative', '') or 'none given',
                               'ending': scene.get('post_narrative', '') or 'not said', 'goals': goals or 'none given'},
                              prompt, tag='check_decision_required', temp=0.2, stops=['</end>'], max_tokens=220)

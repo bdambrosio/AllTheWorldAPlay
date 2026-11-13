@@ -730,7 +730,10 @@ End your response with:
             self.avoidance_cnt = 0 # reset avoidance counter
         reason = hash_utils.find('motivation', response)
         if choice and reason:
-            decision = {'choice': choice, 'delay': avoidance, 'drive_denied': drive_denied, 'reason': reason}
+            # what was asked is kept with the answer (the answer alone was kept, so neither the
+            # next decision nor the Explore panel could tell what had been chosen between)
+            decision = {'decision': decision.get('decision', ''), 'choices': list(decision.get('choices') or []),
+                        'choice': choice, 'delay': avoidance, 'drive_denied': drive_denied, 'reason': reason}
             self.decisions.append(decision)
             return decision
         else:
