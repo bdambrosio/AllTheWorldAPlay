@@ -1903,6 +1903,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 
         #now that all characters are in place, establish their goals
         for character in characters_in_scene:
+            # memory and the character's own account of where things stand are brought up to date
+            # before its goal and plan are made from them (this ran after, so goals and plans, and
+            # the Explore panel, read an account one scene old)
+            character.update(now=True)
             character.look('Look', act_arg='', reason=f'{scene["pre_narrative"]}') # important to do this after everyone is in place.
             if character.name.lower() == 'interviewer':
                 print(f'{character.name} {scene["pre_narrative"]}')
@@ -1932,7 +1936,6 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.message_queue.put({'name':character.name, 'text':'character_update', 'data':await character.to_json_with_image()})
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await asyncio.sleep(0.4)
-            character.update(now=True)
 
         # ok, actors - live!
         scene_integrated_task_plan = await self.integrate_task_plans(scene)

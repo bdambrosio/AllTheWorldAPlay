@@ -210,7 +210,9 @@ class StructuredMemory:
         # including all abstractions listed each recent memory twice in prompts.
         present_ids = {mem.memory_id for mem in self.concrete_memories}
         for mem in self.abstract_memories:
-            if any(i not in present_ids for i in mem.instances):
+            # only where none of them is still shown: its summary is its newest entry's text, and
+            # that entry was printed twice when it was still there
+            if mem.instances and not any(i in present_ids for i in mem.instances):
                 all_memories.append((mem, mem.timestamp))
         
         # Sort by timestamp and return the most recent n
@@ -274,10 +276,9 @@ class StructuredMemory:
         
         # For now, create a simple summary from recent instances
         # Could be enhanced with LLM-based summarization
-        if len(concrete_instances) <= 2:
-            return concrete_instances[-1]
-        else:
-            return f"Pattern of {len(concrete_instances)} related activities: {concrete_instances[-1]}"
+        # the newest entry's text ('Pattern of 8 related activities: ...' was put in front of it,
+        # in most act prompts, with a count that told the actor nothing)
+        return concrete_instances[-1]
 
     def get_recent_abstractions(self, n: int = 5) -> List[AbstractMemory]:
         """Get n most recent abstract memories (kept for backward compatibility)"""

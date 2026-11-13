@@ -1825,7 +1825,7 @@ Place tasks least important to the dramatic context early in the plan when possi
                                 "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
-                                "achievments": '\n'.join(self.achievments[:5]),
+                                "achievments": '\n'.join(self.achievments[-5:]),
                                 "scene_narrative": scene_narrative,
                                 "act_specific_narrative": self.act_direction(),
                                 "central_narrative": self.story_note(),
@@ -3072,7 +3072,7 @@ End your response with:
 
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
-                                         'achievments': '\n'.join(self.achievments[:5]),
+                                         'achievments': '\n'.join(self.achievments[-5:]),
                                          'recent_memories': '\n'.join([memory.to_string() for memory in self.structured_memory.get_recent(8)]), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 

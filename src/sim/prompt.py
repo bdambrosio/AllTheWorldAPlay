@@ -48,7 +48,7 @@ PLAYWRIGHT_FRAME = """
 {{$emotional_stance}}
 ##
 
-#A short summary of your character's current state and recent activities
+#Before this scene: your character's state and recent activities, as of the scene's start (what has happened since is below)
 {{$narrative}}
 ##
 
@@ -109,7 +109,7 @@ Everything down to the closing line of this block is {{$name}}: who {{$name}} is
 {{$emotional_stance}}
 ##
 
-#A short summary of your current state and recent activities
+#Before this scene: your state and recent activities, as of the scene's start (what has happened since is below)
 {{$narrative}}
 ##
 

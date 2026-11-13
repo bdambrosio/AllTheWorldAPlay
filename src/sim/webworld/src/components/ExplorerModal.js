@@ -339,7 +339,7 @@ function ExplorerModal({ character, sessionId, lastState, onClose, sendCommand, 
                 <div key={i} className="signal-cluster">
                   <div className="cluster-header">
                     <span className="cluster-type">
-                      {(cluster.type || '').toLowerCase().startsWith('opp') ? '✓ Opportunity' : '⚠ Issue'}
+                      {({chance: '✓ Opportunity', eased: '✓ Eased', threat: '⚠ Threat'})[(cluster.type || '').toLowerCase()] || cluster.type || '?'}
                     </span>
                     <span className="cluster-metrics">
                       Score: {cluster.score?.toFixed(1)}
