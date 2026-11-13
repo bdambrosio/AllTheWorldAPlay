@@ -247,7 +247,7 @@ PLAN_GROUPS = {
     'world': ('Context.do', 'Context.look', 'do_consequences', 'record.check', 'record.speech', 'record.admit',
               'record.redo', 'record.resay', 'survival.choose_action', 'test_termination', 'completion_statement',
               'Context.identify_state_changes', 'Context.world_updates_from_act_consequences',
-              'Context.character_updates_from_act_consequences', 'coda_summary', 'equip_cast'),
+              'Context.character_updates_from_act_consequences', 'coda_summary', 'equip_cast', 'record.told'),
     # a character's planning: its scene goal, its task plan, the review of a task, a choice,
     # what a talk committed it to
     'character': ('instantiate_narrative_goal', 'Character.generate_task_plan', 'Character.generate_goals', 'review_task',

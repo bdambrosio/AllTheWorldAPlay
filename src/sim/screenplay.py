@@ -53,6 +53,7 @@ class Screenplay:
     question: dict = field(default_factory=dict)   # 'text' (as written), QUESTION_TAGS, 'roles': {name: role}
     frame: dict = field(default_factory=dict)      # 'settles', 'open', 'last'
     clues: list = field(default_factory=list)      # [{'thing', 'place', 'touches'}]
+    threads: list = field(default_factory=list)    # [{'kind': 'found'|'told', 'who', 'what', 'scene'}]: what the play has planted
     act_count: int = 3                             # acts that carry the story; a closing act follows
     acts: list = field(default_factory=list)       # [ActRecord], in the order played
 
@@ -114,6 +115,32 @@ class Screenplay:
         """What has happened in the acts already played, for whoever plans the next: each act's
         record of events and assessed outcomes, not what was planned for it."""
         return '\n\n'.join(f"Act {a.number}, '{a.title}': {a.summary}" for a in self.performed())
+
+    # ----------------------------------------------------------------- the threads
+    MAX_THREADS = 12
+
+    def add_thread(self, kind, who, what, scene):
+        """Something the play has planted: a thing found, or a piece of someone's past told."""
+        what = ' '.join(str(what).split()).strip().rstrip('.')
+        if what and not any(t['kind'] == kind and t['what'].lower() == what.lower() for t in self.threads):
+            self.threads.append({'kind': kind, 'who': who, 'what': what, 'scene': scene})
+            del self.threads[:-self.MAX_THREADS]
+
+    def thread_note(self):
+        """The threads as a note for whoever plans an act. (A play raised a hospital, a steering
+        wheel in fog, a ticket with a name, toys in a hut and a cave, and picked none of them up;
+        the memories the two told each other were exchanged and never set side by side.)"""
+        if not self.threads:
+            return ''
+        found = [t for t in self.threads if t['kind'] == 'found']
+        told = [t for t in self.threads if t['kind'] == 'told']
+        lines = ["What the play has planted so far, and not yet used:"]
+        lines += [f"- found: {t['what']} ({t['who']}, in '{t['scene']}')" for t in found]
+        lines += [f"- told by {t['who']}: \"{t['what']}\" (in '{t['scene']}')" for t in told]
+        lines.append("Pick up at least two: a found thing used, questioned or compared; pieces of the past set beside each other "
+                     "so that they meet (two memories that fit, or that cannot both be true). Picking up is not explaining: "
+                     "the open question stays open.")
+        return '\n'.join(lines)
 
     # ----------------------------------------------------------------- the clues
     def clue_note(self, now=None):

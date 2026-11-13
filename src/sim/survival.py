@@ -91,7 +91,9 @@ PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the w
              "A plan may put the characters in a danger's way. It does not say that someone is wounded, bitten, healed, fed or killed, "
              "nor that an animal is driven off or strikes. "
              "States and endings say where the characters stand with each other and with the central question: "
-             "what has been chosen, said, refused, found out or lost between them.")
+             "what has been chosen, said, refused, found out or lost between them. "
+             "Ordinary eating, drinking and rest happen between scenes where the means are at hand; a scene is about them "
+             "only when a need is desperate or what meets it is out of reach.")
 
 
 def act_note(character):
@@ -222,6 +224,43 @@ def _spans_night(start, end):
     return False
 
 
+PASSING_TILES = 8    # what meets a need this near the cast at a scene's end is used off the page
+
+
+def meet_in_passing(context, cast):
+    """A scene is over: each of `cast` meets an ordinary need off the page where something that
+    meets it is near (a spring for thirst, berries for hunger, a hut for rest), as people do
+    between the things a play shows. A need at its worst word stays for the play to deal with,
+    and so does one with nothing near. (Day 2 of a play went on spring and apple runs while the
+    lead the characters had found sat idle, and a man was 'parched' through three scenes at a
+    spring because no scene was about drinking.) Returns {name: [needs met]}."""
+    cfg = config(context) or {}
+    met = {}
+    for character in cast:
+        body = getattr(character, 'body', None)
+        if body is None or getattr(character, 'mapAgent', None) is None:
+            continue
+        for need, spec in _need_defs(cfg).items():
+            level = body.levels.get(need, 0.0)
+            if spec.get('per_hour', 0.0) <= 0 or not NEED_FELT <= level < 0.85:
+                continue
+            for action in cfg.get('actions', []):
+                eases = (action.get('effects') or {}).get(need, 0.0) < 0
+                if not eases or action.get('requires') or action.get('target') or not action.get('resource_types'):
+                    continue
+                near = _stocked(character, action['resource_types']) if action.get('deplete') else _nearest(character, action['resource_types'])
+                if near is not None and near[2] <= PASSING_TILES:
+                    body.adjust(need, (NEED_FELT - 0.05) - level)
+                    met.setdefault(character.name, []).append(need)
+                    break
+    for name, needs in met.items():
+        character = next(c for c in cast if c.name == name)
+        character.add_perceptual_input(f"Between scenes you saw to it: {', '.join(needs)} no longer pressing.", percept=False, mode='internal')
+    if met:
+        trace.event('met_in_passing', met=met)
+    return met
+
+
 def pass_offstage(context, gap):
     """Time passes off stage, to context.simulation_time + gap (the caller moves the clock).
     Needs do not rise off stage. Over a real jump the cast is taken to have looked after itself:
@@ -229,7 +268,7 @@ def pass_offstage(context, gap):
     Injuries stay. (Needs used to rise across a gap, so a play that moved on to dusk for a night
     watch opened on two people who had to find water first; and frozen, a character hungry in the
     morning was still hungry at dusk having done nothing about it. A plan that wants them hungry
-    says so, and that is made real.) A danger left standing is over, and a fire burns out.
+    says nothing of bodies: the world keeps them.) A danger left standing is over, and a fire burns out.
     Returns the names of the needs that were met."""
     now = context.simulation_time + gap
     hours = gap.total_seconds() / 3600

@@ -1351,6 +1351,19 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             await self.approach(self._first_character(target, act))
+            # A line that carries its own stage direction before a colon and the words in quotes
+            # ('Sliding down against the barred door, laughing hoarsely: "It was real..."'): the
+            # direction is shown as what the speaker does, and only the quoted words are said.
+            # (Such lines went out whole, quotes and all, as speech.) The colon and the quotation
+            # marks say which part is which.
+            staged = re.match(r'^\s*([^"“”]{6,}?):\s*["“](.+?)["”]?\s*$', act_arg or '', re.S)
+            if staged:
+                business = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', staged.group(1).strip()).rstrip('.,;')
+                act_arg = staged.group(2)
+                self.context.add_event(f'{self.name} {business}')
+                self.context.message_queue.put({'name': self.name, 'text': business, 'line_kind': 'action'})
+                self.context.transcript.append(f'{self.name} {business}')
+                trace.event('say_staged', character=self.name, business=business)
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             # A line is held to what its speaker cannot be mistaken about (its hands, its body,
             # what it is doing, where it is, the hour) before anyone hears it, unless the
@@ -1780,6 +1793,7 @@ Start with an appropriate task in light of previous achievments and the dramatic
 
 
 Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
+Eating, drinking and resting are tasks only when your body says the need is at its worst, or the focus goal is about it: ordinary hunger, thirst and tiredness are seen to between scenes.
 
 A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
 Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.

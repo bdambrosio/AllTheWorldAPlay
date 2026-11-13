@@ -1662,7 +1662,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
                   'strangers': self.strangers_note(),
-                  'clues': self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
+                  'clues': '\n'.join(n for n in (self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
+                                                   self.screenplay.thread_note()) if n),
                   'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked',
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
@@ -1812,6 +1813,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         scene_start = scene["time"] = self.simulation_time   # as established: where the last scene left the clock, or moved on
         hours_between = self._hours_moved
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        # what each carries as the scene opens: what it carries at the end and did not is a find
+        self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         # The heading and the set-up name the same place: when the set-up names one place and the
         # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
@@ -2055,6 +2058,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             scene_duration = timedelta(0)
         # the planned duration is the least a scene takes; acts and travel have already moved the clock
         self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
+        self.record_threads(characters_in_scene)   # what this scene planted, for the acts to come
+        survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
@@ -2553,6 +2558,43 @@ Respond with one line for each thing, or the single line #none:
         trace.event('cast_equipped', given=given, reply=reply.strip())
         return given
 
+    TOLD = """Below are the lines spoken in a scene of a play. List the pieces of their own past that the characters told: things remembered or recalled from before (a place, a person, a smell, a scene from their life), in the speaker's own words. Not plans, guesses, observations of what is around them, or what they feel now.
+
+<lines>
+{{$lines}}
+</lines>
+
+Answer in JSON only, with four at most, the most telling first, and an empty list when nobody told any:
+{"told": [{"who": "<name>", "what": "<the piece of the past, in the speaker's words, 15 words at most>"}]}
+End your response with: </end>"""
+
+    def record_threads(self, cast):
+        """What the scene planted, kept on the screenplay for the acts to come (thread_note):
+        things that came into a character's hands that the world's actions do not use up (the
+        mechanics show it, nobody judges it), and pieces of their past the characters told (one
+        call, reading the scene's lines)."""
+        title = (self.current_scene or {}).get('scene_title', '')
+        start = getattr(self, '_held_at_scene_start', {})
+        consumable = set(survival.item_kinds(self))
+        for c in cast:
+            body = getattr(c, 'body', None)
+            if body is None:
+                continue
+            for thing in body.inventory:
+                if thing not in start.get(c.name, []) and thing not in consumable:
+                    self.screenplay.add_thread('found', c.name, thing, title)
+        begin = getattr(self, '_scene_transcript_start', 0)
+        lines = '\n'.join(str(l).strip() for l in self.transcript[begin:] if '"' in str(l))[-5000:]
+        if not lines:
+            return
+        reply = self.llm.ask({'lines': lines}, [UserMessage(content=self.TOLD)], tag='record.told', temp=0.1, stops=['</end>'], max_tokens=260)
+        found = json_reply.parse(reply) if reply else None
+        names = {c.name.lower(): c.name for c in cast}
+        for entry in (found.get('told') or []) if isinstance(found, dict) else []:
+            if isinstance(entry, dict) and str(entry.get('who') or '').strip().lower() in names and str(entry.get('what') or '').strip():
+                self.screenplay.add_thread('told', names[entry['who'].strip().lower()], entry['what'], title)
+        trace.event('threads', threads=self.screenplay.threads)
+
     def episode_note(self, closing=False):
         """The episode's frame as a note for whoever plans an act; '' when there is none."""
         frame = getattr(self, 'episode', None) or {}
@@ -2565,7 +2607,8 @@ Respond with one line for each thing, or the single line #none:
                     + (f"End on this, or something as quiet: {frame['last']}" if frame.get('last') else ''))
         return (f"This episode is to settle: {frame['settles']} Each act should bring that nearer or put it in doubt. "
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
-                + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else ''))
+                + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
+                + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
