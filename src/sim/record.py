@@ -341,7 +341,7 @@ class Settled(str):
 def strip(text, claims):
     """`text` without the sentences that carry one of `claims` (a claim found in no sentence is
     let go: this is for a plan's fields, each checked against claims found in all of them)."""
-    sentences = [s for s in re.split(r'(?<=[.!?;])\s+', (text or '').strip()) if s]
+    sentences = [s for s in re.split(r'(?<=[.!?])\s+', (text or '').strip()) if s]
     def carries(sentence):
         flat = ' '.join(sentence.lower().split())
         for _, words in claims:

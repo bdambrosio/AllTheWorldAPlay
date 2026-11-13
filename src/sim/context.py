@@ -1640,6 +1640,7 @@ What has happened lately:
 
 Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
+- A scene is played in one place with its cast together. The set-up does not send them apart or off on separate errands; if the plan has them part and meet again, set the scene where they meet.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - when: first settle what part of the day the scene is played in. {{$moving}}
 - Then write the set-up and ending for the time the scene is played in, and make the title fit it. Do not state the time of day in the set-up unless it matters to what happens: the heading gives it.
@@ -1724,8 +1725,14 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 break
             goals = ' '.join(f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
             told = f"{scene.get('pre_narrative', '')}\nThe scene is to end: {scene.get('post_narrative', '')}\n{goals}"
+            # what lies at the scene's place is there to be written of, though the cast has not
+            # walked there yet (the cup planted at the spring was refused from the spring scene's
+            # set-up, and Joe asked who carved a cup the audience had not been shown)
+            target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
+            there = [p['name'] for hidden in (False, True) for p in survival.lying(self, target[0], hidden=hidden)] if target else []
             found = record.check(self, cast[0], f"A scene is set at {scene.get('location') or 'the same place'}; the cast walks there if it is elsewhere.",
-                                 None, told, people=cast) or []
+                                 f"Lying at {target[1]}, where the scene is set: {', '.join(there)}" if there else None,
+                                 told, people=cast) or []
             # where the scene is set is the plan's to say, and a danger of this world that the
             # set-up brings on is made real (survival.stage_hazard)
             claims = [(kind, words) for kind, words in found
