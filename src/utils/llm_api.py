@@ -35,6 +35,15 @@ FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
 # enable_thinking False and thinking disabled are refused). It spent up to ~250 reasoning tokens
 # on a check, from the same budget as the answer: at 96 the JSON was cut off. Used only if spent.
 FIREWORKS_HEADROOM = 512
+# Claude Haiku 5.5 on the Anthropic API (server_name 'haiku'). Key: CLAUDE_API_KEY or ANTHROPIC_API_KEY.
+# How much every call thinks before it answers: ATWAP_EFFORT = off | low | medium | high. Calls
+# named by set_reasoning think at the effort given there whatever this says, so
+# ATWAP_EFFORT=off ATWAP_REASONING='page+plan=medium' thinks only where the judgement is.
+# Measured on 24 prompts of a play (2026-11-13), median seconds a call: off 0.9, low 1.5,
+# medium 1.8; GLM-5.3-Flash on Fireworks 2.2. The engine's calls answer in about 40 tokens, so
+# the time is nearly all thinking.
+HAIKU_MODEL = 'claude-haiku-5-5'
+HAIKU_EFFORTS = ('off', 'low', 'medium', 'high')
 IMAGE_URL = os.environ.get('IMAGE_URL', 'http://127.0.0.1:5008/generate_image')
 IMAGE_PATH = Path.home() / '.local/share/AllTheWorld/images'
 IMAGE_PATH.mkdir(parents=True, exist_ok=True)
@@ -252,6 +261,17 @@ class LLM():
         if self.server_name == 'fireworks':
             self.model = model_name or FIREWORKS_MODEL
             self.reasoning_effort = 'low'   # 'medium' for whole-play rubrics
+        if self.server_name == 'haiku':
+            import anthropic
+            self.model = model_name or HAIKU_MODEL
+            self.effort = os.environ.get('ATWAP_EFFORT', 'medium').strip().lower()
+            if self.effort not in HAIKU_EFFORTS:
+                raise ValueError(f"ATWAP_EFFORT '{self.effort}' is not one of {', '.join(HAIKU_EFFORTS)}")
+            key = os.environ.get('ANTHROPIC_API_KEY') or os.environ.get('CLAUDE_API_KEY')
+            if not key:
+                raise RuntimeError('CLAUDE_API_KEY is not set (source ~/.config/secrets.env)')
+            self.anthropic_client = anthropic.Anthropic(api_key=key, max_retries=4, timeout=120.0)
+            print(f'  {self.model}, effort {self.effort}')
 
     def _provider_name(self, options):
         s = self.server_name
@@ -301,6 +321,8 @@ class LLM():
             return self.openai_client.executeRequest(prompt=substituted_prompt, options=options)
         if self.server_name == 'fireworks':
             return self._fireworks_request(substituted_prompt, options)
+        if self.server_name == 'haiku':
+            return self._haiku_request(substituted_prompt, options)
         provider = self._provider_name(options)
         if provider is not None:
             return _provider(provider).executeRequest(prompt=substituted_prompt, options=options)
@@ -344,6 +366,42 @@ class LLM():
         if (index := text.find('</think>')) > -1:
             text = text[index + 8:].strip()
         return text
+
+    def _haiku_request(self, messages, options):
+        """One Messages API call. The system turns that open the prompt go in `system`; a prompt
+        that is all system turns is sent as the user's. This model takes no temperature or
+        top_p (a value other than the default is refused), so the engine's are not sent: how
+        far it thinks is its one setting. The SDK retries 429, 5xx and dropped connections."""
+        lead = 0
+        while lead < len(messages) and messages[lead]['role'] == 'system':
+            lead += 1
+        system = '\n\n'.join(m['content'] for m in messages[:lead])
+        turns = [{'role': 'user' if m['role'] == 'system' else m['role'], 'content': m['content']}
+                 for m in messages[lead:] if str(m['content']).strip()]
+        while turns and turns[-1]['role'] == 'assistant':   # a reply cannot be started for this model
+            turns.pop()
+        if not turns:
+            turns, system = [{'role': 'user', 'content': system}], ''
+        effort = getattr(options, 'reasoning', None) or self.effort
+        request = {'model': self.model, 'messages': turns, 'max_tokens': options.max_tokens}
+        if system:
+            request['system'] = system
+        stops = [s for s in (options.stops or []) if s and s.strip()]
+        if stops:
+            request['stop_sequences'] = stops
+        if effort == 'off':
+            request['thinking'] = {'type': 'disabled'}
+        else:   # the thinking is spent from the same budget as the answer
+            request.update(thinking={'type': 'adaptive'}, output_config={'effort': effort},
+                           max_tokens=options.max_tokens + REASONING_TOKENS)
+        reply = self.anthropic_client.messages.create(**request)
+        usage = reply.usage
+        cached = getattr(usage, 'cache_read_input_tokens', 0) or 0
+        self._last_usage = ({'prompt_tokens': (usage.input_tokens or 0) + cached, 'completion_tokens': usage.output_tokens,
+                             'prompt_tokens_details': {'cached_tokens': cached}}, reply.stop_reason)
+        if reply.stop_reason == 'refusal':
+            raise Exception(f'{self.model} declined the request')
+        return ''.join(block.text for block in reply.content if block.type == 'text')
 
     def _fireworks_request(self, messages, options, retries=6):
         """Fireworks chat completion with backoff on 429/5xx (the account's rate limit, not the

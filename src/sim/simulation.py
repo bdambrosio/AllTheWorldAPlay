@@ -275,7 +275,8 @@ class SimulationServer:
             for mod in modules_to_clear:
                 del sys.modules[mod]
             ablation.set_disabled(command.get('ablate'))
-            llm_api.set_reasoning(command.get('reasoning'))   # which calls think first (utils/llm_api.py)
+            # which calls think first (utils/llm_api.py): the command's, else ATWAP_REASONING
+            llm_api.set_reasoning(command.get('reasoning') or os.environ.get('ATWAP_REASONING'))
             # opened before the play module runs: building its characters makes LLM calls
             trace.open(play_name, None)
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)

@@ -19,6 +19,7 @@ server_name='fireworks'   # GLM-5.3-Flash on Fireworks; needs FIREWORKS_PROJECT_
 #server_name='openrouter'; model_name='qwen/qwen3-32b'
 #server_name='openrouter'; model_name='moonshotai/kimi-k2'
 
+#server_name='haiku'      # Claude Haiku 5.5; needs CLAUDE_API_KEY. ATWAP_EFFORT=off|low|medium|high (utils/llm_api.py)
 # One run on another model without editing this file: ATWAP_LLM=vllm ./start-local.sh
 # (the local model). ATWAP_MODEL names a model for the chosen server.
 import os
