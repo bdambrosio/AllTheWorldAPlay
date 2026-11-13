@@ -2896,8 +2896,8 @@ What is speaker's emotional state? Would they enjoy humor at this point, or shou
 """
         prompt_string += """Use the following XML template in your response:
 
-<response>response / next thought</response>
-<reason>terse (4-6 words) reason for this response / thought</reason>
+<response>the words your character says, and nothing else</response>
+<reason>terse (4-6 words) reason for this response</reason>
 <leaves>no, alone, or with <names>: whether with these words your character goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise</leaves>
 
 {{$duplicative_insert}}
