@@ -2729,6 +2729,28 @@ End your response with: </end>""")]
                 decisions.append({'character': str(entry['character']).strip(), 'decision': str(entry['decision']).strip(), 'choices': choices[:3]})
         return decisions[:1]
 
+    def exit_allowed(self, character, act):
+        """Whether `character` may go out of the scene with this act. An exit that leaves one
+        person or nobody on stage ends the scene, so it waits until the scene has been played:
+        everyone in it has played one of their planned tasks, and half the planned tasks are
+        played. ('Agreed, water first' marked as leaving ended a scene after one task of six.)
+        A count, not a model's opinion of whether the scene feels over."""
+        scene = self.current_scene
+        plan = self.scene_integrated_task_plan or []
+        if scene is None or not plan:
+            return True
+        party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
+        on_stage = [c for c in self.actors + self.extras + self.npcs
+                    if getattr(c, 'current_scene', None) is scene and not stage.off_stage(c)]
+        if len(on_stage) < 2 or len([c for c in on_stage if c is not character and c not in party]) > 1:
+            return True   # the scene goes on without it
+        played = plan[:self.scene_integrated_task_plan_index + 1]   # with the task now being played
+        had_a_turn = {e['actor'] for e in played}
+        allowed = len(played) * 2 >= len(plan) and all(c in had_a_turn for c in on_stage if any(e['actor'] is c for e in plan))
+        if not allowed:
+            trace.event('exit_held', character=character.name, played=len(played), planned=len(plan))
+        return allowed
+
     def told_briefly(self, account):
         """An act's record (its scene wrap-ups) as two or three sentences for the audience."""
         prompt = [UserMessage(content="""Here is the record of what happened in the last act of a play:

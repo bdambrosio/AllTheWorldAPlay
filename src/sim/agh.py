@@ -1178,6 +1178,8 @@ End response with:
         self.attempt_only = False
             
         leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
+        if leaving and not self.context.exit_allowed(self, act):
+            act.leaves, leaving = None, False   # the line or deed is played; the scene goes on
         if act_mode == 'Move':
             line = None
             if leaving and isinstance(act.leaves, list):
