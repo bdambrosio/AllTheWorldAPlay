@@ -688,15 +688,17 @@ If absolutely no information is available for any field, use "unknown" for that 
             first = first[len(entity.name):]
         return first.lstrip(' ,:;-').strip()
 
-    def image(self, filepath, image_generator='tti_serve'):
+    def image(self, filepath, image_generator='tti_serve', setup=False):
         try:
-            prompt = stage.picture(self)   # the stage as it stands: place, hour, who is there
+            # the stage as it stands: place, hour, who is there (setup: the scene has just been set)
+            facts = stage.picture_facts(self, setup=setup)
+            prompt = stage.picture_prompt(facts) if facts and stage.IMAGE_PROMPT == 'new' else stage.picture(self)
             if prompt is None:
                 state = '. '.join(self.current_state.split('.')[:3])
                 characters = '\n' + '.\n'.join(
                     [entity.name + ' is ' + self._image_description(entity) for entity in self.actors])
                 prompt = f'{stage.style(self)}. Wide view. {state}{characters}'
-            trace.event('image', of='world', prompt=prompt)
+            trace.event('image', of='world', prompt=prompt, facts=facts, builder=stage.IMAGE_PROMPT if facts else 'fallback')
             filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
         except Exception as e:
             traceback.print_exc()
@@ -708,11 +710,13 @@ If absolutely no information is available for any field, use "unknown" for that 
             # description, the raw act, the settled facts with their body notes and place ids,
             # then the opening of the Situation.)
             deed = re.sub(rf'^\s*{re.escape(actor.name)}\s+', '', (act.action if act else '') or '').strip()
-            prompt = stage.picture(self, doing=deed if act is not None and str(act.mode).split('.')[-1] in ('Do', 'Move') else '')
+            doing = deed if act is not None and str(act.mode).split('.')[-1] in ('Do', 'Move') else ''
+            facts = stage.picture_facts(self, deed=doing, actor=actor)
+            prompt = stage.picture_prompt(facts) if facts and stage.IMAGE_PROMPT == 'new' else stage.picture(self, doing=doing)
             if prompt is None:
                 state = '. '.join(self.current_state.split('.')[:4])
                 prompt = f"{stage.style(self)}. Wide view. {self._image_description(actor)}, {deed}. {state}"
-            trace.event('image', of='act', prompt=prompt)
+            trace.event('image', of='act', prompt=prompt, facts=facts, builder=stage.IMAGE_PROMPT if facts else 'fallback')
             filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
         except Exception as e:
             traceback.print_exc()
@@ -739,11 +743,12 @@ If absolutely no information is available for any field, use "unknown" for that 
             image = await asyncio.to_thread(self.act_image, actor, act, consequences, self._next_world_image_file())
         return {'show': ' \n\n'+self.current_state, 'image': image}
 
-    async def world_image_json(self):
-        """world_update payload with a fresh image (play load, situation updates), off the event loop."""
+    async def world_image_json(self, setup=False):
+        """world_update payload with a fresh image (play load, situation updates), off the event loop.
+        setup: the picture of a scene just set, which shows its set-up sentence."""
         self._world_image_at = time.monotonic()
         self._world_image_scene = self.current_scene
-        image = await asyncio.to_thread(self.image, self._next_world_image_file())
+        image = await asyncio.to_thread(self.image, self._next_world_image_file(), setup=setup)
         return {'show': ' \n\n'+self.current_state, 'image': image}
 
     def get_actor_by_name(self, name):
@@ -1831,7 +1836,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.message_queue.put({'name':self.name, 'text':f'    {scene["pre_narrative"]}'})
             # The planned set-up is the scene's opening as written. (An LLM "situation update" here
             # paraphrased it and put characters in the scene who were not: 3 calls per scene.)
-            self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json()})
+            for character in characters_in_scene:
+                stage.ensure_looks(character)   # once a character; the picture renders in a thread
+            self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json(setup=True)})
             await asyncio.sleep(0)
         if arrival:
             self.add_event(arrival)

@@ -143,11 +143,8 @@ class SimulationServer:
 
         try:
             if actor.name not in self.image_cache or new_image:
-                description = actor.generate_image_description()
-                # the render takes seconds; keep the event loop (UI forwarding) running
-                if description:
-                    image_path = await asyncio.to_thread(generate_image, self.sim_context.llm, description,
-                                                         filepath=actor.name+'.png')
+                image_path = await actor.render_portrait()   # the render runs in a thread
+                if image_path:
                     with open(image_path, 'rb') as f:
                         image_data = base64.b64encode(f.read()).decode()
                         actor_data['image'] = image_data

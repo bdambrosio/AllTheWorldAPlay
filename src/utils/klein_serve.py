@@ -80,7 +80,22 @@ def _gen_side(n: int) -> int:
     return (n + 15) // 16 * 16
 
 
+MAX_PROMPT_TOKENS = 512   # the pipeline encodes every prompt to this many tokens: pads, or cuts the end
+
+
+def _prompt_tokens(prompt: str) -> int:
+    """Tokens the text encoder reads, chat wrapper included (as Flux2KleinPipeline builds it)."""
+    try:
+        text = pipe.tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False,
+                                                  add_generation_prompt=True, enable_thinking=False)
+        return len(pipe.tokenizer(text)["input_ids"])
+    except Exception:
+        return -1
+
+
 def _render(prompt: str, width: int, height: int, steps: int = DEFAULT_STEPS, seed=None):
+    tokens = _prompt_tokens(prompt)
+    print(f"klein_serve: prompt {tokens} tokens" + (f" -- CUT at {MAX_PROMPT_TOKENS}, the end is not seen" if tokens > MAX_PROMPT_TOKENS else ""), flush=True)
     gw, gh = _gen_side(width), _gen_side(height)
     seed = random.randint(0, 2**32 - 1) if seed is None else int(seed)
     t0 = time.time()
@@ -94,7 +109,7 @@ def _render(prompt: str, width: int, height: int, steps: int = DEFAULT_STEPS, se
         img = img.resize((width, height), Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return buf.getvalue(), time.time() - t0
+    return buf.getvalue(), time.time() - t0, tokens
 
 
 @app.get("/healthz")
@@ -108,8 +123,8 @@ def generate_image(prompt: str, size: str = "512x512", seed: int | None = None):
         w, h = (int(v) for v in size.lower().split("x"))
     except ValueError:
         raise HTTPException(400, f"bad size {size!r}, expected WxH")
-    png, secs = _render(prompt, w, h, seed=seed)
-    return Response(png, media_type="image/png", headers={"x-wall-seconds": f"{secs:.2f}"})
+    png, secs, tokens = _render(prompt, w, h, seed=seed)
+    return Response(png, media_type="image/png", headers={"x-wall-seconds": f"{secs:.2f}", "x-prompt-tokens": str(tokens)})
 
 
 class GenerateReq(BaseModel):   # Cognitive_workbench (Bonsai-compatible subset)
@@ -123,7 +138,7 @@ class GenerateReq(BaseModel):   # Cognitive_workbench (Bonsai-compatible subset)
 
 @app.post("/generate")
 def generate(req: GenerateReq):
-    png, secs = _render(req.prompt, req.width, req.height, req.steps, req.seed)
+    png, secs, _ = _render(req.prompt, req.width, req.height, req.steps, req.seed)
     return Response(png, media_type="image/png", headers={"x-wall-seconds": f"{secs:.2f}"})
 
 

@@ -11,6 +11,7 @@ what each offers, and how far each is, so a scene is set where its action can ha
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 from sim import survival
@@ -534,3 +535,173 @@ def portrait(context, character, mood=''):
              f"Expression: {mood.strip().rstrip('.')}" if mood and mood.strip() else '',
              f"Behind, out of focus: {where_}" if where_ else '']
     return '. '.join(p.strip().rstrip('.') for p in parts if p) + '.'
+
+
+# --------------------------------------------------------------------------- pictures from facts
+# A picture of the moment the audience has just been told, from what the world keeps: how each
+# person looks now (hurt, worn out, what they hold), how they stand to each other, the danger and
+# where it is, the deed in front. The prompts above draw everyone as the author first wrote
+# them ('a healthy young man' after the boar had gored him) and nothing anyone holds.
+#
+# picture_facts / portrait_facts gather the facts (they go into the trace with every picture,
+# whichever prompt is sent); picture_prompt / portrait_prompt write a prompt from them alone, so
+# tools/image_ab.py can draw a recorded moment again. ATWAP_IMAGE_PROMPT=new sends these prompts;
+# 'old' (the default until the A/B test is decided) sends picture() and portrait().
+IMAGE_PROMPT = os.environ.get('ATWAP_IMAGE_PROMPT', 'old').strip().lower()
+PROMPT_BUDGET = 300   # tokens of the image model's encoder; it reads 512 and cuts the rest unseen
+APART_WORDS = ((1, 'side by side'), (3, 'a few steps apart'), (8, 'some way apart'))
+THREAT_WORDS = ((2, 'close by'), (6, 'nearby'))
+
+LOOKS = """From the description of {{$name}} below, say only how {{$name}} looks to someone seeing them: age, build, hair, face, clothes.
+One phrase beginning with 'a' or 'an', 30 words at most. No name, no health or mood, nothing of their past or character.
+
+{{$description}}
+
+End your response with: </end>"""
+
+
+def ensure_looks(character):
+    """How a character looks, written once from its description (one call). Pictures use it in
+    place of the description's first sentence, which carries 'healthy' and the like."""
+    if getattr(character, 'looks', None):
+        return character.looks
+    from utils.Messages import UserMessage
+    reply = character.llm.ask({'name': character.name, 'description': character.original_character},
+                              [UserMessage(content=LOOKS)], tag='looks', temp=0.2, max_tokens=60, stops=['</end>'])
+    looks = ' '.join((reply or '').split()).strip().rstrip('.')
+    character.looks = looks or None
+    return character.looks
+
+
+def _visible(body):
+    """What a picture can show of a body: harm once it is felt, any need at its worst ('exhausted',
+    'desperately thirsty'), shelter and dress flags. Not what is carried: that is listed apart."""
+    if body is None:
+        return ''
+    harm = survival._harm(body.cfg)['name']
+    parts = []
+    for need, value in body.levels.items():
+        if (need == harm and value >= survival.NEED_FELT) or value >= 0.85:
+            parts.append(survival._word(body.cfg, need, value))
+    if body.sheltered:
+        parts.append('in shelter')
+    return ', '.join(parts + sorted(body.flags))
+
+
+def _carried(body):
+    if body is None:
+        return []
+    hidden = tuple(body.cfg.get('private_items', ()))
+    return [i for i in body.inventory if not (hidden and i.startswith(hidden))]
+
+
+def _person(context, character):
+    body = getattr(character, 'body', None)
+    return {'name': character.name, 'looks': getattr(character, 'looks', None) or _looks(context, character),
+            'condition': _visible(body), 'holding': _carried(body)}
+
+
+def _words_for(distance, table, far):
+    return next((words for limit, words in table if distance <= limit), far)
+
+
+def _no_speech(text):
+    """A deed without the words spoken in it: a picture cannot show them, and an image model
+    letters them onto the picture. The quotation marks say where speech is."""
+    text = re.sub(r'["“][^"”]*["”]', '', text or '')
+    text = re.sub(r",?\s*\b(and |then )?(says|asks|whispers|shouts|calls|murmurs|mutters)\b:?\s*(?=[,.;]|$)", '', text)
+    return ' '.join(text.split()).strip(' ,;:').rstrip('.')
+
+
+def picture_facts(context, deed='', actor=None, setup=False):
+    """What a picture of the stage is to show, as a record built from the world only; None when
+    there is no map or nobody on stage. deed: what `actor` is doing in front, as the actor wrote
+    it. setup: the scene has just been set, and its set-up sentence is the moment. People are
+    named in the prompt, so that a deed ('Joe holds the watch out to Samantha') says who is who."""
+    world = getattr(context, 'map', None)
+    if world is None or not context.actors:
+        return None
+    on_stage = _on_stage(context)
+    if not on_stage:
+        return None
+    shown = on_stage[:4]
+    place, indoor = _place_words(context, on_stage)
+    facts = {'style': style(context), 'place': place, 'indoor': indoor,
+             'light': LIGHT[part_of(context.simulation_time)],
+             'setting': '' if indoor else ' '.join(context.initial_state.split('.')[0].split()).strip().rstrip('.'),
+             'people': [_person(context, c) for c in shown], 'apart': '', 'threat': '', 'deed': '', 'setup': ''}
+    if len(shown) > 1:
+        spread = max(_distance(here(a), here(b)) for a in shown for b in shown)
+        facts['apart'] = _words_for(spread, APART_WORDS, 'far apart')
+    threat = getattr(context, 'active_threat', None)
+    if threat:
+        near = min(_distance(here(c), threat['location']) for c in shown)
+        facts['threat'] = f"{threat['hazard']['description']}, {_words_for(near, THREAT_WORDS, 'in the distance')}"
+    if deed:
+        facts['deed'] = _no_speech(plain(context, f"{actor.name} {deed}" if actor is not None else deed))[:220]
+    scene = context.current_scene if isinstance(context.current_scene, dict) else {}
+    if setup and scene.get('pre_narrative'):
+        facts['setup'] = plain(context, scene['pre_narrative'])
+    return facts
+
+
+def portrait_facts(context, character, mood=''):
+    cast = [character] if getattr(character, 'mapAgent', None) is not None and getattr(context, 'map', None) else []
+    return {'style': style(context), 'person': _person(context, character), 'mood': (mood or '').strip().rstrip('.'),
+            'place': _place_words(context, cast)[0] if cast else '', 'light': LIGHT[part_of(context.simulation_time)]}
+
+
+def _clause(person, hands=99, named=True):
+    held = person['holding'][:hands]
+    return ', '.join(p for p in (person['name'] if named else '', person['looks'], person['condition'],
+                                 f"carrying {', '.join(held)}" if held else '') if p)
+
+
+def _join(parts):
+    return '. '.join(p.strip().rstrip('.') for p in parts if p and p.strip()) + '.'
+
+
+_encoder_tokens = None
+
+
+def prompt_tokens(text):
+    """Tokens the image model's text encoder reads for `text` (Qwen3 tokenizer of FLUX.2 klein,
+    with its chat wrapper); a word count estimate where that tokenizer cannot be loaded."""
+    global _encoder_tokens
+    if _encoder_tokens is None:
+        try:
+            from transformers import AutoTokenizer
+            tok = AutoTokenizer.from_pretrained(os.environ.get('KLEIN_MODEL', 'black-forest-labs/FLUX.2-klein-4B'), subfolder='tokenizer')
+            _encoder_tokens = lambda t: len(tok(t)['input_ids']) + 12
+        except Exception as e:
+            logger.warning(f'image prompt tokens estimated from words: {e}')
+            _encoder_tokens = lambda t: int(len(t.split()) * 1.4) + 12
+    return _encoder_tokens(text)
+
+
+def picture_prompt(facts):
+    """A prompt from picture_facts: style, place and light, one clause per person, how they
+    stand, the deed in front, the danger, then the setting and the set-up sentence, which go
+    first when the prompt is over budget (people and the deed never do)."""
+    people = facts['people']
+    who = (f"One person, no others: {_clause(people[0])}" if len(people) == 1 else
+           f"{len(people)} people, no others: " + '; '.join(_clause(p) for p in people))
+    where_ = ([f"Interior: inside {facts['place']}, {facts['light']}"] if facts['indoor']
+              else ['Wide view', f"{facts['place']}, {facts['light']}"])
+    head = [facts['style'], *where_, who,
+            f"They stand {facts['apart']}" if facts['apart'] else '',
+            f"In the foreground, {facts['deed']}" if facts['deed'] else '',
+            f"{facts['threat'][0].upper()}{facts['threat'][1:]}" if facts['threat'] else '']
+    tail = [facts['setting'], facts['setup']]
+    while True:
+        prompt = _join(head + tail)
+        if not any(tail) or prompt_tokens(prompt) <= PROMPT_BUDGET:
+            return prompt
+        tail[max(i for i, t in enumerate(tail) if t)] = ''   # the set-up sentence first, then the setting
+
+
+def portrait_prompt(facts):
+    person = facts['person']
+    return _join([facts['style'], f"Head and shoulders portrait of {_clause(person, hands=2, named=False)}",
+                  f"Expression: {facts['mood']}" if facts['mood'] else '',
+                  f"Behind, out of focus: {facts['place']}, {facts['light']}" if facts['place'] else ''])

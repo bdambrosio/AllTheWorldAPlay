@@ -874,25 +874,26 @@ adjective, adjective, adjective
             # how the character looks, how it feels, where it is (sim/stage.py). It was the first
             # two sentences of the description, then 'Background:' and the opening of the Situation
             # cut off at 96 characters.
-            description = stage.portrait(self.context, self, response or '')
+            self._portrait_facts = stage.portrait_facts(self.context, self, response or '')
+            description = (stage.portrait_prompt(self._portrait_facts) if stage.IMAGE_PROMPT == 'new'
+                           else stage.portrait(self.context, self, response or ''))
 
         except Exception as e:
             traceback.print_exc()
         return description
 
-    def update_actor_image(self):
-        image_path = None
-        try:
-            description = self.generate_image_description()
-            prompt = description
-            #print(f' actor image prompt len {len(prompt)}')
-            # one seed for a character, so that it keeps a face from one portrait to the next
-            trace.event('image', of=self.name, prompt=prompt)
-            image_path = llm_api.generate_image(self.llm, prompt, size='384x384', filepath=self.name + '.png',
-                                                seed=zlib.crc32(self.name.encode()))
-        except Exception as e:
-            traceback.print_exc()
-        return image_path
+    async def render_portrait(self):
+        """A fresh portrait: the prompt (an LLM call for the mood) runs on the event loop, the
+        render in a thread. One seed for a character, so that it keeps a face from one portrait to
+        the next. Returns the image path, or None. (Two paths drew portraits, neither with the
+        seed, and neither traced; the seeded one was never called.)"""
+        stage.ensure_looks(self)
+        prompt = self.generate_image_description()
+        if not prompt:
+            return None
+        trace.event('image', of=self.name, prompt=prompt, facts=getattr(self, '_portrait_facts', None), builder=stage.IMAGE_PROMPT)
+        return await asyncio.to_thread(generate_image, self.llm, prompt, filepath=self.name + '.png',
+                                       seed=zlib.crc32(self.name.encode()))
 
     def update_world_image(self):
         raise NotImplementedError("Derived classes must implement update_world_image")
@@ -3883,9 +3884,8 @@ End your response with:
         runs here like any other call; only the render goes to a thread."""
         data = self.to_json()
         try:
-            description = self.generate_image_description()
-            if description:
-                image_path = await asyncio.to_thread(generate_image, self.llm, description, filepath=self.name+'.png')
+            image_path = await self.render_portrait()
+            if image_path:
                 with open(image_path, 'rb') as f:
                     data['image'] = base64.b64encode(f.read()).decode()
         except Exception as e:
