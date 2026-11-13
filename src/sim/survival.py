@@ -762,6 +762,7 @@ def change_body(character, need, worse, size):
 # was offered and was settled as searching the hut; a stick was told as handed over, twice,
 # while the world kept it where it was.)
 PROP_GLOSS = {'give': "puts it in {other}'s hands", 'offer': 'offers or shows it; {other} may then take it',
+              'share': '{other} has it too and you keep it; when either of you uses it up, it is used up for both, and does both good',
               'put down': 'leaves it lying here', 'take': 'it is lying here',
               'take from': '{other} is holding it: it comes away only if {other} has held it out'}
 
@@ -781,6 +782,8 @@ def prop_offers(character):
             if not _give_label(cfg, item, other.name):   # the world's own 'give berries' stands where it has one
                 out[f'give {item}@{other.name}'] = ('give', item, other)
             out[f'hold out {item}@{other.name}'] = ('offer', item, other)
+            if item not in other.body.inventory and not item.startswith(private):
+                out[f'share {item}@{other.name}'] = ('share', item, other)
         out[f'put down {item}'] = ('put down', item, None)
     for prop in lying(context, _here(character)):
         out.setdefault(f"take {prop['name']}", ('take', prop['name'], None))
@@ -805,6 +808,21 @@ def _prop_do(context, character, kind, item, other):
         other.add_perceptual_input(f'{character.name} hands you the {item}', mode='internal')
         fact = f"{character.name} hands {other.name} the {item}."
         _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
+    elif kind == 'share' and item in body.inventory and item not in other.body.inventory:
+        # Shared, a thing is held by both: 'apple', not 'an apple' (an inventory is of mass nouns,
+        # and nothing here says what can be divided: Lanya could not share a can). The two
+        # holdings are tied (context.shared): used up by one, it is used up for both, and does
+        # both the good it does (shared_out). Given away or put down, only that one's goes.
+        other.body.inventory.append(item)
+        ties = context.__dict__.setdefault('shared', [])
+        tie = next((t for t in ties if t[0] == item and character.name in t[1]), None)
+        if tie is None:
+            ties.append((item, {character.name, other.name}))
+        else:
+            tie[1].add(other.name)
+        other.add_perceptual_input(f'{character.name} shares the {item} with you: you have it too', mode='internal')
+        fact = f"{character.name} shares the {item} with {other.name}; both now have it."
+        _record(character, {'name': 'share', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
     elif kind == 'offer' and item in body.inventory:
         if (item, character.name, other.name) not in held_out:
             held_out.append((item, character.name, other.name))
@@ -843,6 +861,27 @@ def _prop_do(context, character, kind, item, other):
         return None
     trace.event('prop_deed', character=character.name, deed=kind, item=item, other=other.name if other is not None else None)
     return fact
+
+
+def shared_out(context, character, item, effects):
+    """`character` has used up `item`. Those it was shared with (see _prop_do 'share') and who
+    still hold it lose it too and get the same good of it. Returns their names."""
+    ties = getattr(context, 'shared', None) or []
+    tie = next((t for t in ties if t[0] == item and character.name in t[1]), None)
+    if tie is None:
+        return []
+    ties.remove(tie)
+    names = []
+    for other in context.actors + context.extras + context.npcs:
+        if other is character or other.name not in tie[1] or item not in getattr(getattr(other, 'body', None), 'inventory', []):
+            continue
+        other.body.inventory.remove(item)
+        for need, delta in effects.items():
+            other.body.adjust(need, delta)
+        other.add_perceptual_input(f'{character.name} and you finish the shared {item} between you', mode='internal')
+        names.append(other.name)
+    trace.event('shared_used', character=character.name, item=item, others=names)
+    return names
 
 
 def _give_label(cfg, item, to_name):
@@ -1052,8 +1091,10 @@ def _apply(context, character, action, near, target, via, act_text=''):
                 # 'unhurt' within the scene, and the next deed on that leg was refused
                 other.body.levels[need] = max(other.body.level(need), NEED_FELT)
     used = _held(body, action.get('consumes'))
+    shared_with = []
     if used:
         body.inventory.remove(used)
+        shared_with = shared_out(context, character, used, action.get('effects') or {})
     item = item or used or _held(body, action.get('requires'))
     if action.get('gain'):
         body.inventory.append(_fmt(action['gain'], actor=character.name, item=item or ''))
@@ -1102,6 +1143,8 @@ def _apply(context, character, action, near, target, via, act_text=''):
     kw = dict(resource=resource_id or 'here', target=other.name if other else '', actor=character.name, item=item or found or '')
     where = f" at {resource_id}" if resource_id else ''
     fact = approach + f"{character.name} {_fmt(action.get('text', action['name']), **kw)}{'' if action.get('text') else where}."
+    if shared_with:
+        fact += f" It was shared with {' and '.join(shared_with)}: it is used up for both, and did them the same good."
     if action.get('finds'):
         fact += f" {character.name} finds {found}." if found else f" {character.name} finds nothing useful."
     if revealed is not None:
