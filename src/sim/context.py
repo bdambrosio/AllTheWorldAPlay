@@ -104,6 +104,7 @@ class Context():
             self.simulation_time = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time)
         else:
             self.simulation_time = self.extract_simulation_time(description)
+        self.play_began = self.simulation_time   # how long the characters have been in the play (Character.physical_context)
         self.reference_manager = ReferenceManager(self, self.llm)
         self.voice_service = VoiceService()
         self.voice_service.set_provider('elevenlabs')
@@ -2535,9 +2536,10 @@ Things this world's own actions produce, which are not to be handed out here: {{
 - Most characters need nothing. Someone who begins with nothing (lost, stranded, robbed) gets nothing. At most two things each.
 - No weapon, food, drink, medicine or money, and nothing they could only have by something happening in the play.
 - What a person is wearing is not something they have with them: no clothes, shoes or anything else a description says they are dressed in.
+- One thing to a line, each a single object: 'notebook' and 'pen' on two lines, not 'notebook and pen' (a thing handed over is handed over whole).
 
 Respond with one line for each thing, or the single line #none:
-#has <character name> | <the thing, two or three plain words>
+#has <character name> | <one thing, two or three plain words>
 </end>
 """)]
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),

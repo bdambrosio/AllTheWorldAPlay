@@ -2715,9 +2715,12 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         acts = [a for a in (task.acts or []) if getattr(a, 'action', None)]
         if not acts:
             return ''
+        # a deed the world refused is told as a try: it was listed as done, and the actor went on
+        # as if it had the thing it had been refused
         return ("Toward this task you have already, in this order:\n"
-                + '\n'.join(f"- {a.mode}: {str(a.action)[:200]}" for a in acts[-4:])
-                + "\nThese are done and cannot be done again or thought over as if still to do. "
+                + '\n'.join(f"- {a.mode}: {str(a.action)[:200]}" + (' (you tried; it did not happen)' if getattr(a, 'attempt_only', False) else '')
+                             for a in acts[-4:])
+                + "\nThese are done (a try that did not happen may be tried another way) and cannot be done again or thought over as if still to do. "
                   "Choose what comes next after them; if they have done what the task asks, do what follows from it.")
 
     def already_said(self, task):
@@ -3512,12 +3515,24 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
-        parts.append(f'It is now {stage.clock(self.context)}.')
+        parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         parts.append('Recent events:\n' + self.context.recent_events_text(6))
         actions = survival.available_actions(self, part='known')
         if actions:
             parts.append('You could do here: ' + actions)
         return '\n'.join(parts)
+
+    def _time_in_play(self):
+        """How long the play has run, in words, so a character keeps count: 'five days here' was
+        said on the first morning, and a woman who had lived in Bellona for years was 'new in town'."""
+        began = getattr(self.context, 'play_began', None)
+        if began is None:
+            return ''
+        hours = (self.context.simulation_time - began).total_seconds() / 3600
+        days = int((self.context.simulation_time.date() - began.date()).days)
+        span = ('less than an hour' if hours < 1 else f'about {round(hours)} hour{"s" if round(hours) != 1 else ""}' if hours < 24
+                else f'{days} day{"s" if days != 1 else ""}')
+        return f' The play began {span} ago, on {began.strftime("%A")} at {began.strftime("%H:%M")}.'
 
     def _pop_dialog_task(self, other):
         """Pop the 'dialog with other' task if it is on top (the pop was unconditional and could
@@ -3751,6 +3766,10 @@ End your response with:
                     if hasattr(actor, 'name'):  # Ensure it's a valid character
                         self.context.staleness_detector.record_turn(actor)
             act_count += 1
+            # a danger strikes when its time comes, between one act and the next: it was applied
+            # only after the whole task, so acts written before it (sniffing a cup) were played
+            # after the gang had hit
+            survival.hazard_tick(self.context)
  
                
             # Did we push opportunistic subtasks? This should be obv
@@ -3850,6 +3869,7 @@ End your response with:
         #await asyncio.sleep(0.1)
         began = self.context.simulation_time
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
+        action.attempt_only = bool(getattr(self, 'attempt_only', False))   # the world refused it: tried, not done (done_in_task)
         logger.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
         if hasattr(action, 'duration'):
             act_duration = action.duration
