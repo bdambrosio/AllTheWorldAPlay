@@ -35,6 +35,7 @@ FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
 # enable_thinking False and thinking disabled are refused). It spent up to ~250 reasoning tokens
 # on a check, from the same budget as the answer: at 96 the JSON was cut off. Used only if spent.
 FIREWORKS_HEADROOM = 512
+LOCAL_THINKING_HEADROOM = 1024   # the same, for a local model that always thinks (LLM.thinks); GLM-5.3 at low took up to ~600
 # Claude Haiku 5.5 on the Anthropic API (server_name 'haiku'). Key: CLAUDE_API_KEY or ANTHROPIC_API_KEY.
 # How much every call thinks before it answers: ATWAP_EFFORT = off | low | medium | high. Calls
 # named by set_reasoning think at the effort given there whatever this says, so
@@ -352,13 +353,17 @@ class LLM():
             # thinking disabled: callers use small max_tokens budgets that reasoning would consume
             body = {"model": self.model, "messages": messages,
                     "temperature": options.temperature, "top_p": options.top_p,
-                    "max_tokens": options.max_tokens, "stop": options.stops or None,
+                    "max_tokens": options.max_tokens,
                     "chat_template_kwargs": {"enable_thinking": False}}
+            if options.stops:   # TabbyAPI fails on "stop": null
+                body["stop"] = options.stops
             effort = getattr(options, 'reasoning', None)
             if effort:   # set_reasoning: this call thinks first, on a budget of its own
                 del body["chat_template_kwargs"]
                 body["reasoning_effort"] = effort
                 body["max_tokens"] = options.max_tokens + REASONING_TOKENS
+            if getattr(self, 'thinks', False):
+                self._as_thinker(body, effort)
         else:
             body = {"messages": substituted_prompt, "temperature": options.temperature,
                     "top_p": options.top_p, "max_tokens": options.max_tokens, "stop": options.stops}
@@ -367,13 +372,37 @@ class LLM():
             raise Exception(f'{response.status_code} from LLM server: {response.text[:500]}')
         try:
             reply = response.json()
-            text = reply['choices'][0]['message']['content'] or ''
+            message = reply['choices'][0]['message']
+            text = message['content'] or ''
             self._last_usage = (reply.get('usage') or {}, reply['choices'][0].get('finish_reason'))
         except (ValueError, KeyError, IndexError):
             return response.content.decode('utf-8')
+        if 'vllm' in self.server_name and not getattr(self, 'thinks', False) and (message.get('reasoning_content') or message.get('reasoning')):
+            # the served model thinks whatever it is asked: from now on it is asked as one that
+            # does, and this call, which may have stopped inside the thinking, is asked again
+            self.thinks = True
+            print(f'{self.model} thinks before it answers: stops are cut here, with {LOCAL_THINKING_HEADROOM} tokens of headroom')
+            self._as_thinker(body, getattr(options, 'reasoning', None))
+            response = _post_with_restart_wait(url, body)
+            if response.status_code != 200:
+                raise Exception(f'{response.status_code} from LLM server: {response.text[:500]}')
+            reply = response.json()
+            text = reply['choices'][0]['message']['content'] or ''
+            self._last_usage = (reply.get('usage') or {}, reply['choices'][0].get('finish_reason'))
         if (index := text.find('</think>')) > -1:
             text = text[index + 8:].strip()
         return text
+
+    @staticmethod
+    def _as_thinker(body, effort):
+        """A request to a local model that always thinks (GLM-5.3 under TabbyAPI). Its thinking is
+        spent from the same budget, and a stop string is matched inside the thinking too: it
+        quoted the prompt's 'End with </end>' while reading it and stopped there, with no answer
+        written. Stops are cut on this side instead (LLM.ask). Its template knows two efforts."""
+        body.pop("stop", None)
+        body["max_tokens"] += LOCAL_THINKING_HEADROOM
+        body["chat_template_kwargs"] = {"reasoning_effort": 'high' if effort in ('medium', 'high') else 'low'}
+        body.pop("reasoning_effort", None)
 
     def _haiku_request(self, messages, options):
         """One Messages API call. The system turns that open the prompt go in `system`; a prompt
