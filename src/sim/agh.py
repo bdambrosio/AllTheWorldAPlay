@@ -1180,9 +1180,19 @@ End response with:
         leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
         if act_mode == 'Move':
             line = None
+            if leaving and isinstance(act.leaves, list):
+                # the whole cast walking off together has not left the scene: the scene goes with
+                # them ('leaves for the spring with Joe' ended a scene on its first act)
+                on_stage = [c for c in self.context.actors + self.context.extras + self.context.npcs
+                            if c is not self and getattr(c, 'current_scene', None) is self.context.current_scene
+                            and not stage.off_stage(c)]
+                if all(c in act.leaves for c in on_stage):
+                    leaving = False
             try:
                 # with the others, unless the mover leaves them: then it goes alone, and is gone
-                line = self.move(act_arg, reason, alone=leaving == 'alone')
+                # (this compared a bool with 'alone': nobody ever went alone, and Samantha
+                # 'left for the berries with Joe' while leaving him behind)
+                line = self.move(act_arg, reason, alone=leaving and act.leaves == 'alone')
             except Exception as e:
                 logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
             if leaving and line is not None:
@@ -2169,7 +2179,7 @@ Respond in hash-formatted text:
 #action thoughts, words to speak, direction to move, or physical action. For Move this can be a direction or a resource name. Be concise, limit your response to 16-20 words for mode Do or 30 words max for mode Say.
 #target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
 #duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
-#leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise, and for moving about the place.
+#leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene.
 ##
 
 #NOTE#
