@@ -479,6 +479,15 @@ LIGHT = {'night': 'night, dark, faint moonlight', 'dawn': 'dawn, first grey ligh
 DEFAULT_STYLE = 'Photorealistic, 35mm film'
 
 
+def light(context):
+    """The light of the part of day now, in the world's own words where it has them (a
+    scenario's image_light: the Moon has a black sky at every hour, and 'clear morning light'
+    drew an Earth desert)."""
+    part = part_of(context.simulation_time)
+    own = getattr(getattr(getattr(context, 'map', None), 'scenario_module', None), 'image_light', None) or {}
+    return own.get(part) or LIGHT[part]
+
+
 def style(context):
     return (getattr(context, 'image_style', None) or getattr(getattr(context, 'map', None) and context.map.scenario_module, 'image_style', None)
             or DEFAULT_STYLE)
@@ -565,14 +574,14 @@ def picture(context, doing=''):
         return None
     setting = ' '.join(context.initial_state.split('.')[0].split()).strip().rstrip('.')
     place, indoor = _place_words(context, on_stage)
-    light = LIGHT[part_of(context.simulation_time)]
+    lit = light(context)
     people = '; '.join(_looks(context, c) for c in on_stage[:4])
     threat = getattr(context, 'active_threat', None)
     if indoor:
         # the play's opening sentence describes the town, not the room: given here it brought the street in
-        where_ = [f"Interior: inside {place}, {light}"]
+        where_ = [f"Interior: inside {place}, {lit}"]
     else:
-        where_ = ['Wide view', f"{place}, {light}", setting]
+        where_ = ['Wide view', f"{place}, {lit}", setting]
     parts = [style(context), *where_,
              f"{'One person' if len(on_stage) == 1 else str(len(on_stage)) + ' people, no others'}: {people}"]
     if threat:
@@ -585,7 +594,7 @@ def picture(context, doing=''):
 def portrait(context, character, mood=''):
     """The prompt for a character's portrait: how it looks, how it feels, where it is."""
     cast = [character] if getattr(character, 'mapAgent', None) is not None else []
-    where_ = f"{_place_words(context, cast)[0]}, {LIGHT[part_of(context.simulation_time)]}" if cast and getattr(context, 'map', None) else ''
+    where_ = f"{_place_words(context, cast)[0]}, {light(context)}" if cast and getattr(context, 'map', None) else ''
     parts = [style(context), f"Head and shoulders portrait of {_looks(context, character)}",
              f"Expression: {mood.strip().rstrip('.')}" if mood and mood.strip() else '',
              f"Behind, out of focus: {where_}" if where_ else '']
@@ -600,9 +609,10 @@ def portrait(context, character, mood=''):
 #
 # picture_facts / portrait_facts gather the facts (they go into the trace with every picture,
 # whichever prompt is sent); picture_prompt / portrait_prompt write a prompt from them alone, so
-# tools/image_ab.py can draw a recorded moment again. ATWAP_IMAGE_PROMPT=new sends these prompts;
-# 'old' (the default until the A/B test is decided) sends picture() and portrait().
-IMAGE_PROMPT = os.environ.get('ATWAP_IMAGE_PROMPT', 'old').strip().lower()
+# tools/image_ab.py can draw a recorded moment again. These prompts are sent; ATWAP_IMAGE_PROMPT=old
+# sends picture() and portrait() instead (they described a lunar engineer by her job, from the
+# description's first sentence, and the picture was a desert building site with hardhats).
+IMAGE_PROMPT = os.environ.get('ATWAP_IMAGE_PROMPT', 'new').strip().lower()
 PROMPT_BUDGET = 300   # tokens of the image model's encoder; it reads 512 and cuts the rest unseen
 APART_WORDS = ((1, 'side by side'), (3, 'a few steps apart'), (8, 'some way apart'))
 THREAT_WORDS = ((2, 'close by'), (6, 'nearby'))
@@ -682,7 +692,7 @@ def picture_facts(context, deed='', actor=None, setup=False):
     shown = on_stage[:4]
     place, indoor = _place_words(context, on_stage)
     facts = {'style': style(context), 'place': place, 'indoor': indoor,
-             'light': LIGHT[part_of(context.simulation_time)],
+             'light': light(context),
              'setting': '' if indoor else ' '.join(context.initial_state.split('.')[0].split()).strip().rstrip('.'),
              'people': [_person(context, c) for c in shown], 'apart': '', 'threat': '', 'deed': '', 'setup': ''}
     if len(shown) > 1:
@@ -702,8 +712,14 @@ def picture_facts(context, deed='', actor=None, setup=False):
 
 def portrait_facts(context, character, mood=''):
     cast = [character] if getattr(character, 'mapAgent', None) is not None and getattr(context, 'map', None) else []
+    place = _place_words(context, cast)[0] if cast else ''
+    by = remote(character)
+    if by:
+        # behind someone on the radio is where they speak from, not the scene's place (Novak at
+        # her mission-control consoles was painted on the gantry)
+        place = re.sub(r'^by\b.*?\bfrom\s+', '', by) or by
     return {'style': style(context), 'person': _person(context, character), 'mood': (mood or '').strip().rstrip('.'),
-            'place': _place_words(context, cast)[0] if cast else '', 'light': LIGHT[part_of(context.simulation_time)]}
+            'place': place, 'light': '' if by else light(context)}
 
 
 def _clause(person, hands=99, named=True):
@@ -735,19 +751,21 @@ def prompt_tokens(text):
 
 
 def picture_prompt(facts):
-    """A prompt from picture_facts: style, place and light, one clause per person, how they
-    stand, the deed in front, the danger, then the setting and the set-up sentence, which go
-    first when the prompt is over budget (people and the deed never do)."""
+    """A prompt from picture_facts: style, place and light, the setting, one clause per person,
+    how they stand, the deed in front, the danger, then the set-up sentence, which goes when
+    the prompt is over budget (people and the deed never do)."""
     people = facts['people']
     who = (f"One person, no others: {_clause(people[0])}" if len(people) == 1 else
            f"{len(people)} people, no others: " + '; '.join(_clause(p) for p in people))
     where_ = ([f"Interior: inside {facts['place']}, {facts['light']}"] if facts['indoor']
               else ['Wide view', f"{facts['place']}, {facts['light']}"])
-    head = [facts['style'], *where_, who,
+    head = [facts['style'], *where_, facts['setting'], who,
             f"They stand {facts['apart']}" if facts['apart'] else '',
             f"In the foreground, {facts['deed']}" if facts['deed'] else '',
             f"{facts['threat'][0].upper()}{facts['threat'][1:]}" if facts['threat'] else '']
-    tail = [facts['setting'], facts['setup']]
+    # the world the place is in stays (a lunar base: dropped, the gantry was drawn on Earth);
+    # the set-up sentence goes first when the prompt is over budget
+    tail = [facts['setup']]
     while True:
         prompt = _join(head + tail)
         if not any(tail) or prompt_tokens(prompt) <= PROMPT_BUDGET:

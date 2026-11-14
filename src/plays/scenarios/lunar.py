@@ -248,3 +248,9 @@ affordances = {
                        'back away': {'verbs': ['back away', 'retreat', 'move clear'], 'success': 0.6}}},
     ],
 }
+
+# the sky of a picture (stage.light): no air, so a black sky and hard sunlight at any hour the
+# sun is up; the play's clock runs on Earth hours
+_SUNLIT = 'harsh unfiltered sunlight, black sky, Earth low on the horizon, hard black shadows'
+image_light = {'dawn': _SUNLIT, 'morning': _SUNLIT, 'midday': _SUNLIT, 'afternoon': _SUNLIT, 'dusk': _SUNLIT,
+               'night': 'lunar night, black starry sky, Earth low on the horizon, the base lit by floodlights'}

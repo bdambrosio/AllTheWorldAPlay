@@ -125,6 +125,9 @@ try:
     Jade.mapAgent.move_to_resource("Gantry1")    # exterior catwalk
     Cmdr.mapAgent.move_to_resource("Airlock1")    # interior hatch zone
     Novak.mapAgent.move_to_resource("Habitmodule1")   # a place to stand on the map; she is on Earth (Novak.remote)
+    # she is welding the line as the play opens: the torch is the play's, not left to equip_cast
+    # (which gave it in one run and not the next, and the world then told her she had no torch)
+    Jade.body.inventory.append('welding torch')
 except Exception:
     # Map not yet authored; safe to ignore during initial authoring.
     pass
