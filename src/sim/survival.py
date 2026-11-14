@@ -706,7 +706,7 @@ def holdings(character):
     if body is None or not config(character.context):
         return ''
     people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
-    here = ', '.join(p['name'] for p in lying(character.context, _here(character)))
+    here = ', '.join(p['name'] + (f" ({p['spot']})" if p.get('spot') else '') for p in lying(character.context, _here(character)))
     return '\n'.join([f"{p.name}: {', '.join(i for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
                       for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
 
@@ -750,8 +750,26 @@ def whereabouts_of(context, name):
     for prop in getattr(context, 'props', []):
         if same(prop['name']):
             near = _nearest_resource_id(context, prop['at'])
-            return f"lying at {near}" + (', not yet found' if prop.get('hidden') else '') if near else 'lying out of sight'
+            return (f"lying at {near}" + (f", {prop['spot']}" if prop.get('spot') else '')
+                    + (', not yet found' if prop.get('hidden') else '')) if near else 'lying out of sight'
     return ''
+
+
+def things_note(context, xy=None, people=()):
+    """Where the things of the play are now, for any prompt that writes about them: each thing
+    lying loose, with its place and where in it (prop spot), and what each of `people` carries.
+    xy: only those lying at or near that spot. (A set-up put the scarf on a peg, a search found it
+    swept under the floor, and the next set-up laid it on the floor again while the actors took it
+    to be in Samantha's hands: nobody writing of it was told where the world had it.)"""
+    props = [p for p in getattr(context, 'props', []) if xy is None or _distance(p['at'], xy) <= CO_PRESENT_TILES]
+    lines = [f"{p['name']}: {whereabouts_of(context, p['name'])}" for p in props]
+    for person in people:
+        body = getattr(person, 'body', None)
+        private = tuple((body.cfg.get('private_items', ()) if body is not None else ())) or ('\0',)
+        held = [i for i in (body.inventory if body is not None else []) if not i.startswith(private)]
+        if held:
+            lines.append(f"carried by {person.name}: {', '.join(held)}")
+    return '\n'.join(lines)
 
 
 def _nearest_resource_id(context, xy):

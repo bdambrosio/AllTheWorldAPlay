@@ -353,6 +353,8 @@ class Context():
         hours = gap.total_seconds() / 3600
         if hours <= 0:
             return 0.0
+        for character in self.actors + self.extras:   # time already played on stage counts before the jump
+            survival.tick(character)
         met = survival.pass_offstage(self, gap)
         self.simulation_time = target
         if hours >= survival.REAL_JUMP_HOURS:
@@ -1548,12 +1550,15 @@ It is now {{$clock}}.
 Bodies and what each carries: {{$bodies}}
 Dangers this world has: {{$hazards}}. Now: {{$danger}}.
 {{$clues}}
+Where things are now (the world keeps this; a set-up does not move them): {{$things}}
+Where the cast last went: {{$left_for}}
 What has happened lately:
 {{$events}}
 </where_things_stand>
 
 Rules:
 - location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
+- If the cast walked out of the last place for somewhere (see 'Where the cast last went'), the scene is where they went: name that place, or the listed place nearest the way they went. A scene back at the place they left must open with them coming back to it, and why.
 - A scene is played in one place with its cast together. The set-up does not send them apart or off on separate errands; if the plan has them part and meet again, set the scene where they meet.
 - The set-up must start from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold.
 - when: first settle what part of the day the scene is played in. {{$moving}}
@@ -1576,6 +1581,7 @@ Respond with these lines only:
 #ending what the scene should arrive at, one sentence
 #goal <character name>: that character's goal in the scene (one line for each character)
 #unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
+#thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
 </end>
 
 On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
@@ -1603,7 +1609,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'hazards': ((', '.join(hazards) or 'none') if not survival.hazard_spent(self) or threat else
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
                   'danger': threat['hazard']['description'] if threat else 'none',
-                  'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()}
+                  'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
+                  'things': survival.things_note(self, people=cast) or 'nothing tracked',
+                  'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
+                                        + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
+                                        for e in getattr(self, 'last_scene_exits', []) if not any(e['who'] in (o.get('with') or []) for o in getattr(self, 'last_scene_exits', []) if o is not e and o['time'] <= e['time']))
+                              or 'nobody left; they are where the last scene ended'}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
         deeds_asked, admitted = False, False
@@ -1629,6 +1640,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
                         entry['goal'] = goal.strip()
+            # where in the place each loose thing lies, as the set-up shows it: kept on the thing, so
+            # that what is written of it later puts it there (survival.whereabouts_of, holdings)
+            for name, spot in re.findall(r'#thing\s+([^:\n]+):\s*(.+)', reply):
+                prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
+                             or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
+                if prop is not None and not prop.get('spot'):
+                    prop['spot'] = spot.strip().rstrip('.')[:80]
             # what each character has still to find out: a note for its actor (Character.director_notes)
             for entry in (scene.get('characters') or {}).values():
                 if isinstance(entry, dict):
@@ -1737,6 +1755,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
+        self.last_scene_exits = list(self.scene_exits)   # where the last scene's cast went: the set-up and the stage read it
         self.scene_exits = []
         self._scene_transcript_start = len(self.transcript)
 
@@ -1953,6 +1972,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             if stage.off_stage(character):
                 continue   # no closing business for someone who has gone (Ding walked out, then 'had a drink at Cafe')
             self.simulation_time = closing
+            # the body first catches up with the clock: needs rise only when a character steps a
+            # task, and Joe, answering in dialog through a night, was 'rested' after standing watch
+            survival.tick(character)
             for label in stage.pending_business(character):
                 fact = survival.do_business(self, character, label)
                 if fact:
@@ -2562,7 +2584,8 @@ End your response with: </end>"""
         return (f"This episode is to settle: {frame['settles']} Each act should bring that nearer or put it in doubt. "
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
                 + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
-                + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else ''))
+                + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
+                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
@@ -2656,11 +2679,12 @@ Rules:
 - A claim in parts happened only if every part did: "she leaves at dawn, he stays behind" did not happen if they left together, or if nobody left.
 - What someone says shows only that it was said. "I found it in the woods" is an outcome as "she says she found it in the woods"; where she found it is what happened shows. Pretending (a feigned limp) does not undo what the bodies show.
 - Who left, who went together and who stayed are read from who_left_and_where_they_are, not from the lines.
-- Each outcome is one plain statement of one thing, ten words or so. Never "X or Y". For each, quote a few words of the record that show it (fifteen words at most); with no such words, it did not happen.
+- Each outcome is one plain statement of one thing, ten words or so. Never "X or Y". For each, quote a few words of the record that show it, copied exactly (fifteen words at most); with no such words, it did not happen.
+- Say whether each outcome is a thing done (given, kept, taken, found, slept, watched, went, opened) or a thing said (asked, agreed, refused, promised, admitted). A thing done is shown only by words from what_happened; a thing said, by words from what_was_said_and_shown. A promise or an agreement to do something is a thing said, and is stated as one ("he says he will wake her"), never as done ("they split the watch").
 - Six outcomes at most: the claims of the planned ending first, then only what changed how things stand. Not every deed is an outcome.
 
 Answer in JSON only:
-{"outcomes": [{"outcome": "<one plain statement>", "happened": true or false, "shown_by": "<words quoted from the record, or empty>"}]}
+{"outcomes": [{"outcome": "<one plain statement>", "kind": "done" or "said", "happened": true or false, "shown_by": "<words copied from the record, or empty>"}]}
 End your response with: </end>""")]
         if scene:
             post_state = scene.get('post_narrative', '')
@@ -2682,13 +2706,21 @@ End your response with: </end>""")]
         if not isinstance(found, dict):
             trace.event('check_unreadable', of='outcomes', reply=(reply or '')[:300])
             return []
+        # an outcome stands on words that are in the record: a deed on what happened, a saying on
+        # what was said. ('Samantha's bargain is won' stood on Joe's 'Fine, we search together';
+        # 'they split the night into watches' on 'I'll wake you', and he never woke her.)
+        events_text = '\n'.join(self.scene_events if scene else self.act_events)
+        lines_text = '\n'.join(str(l) for l in self.transcript[start:])
         outcomes = []
         for entry in found.get('outcomes') or []:
             if isinstance(entry, dict) and str(entry.get('outcome') or '').strip():
                 shown_by = str(entry.get('shown_by') or '').strip()
-                # an outcome with nothing of the record behind it is not counted as having happened
-                outcomes.append({'outcome': str(entry['outcome']).strip(), 'test': entry.get('happened') is True and bool(shown_by),
-                                 'shown_by': shown_by[:200]})
+                kind = str(entry.get('kind') or 'done').strip().lower()
+                backed = bool(shown_by) and record.quoted_in(shown_by, events_text if kind != 'said' else lines_text + '\n' + events_text)
+                if entry.get('happened') is True and shown_by and not backed:
+                    trace.event('outcome_unbacked', outcome=str(entry['outcome'])[:200], kind=kind, shown_by=shown_by[:200])
+                outcomes.append({'outcome': str(entry['outcome']).strip(), 'test': entry.get('happened') is True and backed,
+                                 'shown_by': shown_by[:200], 'kind': kind})
         return outcomes
 
     async def check_decision_required(self, act, scene):

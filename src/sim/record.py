@@ -32,7 +32,7 @@ from utils.Messages import UserMessage
 from utils import json_reply
 
 NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed at, spoken of
-KINDS = ('item', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender')
+KINDS = ('item', 'holding', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
 
@@ -56,6 +56,7 @@ What the world's rules made of it ('none': the rules changed nothing):
 
 A statement is unsupported when it is one of these:
 - item: someone has, gains, uses, eats, drinks from, drops or hands over a thing that Holdings, Lying here and Settled do not give them (a tool, weapon, food, water, medicine, container, device), or finds such a thing lying there. Picking, touching or handling what grows or lies at a place the character is at (a berry at the berry bush, a branch at a fallen branch), or something of a kind it carries, is supported.
+- holding: someone ends up holding or carrying off a thing that Lying here lists and Settled did not give them (picks it up, pockets it, takes it along, ties it on). Touching, examining or turning over a thing where it lies, or pointing at it, is not holding.
 - condition: of the body only (fear, shock, a scare, relief and calm are of the mind and never a condition): a wound, illness or pain from injury, or a need met or unmet (hungry, fed, thirsty, quenched, tired, rested), that Bodies and Settled do not show. A stronger or weaker word for what Bodies shows (exhausted for tired) is supported.
 - presence: an animal or person that Present, Danger and Settled do not mention; or the danger listed under Danger gone, struck or beaten when Settled does not say so. (A danger leaving as Settled says is supported. Anyone listed under Present is there, wherever the narration puts them within the place. Places, plants, wind, noises and things in the landscape are never 'presence'. Someone listed as on the radio is heard, not there: their voice is supported; their standing there, handling a thing there or being touched is 'presence'.)
 - place: a character standing at, or having moved to, a place other than where Present puts them, when Settled has no walk. Seeing, facing, pointing at, turning or taking a few steps toward a place in sight is not moving there.
@@ -70,7 +71,7 @@ What Settled says happened is supported, in the narration's own words (he bites 
 Most narration has nothing unsupported. When you are not sure, it is supported.
 
 Respond ONLY with JSON, no prose, no markdown, in this shape:
-{"findings": [{"kind": "<item, condition, presence, place, time, stock, outcome or gender>", "words": "<the narration's own words, exactly>"}]}
+{"findings": [{"kind": "<item, holding, condition, presence, place, time, stock, outcome or gender>", "words": "<the narration's own words, exactly>"}]}
 with "findings": [] when nothing is unsupported.
 </end>
 """
@@ -89,6 +90,26 @@ def seen_by(character):
         return getattr(context, '_state_base', '') or context.initial_state
     lately = ' '.join(w.split(' Assessed outcome:')[0] for w in getattr(context, 'act_scene_wrapups', [])[-2:])
     return opening + situation(context, lately, viewer=character)
+
+
+def quoted_in(quote, text, share=0.8):
+    """Whether `quote` is words of `text`. A quote may join pieces ('Samantha sleeps in Hut2 ...
+    in shelter; "Me first"'): each piece of three words or more must be found, whole once case,
+    quotation marks and spacing are set aside, or with most of its words together in one line.
+    A mechanical test that the words cited are in the record, not a reading of what they mean."""
+    norm = lambda t: ' '.join(re.sub(r"[\"“”‘’]", ' ', (t or '').lower()).split())
+    flat = norm(text)
+    lines = [set(re.findall(r"[a-z0-9']+", line.lower())) for line in (text or '').split('\n')]
+    pieces = [p.strip(" .,;:-—'") for p in re.split(r"\.\.\.|…|;|—|\(|\)|\n|\"|“|”", quote or '')]
+    pieces = [p for p in pieces if len(re.findall(r"[a-z0-9']+", p.lower())) >= 3]
+    if not pieces:
+        return False
+    def found(piece):
+        if norm(piece) in flat:
+            return True
+        words = set(re.findall(r"[a-z0-9']+", piece.lower()))
+        return any(len(words & line) / len(words) >= share for line in lines)
+    return all(found(p) for p in pieces)
 
 
 def last_lines(lines, limit):
@@ -271,9 +292,26 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     of what was refused, and the claims still to be written out of the text.
     source: 'director' (a plan or an intervention) or 'deed' (a character's act, the narrator)."""
     people = [c for c in (people or [actor] + actor.bystanders()) if getattr(c, 'body', None) is not None]
+    facts, refused = [], []
+    # a thing lying within reach that the narration has the actor take: the world takes it too
+    # (Joe's search found the scarf, the narration had him pick it up, the world left it lying,
+    # and from then on the actors had it in hand and the world on the floor). Out of reach, refused.
+    held = [c for c in claims if c[0] == 'holding']
+    claims = [c for c in claims if c[0] != 'holding']
+    for claim in held:
+        words = claim[1].lower()
+        here_things = survival.lying(context, stage.here(actor)) + survival.lying(context, stage.here(actor), hidden=True)
+        thing = next((p['name'] for p in here_things if p['name'].lower() in words
+                      or p['name'].lower().split()[-1] in words.split()), None)
+        fact = survival._prop_do(context, actor, 'take', thing, None) if thing else None
+        if fact:
+            facts.append(fact)
+            trace.event('holding_admitted', character=actor.name, thing=thing)
+        else:
+            refused.append(f"{actor.name} does not have it: it is not lying within reach.")
+            claims.append(claim)
     new = [c for c in claims if c[0] in FOUND]
     remaining = [c for c in claims if c[0] not in FOUND]
-    facts, refused = [], []
     if not new:
         return facts, refused, remaining
     places = survival.place_kinds(context)

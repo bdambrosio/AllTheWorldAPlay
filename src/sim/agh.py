@@ -1352,7 +1352,7 @@ End response with:
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
             if leaving and not self.attempt_only:
-                stage.leave(self, told=True)   # the deed has told it (its event follows)
+                stage.leave(self, told=True, to=getattr(self, '_leave_to', None))   # the deed has told it (its event follows)
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             aimed_at = self._first_character(target, act)
@@ -1452,7 +1452,8 @@ End response with:
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
                 party = act.leaves if isinstance(act.leaves, list) else []
-                gone = 'leaves.' if not party else f"leaves with {', '.join(c.name for c in party)}."
+                to = getattr(self, '_leave_to', None)
+                gone = ('leaves' if not party else f"leaves with {', '.join(c.name for c in party)}") + (f', for {to}.' if to else '.')
                 self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
                 self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
                 self._leave_with(act, told=True)
@@ -2053,10 +2054,11 @@ Done when: {{$done_when}}
 
 - Done means the "done when" is so now: the record shows it happening, or where things stand shows it. Trying, asking, intending, moving toward it or talking about it is not done. A deed told as a try, or marked "(it does not happen)", did not happen.
 - If the "done when" is about what another person does or says, it is done only if the record shows that person doing or saying it.
+- A promise or an agreement to do it is not doing it: "I'll wake you at the halfway" does not show the watch split. Only a "done when" that is itself something said is shown by a line.
 - Part of it done is not done. When in doubt, not done.
 
 Answer in JSON only:
-{"done": true or false, "shown_by": "<a few words quoted from the record that show it; empty when not done>"}
+{"done": true or false, "shown_by": "<a few words copied exactly from the record that show it; empty when not done>"}
 End your response with: </end>"""
 
     async def test_termination(self, object, termination_check, consequences, updates='', type=''):
@@ -2082,7 +2084,11 @@ End your response with: </end>"""
                              [UserMessage(content=self.DONE)], tag='test_termination', temp=0.1, stops=['</end>'], max_tokens=90)
         found = json_reply.parse(reply) if reply else None
         shown_by = str(found.get('shown_by') or '').strip() if isinstance(found, dict) else ''
-        done = isinstance(found, dict) and found.get('done') is True and bool(shown_by)
+        # the words cited must be in what it was shown (a task closed on words nobody wrote is not done)
+        shown = '\n'.join(happened + [x for x in (consequences, updates) if x and x.strip()] + [record.seen_by(self)])
+        done = isinstance(found, dict) and found.get('done') is True and bool(shown_by) and record.quoted_in(shown_by, shown)
+        if isinstance(found, dict) and found.get('done') is True and shown_by and not done:
+            trace.event('termination_unbacked', character=self.name, task=object.name, shown_by=shown_by[:200])
         print(f"\n{self.name} testing {type} {object.name} termination: {termination_check}: {'done' if done else 'not done'}")
         if not isinstance(found, dict):
             trace.event('check_unreadable', of='termination', reply=(reply or '')[:300])
@@ -2202,7 +2208,7 @@ Respond with two acts: first the one {{$name}} plays now, then one alternative i
 #action for Say, only the words, {{$say_limit}}; for Do or Look, what {{$name}} does, in the third person, 20 words at most; for Move, the place or person; for Think, the thought
 #target the character(s) spoken to, acted on or walked to, comma separated; omit if none
 #duration minutes{{$affordance_line}}
-#leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene.
+#leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene. When it leaves, add where to: "with Joe, to the trail northwest".
 ##
 
 An example, from another play:
@@ -2823,7 +2829,7 @@ The question: what does {{$name}} say back, now, to get what {{$name}} is after?
 Respond with this XML only:
 <response>the words {{$name}} says, and nothing else</response>
 <reason>4-6 words: why {{$name}} says it</reason>
-<leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise</leaves>
+<leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise. When it leaves, add where to: "with Joe, to the trail northwest"</leaves>
 End your response with:
 </end>
 """
@@ -3302,7 +3308,15 @@ End your response with:
         it. (A yes/no field marked 'follow me' and 'lead the way' as walking out: each left the
         scene by itself and the pair were never seen to go together.)"""
         value = ' '.join((field or '').strip().lower().split())
+        # where it goes, when it says ('with joe, to the trail northwest'): kept for the exit and the
+        # next scene's set-up (a leave kept no destination, and the next scene was set back at the
+        # hut they had walked out of)
+        dest = re.search(r'[;,]?\s+(?:to|toward|towards|for)\s+', value)
+        to = value[dest.end():] if dest else ''
+        value = value[:dest.start()] if dest else value
+        self._leave_to = to.strip(' .;,"\'') or None
         if not value or value.startswith('no'):
+            self._leave_to = None
             return None
         if not value.startswith('with'):
             return 'alone'
@@ -3317,9 +3331,10 @@ End your response with:
         """Leave the scene, and the ones going along leave with it. told: the departure, with
         who went along, is already in the scene's record."""
         party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
-        stage.leave(self, party, told=told)
+        to = getattr(self, '_leave_to', None)
+        stage.leave(self, party, told=told, to=to)
         for other in party:
-            if stage.leave(other, [self] + party, told=told):
+            if stage.leave(other, [self] + party, told=told, to=to):
                 trace.event('leaves_with', character=other.name, led_by=self.name)
 
     def does_not_know(self):
@@ -3377,6 +3392,9 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
+        here_things = [p['name'] + (f" ({p['spot']})" if p.get('spot') else '') for p in survival.lying(self.context, stage.here(self))]
+        if here_things:   # the actor saw nothing of what lay at its feet but what it carried
+            parts.append('Lying here: ' + ', '.join(here_things))
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         if events:   # what it saw done (what was said is in the prompt's own dialog block)
             parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))

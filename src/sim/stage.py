@@ -82,7 +82,7 @@ def off_stage(character):
     return scene is not None and getattr(character, 'left_scene', None) is scene
 
 
-def leave(character, party=(), told=False):
+def leave(character, party=(), told=False, to=None):
     """`character` leaves the scene being played. The others are told; talk with it ends.
     Those of `party`, who are going with it, are not told it has left them (Kidd was told
     'Lanya has left.' as they walked out together, and reasoned from there that he was alone).
@@ -99,7 +99,8 @@ def leave(character, party=(), told=False):
     character.left_scene = scene
     character.current_scene = None   # everything that asks 'in this scene?' now answers no
     exit_ = {'time': context.simulation_time.strftime('%H:%M'), 'who': character.name,
-             'with': [c.name for c in party if c is not character]}
+             'with': [c.name for c in party if c is not character], 'to': to,
+             'from': where(context, here(character)).removeprefix('at ')}
     for record in ('scene_exits', 'act_exits'):   # what the outcome check reads of who went
         if isinstance(getattr(context, record, None), list):
             getattr(context, record).append(exit_)
@@ -244,6 +245,10 @@ def set_scene(context, scene, characters, opens_act):
     first = next((c for c in characters if not (getattr(c, 'remote', None) or '').strip()), characters[0])
     anchor = here(carried[0]) if carried else previous['xy'] or here(first)
     target = resolve(context, scene.get('location'), anchor)
+    if target is None:
+        # 'same' after the cast walked out for a named place: the scene is where they went
+        gone_to = [e.get('to') for e in getattr(context, 'last_scene_exits', []) if e.get('to')]
+        target = next((t for t in (resolve(context, g, anchor) for g in gone_to) if t), None)
     xy, place = target if target else (anchor, None)
     scene['place'] = place or where(context, xy).removeprefix('at ')
     context.previous_scene = {'cast': tuple(c.name for c in characters), 'xy': xy}
