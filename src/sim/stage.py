@@ -628,8 +628,9 @@ End your response with: </end>"""
 def ensure_looks(character):
     """How a character looks, written once from its description (one call). Pictures use it in
     place of the description's first sentence, which carries 'healthy' and the like."""
-    if getattr(character, 'looks', None):
-        return character.looks
+    if getattr(character, 'looks', None) or getattr(character, '_looks_asked', False):
+        return getattr(character, 'looks', None)
+    character._looks_asked = True   # once: an empty reply is not asked again at every picture
     from utils.Messages import UserMessage
     reply = character.llm.ask({'name': character.name, 'description': character.original_character},
                               [UserMessage(content=LOOKS)], tag='looks', temp=0.2, max_tokens=60, stops=['</end>'])
@@ -662,6 +663,14 @@ def _carried(body):
 
 def _person(context, character):
     body = getattr(character, 'body', None)
+    # looks are written here when nothing has written them yet: the opening picture is taken
+    # when the play loads, before any scene, and described Kidd by his description's first
+    # sentence ('a 27 year old bisexual male of mixed racial...') while his portrait had his looks
+    if not getattr(character, 'looks', None) and getattr(character, 'llm', None) is not None:
+        try:
+            ensure_looks(character)
+        except Exception as e:
+            logger.warning(f'looks for {character.name}: {e}')
     return {'name': character.name, 'looks': getattr(character, 'looks', None) or _looks(context, character),
             'condition': _visible(body), 'holding': _carried(body)}
 
