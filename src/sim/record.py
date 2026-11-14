@@ -91,6 +91,21 @@ def seen_by(character):
     return opening + situation(context, lately, viewer=character)
 
 
+def last_lines(lines, limit):
+    """The latest whole lines of `lines` (a list, or text split on newlines) that fit in `limit`
+    characters, as text. A window taken as text[-limit:] began inside a line ('ha slips…'), and
+    the call read a deed with no doer."""
+    if isinstance(lines, str):
+        lines = lines.split('\n')
+    kept, size = [], 0
+    for line in reversed([l for l in lines if l is not None]):
+        size += len(line) + 1
+        if kept and size > limit:
+            break
+        kept.append(line)
+    return '\n'.join(reversed(kept))
+
+
 def cast(context, people=None):
     """The people of the play with what each is, for any prompt that writes about someone other
     than its own character: 'Hu (female), Xue (male), ...'. Each call used to see one
@@ -524,11 +539,13 @@ def _heard(speaker, listener):
     a line ago is known (Joe: 'software type'; her 'software guy, huh?' was sent back)."""
     parts = []
     try:
-        parts.append('\n'.join(m.to_string() for m in speaker.structured_memory.get_recent(8)))
-        model = speaker.actor_models.get_actor_model(listener.name) if listener is not None else None
-        talk = model.dialog.get_transcript(max_turns=10) if model is not None and getattr(model, 'dialog', None) else ''
-        if talk:
-            parts.append('The talk so far:\n' + talk)
+        # what it saw and heard (the play's record: talk with the listener and anything overheard),
+        # then its own memories (what it was told, what it made of things)
+        context = getattr(speaker, 'context', None)
+        seen = context.witnessed(speaker, n=16) if context is not None and hasattr(context, 'witnessed') else []
+        if seen:
+            parts.append('What the speaker has seen and heard lately:\n' + '\n'.join(seen))
+        parts.append('\n'.join(m.to_string() for m in speaker.structured_memory.get_recent(6)))
     except Exception:
         pass
     return '\n'.join(p for p in parts if p) or 'nothing yet'

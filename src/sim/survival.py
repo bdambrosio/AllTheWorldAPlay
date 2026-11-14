@@ -880,7 +880,6 @@ def _prop_do(context, character, kind, item, other):
         body.inventory.remove(item)
         other.body.inventory.append(item)
         forget(character)
-        other.add_perceptual_input(f'{character.name} hands you the {item}', mode='internal')
         fact = f"{character.name} hands {other.name} the {item}."
         _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
     elif kind == 'share' and item in body.inventory and item not in other.body.inventory:
@@ -895,13 +894,11 @@ def _prop_do(context, character, kind, item, other):
             ties.append((item, {character.name, other.name}))
         else:
             tie[1].add(other.name)
-        other.add_perceptual_input(f'{character.name} shares the {item} with you: you have it too', mode='internal')
         fact = f"{character.name} shares the {item} with {other.name}; both now have it."
         _record(character, {'name': 'share', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
     elif kind == 'offer' and item in body.inventory:
         if (item, character.name, other.name) not in held_out:
             held_out.append((item, character.name, other.name))
-        other.add_perceptual_input(f'{character.name} holds out the {item} to you. It is yours to take.', mode='internal')
         fact = f"{character.name} holds out the {item} to {other.name}; {character.name} still has it."
         _record(character, {'name': 'hold out', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
     elif kind == 'put down' and item in body.inventory:
@@ -923,7 +920,6 @@ def _prop_do(context, character, kind, item, other):
             other.body.inventory.remove(item)
             body.inventory.append(item)
             forget(other)
-            other.add_perceptual_input(f'{character.name} takes the {item} you held out', mode='internal')
             fact = f"{character.name} takes the {item} that {other.name} holds out."
             _record(character, {'name': 'take', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
         else:
@@ -953,7 +949,6 @@ def shared_out(context, character, item, effects):
         other.body.inventory.remove(item)
         for need, delta in effects.items():
             other.body.adjust(need, delta)
-        other.add_perceptual_input(f'{character.name} and you finish the shared {item} between you', mode='internal')
         names.append(other.name)
     trace.event('shared_used', character=character.name, item=item, others=names)
     return names
@@ -1393,11 +1388,8 @@ def _start_threat(context, hazard, anchor, exposed):
     context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
                              'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
     text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}."
-    context.add_event(text)
+    context.add_event(text)   # seen by those in the scene (the record)
     context.current_state += '\n' + text
-    for c in exposed:
-        if c.name in targets:
-            c.add_perceptual_input(text, mode='visual')
     described = hazard['description'][0].upper() + hazard['description'][1:]
     _tell(context, f"{described} appears at {source_id}." if source_id else
           f"{described} appears to the {_direction(_here(anchor), loc).lower()}.")
@@ -1571,9 +1563,6 @@ def _end_threat(context, threat, text, struck=False, tell=True):
     context.current_state += '\n' + text
     if tell:   # not when a character's own act ended it: that act's line says so
         _tell(context, text)
-    for c in context.actors:
-        if c.name in threat['targets']:
-            c.add_perceptual_input(text, mode='visual')
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
 
 

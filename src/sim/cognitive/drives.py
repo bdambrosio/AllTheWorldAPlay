@@ -231,9 +231,16 @@ def appraise(character):
     # What the character has thought is not an event. (Its own guesses were listed with what
     # it saw and heard, and came back as things noticed: 'Lanya walked off, leaving Kidd
     # alone', of a woman who had left with him.)
-    new = [m for m in memories if m.memory_id > seen and not m.text.startswith(THOUGHT)][-MAX_PERCEPTS:]
+    # What it saw and heard is in the record (Context.witnessed_entries); what it was told or
+    # made of things is in its memory. Both since the last appraisal, in the order they came.
+    lived = [(m.timestamp, m.text) for m in memories if m.memory_id > seen and not m.text.startswith(THOUGHT)]
     if memories:
         character._appraised_upto = memories[-1].memory_id
+    context = getattr(character, 'context', None)
+    if context is not None and hasattr(context, 'witnessed_entries'):
+        entries, character._appraised_record = context.witnessed_entries(character, getattr(character, '_appraised_record', 0))
+        lived += [(e['time'], context.entry_line(e)) for e in entries]
+    new = [text for _, text in sorted(lived, key=lambda x: x[0])][-MAX_PERCEPTS:]
     if not new:
         return
     now = _now(character)
@@ -263,7 +270,7 @@ End your response with </end>
     reply = character.llm.ask({'name': character.name,
                                'drives': '\n'.join(f'{d.id}: {d.text}' for d in character.drives),
                                'body': f"\n{character.name}'s body: {body.summary()}\n" if body is not None else '',
-                               'events': '\n'.join(f'{i}. {m.text[:240]}' for i, m in enumerate(new, 1))},
+                               'events': '\n'.join(f'{i}. {text}' for i, text in enumerate(new, 1))},
                               prompt, tag='drives.appraise', temp=0.1, stops=['</end>'], max_tokens=40 * len(character.drives)) or ''
     by_id = {d.id: d for d in character.drives}
     noticed = []

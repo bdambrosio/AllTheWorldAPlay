@@ -2,6 +2,7 @@ from __future__ import annotations
 import sim.survival as survival
 from sim.cognitive import drives
 import sim.stage as stage
+import sim.record as record
 from sim.trace import trace
 import asyncio
 import copy
@@ -373,81 +374,58 @@ The following guidelines for this act supplement the general guidelines above, a
 {{$places}}
 ##
 
-Respond with the updated act, using the following format:
-
-```json
-updated act
-```
-
-Act format is as follows:
+Respond with the updated act as one JSON object, and nothing else: no commentary, no code fences.
 
 An Act is a single JSON document that outlines a short-term plan for yourself
 ###  Structure
 Return exactly one JSON object with these keys:
 
-- "act_number" (int, copied from the original act)  
-- "act_title"   (string, copied from the original act or rewritten as appropriate)  
-- "act_description" (string, concise (about 15 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-- "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-- "act_pre_state": (string, description of the situation / goals / tensions before the act starts. concise, about 10 words). Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'
-- "act_post_state": (string, description of the situation / goals / tensions after the act ends. concise, about 10 words)
-- "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
-    ...
-  ]
-- "scenes"      (array) 
+- "act_number" (int, copied from the original act)
+- "act_title" (string, copied from the original act or rewritten as appropriate)
+- "act_description" (string, about 15 words: the act's dramatic tension and how it fits the overall arc)
+- "act_goals" (object: {"primary": "...", "secondary": "..."}, about 8 words each)
+- "act_pre_state" (string, about 10 words: the situation, goals and tensions before the act starts; concrete and specific, e.g. 'I am pregnant', not 'there is a secret')
+- "act_post_state" (string, about 10 words: the same after the act ends)
+- "tension_points" (array of {"characters": [names], "issue": "about 8 words", "resolution_requirement": "partial" or "complete"})
+- "scenes" (array)
 
-Each **scene** object must have:
-{ "scene_number": int, // sequential within the play 
- "scene_title": string, // concise descriptor 
- {{$location_field}}
- "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
- "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
- "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
- "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Laura doesnt love you', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
- // OPTIONAL: 
- "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or slightly higer for scenes with complex goals or interactions.
- }
+Each scene object has:
+- "scene_number" (int, sequential within the play)
+- "scene_title" (string, a concise descriptor)
+{{$location_field}}
+- "time" (string, the scene's start in ISO 8601, e.g. "2025-01-01T08:00:00")
+- "characters" (object: {"<Name>": {"goal": "<one-line playable goal>"}})
+- "action_order" (array of names: each occurrence is a beat led by that character; only characters in the scene's "characters")
+- "pre_narrative" (string, at most 20 words: the immediate set-up and stakes, concrete and specific, e.g. 'Laura doesn't love you', not 'there is a secret')
+- "post_narrative" (string, at most 20 words: how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice: 'says aloud that he stays' is not an ending; his staying is)
+- "task_budget" (int, optional: the number of beats; the number of characters in the scene, or slightly more for complex scenes)
 
- === Example ===
-##
-```json
+An example of the form only (its content is not this play's):
 {
-  "act_number": {{$act_number}},
-  "act_title": "rewritten act title",
-  "act_description": "concise (about 10 words) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc",
-  "act_goals" {"primary": "primary goal", "secondary": "secondary goal"},
-  "act_pre_state": "description of the situation / goals / tensions before the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.'",
-  "act_post_state": "description of the situation / goals / tensions after the act ends. concise, about 10 words",
-  "tension_points": [
-    {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
-    ...
-  ],
+  "act_number": 2,
+  "act_title": "The Key Nobody Owns",
+  "act_description": "A found key turns two strangers' wary truce into suspicion of a third person.",
+  "act_goals": {"primary": "Learn who dropped the key", "secondary": "Keep the other from taking it"},
+  "act_pre_state": "Mara holds a brass key Tomas says is not his.",
+  "act_post_state": "Both follow small barefoot prints west, the key still Mara's.",
+  "tension_points": [{"characters": ["Mara", "Tomas"], "issue": "Who the key belongs to", "resolution_requirement": "partial"}],
   "scenes": [
     {
-      "scene_number": 1,  
-      "scene_title": "Scene 1",
-      "time": "2025-01-01T09:00:00", // the start time of the scene, in ISO 8601 format
-      "location": "Location 1",
-      "characters": { "Character 1": { "goal": "Goal 1" }, ... },
-      "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
-      "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'I killed Joe', not 'there is a secret.'", 
-      "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
-      // OPTIONAL: 
-      "task_budget": 2 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order or slightly higher for scenes with complex goals or interactions. 
-    },
-    ...
+      "scene_number": 4,
+      "scene_title": "Prints at the Spring",
+      "location": "Spring2",
+      "time": "2025-01-01T09:00:00",
+      "characters": {"Mara": {"goal": "Make Tomas show his empty pockets"}, "Tomas": {"goal": "Get Mara to trust his story"}},
+      "action_order": ["Mara", "Tomas", "Mara"],
+      "pre_narrative": "Barefoot prints too small for either of them lead away from the spring.",
+      "post_narrative": "Tomas turns out his pockets; Mara pockets the key and walks west first.",
+      "task_budget": 3
+    }
   ]
 }
 
-Again, the act central narrative is:
-
+The act's central narrative, for reference:
 {{$act_central_narrative}}
-
-```
-=== End of Example ===
-
 """
         acts = {"acts": [act]} # reserialize expects a narrative json object
         reserialized_act = self.context.reserialize_acts_times(acts)
@@ -599,11 +577,11 @@ Done when: {{$done_when}}
 
 The intent is yours and it is kept: it is what you brought to this scene. Decide only whether the planned action is still the way to pursue it.
 - keep: the action has not been done and can still be played as planned. When in doubt, keep. The same action in other words is not a change: answer keep.
-- adapt: the action has already been done (by you or by someone else), has been overtaken by what happened, or cannot be done now. Give a new action that pursues the same intent from where things now stand. First say, in "serves", how the new action gets {{$name}} what the intent is after; if you cannot say that plainly, it is not an adaptation.
+- adapt: the action has already been done or said (by you or by someone else, in this scene or before it), has been overtaken by what happened, or cannot be done now. Give a new action that pursues the same intent from where things now stand. First say, in "serves", how the new action gets {{$name}} what the intent is after; if you cannot say that plainly, it is not an adaptation.
 - respond: the intent itself has been met, or what another character has just done makes it pointless, or {{$name}} has turned to something else. Give what {{$name}} now wants in answer to what happened, and why. If the action you have in mind does not serve the planned intent, this is the honest answer, not adapt.
 {{$final}}
 Answer in JSON only. For keep, the verdict alone is enough.
-{"verdict": "keep" | "adapt" | "respond", "serves": "<for adapt only: how the new action gets what the intent is after>", "action": "<4 to 8 words naming the new action>", "how": "<one plain sentence: what is done or said>", "done_when": "<5 to 8 words: something that can be seen or heard>", "why": "<for respond only: the new intent, 6 to 10 words>"}
+{"verdict": "keep" | "adapt" | "respond", "serves": "<for adapt only: how the new action gets what the intent is after>", "action": "<4 to 8 words naming the new action>", "how": "<one plain sentence: what {{$name}} does or presses for; not the words to be said, which the actor finds in the moment>", "done_when": "<5 to 8 words: something that can be seen or heard>", "why": "<for respond only: the new intent, 6 to 10 words>"}
 End your response with: </end>"""
 
     def refresh_task(self, task, scene_task_plan, final_task=False):
@@ -636,7 +614,7 @@ End your response with: </end>"""
                               'goal': f'{goal.name}: {goal.description}' if goal else 'not said',
                               'task': f'{task.name}: {task.description}', 'intent': task.reason, 'done_when': task.termination or 'not said',
                               'later': '\n'.join(later) or 'none',
-                              'happened': '\n'.join(events + lines)[-5000:],
+                              'happened': record.last_lines(events + lines, 5000),
                               'final': 'This is your last task in the scene.\n' if final_task else ''},
                              [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=280)
         found = json_reply.parse(reply) if reply else None

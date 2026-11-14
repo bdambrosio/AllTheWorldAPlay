@@ -150,6 +150,12 @@ class Context():
         self.act_scene_wrapups = []
         self.act_events = []     # this act's events
         self.act_exits = []
+        # The record: everything done, said or come about in the play, each entry with who saw or
+        # heard it (add_event, say). It is the one account of what happened; a character's view of
+        # it is witnessed(). The lists above are windows onto the same events. (Each character also
+        # used to be given its own copy of every deed seen and line heard as a memory, and every
+        # prompt printed memories, events and dialog: the same facts three and four times over.)
+        self.record_entries = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.current_act = None
         self.embedding_model = None
@@ -409,8 +415,7 @@ class Context():
         await asyncio.sleep(1.0)  # Give simulation.py time to process and forward
 
     def format_character_for_context_ask(self, character:NarrativeCharacter):
-        recent_memories = character.structured_memory.get_recent(8)
-        memory_text = '\n\t\t'.join(memory.to_string() for memory in recent_memories)
+        memory_text = character.lived(8).replace('\n', '\n\t\t')
         goal_history = '\n\t\t'.join([f'{g.name} - {g.description}; {g.completion_statement}' for g in character.goal_history]) if character.goal_history else f'None to report'
         return f'\n\n##Name: {character.name}' + \
             f'\n\tDescription: {character.character}' + \
@@ -666,16 +671,9 @@ If absolutely no information is available for any field, use "unknown" for that 
             print(str(e))
 
     def history(self):
-        """Get combined history from all actors using structured memory"""
-        history = []
-        
-        for actor in self.actors+self.extras:
-            # Get recent memories from structured memory
-            recent_memories = actor.structured_memory.get_recent(5)
-            for memory in recent_memories:
-                history.append(f"{actor.name}: {memory.to_string()}")
-                
-        return '\n'.join(history) if history else ""
+        """What has lately happened in the play: the record's latest entries. (It was each
+        actor's last five memories, each fact once per actor who had a copy of it.)"""
+        return '\n'.join(self.entry_line(e) for e in self.record_entries[-20:])
 
     def generate_image_description(self):
         return "wide-view photorealistic style. "+self.current_state
@@ -973,85 +971,53 @@ End your response with:
         duration = act.duration
         mode = act.mode
         source = act.source
-        prompt = [UserMessage(content="""You are simulating a dynamic world. 
-Your task is to determine the information gained by {{$name}} scanning visually with the following intent:
+        # One question: what does the look show? (It asked for 'changes in physical, mental, or
+        # emotional state' and then said report no bodily condition; it gave the play's opening
+        # text and the character's summary as two <situation>s; the target was printed as a Python
+        # object. Asked for feelings, Sonnet wrote them as much as GLM did: 'she feels the
+        # closeness deepen'.)
+        prompt = [UserMessage(content="""You are the world of an improvised play. {{$name}} looks. What does {{$name}} see or hear, and learn from it?
 
-<action>
-{{$action}}, {{$target}}
-</action>
+<the_look>
+{{$action}}{{$toward}}
+</the_look>
 
-in the current situation: 
-
-<situation>
-{{$state}}
-</situation>
-
-given {{$name}} local map is:
-
-<localMap>
+<what_is_there>
 {{$local_map}}
-</localMap>
+</what_is_there>
 
-And character {{$name}} is:
-
-<character>
-{{$character}}
-</character>
-
-with current situation:
-
-<situation>
-{{$narrative}}
-</situation>
-                              
-and recent history:
-<history>
-{{$history}}
-</history>
-
-The body of each character present, as it is:
-<bodies>
+<the_people_there>
 {{$bodies}}
-</bodies>
-What each is carrying:
-<holdings>
-{{$holdings}}
-</holdings>
-It is now {{$clock}}.
+What each carries: {{$holdings}}
+</the_people_there>
 Everyone in the play, and whether each is he or she: {{$cast}}.
-Looking changes nobody's body and nothing anyone holds: report no bodily condition, possession or time of day that the above does not show.
-Danger here now: {{$danger}}. Report no animal, person or danger that is not listed here or on the map.
+It is now {{$clock}}. Danger here now: {{$danger}}.
+
+<what_{{$name}}_has_seen_and_heard_lately>
+{{$history}}
+</what_{{$name}}_has_seen_and_heard_lately>
+
+The answer is what the audience is shown of the look: what {{$name}} sees or hears, in the third person ('{{$name}} sees ...', '{{$name}} hears ...'), and what {{$name}} learns from it, stated as the fact learned ('{{$name}} learns that the gate is chained').
+- Only what is there: the place, the people and things above, and what follows from what has happened. No animal, person, thing or danger that is not listed.
+- Of the others, what can be seen is what they do and how they look, not what they feel, think or mean: '{{$name}} sees Kidd look away', not 'Kidd is ashamed'; what {{$name}} learns is what the look shows, not what someone intends. Nor what {{$name}} feels: the actor plays that.
+- Looking changes nobody's body, nothing anyone holds, and not the time.
+- Nothing follows the look: no one acts.
+If the look shows {{$name}} nothing new (no movement, no change, the same trees), respond with the single word: nothing
+At most two sentences, 50 words.
 {{$rejected}}
-
-Respond with the information result. Target a sentence or two at most as your response length.
-If the look shows {{$name}} nothing it did not already know (no movement, no change, the same trees), respond with the single word: nothing
-Respond ONLY with the immediate information gain by the character.
-Include any effects on the physical, mental, or emotional state of {{$name}} in your response, even if not observable to other characters.
-Do not repeat the above action statement in your response.
-Information gained must be consistent with information provided in the LocalMap.
-Format your response as one or more simple declarative sentences.
-Include in your response:
-- changes in the physical environment, e.g. '{{$name}} sees the door open', ...
-- sensory inputs, e.g. {{$name}} 'sees ...', 'hears ...', 
-- changes in {{$name}}'s or other actor's physical, mental, or emotional state (e.g., {{$name}} 'becomes tired' / 'is injured' / ... /).
-- specific information acquired by {{$name}}. State the actual knowledge acquired, not merely a description of the type or form (e.g. {{$name}} learns that ... or {{$name}} discovers that ...).
-Do NOT extend the scenario with any follow on actions or effects.
-Be terse, only report the most significant  state changes. Limit your response to 70 words.
-
-Do not include any Introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]
-        history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
-        inputs = {"name": actor.name, "action": action, "local_map": local_map, "target": target,
-                  "history": "\n".join([m.to_string() for m in actor.structured_memory.get_recent(16)]),
+        aimed = target if isinstance(target, list) else [target] if target else []
+        toward = ', '.join(getattr(t, 'name', str(t)) for t in aimed if t)
+        inputs = {"name": actor.name, "action": action, "local_map": local_map, "toward": f' (toward {toward})' if toward else '',
+                  "history": '\n'.join(self.witnessed(actor, n=12)) or 'nothing yet',
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
                   "danger": record.danger(actor) or 'none', "cast": record.cast(self),
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
-                                      if getattr(c, 'body', None) is not None) or 'not tracked',
-                  "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium')}
+                                      if getattr(c, 'body', None) is not None) or 'not tracked'}
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
         nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else text
@@ -1481,7 +1447,7 @@ End your response with:
         {'\n        '.join([hash_utils.find('name', task) for task in actor.focus_goal.task_plan]) if actor.focus_goal else ''}   
     </tasks>
     <memories>
-        {'\n        '.join([memory.to_string() for memory in actor.structured_memory.get_recent(6)])}
+        {actor.lived(6).replace(chr(10), chr(10) + '        ')}
     </memories>
 </actor>"""
         return mapped_actor
@@ -2008,8 +1974,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             for label in stage.pending_business(character):
                 fact = survival.do_business(self, character, label)
                 if fact:
-                    self.add_event(f'{character.name} -> {fact}')
-                    character.add_perceptual_input(fact, percept=False, mode='internal')
+                    self.add_event(f'{character.name} -> {fact}', doer=character)
                     told = re.sub(rf'^{re.escape(character.name)}\s+', '', stage.stage_line(character.name, '', fact).lstrip('. '))
                     self.message_queue.put({'name': character.name, 'text': told, 'line_kind': 'action'})
             latest = max(latest, self.simulation_time)
@@ -2137,8 +2102,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 act_summary += f' Assessed act outcome: {assessed}.'
             act['act_summary'] = act_summary
             self.current_state += f'\n{act_summary}\n'
-            for character in cast(List[NarrativeCharacter], self.actors+self.extras):
-                character.add_perceptual_input(act_summary, mode = 'internal')
+            # not given to the characters: it is their scenes' wrap-ups again, which each has of the
+            # scenes it was in, with the director's verdict and scenes it was not in
         trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
         self.current_act = None
         #await self.update()
@@ -2217,7 +2182,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             drives = 'Drives, most pressing first:\n' + drive_model.drive_lines(character)
             narrative = character.narrative.get_summary('medium')
             surroundings = character.look_percept
-            memories = '\n'.join(memory.to_string() for memory in character.structured_memory.get_recent(8))
+            memories = character.lived(8)
             emotionalState = EmotionalStance.for_character(character)        
             emotional_stance = emotionalState.to_definition()
             character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
@@ -2236,17 +2201,22 @@ Your job is to assimilate them into a single coherent act. This may require igno
 {{$act_central_narrative}}
 ##
 
-Most critically, this act is being written in the context of the actual situation after the previous act. Key elements to consider are:
-#Key Elements to Consider
+Most critically, this act is written from where the play actually stands.
+#What has happened in the acts already played (the record of events, not what was planned)
+{{$previous_acts}}
+##
+
+#How the previous act left things
 {{$previous_act_post_state}}
 ##
+What has been played stays played: a thing handed over, found, told or admitted is not handed over, found, told or admitted again, and a secret that has come out is no longer a secret. The act goes on from there.
 
 An act is a JSON object containing a sequence of scenes (think of a play).
 Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
 In integrating scenes within an act across characters, pay special attention to the pre- and post-states, as well as the characters's goals, to create a coherent scene. 
 It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives. 
 Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
-The integrated plan should be a single JSON object with a sequence of acts, each with a sequence of scenes. 
+The integrated plan is one act: a single JSON object with its sequence of scenes.
 The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
 Be sure that that integrated act is consistent with the previous act's post-state.
 Note carefully the proposed acts pre-conditions and locations, and resolve any inconsistencies among them or with the previous act's post-state.
@@ -2266,15 +2236,9 @@ The following additional information about the state of the performance will be 
 
 {{$plan_rule}}
 
-Respond with the updated act, using the following format:
+Respond with the integrated act as one JSON object.
 
-```json
-updated act
-```
-
-Act format is as follows:
-
-An Act is a single JSON document that outlines a short-term plan for yourself
+An Act is a single JSON document that outlines the play's plan for this act
 ###  Structure
 Return exactly one JSON object with these keys:
 
@@ -2375,7 +2339,8 @@ In performing this integration:
                                  "act_directives": act_directives,
                                  "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
                                  "places": stage.gazetteer(self),
-                                 "previous_act_post_state": previous_act_post_state,
+                                 "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
+                                 "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
         # (validate_narrative_act); it had been checked for its dates alone, and a scene with
@@ -2591,7 +2556,7 @@ End your response with: </end>"""
                 if thing not in start.get(c.name, []) and thing not in consumable:
                     self.screenplay.add_thread('found', c.name, thing, title)
         begin = getattr(self, '_scene_transcript_start', 0)
-        lines = '\n'.join(str(l).strip() for l in self.transcript[begin:] if '"' in str(l))[-5000:]
+        lines = record.last_lines([str(l).strip() for l in self.transcript[begin:] if '"' in str(l)], 5000)
         if not lines:
             return
         reply = self.llm.ask({'lines': lines}, [UserMessage(content=self.TOLD)], tag='record.told', temp=0.1, stops=['</end>'], max_tokens=260)
@@ -2728,7 +2693,7 @@ End your response with: </end>""")]
                                   for e in exits] or ['Nobody left.']) + '\nWhere each is now: ' + '; '.join(placed)
         reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given', 'who_is_where': who_is_where,
                               'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
-                              'lines': '\n'.join(str(l).strip() for l in self.transcript[start:] if str(l).strip())[-6000:] or 'nothing',
+                              'lines': record.last_lines([str(l).strip() for l in self.transcript[start:] if str(l).strip()], 6000) or 'nothing',
                               'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'},
                              prompt, tag='check_post_state_ambiguity', temp=0.1, stops=['</end>'], max_tokens=700)
         found = json_reply.parse(reply) if reply else None
@@ -3382,75 +3347,54 @@ After the framework, repeat three of its elements on lines of their own, exactly
         return '\n'.join(formatted_task_plan)
     
 
-    def evaluate_commitment_significance(self, character:Character, other_character:Character, commitment_task:Task):
-        prompt = [UserMessage(content="""Evaluate the significance of a tentative verbal commitment to the current dramatic context
-    and determine if it is a significant commitment that should be added to the task plan.
-The apparent commitment is inferred from a verbal statement to act now made by self, {{$name}}, to other, {{$target_name}}.
-The apparent commitment is tentative, and may be redundant in the scene you are in.
-The apparent commitment may be hypothetical, and may not be a commitment to act now.
-The apparent commitment may be social chatter, e.g. simply a restatement of already established plans. These should be reported as NOISE.
-The apparent commitment may simply be 'social noise' - a statement of intent or opinion, not a commitment to act now. Again, these should be reported as NOISE.
-The apparent commitment may be relevant to the scene you are in or the dramatic context, and unique wrt tasks already in the task plan. These should be reported as RELEVANT.
-The apparent commitment may be relevant to the scene you are in or the dramatic context, but redundant with tasks already in the task plan. These should be reported as REDUNDANT.
-Alternatively, the apparent commitment may be unique and significant to the scene you are in or the central dramatic question. These should be reported as SIGNIFICANT.
-The apparent commitment may be irrelevant to the scene you are in or the dramatic context. These should be reported as NOISE.
+    SIGNIFICANCE = """Someone in a scene of an improvised play has just said they will do something. Decide whether the play gives it a beat.
 
-## Dramatic Context
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
-<current_scene>
+<the_scene>
 {{$current_scene}}
-</current_scene>
+</the_scene>
 
-##Scene Task Plan
-<scene_integrated_task_plan>
+<the_beats_planned>
 {{$scene_integrated_task_plan}}
-</scene_integrated_task_plan>
+</the_beats_planned>
 
-##Actual Scene History to date
-<scene_history> 
+<what_has_happened_in_the_scene>
 {{$scene_history}}
-</scene_history>
+</what_has_happened_in_the_scene>
 
-<transcript>    
+<the_talk>
 {{$transcript}}
-</transcript>
-        
-## Apparent Commitment
-<commitment>
-{{$commitment_task}}
-</commitment>
+</the_talk>
 
-Your task is to evaluate the significance of the apparent commitment.
-Determine if it is 
-    social NOISE that should be ignored.
-    a REDUNDANT task that can be ignored. 
-    a RELEVANT task that can be optionally included.
-    a SIGNIFICANT commitment that should be added to the task plan.
-    a CRUCIAL commitment, the task plan is incomplete relative to the dramatic context without it.
-Respond with a single word: "NOISE", "REDUNDANT", "RELEVANT", "SIGNIFICANT", or "CRUCIAL".
-Do not include any other text in your response.
+<the_commitment>
+{{$name}}, talking with {{$target_name}}: {{$commitment_task}}
+</the_commitment>
 
+Answer with the first of these that fits:
+1. NOISE: not a real commitment to act now (a hypothetical, an opinion, a plan already settled said again, chatter), or nothing to do with this scene.
+2. REDUNDANT: a planned beat already does it, or it has already been done.
+3. CRUCIAL: the scene cannot reach where it is heading without it.
+4. SIGNIFICANT: it changes what happens between the characters, or moves the play's question.
+5. RELEVANT: anything else that fits the scene, such as a small errand or chore, to be played if there is room.
+Respond with the one word.
 End your response with </end>
 """
-        )]
-        significance = 'NOISE'
-        response = self.llm.ask({"name": character.name, 
+
+    def evaluate_commitment_significance(self, character:Character, other_character:Character, commitment_task:Task):
+        """How much a commitment made in a dialog matters to the scene (place_commitment). (The
+        prompt was 13k characters for a one-word answer, the scene given as its whole JSON; the
+        levels overlapped, RELEVANT and SIGNIFICANT both 'relevant and unique', and CRUCIAL was in
+        one of its two lists: fetching water came back SIGNIFICANT.)"""
+        scene = self.current_scene or {}
+        scene_text = '\n'.join(x for x in (scene.get('scene_title', ''), f"Set-up: {scene.get('pre_narrative', '')}" if scene.get('pre_narrative') else '',
+                                           f"Where it is heading: {scene.get('post_narrative', '')}" if scene.get('post_narrative') else '') if x) or 'no scene'
+        response = self.llm.ask({"name": character.name,
                                "target_name": other_character.name,
                                "commitment_task": commitment_task.to_string(),
-                               "central_narrative": self.central_narrative,
-                               "act_specific_narrative": self.act_central_narrative,
-                               "current_scene": json.dumps(self.current_scene, indent=2, default=datetime_handler) if self.current_scene else '',
-                               "scene_integrated_task_plan": self.format_scene_integrated_task_plan() if self.scene_integrated_task_plan else "",
-                               "scene_history": '\n'.join([history for history in self.scene_history]) if self.scene_history else '',
+                               "current_scene": scene_text,
+                               "scene_integrated_task_plan": self.format_scene_integrated_task_plan() if self.scene_integrated_task_plan else "none",
+                               "scene_history": '\n'.join(self.scene_events[-12:]) or 'nothing yet',
                                "transcript": character.actor_models.get_actor_model(other_character.name, create_if_missing=True).dialog.get_transcript(8)},
-                                prompt, max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
+                                [UserMessage(content=self.SIGNIFICANCE)], max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
         return self.parse_significance(response)
 
     SIGNIFICANCE_LEVELS = ('NOISE', 'REDUNDANT', 'RELEVANT', 'SIGNIFICANT', 'CRUCIAL')
@@ -3463,15 +3407,85 @@ End your response with </end>
         level = words[0].upper() if words else ''
         return level if level in Context.SIGNIFICANCE_LEVELS else 'NOISE'
 
-    def add_event(self, text):
-        """Record a concrete physical event (see recent_events)."""
-        text = ' '.join(str(text).split())[:300]
+    def add_event(self, text, doer=None, witnesses=None, also=()):
+        """Record a concrete physical event (see recent_events), with who saw it.
+        witnesses: those who saw it; by default the doer (`doer`, or the cast member whose name
+        opens the text) and those standing with it (Character.bystanders), with `also` (whom it was
+        done to); with no doer, everyone in the scene being played, or the whole cast outside one."""
+        text = ' '.join(str(text).split())   # whole: cut at 300 characters, one event in six ended mid-word
         if text:
             line = f'{self.simulation_time.strftime("%H:%M")} {text}'
             self.recent_events.append(line)
             self.scene_events.append(line)
             self.act_events.append(line)
+            if witnesses is None:
+                witnesses = self._present_at(doer or self._named_first(text)) + [c for c in also if c is not None]
+            self._enter('event', text, doer or self._named_first(text), witnesses)
             trace.event('world_event', text=text)
+
+    def say(self, speaker, text, hearers=()):
+        """A line spoken in the play: into the transcript as the audience is shown it, and into the
+        record as heard by the speaker and `hearers`."""
+        self.transcript.append(f'{speaker.name}: "{text}"')
+        self._enter('speech', text, speaker, [speaker] + [c for c in hearers if c is not None])
+
+    def _enter(self, kind, text, doer, witnesses):
+        names = frozenset(getattr(c, 'name', c) for c in witnesses if c is not None)
+        self.record_entries.append({'time': self.simulation_time, 'kind': kind, 'text': text,
+                                    'doer': getattr(doer, 'name', doer), 'witnesses': names})
+
+    def _cast(self):
+        return [c for c in self.actors + self.extras + self.npcs if getattr(c, 'name', '') != 'Viewer']
+
+    def _named_first(self, text):
+        first = re.split(r'[\s,:]', text.strip(), maxsplit=1)[0] if text.strip() else ''
+        return next((c for c in self._cast() if c.name == first), None)
+
+    def _present_at(self, doer):
+        scene = getattr(self, 'current_scene', None)
+        if scene is None:   # outside a scene (an unplanned play): everyone
+            return self._cast()
+        if doer is not None and hasattr(doer, 'bystanders'):
+            return [doer] + list(doer.bystanders())
+        # what comes about there (a hazard, an arrival) is seen by those there in person, not by
+        # those in the scene by radio (stage.remote)
+        return [c for c in self._cast() if getattr(c, 'current_scene', None) is scene and not stage.remote(c)]
+
+    def witnessed(self, character, n=None, since=None, kinds=None):
+        """What `character` has seen and heard of the play, oldest first, as lines for a prompt:
+        '10:05 Kidd eats his half of the can -> the can is finished' or "10:06 Lanya: 'Kept 'em.'".
+        n: the latest n; since: entries from that time on; kinds: ('event',) or ('speech',) for one kind."""
+        name = getattr(character, 'name', character)
+        rows = [e for e in self.record_entries if name in e['witnesses'] and (since is None or e['time'] >= since)
+                and (kinds is None or e['kind'] in kinds)]
+        if n is not None:
+            rows = rows[-n:]
+        return [self.entry_line(e) for e in rows]
+
+    def witnessed_block(self, character, n=14, earlier=8):
+        """The latest n things `character` witnessed, and before them, what it has itself said
+        earlier in the play (its last `earlier` lines older than those n): a prompt's one account of
+        what has happened and what it has already told. (Lanya told her father's story the night
+        before; outside the window, nothing told her she had, and she told it again.)"""
+        name = getattr(character, 'name', character)
+        rows = [e for e in self.record_entries if name in e['witnesses']]
+        recent, older = rows[-n:], rows[:-n] if len(rows) > n else []
+        own = [e for e in older if e['kind'] == 'speech' and e['doer'] == name][-earlier:]
+        text = '\n'.join(self.entry_line(e) for e in recent) or 'Nothing yet.'
+        if own:
+            text = 'Earlier, you said:\n' + '\n'.join(self.entry_line(e) for e in own) + '\nThen, lately:\n' + text
+        return text
+
+    def witnessed_entries(self, character, start=0):
+        """The record entries `character` witnessed, from index `start` of the record on, with
+        the index to start from next time: (entries, next_start)."""
+        name = getattr(character, 'name', character)
+        return ([e for e in self.record_entries[start:] if name in e['witnesses']], len(self.record_entries))
+
+    @staticmethod
+    def entry_line(e):
+        at = e['time'].strftime('%H:%M') if hasattr(e['time'], 'strftime') else ''
+        return f"{at} {e['doer']}: '{e['text']}'" if e['kind'] == 'speech' else f"{at} {e['text']}"
 
     def recent_events_text(self, n=6):
         return '\n'.join(list(self.recent_events)[-n:]) or 'Nothing yet.'

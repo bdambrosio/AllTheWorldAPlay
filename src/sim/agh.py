@@ -314,11 +314,19 @@ End your response with:
 </end>
 """)]
 
-        # 2. Call LLM and parse response
-        llm_response = self.llm.ask({'name': self.name, 'description': self.character}, prompt, tag='voice_traits', stops=['</end>'], max_tokens=100)
+        # 2. Call LLM and parse response. Every prompt of the play takes each character's he or she
+        # from here (record.cast, the actor genders lines), so the answer must name one: Lanya's came
+        # back empty and every prompt of the bellona run read 'Lanya: ' or left her out of the cast.
+        llm_response = None
+        for _ in range(3):
+            llm_response = self.llm.ask({'name': self.name, 'description': self.character}, prompt, tag='voice_traits', stops=['</end>'], max_tokens=100)
+            if hash_utils.find('gender', llm_response or '').strip():
+                break
         if llm_response is None:
             return None
-        self.gender = hash_utils.find('gender', llm_response)
+        self.gender = hash_utils.find('gender', llm_response).strip().lower()
+        if not self.gender:
+            print(f'Warning: no gender for {self.name} after three asks; prompts will read it as not stated')
         self.age = hash_utils.find('age', llm_response)
         self.accent = hash_utils.find('accent', llm_response)
         self.personality = hash_utils.findList('personality', llm_response)
@@ -390,12 +398,16 @@ End your response with:
             targets = []
         return targets
 
-    def validate_and_create_task(self, task_hash, goal=None):
+    def validate_and_create_task(self, task_hash, goal=None, include_self=True):
         """Validate a task hash and create a task object
         
         Args:
             task_hash: Hash-formatted task definition
             goal: Goal this task is for
+            include_self: make this character one of the task's actors. False for a commitment
+                read from a dialog, whose #actors say who committed: with it, every promise the
+                other made became a joint task owned first by the listener ('Kidd watches the
+                door all night' was Lanya's task; 27 of 42 commitments in a lost run were joint).
         """
         name = hash_utils.find('name', task_hash)
         if not name:
@@ -427,7 +439,7 @@ End your response with:
             elif character:
                 print(f"Warning: {character} is not a character")
         actors = [actor for actor in characters if actor is not None]
-        if not self in actors:
+        if (include_self or not actors) and not self in actors:
             actors =  [self] + actors
 
         if name and description and reason and actors:
@@ -683,25 +695,29 @@ End your response with:
         return None
     # World interaction methods
 
-    def process_consequences(self, act_arg, reason, consequences):
-        """Determine if the consequences of an action are relevant to the character's goals"""
-        prompt=[UserMessage(content="""{{$name}} does {{$act_arg}} and notices 
+    CONSEQUENCES = """{{$name}} did this: {{$deed}}
+What {{$name}} was after: {{$reason}}
+
+What came of it:
 {{$consequences}}
 
-Are any of these consequences relevant to the character's goals in performing this action as described in 
-{{$act_arg}} 
-or 
-{{$reason}}?
-Respond with a concise description of the relevant consequences, or an empty string if none are relevant.
-Do not include any other introductory, discursive, formatting, or explanatory text in your response.
-Respond only with the relevant consequences, or an empty string if none are relevant.
-
-End response with:
+What, of what came of it, bears on what {{$name}} was after? Say it in one plain sentence about {{$name}} and the result, from what is written above only: no one's reaction, thought or feeling that it does not state, and nothing found or done that it does not state.
+If none of it bears on what {{$name}} was after, respond with the single word: none
+End your response with:
 </end>
-""")]
-        response = self.llm.ask({"name":self.name, "act_arg":act_arg, "reason":reason, "consequences":consequences}, 
-                                prompt, tag='do_consequences', temp=0.2, stops=['</end>'], max_tokens=100)
-        return response
+"""
+
+    def process_consequences(self, act_arg, reason, consequences):
+        """What of a deed's result bears on the character's aim: a note for its own memory, or ''.
+        (Asked with nothing to read, one call in five, it made one up: Samantha's glance 'may
+        prompt her to keep explaining'. It read 'Lanya does Lanya slips...', and turned the knife
+        Lanya found into a can of food.)"""
+        if not (consequences or '').strip():
+            return ''
+        deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg or '')
+        response = self.llm.ask({"name": self.name, "deed": deed, "reason": reason or 'not said', "consequences": consequences},
+                                [UserMessage(content=self.CONSEQUENCES)], tag='do_consequences', temp=0.2, stops=['</end>'], max_tokens=100)
+        return '' if re.fullmatch(r'\W*none\W*', (response or '').strip(), re.I) else (response or '')
 
     def look(self, act_mode=None, act_arg=None, reason=None):
         """Get visual information about surroundings"""
@@ -867,8 +883,7 @@ adjective, adjective, adjective
 
             concerns = self.focus_task.peek().to_string() if self.focus_task.peek() else ''
             state = description + '.\n '+concerns +'\n'+ context
-            recent_memories = self.structured_memory.get_recent(8)
-            recent_memories = '\n'.join(memory.to_string() for memory in recent_memories)
+            recent_memories = self.lived(8)
             #print("Char generate image description", end=' ')
             response = self.llm.ask({ "description": state, "recent_memories": recent_memories}, prompt, tag='image_description', temp=0.2, stops=['</end>'], max_tokens=24)
             # how the character looks, how it feels, where it is (sim/stage.py). It was the first
@@ -949,6 +964,20 @@ Respond only with a single choice of mode. Do not include any introductory, disc
         )
         self.perceptual_state.add_input(perceptual_input, remember=remember)
         return perceptual_input
+
+    def lived(self, n=12):
+        """What the character has lately seen and heard (the play's record, Context.witnessed) and
+        its own memories (thoughts, notices, what it was told), in time order, the latest n, as text."""
+        rows = [(m.timestamp, m.to_string()) for m in self.structured_memory.get_recent(n)]
+        context = getattr(self, 'context', None)
+        if context is not None and hasattr(context, 'record_entries'):
+            rows += [(e['time'], context.entry_line(e)) for e in context.record_entries if self.name in e['witnesses']][-n:]
+        seen, out = set(), []
+        for _, text in sorted(rows, key=lambda r: r[0]):   # once each
+            key = ' '.join(text.split()).lower()
+            if key not in seen:
+                seen.add(key); out.append(text)
+        return '\n'.join(out[-n:])
 
     def add_to_history(self, message: str):
         """Add message to structured memory"""
@@ -1241,7 +1270,9 @@ End response with:
                 pass   # already there: nothing to tell
             elif line:
                 self.look(act_mode, act_arg, reason)
-                self.context.add_event(f'{self.name} {line}')
+                saw = getattr(self, 'walk_witnesses', None) or [self]
+                self.walk_witnesses = None
+                self.context.add_event(f'{self.name} {line}', doer=self, witnesses=saw + self.bystanders())
                 self.context.message_queue.put({'name': self.name, 'text': line, 'line_kind': 'action'})
                 self.context.transcript.append(f'{self.name} {line}')
                 await asyncio.sleep(0)
@@ -1307,8 +1338,12 @@ End response with:
             self.context.transcript.append(f'{self.name} {shown}')
             await asyncio.sleep(0)
             self.show = ''
-            if len(world_updates) > 0:
-                self.add_perceptual_input(f"{world_updates}", mode='visual')
+            # what the world told the doer and not the audience: why it was refused, its own notes
+            # (the rest of world_updates is the deed's result, which is in the record it witnessed)
+            private = ([refused['fact']] if refused and not refused['applied'] and refused.get('fact') else []) \
+                      + list(getattr(self, 'settled_notes', []))
+            if private:
+                self.add_perceptual_input(' '.join(private), percept=False, mode='internal')
             self.act_result = world_updates +'. '+character_updates
             # what others present can see happen (they used to get the action text only)
             # what the world settled and the narration it admitted (sim/record.py); it was an
@@ -1317,9 +1352,12 @@ End response with:
                 stage.leave(self, told=True)   # the deed has told it (its event follows)
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
+            aimed_at = self._first_character(target, act)
             self.context.add_event(f"{self.name} {'tries: ' if self.attempt_only else ''}{deed}"
                                    + (' (it does not happen)' if self.attempt_only else '')
-                                   + (f' -> {visible_result}' if visible_result else ''))
+                                   + (f' -> {visible_result}' if visible_result else ''),
+                                   doer=self, also=[aimed_at] if isinstance(aimed_at, Character)
+                                   and aimed_at is not self and not stage.off_stage(aimed_at) else [])
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1385,7 +1423,7 @@ End response with:
             elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
-            self.context.transcript.append(f'{self.name}: "{act_arg}"')
+            self.context.say(self, act_arg, self.hearers())
             await asyncio.sleep(0)
             done = survival.spoken_deed(self.context, self, act_arg)
             if not done and handed:   # 'Here, take the branch': the words hand it over
@@ -1394,8 +1432,7 @@ End response with:
                     done = None   # out of reach, or not the speaker's to give: it was only said
                 self.last_affordance = None
             if done:
-                self.context.add_event(f'{self.name} -> {done}')
-                self.add_perceptual_input(done, percept=False, mode='internal')
+                self.context.add_event(f'{self.name} -> {done}', doer=self)
                 self.context.message_queue.put({'name': self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), 'line_kind': 'action'})
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
@@ -1412,9 +1449,6 @@ End response with:
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
                 party = act.leaves if isinstance(act.leaves, list) else []
-                for other in self.hearers():
-                    if other not in party:
-                        other.add_perceptual_input(f"{self.name} says: '{content}', and leaves.", percept=False, mode='auditory')
                 gone = 'leaves.' if not party else f"leaves with {', '.join(c.name for c in party)}."
                 self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
                 self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
@@ -1452,8 +1486,6 @@ End response with:
                     target.focus_task.push(target_dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
 
-                for other in self.hearers(target):
-                    other.add_perceptual_input(f"You hear {self.name} say to {target.name}: '{content}'", percept=False, mode='auditory')
                 # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
                 target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
@@ -1481,8 +1513,9 @@ End response with:
             else:
                 watchers = [a for a in self.context.actors + self.context.extras
                             if a is not self and getattr(self.actor_models.get_actor_model(a.name), 'visible', False)]
+            # what they saw is in the record (add_event above, witnessed); here each reads the doer's aim
             for actor in watchers:
-                percept = actor.add_perceptual_input(seen, percept=False, mode='visual')
+                percept = PerceptualInput(mode=SensoryMode.VISUAL, content=seen, timestamp=self.context.simulation_time, intensity=0.6)
                 actor.actor_models.get_actor_model(self.name, create_if_missing=True).infer_goal(percept)
         self.previous_action_mode = act_mode           
 
@@ -1600,8 +1633,8 @@ End response with:
                                  "character": self.get_character_description(),
                                  "recent_events": self.narrative.get_summary('medium'),
                                  "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in self.goal_history]) if self.goal_history else 'None to report',
-                                 "relationships": self.actor_models.format_relationships(include_transcript=True),
-                                 "recent_memories": "\n".join([m.to_string() for m in self.structured_memory.get_recent(16)]),
+                                 "relationships": self.actor_models.format_relationships(include_transcript=False),
+                                 "recent_memories": self.lived(16),
                                  #"drive_memories": "\n".join([m.text for m in self.memory_retrieval.get_by_drive(self.structured_memory, self.drives, threshold=0.1, max_results=5)])
                                  }, prompt, tag='instantiate_narrative_goal', temp=0.3, stops=['</end>'], max_tokens=240)
         goals = []
@@ -1801,11 +1834,11 @@ Eating, drinking and resting are tasks only when your body says the need is at i
 
 A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
 Respond using the following hash-formatted text, where each task tag (field-name) is preceded by a # and followed by a single space, followed by its content.
-Each task should begin with a #task tag, and should end with ## as shown below. Insert a single blank line between each task.
+Each task begins with its #name line and ends with ## as shown below. Insert a single blank line between tasks.
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #name brief (4-6 words) task name
-#description terse (6-8 words) statement of the action to be taken.
+#description terse (6-8 words) statement of the action to be taken: what is done or pressed for, not the words to be said (the actor finds those when it is played).
 #reason (6-10 words) what you want out of this, in your own terms: what you want the other person to do, say, show or feel, or what you want to have or know. This is your intent for the task; it is kept if the action later has to change.
 #actors the names of any other actors involved in this task, comma separated. if no other actors, use None
 #start_time (2-3 words) expected start time of the action
@@ -1974,8 +2007,7 @@ End your response with:
 """)]
 
         # Get recent memories
-        recent_memories = self.structured_memory.get_recent(8)
-        memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
+        memory_text = self.lived(8)
 
         if consequences == '':
             consequences = self.context.last_consequences
@@ -2042,7 +2074,7 @@ End your response with: </end>"""
         reply = self.llm.ask({'name': self.name, 'what': f'{object.name}: {object.description}',
                               'done_when': str(termination_check).strip('# '),
                               'acts': '\n'.join(done_acts) or 'nothing yet',
-                              'happened': '\n'.join(happened + [x for x in (consequences, updates) if x and x.strip()])[-5000:] or 'nothing',
+                              'happened': record.last_lines(happened + [x for x in (consequences, updates) if x and x.strip()], 5000) or 'nothing',
                               'situation': record.seen_by(self)},
                              [UserMessage(content=self.DONE)], tag='test_termination', temp=0.1, stops=['</end>'], max_tokens=90)
         found = json_reply.parse(reply) if reply else None
@@ -2121,209 +2153,70 @@ End response with:
         if in_dialog:
             modes = 'Look, Move, Do'
         print(f'\n{self.name} generating acts for task: {task.to_string()}')
-        mission = """generate a set of two alternative acts {{$modes}} for the next step of the following task:
-
-<task>
-{{$task_string}}
-</task>
-
-#this is derived from your goal:
-
-<goal>
-{{$goal_string}}
-</goal>
-##
-
-#The act should be consistent with the character's drives and emotional stance.
+        # One question, its facts beside it, each said once. (The prompt had grown to 35k
+        # characters: four length rules, the dialog four times, five examples from other plays with
+        # fields not in the format, "the primary consideration is the task" above "do not repeat",
+        # and the task's own words, which scripted lines, put first: Lanya told the morning her
+        # father walked into the fog three times, and Sonnet given the same prompt told it again.)
+        mission = """You are the actor playing {{$name}} in an improvised play. Choose {{$name}}'s next act.
 
 {{$director_notes}}
 
-In light of the director's notes, your acts should serve story momentum as well as character psychology.
-
-Consider how your chosen action:
-- Advances the central narrative question toward resolution or deepens the mystery
-- Escalates or defuses the current act's dramatic tension  
-- Creates new conflict, responds to existing conflict, or avoids confrontation
-- Reveals, conceals, or misdirects crucial information
-- Forces decisions from others or demonstrates your own choices
-- Affects your alliances and relationships in service of the story
-
-Choose actions that drive narrative forward, not just maintain status quo.
+#The task {{$name}} is working on now
+{{$task_string}}
+It serves this goal: {{$goal_string}}
+##
 """
         suffix = """
 
-#recent percepts related to the current goals and tasks
-{{$goal_memories}}
-##
-{{$already_said}}
-
-Respond with two alternative acts, including their Mode, action, target, and expected duration. 
-Give first the act you would play now: the one that most directly does what the task is for. Then one alternative, in a different mode, that goes at it another way.
-
-In choosing each act (see format below), you can choose from these Modes:
-- Say - speak, to obtain or share information, to align, coordinate with, or manipulate others in service of your goals or drives; to reason jointly, or to establish or maintain a bond. 
-    For example, if you want to build a shelter with Mirela, it might be effective to Say: 'Mirela, let's build a shelter.'
-    Anything your character speaks, reads, recites or sings aloud is a Say, and the action is the words themselves.
-- Look - observe your surroundings, gaining information on features, actors, and resources at your current location and for the eight compass
-    points North, NorthEast, East, SouthEast, South, SouthWest, West, or NorthWest.
-- Move - walk to a named place or person: give its name (a place listed under 'You could do here', such as Spring3, or an actor's name).
-    The walk takes time and those with you come along, unless you say you go alone. A bare compass direction is not a Move.
-- Do - perform an act (other than move) to achieve physical consequences in the world or demonstrate to others your commitment to a goal or drive (whether real or performative). 
-    This is often appropriate when the task involves interacting physically with a resource or actor. A Do carries no words: what is said or read aloud is a Say.
-- Think - mental reasoning about the current situation wrt your state and the task.
-    Often useful when you need to plan or strategize, or when you need to understand your own motivations and emotions, but beware of overthinking. Thoughts are not revealed to others.
-
-#What is physically going on right now (where you are, your body, what just happened, what you could do here).
+#What is physically going on right now
 {{$act_note}}
 {{$here_and_now}}
 ##
 
-Review your character and current emotional stance when choosing Mode and action. 
-Emotional tone and orientation can (and should) heavily influence the boldness, mode, phrasing and style of expression for an Act.
-A Say is one spoken turn as your character would say it aloud: one to three plain sentences, no slogans or speeches.
+#Done so far toward this task
+{{$done_in_task}}
+##
 
-An act is:
-- Is a specific thought, spoken text, physical movement or action.
-- Includes only the actual thoughts, spoken words, physical movement, or action.
-- Has a clear beginning and end point.
-- Can be performed or acted out by a person.
-- Can be easily visualized or imagined as a film clip.
-- Makes sense as the next action given observed results of previous act . 
-- Is consistent with any incomplete action commitments made in your last statements in RecentHistory.
-- Does NOT repeat, literally or substantively, a previous act by you in RecentHistory, unless it is a continuation of the same action.
-- Significantly advances the story or task at hand, and so may be deceptive or surprising to others.
-- Is stated in the appropriate person (voice):
-        Think and Say: in the first person, as your character thinks or says it.
-        Do and Look: in the third person, present tense, as the audience would see it: '{{$name}} hands her the cup', never 'Hand her the cup' or 'I hand her the cup'.
- 
-Prioritize actions that lead to meaningful progress in the narrative.
-IMPORTANT: When evaluating a potential Act, the primary consideration is whether it can directly result in achievment of the task goal. 
+The question: after what is already done and said, what one act now moves {{$name}} toward what this task is for?
+- The task says what {{$name}} is after, not lines to recite. What {{$name}} has already said or done in the play ('What you have seen and heard lately', 'Done so far') is not said or done again, in the same words or in others: go on from it.
+- Take up the latest thing said or done to {{$name}}: answer it, use it, or refuse it.
+- {{$name}}'s drives and emotional stance decide how boldly and in what way.
 
-Dialog guidance: If speaking (mode is Say), then:
-- The action is only the words spoken.
-- Do not name what you and the other are to each other or what the moment means ("you're my anchor", "we're bound now"); ask, refuse, offer or tease, and let that show it.
-- Words do nothing physical: to eat, drink, take, give or go somewhere, choose a Do or a Move. Never report as done what has not been done.
-- If your character is deliberately saying something untrue about itself (a lie or a bluff, meant to deceive), end the line with the mark (lie); it will not be shown. Otherwise say nothing of what you hold, are doing, or your body's state that is not so.
-- 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
-- Speak only of what your character has seen, been told or can reasonably guess; do not invent facts about this place or its dangers.
-- Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
-{{$tempo}}
-- Respond in the style of spoken dialog, not written text. Pay special attention to the character's emotional stance shown above in choosing tone and phrasing. 
-    Use contractions and language appropriate to the character's personality, emotional tone and orientation. Speak in the first person. DO NOT repeat phrases used in recent dialog.
-- If intended recipient is known  or has been spoken to before (e.g., in RecentHistory), 
-    then pronoun reference is preferred to explicit naming, or can even be omitted. 
-- In any case, when using pronouns, always match the pronoun gender (he, she, his, her, they, their,etc) to the sex of the referent, or use they/their if a group. 
-- Avoid repeating phrases in RecentHistory derived from the task, for example: 'to help solve the mystery'.
-- Avoid repeating stereotypical past dialog.
-- Avoid repeating phrases or statements from past conversations:
-{{$dialog_transcripts}}.
+Modes:
+- Say: words {{$name}} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, giving, taking or going is a Do or a Move. Do not name what you and the other are to each other or what the moment means; ask, refuse, offer or tease, and let that show it.
+- Do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words.
+- Move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
+- Look: look around, or toward one of the eight compass points.
+- Think: a private thought, in the first person; nobody hears it.
 
-When describing an action:
-- Reference previous action if this is a continuation
-- Indicate progress toward goal (starting/continuing/nearly complete)
-- Note changes in context or action details
-- Describe progress toward goal
-- Use the appropriate pronoun gender and case(he, she, his, her, etc.) for any referent, or they / their if the referent is a group.
-    Use the following gender information:
-    {{$actor_genders}}
-Consider the previous act. E.G.:
-- If the previous act was a Move, are you now at your destination? If not, do you want to keep moving towards it?
-    If you are at your destination, what do you want to Do there? 
-    Gather or use a resource? Talk to someone there? Do something else at your new location?
-- If the previous act was a Look, what did you learn and how does it affect this act?
-                              
-Respond in hash-formatted text:
+Truth: {{$name}} speaks and acts only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
+Words belong to their speaker: a name or nickname one character uses for another is that character's own, not {{$name}}'s.
 
-#mode one of {{$modes}}.
-#action for Say, only the words spoken (30 words at most); for Do or Look, what your character does, in the third person (20 words at most); for Move, the name of the place or person walked to; for Think, the thought.
-#target name(s) of the actor(s) you are thinking about, speaking to, looking for, moving towards, or acting on behalf of, comma separated, or omit if no target(s).
-#duration expected duration of the action in minutes. Use a fraction of task duration according to the expected progress towards completion.{{$affordance_line}}
+Respond with two acts: first the one {{$name}} plays now, then one alternative in a different mode that goes at the task another way. Each in this form, closed by ## on a line of its own:
+
+#mode one of {{$modes}}
+#action for Say, only the words, {{$say_limit}}; for Do or Look, what {{$name}} does, in the third person, 20 words at most; for Move, the place or person; for Think, the thought
+#target the character(s) spoken to, acted on or walked to, comma separated; omit if none
+#duration minutes{{$affordance_line}}
 #leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene.
 ##
 
-===Examples===
-
-Task:
-Situation: increased security measures; State: fear of losing Annie
-Actors: Annie, Madam
-
-Response:
-#mode Do
-#action Madam calls the building management to ask for tighter security for Annie and the household.
-#target building management
-#actors Annie, Madam
-#duration 10 minutes
-
-----
-
-Task:
-Establish connection with Tomas given RecentHistory element: "Who is this guy?"
-Actors: Mirela
-
-Response:
+An example, from another play:
 #mode Say
-#action Hi, who are you?
-#duration 1 minute
+#action You drank the last of it. Where's mine?
 #target Tomas
-#actors Mirela
+#duration 1
+#leaves no
+##
+#mode Do
+#action Mirela holds her empty cup out to Tomas and waits.
+#target Tomas
+#duration 1
+#leaves no
 ##
 
-----
-
-Task:
-Find out where I am given Situation element: "This is very very strange. Where am I?"
-Actors: Mirela
-
-Response:
-#mode Look
-#action Mirela looks around for landmarks or signs of people.
-#duration 1 minute
-#actors Mirela
-##
-
-----
-
-Task:
-Find food.
-Actors: Tomas, Mirela
-
-Response:
-#mode Move
-#action berries#2
-#duration 15 minute
-#target None
-#actors Tomas, Mirela
-##
-
-----
-
-Task: dialog with Elijah: Maya talks with Elijah to maintain their bond despite her intention to leave.
-
-Response:
-#mode Say
-#action Hey, Elijah, - you know I'd never leave this place, right?
-#duration 1 minute
-#target Elijah, Chrys
-#actors Maya
-##
-
-
-===End Examples===
-
-Respond ONLY with the hash-formatted text above for each alternative act, each closed by ## on a line of its own.
-Your name is {{$name}}.
-
-Again, the task to translate into alternative acts is:
-<task>
-{{$task_string}} 
-</task>
-{{$done_in_task}}
-
-{{$scene_post_narrative}}
-
-Do not include any introductory, explanatory, or discursive text. Remember, respond with 2 or at most 3 alternative acts, your first choice first.
-End your response with:
-</end>
+Respond only with the two acts.
 """
 
         if not goal:
@@ -2332,35 +2225,22 @@ End your response with:
             goal = task.goal
         if not goal:
             raise ValueError(f'No goal for {self.name}')
-        goal_memories = []
-        actor_genders = ''
-        for actor in self.context.actors+self.context.extras:
-            actor_genders += f'\t{actor.name}: {actor.gender}\n'
         #generate emotional state for this task
         self.emotionalStance = EmotionalStance.for_character(self)
-        memories = self.perceptual_state.get_information_items(goal.short_string(), threshold=0.1, max_results=3)
-        for t in goal.task_plan:
-            memories = self.perceptual_state.get_information_items(t.short_string(), threshold=0.1, max_results=3)
-            for tm in memories:
-                if tm not in goal_memories:
-                    goal_memories.append(tm)
         # (the task was replaced here by whatever stood on top of the focus stack: called for a
         # scene task while a dialog task was above it, this wrote acts for the dialog)
         response = default_ask(self, prefix=mission, suffix=suffix, 
                                addl_bindings={"goal_string":goal.to_string(), "task":task, "task_string":task.to_fullstring(),
-                                              "done_in_task": self.done_in_task(task),
-                                              "here_and_now": self.physical_context(),
+                                              "done_in_task": self.done_in_task(task) or 'Nothing yet.',
+                                              # the frame's last act is in 'Done so far' (or is the record's)
+                                              "lastAct": 'see Done so far toward this task', "lastActResult": 'see What you have seen and heard lately',
+                                              "say_limit": stage.say_limit(self),
+                                              "here_and_now": self.physical_context(events=False),
                                               "affordance_line": survival.affordance_prompt_line(self),
                                               "act_note": survival.act_note(self),
-                                              "already_said": self.already_said(task),
-                                              "tempo": stage.speech_tempo(self),
-                                              "goal_memories": "\n".join([m.content for m in goal_memories]),
-                                              "scene_post_narrative": '',   # where the scene is heading is in the director's notes
                                               "director_notes": self.director_notes(),
                                               "modes": modes,
-                                              "name": self.name,
-                                              "actor_genders": actor_genders,
-                                              "dialog_transcripts": '\n'.join(self.actor_models.get_dialog_transcripts(20))}, 
+                                              "name": self.name}, 
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
         if response is not None:
@@ -2511,7 +2391,7 @@ End your response with:
             return added
         in_scene = self.__class__.__name__ == 'NarrativeCharacter' and self.context.current_scene
         for task_hash in hashes:
-            task = self.validate_and_create_task(task_hash)
+            task = self.validate_and_create_task(task_hash, include_self=False)
             if not task:
                 continue
             owners = [c for c in (self, other) if c in (task.actors or [])] or [self]
@@ -2654,7 +2534,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
             trace.event('dialog_end', speaker=from_actor.name, listener=self.name,
                         turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
-            self.add_perceptual_input(f'Conversation with {from_actor.name}:\n {dialog}', percept=False, mode='auditory')
             dialog_as_list = dialog.split('\n') 
             self.note_exchange(from_actor, dialog_as_list)
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
@@ -2664,7 +2543,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             self._pop_dialog_task(from_actor)
             # it would probably be better to have the other actor deactivate the dialog itself
             other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
-            from_actor.add_perceptual_input(f'Conversation with {self.name}:\n {other_dialog}', percept=False, mode='auditory')
             from_actor.note_exchange(self, other_dialog.split('\n'))
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
@@ -2700,7 +2578,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                 if t.startswith(f'{self.name} says: ')][-2:]
         if not mine:
             return ''
-        return ("- Your own last lines were: " + ' / '.join(f"'{m[:140]}'" for m in mine)
+        return ("- Your own last lines were: " + ' / '.join(f"'{m}'" for m in mine)
                 + ". Do not reuse their imagery or their sentence shape. If either used a figure of speech, speak plainly this time.")
 
     def note_exchange(self, other, dialog_lines):
@@ -2709,7 +2587,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         mine = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{self.name} says: ')]
         theirs = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{other.name} says: ')]
         if mine and theirs:
-            self.recent_exchanges = (self.recent_exchanges + [(other.name, mine[0][:160], theirs[-1][:160])])[-4:]
+            self.recent_exchanges = (self.recent_exchanges + [(other.name, mine[0], theirs[-1])])[-4:]
 
     def done_in_task(self, task):
         """What this character has already done toward a task, to stand beside the task itself.
@@ -2722,10 +2600,12 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         # a deed the world refused is told as a try: it was listed as done, and the actor went on
         # as if it had the thing it had been refused
         return ("Toward this task you have already, in this order:\n"
-                + '\n'.join(f"- {a.mode}: {str(a.action)[:200]}" + (' (you tried; it did not happen)' if getattr(a, 'attempt_only', False) else '')
+                + '\n'.join(f"- {a.mode}: {a.action}" + (' (you tried; it did not happen)' if getattr(a, 'attempt_only', False) else '')
                              for a in acts[-4:])
                 + "\nThese are done (a try that did not happen may be tried another way) and cannot be done again or thought over as if still to do. "
-                  "Choose what comes next after them; if they have done what the task asks, do what follows from it.")
+                  "Choose what comes next after them; if they have done what the task asks, do what follows from it."
+                + (" You have had your say in this task: now a Do, Move, Look or Think, unless someone has just said something you must answer."
+                   if any(a.mode == 'Say' for a in acts[-2:]) else ''))
 
     def already_said(self, task):
         """For the act prompt: recent exchanges and what was already said in this task. A scene
@@ -2740,7 +2620,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                            "Take the answer as given and do something different: act on it, concede, raise the price, or turn to someone else.\n##")
         spoken = [a.action for a in (task.acts or []) if a.mode == 'Say']
         if spoken:
-            parts.append("#In this task you have already said:\n" + '\n'.join(f"- '{line[:160]}'" for line in spoken[-2:])
+            parts.append("#In this task you have already said:\n" + '\n'.join(f"- '{line}'" for line in spoken[-2:])
                          + "\nYou have had your say in this task: now choose a Do, Move, Look or Think, "
                            "unless someone has just said something you must answer.\n##")
         return '\n'.join(parts)
@@ -2842,14 +2722,10 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         speaker._cut_ins = (scene, (getattr(speaker, '_cut_ins', (None, 0, 0))[1] if getattr(speaker, '_cut_ins', (None,))[0] is scene else 0) + 1, now)
         self.context.message_queue.put({'name': speaker.name, 'text': f"'{line}'",
                                         'elevenlabs_params': json.dumps(speaker.speech_stylizer.voice_params(to))})
-        self.context.transcript.append(f'{speaker.name}: "{line}"')
+        self.context.say(speaker, line, speaker.hearers())   # heard by all within earshot (the record)
         trace.event('dialog_turn', speaker=speaker.name, listener=to.name, text=line[:1000], cut_in=True)
         dialog.add_turn(speaker, line)
         self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(speaker, line)
-        speaker.add_perceptual_input(f"You cut in, saying to {to.name}: '{line}'", percept=False, mode='internal')
-        for other in speaker.hearers():
-            if other not in (self, from_actor):
-                other.add_perceptual_input(f"You hear {speaker.name} say to {to.name}: '{line}'", percept=False, mode='auditory')
         return f"{speaker.name} cuts in, to {to.name}: '{line}'"
 
     def generate_dialog_turn(self, from_actor, message, source=None):
@@ -2874,18 +2750,15 @@ People in conversation speak plainly and often incompletely; they do not deliver
        "The place the characters are in and what has just happened are real; let them shape what is said.") + """
 Keep your character's own way of speaking (see 'How you speak') from line to line.
         """
-        prompt_string = """Be faithful to your character as presented in the following.
-Disagreement is not only allowed but expected when confidence is low or relationship is in question, fear is high, or the character perceives conflicting goals or a threat.
-
-##The scene you are playing:
-<scene>
+        # One question, its facts once each. (It carried an empty <scene>, an empty 'last
+        # action', a blank gender for the listener, the talk also in memories and again as 'your
+        # own last lines', 40 words here against 30 in the act prompt, and 'do not answer a
+        # question with a question' for characters whose voice is teasing questions.)
+        speaker = 'yourself' if self is from_actor else from_actor.name
+        prompt_string = """You are the actor playing {{$name}}. """ + (
+            """{{$name}} is thinking; give {{$name}}'s next thought.""" if self is from_actor else
+            """{{$speaker}} has just spoken to {{$name}}; give {{$name}}'s answer.""") + """
 {{$scene}}
-</scene>
-
-Given the following character description, emotional state, current situation, goals, memories, and recent history, """
-        prompt_string += """generate a next thought in the internal dialog below.""" if self is from_actor else """generate a response to the statement below, based on your goals in the dialog."""
-        prompt_string += """
-
 <your_character>
 {{$character}}
 </your_character>
@@ -2894,96 +2767,54 @@ Given the following character description, emotional state, current situation, g
 {{$emotionalState}}
 </emotional_state>
 
-<situation>
-{{$situation}}
-</situation>
-
-<goals>
+<what_you_are_after>
 {{$goals}}
-</goals>
+</what_you_are_after>
 
-<memories>
-{{$memories}}
-</memories>
-
-<recent_history>
+<before_this_scene>
 {{$history}}
-</recent_history>
+</before_this_scene>
 
-Your last action was:
+<where_things_stand>
+{{$situation}}
+</where_things_stand>
 
-{{$activity}}
+<your_own_thoughts_and_what_you_have_made_of_things>
+{{$memories}}
+</your_own_thoughts_and_what_you_have_made_of_things>
 
-"""
-        prompt_string += """You think of yourself as:""" if self is from_actor else """You think of the speaker as:"""
-        prompt_string += """
-                              
-<relationship>
+<how_you_see_{{$speaker}}>
 {{$relationship}}
-</relationship>
-                              
-"""
+</how_you_see_{{$speaker}}>
 
-        prompt_string += """Your internal dialog up to this point has been:""" if self is from_actor else """Your dialog with the speaker up to this point has been:"""
-        prompt_string += """
-<dialog>
+<the_talk_so_far>
 {{$dialog}}
-</dialog>
+</the_talk_so_far>
 
-"""
-
-        prompt_string += """What is physically going on right now (where you are, your body, what just happened, what you could do here):
 <here_and_now>
 {{$here_and_now}}
 </here_and_now>
 
-"""
-        prompt_string += """generate a next thought in the internal dialog below:""" if self is from_actor else """generate a response to the statement below in the dialog:"""
-        prompt_string += """
-<statement>
+<what_was_just_said>
 {{$statement}}
-</statement>
-"""
+</what_was_just_said>
 
-        prompt_string += "" if self is from_actor else """Your first step in composing your response is to decide if you agree with the speaker. 
-Even if speaker is a close friend, you may disagree with them, and that is fine.
-Use how you think of speaker as a key determinant in composing your response. 
-Do you believe that speaker's drives and goals align with yours? Do you believe speaker's statement is sincere?
-What is speaker's emotional state? Would they enjoy humor at this point, or should your response be cautious and measured?
-"""
-        prompt_string += """Use the following XML template in your response:
+The question: what does {{$name}} say back, now, to get what {{$name}} is after?
+- First decide whether {{$name}} goes along with it. {{$name}} may doubt, refuse or push back, as how {{$name}} sees {{$speaker}} and what {{$name}} wants decide; agreeing, {{$name}} agrees without repeating it.
+- One turn: {{$say_limit}}. Make one point and leave the rest for later turns.
+- Answer what was said: do not open by saying its words back as a question ("A trap?"), and do not take on its way of talking. {{$name}} speaks in {{$name}}'s own voice ('How you speak').
+- Words belong to their speaker: a name or nickname that someone else uses is theirs, not {{$name}}'s.
+- No slogans, paired contrasts or flourishes: say it the way {{$name}} would across a table. Do not name what you two are to each other or what the moment means; ask, refuse, offer or tease, and let that show it. Let the emotional state colour the line without announcing it.
+- Speech only: no actions, gestures or body language in the line (those are Do acts). Words do nothing physical, and nothing is said as done that has not been done.
+- Truth: {{$name}} speaks only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
+- Do not reuse the phrases, images or sentence shapes of the talk so far.
+- What {{$name}} has already asked and been answered is not asked again in other words: {{$name}} acts on the answer, doubts it aloud once, raises the price, concedes, or lets it go for now.
+- A pet name or verbal habit comes now and then, not in every line.
 
-<response>the words your character says, and nothing else</response>
-<reason>terse (4-6 words) reason for this response</reason>
-<leaves>no, alone, or with <names>: whether with these words your character goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise</leaves>
-
-{{$duplicative_insert}}
-
-Guidance: 
-- Use the appropriate pronoun (he, she, him, her) according to declared gender of each character. {{$target}} gender is {{$target_gender}}.
-    Actor genders:
-    {{$actor_genders}}
-- Speech only: do not narrate actions, gestures or body language in the response; physical actions are separate Do acts.
-- Respond in a way that advances the dialog. E.g., express an opinion or propose a next step. Don't hesitate to disagree with the speaker if consistent with the character's personality and goals.
-- Do not respond to a question with a question.
-- If the intent is to agree, state agreement without repeating the statement.
-- Above all, speak in your own voice. Do not echo the speech style of the statement.
-- Do not open by repeating the speaker's word or phrase back as a question ("A trap?", "Numbers?"). Answer it.
-- One turn: one to three sentences, 40 words at most. Make one point; leave the rest for later turns.
-- No slogans, paired contrasts ("X is ephemeral. Y is law.") or flourishes; say it the way the character would across a table.
-- Let your emotional state colour the line without announcing it.
-- Do not name what the two of you are to each other or what the moment means ("you're my anchor", "we're bound now", "trust is survival"): ask, refuse, offer, tease or change the subject, and let that show it.
-- Words do nothing physical. Do not say you are eating, drinking, taking or handing over something unless you are doing it this moment and it is within reach; never report as done what has not been done.
-- If your character is deliberately saying something untrue about itself (a lie or a bluff, meant to deceive), end the line with the mark (lie); it will not be shown. Otherwise say nothing of what you hold, are doing, or your body's state that is not so.
-- 'Your body' above is the truth about your thirst, hunger and tiredness: do not complain of a need it says is met, or speak as if one were met that it says is not.
-- Speak only of what your character has seen, been told or can reasonably guess, and say a guess as a guess. Do not invent facts about this place or its dangers.
-- Speak as a person of this world: distances in paces or minutes, things by their ordinary names ('the spring', not 'Spring2'). Never 'tiles', 'inventory', or anything about a game or its workings.
-- Avoid phrases and images already used in the dialog to this point.
-{{$own_recent}}
-{{$tempo}}
- 
-Respond only with the above XML
-Do not include any additional text. 
+Respond with this XML only:
+<response>the words {{$name}} says, and nothing else</response>
+<reason>4-6 words: why {{$name}} says it</reason>
+<leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise</leaves>
 End your response with:
 </end>
 """
@@ -3013,10 +2844,13 @@ End your response with:
         for actor in self.context.actors+self.context.extras:
             actor_genders += f'\t{actor.name}: {actor.gender}\n'
 
+        scene_notes = self.scene_brief()
         answer_xml = self.llm.ask({
+            'speaker': speaker,
+            'say_limit': stage.say_limit(self),
             'character': self.get_character_description(),
             'emotionalState': emotionalState.to_definition(),
-            'statement': f'{from_actor.name} says {message}' if self is not from_actor else message,
+            'statement': f'{from_actor.name}: {message}' if self is not from_actor else message,
             "situation": record.seen_by(self),
             "name": self.name,
             "goals": mapped_goals,
@@ -3033,7 +2867,7 @@ End your response with:
             'own_recent': self.own_recent_lines(from_actor),
             "tempo": stage.speech_tempo(self),
             # own view of the scene only: the full scene JSON revealed the other character's goal
-            "scene": self.scene_brief(),
+            "scene": f"\n{scene_notes}\n" if scene_notes else '',
             "here_and_now": self.physical_context(),
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
@@ -3121,7 +2955,7 @@ End your response with:
                 response = self.llm.ask({'goal': goal.to_string(), 
                                          'surroundings': self.look_percept,
                                          'achievments': '\n'.join(self.achievments[-5:]),
-                                         'recent_memories': '\n'.join([memory.to_string() for memory in self.structured_memory.get_recent(8)]), 
+                                         'recent_memories': self.lived(8), 
                                          'situation': self.context.current_state, 
                                          'time': self.context.simulation_time}, 
                                          prompt, tag='admissible_goals', temp=0.8, stops=['</end>'], max_tokens=30, log=True)
@@ -3521,8 +3355,9 @@ End your response with:
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
 
-    def physical_context(self):
-        """Where the character is, its body, recent physical events, and what it could do here."""
+    def physical_context(self, events=True):
+        """Where the character is, its body, recent physical events, and what it could do here.
+        events: False where the prompt's character frame already gives what the character witnessed."""
         parts = [f'Surroundings: {self.look_percept or "unknown"}']
         others = stage.whereabouts(self)
         if others:
@@ -3534,7 +3369,8 @@ End your response with:
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
-        parts.append('Recent events:\n' + self.context.recent_events_text(6))
+        if events:   # what it saw done (what was said is in the prompt's own dialog block)
+            parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))
         actions = survival.available_actions(self, part='known')
         if actions:
             parts.append('You could do here: ' + actions)

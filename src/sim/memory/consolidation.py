@@ -13,6 +13,27 @@ if TYPE_CHECKING:
     from sim.cognitive.EmotionalStance import EmotionalStance
 import numpy as np
 
+# "Before this scene" in every prompt of the character is this account. It asked for "about 150
+# words" whatever it was given: from one line ("About 6 hours have passed") it wrote a commune
+# kitchen, a nap in a doorway and a quoted line, and the actor prompts then read them as fact.
+RECENT_EVENTS = """Retell what {name} has lived through in the last two hours of the play: one paragraph about {name}, in the third person and past tense, in the order it happened.
+
+Who {name} is:
+{character}
+
+What {name} was last doing:
+{activity}
+
+What {name} saw, heard, did, thought and was told, oldest first:
+{lines}
+
+Tell only what the lines above say happened. Add no event, place, meal, sleep, sight or words that they do not give; where they skip time, say only that time passed. Keep what {name} chose and why, where the lines say it.
+Use about as many words as the lines carry: a sentence or two for one or two lines, and never more than 150 words. When there is more than that holds, keep what changed things: what was found, given, decided or said that mattered, and leave out the rest.
+Respond with the account only.
+End with:
+</end>
+"""
+
 class MemoryConsolidator:
     def __init__(self, owner, llm, context):
         self.owner = owner
@@ -300,6 +321,22 @@ End your response with:
         """Detect behavioral/event patterns across abstract memories"""
         pass
 
+    def _lived(self, memory, since, n):
+        """What the owner witnessed (the play's record, Context.witnessed) and its own memories
+        (thoughts, notices, what it was told) since `since`, merged in time order, the latest n."""
+        rows = [(m.timestamp, m.to_string()) for m in memory.get_recent(n) if m.timestamp >= since]
+        context = getattr(self.owner, 'context', None) or getattr(self, 'context', None)
+        if context is not None and hasattr(context, 'record_entries'):
+            name = self.owner.name
+            rows += [(e['time'], context.entry_line(e)) for e in context.record_entries
+                     if name in e['witnesses'] and e['time'] >= since]
+        seen, out = set(), []
+        for _, text in sorted(rows, key=lambda r: r[0]):   # once each: a memory and the abstraction standing for it read the same
+            key = ' '.join(text.split()).lower()
+            if key not in seen:
+                seen.add(key); out.append(text)
+        return out[-n:]
+
     def update_cognitive_model(self, memory: StructuredMemory, narrative: NarrativeSummary, knownActorManager: KnownActorManager,
                         current_time: datetime, character_desc: str, cycle: int = 0, relationsOnly: bool = True,
                         force: bool = False) -> None:
@@ -328,8 +365,8 @@ Active Activity:
 Recent Abstractions:
 {chr(10).join(f"- {abs.summary}" for abs in memory.get_recent_abstractions(4))}
 
-Recent Concrete Memories:
-        {chr(10).join(f"- {mem.to_string()}" for mem in memory.get_recent(20))}
+What the character has seen, heard, thought and been told lately, oldest first:
+{chr(10).join(f"- {line}" for line in self._lived(memory, current_time - timedelta(hours=2), 20))}
 
 Create a concise summary (about 100 words) that describes:
 1. What the character is currently doing
@@ -356,31 +393,11 @@ End with:
         recent_concretes = [mem for mem in memory.get_recent(40)
                            if mem.timestamp >= recent_window]
         
-        prompt = [UserMessage(content=f"""Create a detailed narrative of recent events (last 2 hours) for this character.
-
-Character Description:
-{character_desc}
-
-Current Activity:
-{active_abstract.summary if active_abstract else "No current activity"}
-
-Recent Event Sequence:
-{chr(10).join(f"- {mem.to_string()}" for mem in sorted(recent_concretes, key=lambda x: x.timestamp))}
-
-Recent Activity Patterns:
-{chr(10).join(f"- {abs.summary}" for abs in recent_abstracts)}
-
-Create a flowing narrative (about 150 words) that:
-1. Describes events in chronological order
-2. Maintains causal relationships between events
-3. Includes character's reactions and decisions
-4. Shows how events connect to current situation
-
-Write in past tense, focus on specific details and immediate consequences.
-Respond with just the event narrative, no additional text.
-End with:
-</end>
-""")]
+        patterns = []   # abstractions are in _lived already, where they stand for memories cleanup removed
+        prompt = [UserMessage(content=RECENT_EVENTS.format(
+            name=self.owner.name, character=character_desc,
+            activity=active_abstract.summary if active_abstract else (narrative.ongoing_activities or 'not known'),
+            lines='\n'.join(f"- {line}" for line in self._lived(memory, recent_window, 40) + patterns) or '- nothing'))]
 
         if not relationsOnly:
             new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events', max_tokens=340)
@@ -393,9 +410,7 @@ End with:
         
         # Extract character names from memory text
         recent_window = current_time - timedelta(hours=2)  # Look back 2 hour
-        recent_memories = [mem for mem in memory.get_recent_concrete(40) 
-                          if mem.timestamp >= recent_window]
-        all_texts = [mem.to_string() for mem in recent_memories]
+        all_texts = self._lived(memory, recent_window, 40)   # who it saw and heard, and its own thoughts
         
         # Find character names in recent texts (simple approach)
         # Look for capitalized words that aren't at start of sentence

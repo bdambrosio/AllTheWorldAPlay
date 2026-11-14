@@ -117,6 +117,10 @@ Everything down to the closing line of this block is {{$name}}: who {{$name}} is
 {{$situation}}
 ##
 
+#What you have seen and heard lately, oldest first
+{{$witnessed}}
+##
+
 #Your immediate surroundings
 {{$surroundings}}
 ##
@@ -133,7 +137,7 @@ Everything down to the closing line of this block is {{$name}}: who {{$name}} is
 {{$goal_history}}
 ##
 
-#Your recent memories
+#Your own recent thoughts and what you have made of things
 {{$memories}}
 ##
 
@@ -164,7 +168,8 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
         prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     
 
-    recent_memories = character.structured_memory.get_recent(16)
+    # memory holds what the record does not: thoughts, notices, task outcomes, what one was told
+    recent_memories = character.structured_memory.get_recent(10)
     memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
     
     emotionalState = character.emotionalStance        
@@ -204,7 +209,9 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
                 "time": character.context.simulation_time.isoformat(),
                 "situation": (character.context.current_state if view == 'playwright' else record.seen_by(character)) if character.context else "",
                 "actor_genders":actor_genders,
-                "actors":character.actor_models.format_relationships(include_transcript=True),
+                # what passed between them is in 'witnessed' (the record), not repeated here
+                "actors":character.actor_models.format_relationships(include_transcript=view == 'playwright'),
+                "witnessed": character.context.witnessed_block(character) if character.context else '',
                 "resources":character.resource_models.to_string(),
                 "goal_history":'\n'.join([f'{g.name} - {g.description}\n\t{g.completion_statement}' for g in character.goal_history]) if character.goal_history else 'None to report',
                 "memories": memory_text,

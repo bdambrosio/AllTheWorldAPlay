@@ -104,8 +104,6 @@ def leave(character, party=(), told=False):
         if isinstance(getattr(context, record, None), list):
             getattr(context, record).append(exit_)
     for other in remaining:
-        if other not in party:
-            other.add_perceptual_input(f'{character.name} has left.', percept=False, mode='visual')
         for a, b in ((other, character), (character, other)):
             model = a.actor_models.get_actor_model(b.name)
             if model is not None and model.dialog.active:
@@ -115,7 +113,7 @@ def leave(character, party=(), told=False):
             except Exception:
                 pass
     if not told:
-        context.add_event(f'{character.name} leaves')
+        context.add_event(f'{character.name} leaves', doer=character, witnesses=[character] + remaining)
     trace.event('exit', character=character.name, left_behind=[c.name for c in remaining])
     return True
 
@@ -344,10 +342,9 @@ def walk(character, xy, place, alone=False, to=True):
     for other in was_with:
         if other not in party and not alone:
             continue   # it has only stepped across the place
-        other.add_perceptual_input(f'You walk with {character.name} {"to " if to else ""}{place}.' if other in party
-                                   else f'You see {character.name} go off {"to " if to else ""}{place}, leaving you.',
-                                   percept=False, mode='visual' if other not in party else 'movement')
         other.look()
+    # who saw it go: those it walked with and those it left (the walk's line is recorded by the walker)
+    character.walk_witnesses = [character] + was_with
     trace.event('walk', character=character.name, place=place, party=[c.name for c in party], alone=alone,
                 tiles=tiles, minutes=round(minutes, 1))
     return line
@@ -382,6 +379,12 @@ def speech_tempo(character):
     """A line for the speech prompts when the moment is not calm."""
     return {'urgent': "- This moment is urgent: twelve words at most, and no explaining; but it is still your character's own voice and way with words, not a generic shout.",
             'tense': "- The moment is tense: keep it short, a sentence or two, as this person talks when on edge."}.get(tempo(character), '')
+
+
+def say_limit(character):
+    """How long a spoken turn may be, for the act prompt's one length rule: by the moment's tempo."""
+    return {'urgent': "12 words at most, no explaining, still in the character's own voice",
+            'tense': "20 words at most: a sentence or two, as this person talks on edge"}.get(tempo(character), "30 words at most")
 
 
 def pending_business(character):
