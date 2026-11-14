@@ -104,6 +104,11 @@ Novak.add_perceptual_input(
 # World / Context setup
 # ──────────────────────────────────────────────────────────────────────────────
 
+# In the scenes by voice, from where they are (stage.remote): the scene does not bring them to its place
+Novak.remote = 'by radio from mission control on Earth'
+Cmdr.remote = 'by radio from inside the airlock'
+Cmdr.remote_from = 'Airlock1'   # once he walks out of it, he is wherever he has gone, in person
+
 W = context.Context(
     [Jade, Cmdr, Novak],
     """Exterior maintenance gantry, Selene‑3 lunar research base.  Stark sunlight glares off regolith as Earth hangs low on the horizon. 
@@ -119,6 +124,7 @@ One bad choice and everything vents into the void.""",
 try:
     Jade.mapAgent.move_to_resource("Gantry1")    # exterior catwalk
     Cmdr.mapAgent.move_to_resource("Airlock1")    # interior hatch zone
+    Novak.mapAgent.move_to_resource("Habitmodule1")   # a place to stand on the map; she is on Earth (Novak.remote)
 except Exception:
     # Map not yet authored; safe to ignore during initial authoring.
     pass

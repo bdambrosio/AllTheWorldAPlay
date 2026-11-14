@@ -1711,9 +1711,14 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # set-up, and Joe asked who carved a cup the audience had not been shown)
             target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
             there = [p['name'] for hidden in (False, True) for p in survival.lying(self, target[0], hidden=hidden)] if target else []
+            # and that nothing lies there, and where the play's own finds are: told nothing, the
+            # check let a set-up put the key in the mud at Spring2 while it lay at Spring3
+            clues = [f"{c['thing']}: {survival.whereabouts_of(self, c['thing']) or 'not in the world'}"
+                     for c in (self.screenplay.clues or [])]
+            settled = '\n'.join(([f"Lying at {target[1]}, where the scene is set: {', '.join(there) or 'nothing'}"] if target else [])
+                                + ([f"Where each of these is now: {'; '.join(clues)}"] if clues else [])) or None
             found = record.check(self, cast[0], f"A scene is set at {scene.get('location') or 'the same place'}; the cast walks there if it is elsewhere.",
-                                 f"Lying at {target[1]}, where the scene is set: {', '.join(there)}" if there else None,
-                                 told, people=cast) or []
+                                 settled, told, people=cast) or []
             # where the scene is set is the plan's to say, and a danger of this world that the
             # set-up brings on is made real (survival.stage_hazard)
             claims = [(kind, words) for kind, words in found

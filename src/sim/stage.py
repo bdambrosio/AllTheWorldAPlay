@@ -38,7 +38,8 @@ Set a scene where its action can happen: Places lists what can be done at each n
 Give a scene a different location only when the action must move there; the cast then walks, which takes the time shown.
 A scene's title, set-up and ending must fit its "when": a scene called a night watch has "when": "night". When a scene moves the play on, hours pass off stage and the cast is taken to have eaten, drunk and rested as it could: do not spend the scene on that. Move the play on at most once within an act; the clock times you write are not used for this.
 A jump to a distant place belongs at the start of an act.
-A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is listed under business, and is so only if a character does it in that scene."""
+A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is listed under business, and is so only if a character does it in that scene.
+Someone the cast list says takes part by radio or phone is in a scene by voice only: never at its place, never handed anything or touched."""
 
 
 def here(character):
@@ -54,6 +55,27 @@ def here(character):
 # (the act and dialog formats ask: leaves, yes or no). Having left, it is off stage until the
 # scene ends: nobody's bystander, no cut-ins, no closing business, no further tasks, and an act
 # aimed at it is sent back (sim/record.py deeds).
+def remote(character):
+    """How a character takes part in scenes from elsewhere ('by radio from mission control on
+    Earth'), or ''. A play sets character.remote for someone who is in its scenes by voice
+    (radio, phone) and stays at their own place: scenes do not bring them to theirs, they hear
+    and are heard by the cast, and nothing is handed to them or done to them in person. Once at
+    the scene's own place (the commander who walks out to the gantry), they are there in person.
+    character.remote_from: the place they speak from, when it is on the map (the airlock); away
+    from it they are wherever they have walked to, in person."""
+    words = (getattr(character, 'remote', None) or '').strip()
+    if not words or getattr(character, 'mapAgent', None) is None:
+        return words
+    context = getattr(character, 'context', None)
+    xy = (getattr(context, 'previous_scene', None) or {}).get('xy')
+    if xy is not None and _distance(here(character), xy) <= AT_PLACE_TILES:
+        return ''
+    home = (context.map.resource_registry.get(getattr(character, 'remote_from', None) or '') or {}).get('location') if context is not None else None
+    if home is not None and _distance(here(character), tuple(home)) > AT_PLACE_TILES:
+        return ''
+    return words
+
+
 def off_stage(character):
     """Has this character left the scene now being played?"""
     scene = getattr(getattr(character, 'context', None), 'current_scene', None)
@@ -219,13 +241,22 @@ def set_scene(context, scene, characters, opens_act):
         return ''
     previous = getattr(context, 'previous_scene', None) or {'cast': (), 'xy': None}
     carried = [c for c in characters if c.name in previous['cast']]
-    anchor = here(carried[0]) if carried else previous['xy'] or here(characters[0])
+    # the scene is where those there in person are, not where a voice on the radio is
+    carried = [c for c in carried if not (getattr(c, 'remote', None) or '').strip()] or carried
+    first = next((c for c in characters if not (getattr(c, 'remote', None) or '').strip()), characters[0])
+    anchor = here(carried[0]) if carried else previous['xy'] or here(first)
     target = resolve(context, scene.get('location'), anchor)
     xy, place = target if target else (anchor, None)
     scene['place'] = place or where(context, xy).removeprefix('at ')
     context.previous_scene = {'cast': tuple(c.name for c in characters), 'xy': xy}
     movers, longest = [], 0.0
     for character in characters:
+        if remote(character):
+            # in the scene by voice, from where they are: and indoors there (Novak on Earth was
+            # walked onto the gantry, and her suit oxygen began to run down)
+            if getattr(character, 'body', None) is not None:
+                character.body.sheltered = True
+            continue
         tiles = _distance(here(character), xy)
         if tiles <= AT_PLACE_TILES:   # already there: a step or two needs no telling
             if place:
@@ -261,7 +292,8 @@ def gazetteer(context):
     if not cast or not world.resource_registry:
         return ''
     minutes_per_tile = (survival.config(context) or {}).get('tile_minutes', 2) * 1.5
-    lines = ['Where the cast is: ' + '; '.join(f'{c.name} {where(context, here(c))}' for c in cast) + '.']
+    lines = ['Where the cast is: ' + '; '.join(f'{c.name} {remote(c) or where(context, here(c))}' for c in cast) + '.']
+    cast = [c for c in cast if not remote(c)] or cast   # places are reckoned from those who can walk to them
     places = sorted(((min(_distance(here(c), res['location']) for c in cast), rid, res)
                      for rid, res in world.resource_registry.items()), key=lambda p: p[:2])
     listed, kinds = [], set()
@@ -330,6 +362,8 @@ def approach(character, target):
             or getattr(target, 'current_scene', None) is not character.context.current_scene
             or character.context.current_scene is None):
         return ''
+    if remote(character) or remote(target):
+        return ''   # spoken to over the radio, not walked to
     if _distance(here(character), here(target)) <= AT_PLACE_TILES:
         return ''
     return walk(character, here(target), target.name, alone=True)
@@ -500,9 +534,10 @@ def _place_words(context, cast):
 def _on_stage(context):
     """Who is in the scene: the scene plan's cast where there is one (extras too: Xiaoyu was
     never in a picture of his own office), else those marked as in it, else the main cast. The
-    scene picture is taken before the cast is marked, and showed the whole main cast."""
+    scene picture is taken before the cast is marked, and showed the whole main cast. Those in
+    the scene by radio are not in its picture."""
     everyone = [c for c in list(context.actors) + list(getattr(context, 'extras', []))
-                if getattr(c, 'mapAgent', None) is not None]
+                if getattr(c, 'mapAgent', None) is not None and not remote(c)]
     scene = context.current_scene
     named = []
     if isinstance(scene, dict):
@@ -513,7 +548,7 @@ def _on_stage(context):
     if named:
         return named
     marked = [c for c in everyone if scene is not None and getattr(c, 'current_scene', None) is scene]
-    return marked or [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
+    return marked or [c for c in everyone if c in context.actors]
 
 
 def picture(context, doing=''):

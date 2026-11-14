@@ -57,7 +57,7 @@ What the world's rules made of it ('none': the rules changed nothing):
 A statement is unsupported when it is one of these:
 - item: someone has, gains, uses, eats, drinks from, drops or hands over a thing that Holdings, Lying here and Settled do not give them (a tool, weapon, food, water, medicine, container, device), or finds such a thing lying there. Picking, touching or handling what grows or lies at a place the character is at (a berry at the berry bush, a branch at a fallen branch), or something of a kind it carries, is supported.
 - condition: of the body only (fear, shock, a scare, relief and calm are of the mind and never a condition): a wound, illness or pain from injury, or a need met or unmet (hungry, fed, thirsty, quenched, tired, rested), that Bodies and Settled do not show. A stronger or weaker word for what Bodies shows (exhausted for tired) is supported.
-- presence: an animal or person that Present, Danger and Settled do not mention; or the danger listed under Danger gone, struck or beaten when Settled does not say so. (A danger leaving as Settled says is supported. Anyone listed under Present is there, wherever the narration puts them within the place. Places, plants, wind, noises and things in the landscape are never 'presence'.)
+- presence: an animal or person that Present, Danger and Settled do not mention; or the danger listed under Danger gone, struck or beaten when Settled does not say so. (A danger leaving as Settled says is supported. Anyone listed under Present is there, wherever the narration puts them within the place. Places, plants, wind, noises and things in the landscape are never 'presence'. Someone listed as on the radio is heard, not there: their voice is supported; their standing there, handling a thing there or being touched is 'presence'.)
 - place: a character standing at, or having moved to, a place other than where Present puts them, when Settled has no walk. Seeing, facing, pointing at, turning or taking a few steps toward a place in sight is not moving there.
 - time: light, dark or a time of day that does not fit Time. Words that do fit it are supported, in any form ('early morning light' at nine in the morning).
 - stock: how much is left somewhere, other than as Stock says.
@@ -99,7 +99,12 @@ def cast(context, people=None):
     to a man. `people`: those to list; the whole cast by default."""
     people = people or [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
                         if not getattr(c, 'placeholder', False)]   # not the map's 'Cave1_owner'
-    return ', '.join(f"{c.name} ({(getattr(c, 'gender', '') or '').strip().lower() or 'not stated'})" for c in people)
+    def what(c):
+        sex = (getattr(c, 'gender', '') or '').strip().lower() or 'not stated'
+        by = (getattr(c, 'remote', None) or '').strip()
+        # a play's character who is in its scenes by voice (stage.remote): every prompt reads it here
+        return f"{sex}; takes part {by}, not in person" if by else sex
+    return ', '.join(f"{c.name} ({what(c)})" for c in people)
 
 
 def cast_note(context):
@@ -115,6 +120,12 @@ def of(context, actor, people=None):
     """The record as it bears on what may be said of `actor` and those with it (or of `people`,
     a scene's cast)."""
     people = [c for c in (people or [actor] + actor.bystanders()) if getattr(c, 'mapAgent', None) is not None]
+    # those in the scene by radio are heard, not there: listed apart, so that no narration puts
+    # them on the spot (Novak, the Earthside flight director, swung a camera on the gantry)
+    radio = [c for c in people if c is not actor and stage.remote(c)]
+    heard = actor.hearers() if hasattr(actor, 'hearers') else []
+    radio += [c for c in heard if c not in people and (stage.remote(c) or stage.remote(actor))]
+    people = [c for c in people if c not in radio]
     at = stage.here(actor)
     near = sorted((stage._distance(at, res['location']), rid, res) for rid, res in context.map.resource_registry.items())
     places = [f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else stage._direction(at, res['location']).lower()})"
@@ -122,7 +133,9 @@ def of(context, actor, people=None):
     return '\n'.join([
         f'Cast: {cast(context)}',
         f'Time: {stage.clock(context)}',
-        'Present: ' + '; '.join(f'{c.name} {stage.where(context, stage.here(c))}' for c in people) + '. Nobody else.',
+        'Present: ' + '; '.join(f'{c.name} {stage.remote(c) or stage.where(context, stage.here(c))}' for c in people) + '. Nobody else.',
+        *(['On the radio, not here in person: ' + '; '.join(f'{c.name} ({stage.remote(c) or stage.where(context, stage.here(c))})' for c in radio)]
+          if radio else []),
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
@@ -142,10 +155,17 @@ def situation(context, lately='', viewer=None):
     with it, and of another body only what shows (Body.visible), not its thirst or hunger."""
     cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) if getattr(c, 'mapAgent', None) is not None]
     if viewer is not None:
-        with_it = viewer.bystanders() if getattr(context, 'current_scene', None) is not None else [c for c in cast if c is not viewer]
+        in_scene = getattr(context, 'current_scene', None) is not None
+        with_it = viewer.bystanders() if in_scene else [c for c in cast if c is not viewer]
+        radio = [c for c in viewer.hearers() if c not in with_it] if in_scene and hasattr(viewer, 'hearers') else []
         cast = [viewer] + [c for c in with_it if getattr(c, 'mapAgent', None) is not None]
+    else:
+        radio = []
     lines = [f'It is now {stage.clock(context, date=True)}.',
-             'Where everyone is: ' + '; '.join(f'{c.name} {stage.where(context, stage.here(c))}' for c in cast) + '.']
+             'Where everyone is: ' + '; '.join(f'{c.name} {stage.remote(c) or stage.where(context, stage.here(c))}' for c in cast) + '.']
+    if radio:   # heard over the radio, not seen: no body to see
+        lines.append('On the radio with you, not here in person: ' + '; '.join(
+            f'{c.name} ({stage.remote(c) or stage.where(context, stage.here(c))})' for c in radio) + '.')
     seen = lambda c: c.body.summary() if c is viewer else c.body.visible() if viewer is not None else c.body.summary(public=True)
     bodies = [f'{c.name}: {seen(c)}' for c in cast if getattr(c, 'body', None) is not None]
     if bodies:
@@ -190,6 +210,7 @@ Kinds of place where something can be done: {{$places}}
 Things its actions use: {{$items}}
 Bodily states it tracks: {{$needs}}
 People present: {{$people}}
+Things it already has, each one of a kind, and where: {{$known}}
 </world>
 
 <text>
@@ -205,10 +226,26 @@ For each numbered entry, one line, in one of these forms:
 #thing <n> place | <one of the kinds of place> | <what it is, a few words: 'a rain pool in a hollow log'>
 #thing <n> body | <a person present> | <one of the bodily states> | worse OR better | slightly OR clearly OR badly
 #thing <n> none
+When the text means one of the things the world already has, give that thing's name exactly as listed, wherever the text puts it.
 A prop is a thing nobody acts on through the world's rules: a tool, a paper, a cup, a phone, a rope. It is ordinary when it would be found at such a place, or on such a person, without remark (a sickle on a farm, a phone in an office, a pen in a pocket). It is unusual when it is a find that changes what the characters can do, and always when it is a weapon, a medicine, a means of making fire or light, or a means of calling for help (a knife or a radio in a forest, a cache of supplies: one line for each thing in it).
 Use 'place' for anything that gives water, food, shelter or rest, whatever it is called. Use 'none' when the entry is not a thing or a bodily state at all, or fits no form.
 </end>
 """
+
+def known_things(context):
+    """The named things the world holds (props lying about, and the play's clues wherever they
+    are now), with where each is: so that a text's 'brass key' is taken for the planted
+    "child's house key" and not made a second time."""
+    names = [p['name'] for p in getattr(context, 'props', [])]
+    screenplay = getattr(context, 'screenplay', None)
+    names += [re.sub(r'^(a|an|the|some)\s+', '', c['thing'].strip(), flags=re.I) for c in (getattr(screenplay, 'clues', None) or [])]
+    listed = []
+    for name in dict.fromkeys(names):
+        where = survival.whereabouts_of(context, name)
+        if where:
+            listed.append(f'{name} ({where})')
+    return '; '.join(listed) or 'none'
+
 
 FOUND = ('item', 'condition')     # the kinds of finding that may be a new thing, not a mistake
 
@@ -230,6 +267,7 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     reply = context.llm.ask({'places': '; '.join(f"{k} ({', '.join(v)})" for k, v in places.items()) or 'none',
                              'items': ', '.join(survival.item_kinds(context)) or 'none', 'needs': ', '.join(needs) or 'none',
                              'people': ', '.join(c.name for c in people), 'text': text,
+                             'known': known_things(context),
                              'claims': '\n'.join(f'{i + 1}. {words}' for i, (_, words) in enumerate(new))},
                             [UserMessage(content=PROPOSE)], tag='record.admit', temp=0.1, stops=['</end>'], max_tokens=200) or ''
     at = tuple(at) if at else stage.here(actor)
@@ -260,7 +298,12 @@ def admit(context, actor, claims, text, source, people=None, at=None):
                 continue
             if holders or lying_here:
                 continue   # it is already here (Joe 'releases the branch' he is carrying): nothing new, nothing refused
-            if source == 'director' or usual:
+            elsewhere = survival.whereabouts_of(context, name) if form == 'prop' else ''
+            if elsewhere:
+                # the world has it, somewhere else: not a new one (a set-up put the planted key in
+                # the mud at Spring2 while it lay at Spring3)
+                why = f"The {name} is {elsewhere}, not here."
+            elif source == 'director' or usual:
                 fact = survival.add_thing(context, name, holder=holder, at=at)
             else:
                 why = f"There is no {name} here to be had."

@@ -114,7 +114,7 @@ class EmotionalStance:
     @staticmethod
     def _key(character):
         """When the stance is read again: the description changed, the character was hurt or
-        healed, or a drive moved between quiet, present and pressing. (It was read
+        healed, or a drive began or stopped pressing. (It was read
         again whenever any of its inputs changed, and a drive's latest notice changes nearly every
         act: 46 readings in three scenes, 127 in a play.)"""
         body = getattr(character, 'body', None)
@@ -124,8 +124,11 @@ class EmotionalStance:
             harm = survival._harm(body.cfg)['name']
             hurt = survival._word(body.cfg, harm, body.levels.get(harm, 0.0))
         # harm and the drives, not every need word: thirst and hunger words change by the hour,
-        # and a pressing need already shows as a pressing drive (90 and 105 readings in two plays)
-        return hash((character.character, hurt, tuple((d.text, d.state) for d in (getattr(character, 'drives', None) or []))))
+        # and a pressing need already shows as a pressing drive (90 and 105 readings in two plays).
+        # Which drives press, not each drive's state: drives cross between quiet and present many
+        # times a scene, and 78 of 109 readings in a play followed such a crossing
+        pressing = frozenset(d.text for d in (getattr(character, 'drives', None) or []) if d.state == 'pressing')
+        return hash((character.character, hurt, pressing))
 
     @staticmethod
     def _seen(character):

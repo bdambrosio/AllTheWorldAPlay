@@ -33,6 +33,9 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      'sets_property': {key: value}, 'requires_property': {key: value or None;
                      '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
                      'risk': {'chance', 'effects', 'text'}, 'text',
+                     'success': {'chance', 'text'} (the deed can fail: on a failed roll the
+                     time and effects are spent, but sets_property is not applied, and the
+                     text tells the failure),
                      items ('requires', 'consumes', 'transfer') may be '*suffix': any held item
                      ending so ("*contract" is "Hu's contract"); 'gain' may use {actor}, {item},
                      'remote': True (a 'target' action that needs no nearness: a phone message),
@@ -1204,7 +1207,11 @@ def _apply(context, character, action, near, target, via, act_text=''):
         context.survival_fire = {'at': _here(character), 'until': context.simulation_time + timedelta(hours=3)}
     elif flag:
         body.flags.add(flag)
-    for key, value in (action.get('sets_property') or {}).items():
+    # a deed that may not come off (a weld with a torch, where a kit's seal is sure): the try
+    # is made and paid for, and the place is left as it was
+    success = action.get('success')
+    failed = bool(success) and _rng.random() >= success.get('chance', 1.0)
+    for key, value in ({} if failed else action.get('sets_property') or {}).items():
         if res is not None:
             res['properties'][key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
     if res is not None and action.get('deplete'):
@@ -1215,6 +1222,8 @@ def _apply(context, character, action, near, target, via, act_text=''):
     kw = dict(resource=resource_id or 'here', target=other.name if other else '', actor=character.name, item=item or found or '')
     where = f" at {resource_id}" if resource_id else ''
     fact = approach + f"{character.name} {_fmt(action.get('text', action['name']), **kw)}{'' if action.get('text') else where}."
+    if failed:
+        fact = approach + f"{character.name} tries to {action['name']}{where}. " + _fmt(success.get('text', 'It does not take.'), **kw)
     if shared_with:
         fact += f" It was shared with {' and '.join(shared_with)}: it is used up for both, and did them the same good."
     if action.get('finds'):

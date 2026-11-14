@@ -481,7 +481,7 @@ End your response with:
             # a 'dialog with Joe' and he answered himself for ten lines while Samantha stood by.
             # With one other person in earshot the line is theirs; otherwise it has no hearer named.
             targets = [t for t in targets if t is not self]
-            near = self.bystanders() if not targets and self.context is not None else []
+            near = self.hearers() if not targets and self.context is not None else []
             if len(near) == 1:
                 targets = near
         # (an #actors list was parsed here too, possibly creating NPCs, then overwritten below)
@@ -1250,7 +1250,11 @@ End response with:
                 # walking Northwest towards the spring' was a line of the play)
                 act_mode = 'Do'
                 # a deed, not a label: 'Trail toward the hut.' was a line of the play
-                act.action = act_arg if re.match(r'^[a-z]', act_arg or '') else f"heads {act_arg[:1].lower()}{act_arg[1:]}"   # Context.do reads act.action
+                # (only act.action was changed, and the line shown is built from act_arg: 'Samantha:
+                # Trail.' was still played four times)
+                if act_arg and not re.match(r'^[a-z]', act_arg):
+                    act_arg = f"heads for the {act_arg[:1].lower()}{act_arg[1:]}"
+                act.action = act_arg   # Context.do reads act.action
 
         # Handle world interaction
         if act_mode == 'Do':
@@ -1408,7 +1412,7 @@ End response with:
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
                 party = act.leaves if isinstance(act.leaves, list) else []
-                for other in self.bystanders():
+                for other in self.hearers():
                     if other not in party:
                         other.add_perceptual_input(f"{self.name} says: '{content}', and leaves.", percept=False, mode='auditory')
                 gone = 'leaves.' if not party else f"leaves with {', '.join(c.name for c in party)}."
@@ -1448,7 +1452,7 @@ End response with:
                     target.focus_task.push(target_dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
 
-                for other in self.bystanders(target):
+                for other in self.hearers(target):
                     other.add_perceptual_input(f"You hear {self.name} say to {target.name}: '{content}'", percept=False, mode='auditory')
                 # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
@@ -2756,6 +2760,20 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                 and getattr(c, 'current_scene', None) is scene and c.mapAgent is not None
                 and max(abs(c.mapAgent.x - here[0]), abs(c.mapAgent.y - here[1])) <= self.EARSHOT_TILES]
 
+    def hearers(self, other=None):
+        """Those who hear what self says, other than self and `other`: the bystanders, and those
+        in the scene by radio (stage.remote). Someone on the radio hears the whole scene and is
+        heard by it; what is done in person (bystanders) stays with those who are there."""
+        near = self.bystanders(other)
+        scene = self.context.current_scene if self.context is not None else None
+        if scene is None:
+            return near
+        in_scene = [c for c in self.context.actors + self.context.extras + self.context.npcs
+                    if c is not self and c is not other and c.name != 'Viewer' and c not in near
+                    and getattr(c, 'current_scene', None) is scene and not stage.off_stage(c)]
+        linked = in_scene if stage.remote(self) else [c for c in in_scene if stage.remote(c)]
+        return near + linked
+
     def bystander_cuts_in(self, from_actor, message):
         """A dialog is between two characters, but others in the scene hear it. Before self
         answers from_actor, one bystander (the one just named, else the one silent longest) is
@@ -2771,7 +2789,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             if in_scene is not scene:
                 count, last = 0, -self.CUT_IN_GAP_LINES
             return count < self.MAX_CUT_INS_PER_SCENE and now - last >= self.CUT_IN_GAP_LINES
-        candidates = [c for c in from_actor.bystanders(self) if may(c)]
+        candidates = [c for c in from_actor.hearers(self) if may(c)]
         if not candidates:
             return ''
         speaker = min(candidates, key=lambda c: (c.name.lower() not in message.lower(), getattr(c, '_cut_ins', (None, 0, 0))[2]))
@@ -2829,7 +2847,7 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         dialog.add_turn(speaker, line)
         self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(speaker, line)
         speaker.add_perceptual_input(f"You cut in, saying to {to.name}: '{line}'", percept=False, mode='internal')
-        for other in speaker.bystanders():
+        for other in speaker.hearers():
             if other not in (self, from_actor):
                 other.add_perceptual_input(f"You hear {speaker.name} say to {to.name}: '{line}'", percept=False, mode='auditory')
         return f"{speaker.name} cuts in, to {to.name}: '{line}'"

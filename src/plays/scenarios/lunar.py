@@ -200,11 +200,19 @@ affordances = {
         {'name': 'fetch sealant kit', 'category': 'work', 'verbs': ['fetch', 'grab', 'take', 'collect', 'get'],
          'named_verbs': [], 'resource_types': ['Evastation', 'Repairpanel'], 'gain': 'sealant kit', 'minutes': 5, 'deplete': 3,
          'text': 'takes a sealant kit from {resource}'},
-        {'name': 'seal the coolant line', 'category': 'work', 'verbs': ['seal', 'weld', 'patch', 'clamp', 'repair', 'fix'],
+        {'name': 'seal the coolant line', 'category': 'work', 'verbs': ['seal', 'patch', 'apply sealant', 'repair', 'fix'],
          'resource_types': ['Gantry'], 'requires': 'sealant kit', 'consumes': 'sealant kit',
          'requires_property': {'repaired': None}, 'sets_property': {'repaired': True},
          'effects': {'fatigue': 0.15}, 'minutes': 30, 'text': 'seals the cracked coolant line at {resource}',
          'risk': {'chance': 0.15, 'effects': {'injury': 0.15}, 'text': 'A jet of coolant vapour slams against the visor.'}},
+        # the torch she carries: done where she stands, but a bead on a live crack may not hold
+        # (the kit is a sure seal, half an hour's walk away)
+        {'name': 'weld the coolant line', 'category': 'work', 'verbs': ['weld', 'run a bead', 'braze', 'strike the arc'],
+         'resource_types': ['Gantry'], 'requires': '*torch',
+         'requires_property': {'repaired': None}, 'sets_property': {'repaired': True},
+         'effects': {'fatigue': 0.15}, 'minutes': 15, 'text': 'welds the cracked coolant line shut at {resource}',
+         'success': {'chance': 0.5, 'text': 'The bead cracks as it cools; the line still vents.'},
+         'risk': {'chance': 0.2, 'effects': {'injury': 0.15}, 'text': 'A jet of coolant vapour slams against the visor.'}},
         {'name': 'run diagnostics', 'category': 'explore', 'verbs': ['diagnose', 'run diagnostics', 'scan', 'check readings', 'inspect'],
          'resource_types': ['Repairpanel'], 'finds': [{'item': 'pressure-loss log', 'chance': 0.5}], 'minutes': 15, 'deplete': 2,
          'text': 'runs diagnostics at {resource}'},
@@ -234,7 +242,8 @@ affordances = {
          'minutes_to_strike': 20, 'harm': 0.3, 'fail_text': 'the vapour plume whips across the gantry',
          'retreat_text': 'The venting slows to a trickle; the line holds for now.',
          'strike_text': 'The line ruptures; a blast of frozen coolant knocks bodies against the rail.',
-         # a clamp only holds for now; 'seal the coolant line' (with a sealant kit) is the repair
+         # a clamp only holds for now; 'seal the coolant line' (with a sealant kit) or 'weld the
+         # coolant line' (with a torch, which may not hold) is the repair
          'responses': {'clamp the line': {'verbs': ['clamp', 'shut the valve', 'close the valve', 'isolate'], 'success': 0.5},
                        'back away': {'verbs': ['back away', 'retreat', 'move clear'], 'success': 0.6}}},
     ],
