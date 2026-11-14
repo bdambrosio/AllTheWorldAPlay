@@ -215,6 +215,9 @@ MECHANICAL_TAGS = frozenset((
     'test_termination', 'MemoryConsolidator.semantic_summary', 'MemoryConsolidator.enhance_summary', 'do_consequences',
     'completion_statement', 'natural_dialog_end', 'record.told'))
 THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
+# calls whose prompt allows an empty answer ('or an empty string if none are relevant'): any other
+# call that answers empty is asked again
+MAY_ANSWER_EMPTY = frozenset(('do_consequences',))
 
 
 # A line put at the head of every prompt of the play in progress: what no call may be left
@@ -600,6 +603,16 @@ class LLM():
                 start = time.time()
                 options.max_tokens = 2 * max_tokens + 200
                 print(f'{tag} cut off at {max_tokens} tokens, asked again...', end='')
+                response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
+            elif isinstance(response, str) and not response.strip() and tag not in MAY_ANSWER_EMPTY:
+                # Nothing but thinking came back, ending as if complete: Lanya's voice traits were 37
+                # tokens of reasoning and an empty answer, and her gender stayed unknown for the
+                # whole play (every prompt read 'Lanya (not stated)'). No call's answer is empty;
+                # it is recorded, and asked once more with room to answer.
+                self._record_call(tag, start, response)
+                start = time.time()
+                options.max_tokens = 2 * max_tokens + 200
+                print(f'{tag} came back empty, asked again...', end='')
                 response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
             elapsed = time.time() - start
             print(f'{elapsed:.2f}')
