@@ -585,7 +585,7 @@ End your response with:
             return
         self.step = 0
         system_prompt = """You are an actor with deep insight into human psychology and the character you are playing, {{$name}}, in an ongoing improvisational play.
-Your task is to review the original and current descriptions of your character, and generate a new description of your character accurately reflecting your character's development.\
+Your task is to say what has changed for your character since its description was written: the 'Lately' line that follows the description.
 A primary task is to differentiate between temporary traits and decisions, and your character's fundamental personality and commitments.
 Some traits and decisions may be temporary, and should be allowed to fade away, but your character's fundamental personality and commitments should be preserved. 
 Carry forward your character's fundamental personality and commitments. Otherwise, allow this description to evolve slowly in keeping with your character's development. 
@@ -607,7 +607,8 @@ This description will inform the next scene and remainder of the play.
 ##
 
 The original description stays as it is. Respond only with what has changed for your character since it was written: one to three sentences, 50 words at most,
-on what they now believe, want or have committed themselves to, and how they stand with the others. Plain statements of fact about the character; do not restate the original, and write no slogans or morals.
+on what they now believe, want or have committed themselves to, and how they stand with the others. Write it as the description is written, to the character: 'You ...'. Plain statements of fact; do not restate the original, and write no slogans or morals.
+If nothing has changed since what you last wrote, respond with the single word: unchanged
 Leave out hunger, thirst, tiredness, injuries and what is carried: the world keeps those, and they are shown wherever they matter.
 Do not include any reasoning, introductory, explanatory, or discursive text, any label or heading, or any markdown or other formatting.
 
@@ -624,6 +625,8 @@ Do not include any reasoning, introductory, explanatory, or discursive text, any
             changed = response.strip()
             while changed.lower().startswith(self.LATELY.lower()):
                 changed = changed[len(self.LATELY):].strip()
+            if re.fullmatch(r'\W*unchanged\W*', changed, re.I):
+                return response   # what it last wrote still holds (with no such answer, it made up a decision)
             self.character = f'{self.original_character.strip()}\n{self.LATELY} {changed}'
         return response
 

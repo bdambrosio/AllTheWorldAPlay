@@ -321,6 +321,14 @@ End your response with:
         """Detect behavioral/event patterns across abstract memories"""
         pass
 
+    def _drives(self):
+        """The owner's drives as they press now (it read a list filled once at the start, often empty)."""
+        try:
+            from sim.cognitive import drives as drive_model
+            return drive_model.drive_lines(self.owner) or '- none stated'
+        except Exception:
+            return '- none stated'
+
     def _lived(self, memory, since, n):
         """What the owner witnessed (the play's record, Context.witnessed) and its own memories
         (thoughts, notices, what it was told) since `since`, merged in time order, the latest n."""
@@ -357,7 +365,7 @@ Character Description:
 {character_desc}
 
 Current Drives:
-{chr(10).join(f"- {drive}" for drive in narrative.active_drives)}
+{self._drives()}
 
 Active Activity:
 {active_abstract.summary if active_abstract else "No current activity"}
@@ -370,11 +378,11 @@ What the character has seen, heard, thought and been told lately, oldest first:
 
 Create a concise summary (about 100 words) that describes:
 1. What the character is currently doing
-2. Their immediate goals and intentions
+2. What the character has said or shown it means to do next
 3. How this relates to their drives
 4. Any ongoing social interactions
 
-Focus on active pursuits and immediate intentions.
+From what is written above only: no plan, place, meeting or intention that the lines do not show.
 Respond with just the activity summary, no additional text.
 End with:
 </End>

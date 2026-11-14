@@ -1044,83 +1044,51 @@ End your response with:
         mode = act.mode
         source = act.source
         target = act.target
-        prompt = [UserMessage(content="""You are simulating a dynamic world. 
-Your task is to determine the result of {{$name}} performing the following action:
+        # One question, each fact once. (It gave the play's opening text and the actor's summary as
+        # two <situation>s and the actor's whole description; events from places the actor was
+        # not; and no word on settled facts that the deed's own words contradict: the deed said
+        # she found the can, the facts gave her a knife.)
+        prompt = [UserMessage(content="""You are the world of an improvised play, not a character in it. {{$name}} does something. What does it bring about, as someone standing there would see or hear it?
 
-<action>
+<the_deed>
 {{$action}}
-</action>
+</the_deed>
 
-in the current situation: 
-
-<situation>
-{{$state}}
-</situation>
-
-These facts about the result are already settled and must not be contradicted:
+These facts about its result are settled and must not be contradicted:
 <facts>
 {{$facts}}
 </facts>
+Where the deed's own words say something the facts do not (a different thing found, a thing taken that stays where it was), the facts are what happened.
 
-The body of each character present, as it is:
-<bodies>
-{{$bodies}}
-</bodies>
-Give nobody a bodily condition (a fever, a wound, thirst quenched, hunger) that Bodies and the facts do not show.
-
-What each character present is carrying:
-<holdings>
-{{$holdings}}
-</holdings>
-These things change hands only as the facts above say. If the action takes or moves one of them otherwise, report the attempt and leave the thing with its holder.
-
-What has happened lately:
-{{$events}}
-
-It is now {{$clock}}. Light, dark and the time of day in your response must fit that.
-Danger here now: {{$danger}}. A danger is driven off, strikes or leaves only as the facts say; otherwise it is still there, or there is none.
-What is left at places nearby that have been drawn on: {{$stock}}. Say nothing else about how much is left anywhere.
-
-given {{$name}} local map is:
-
-<localMap>
+<the_place>
 {{$local_map}}
-</localMap>
+</the_place>
 
-And character {{$name}} is:
+<the_people_there>
+Present: {{$present}}. Nobody else is here. Everyone in the play, and whether each is he or she: {{$cast}}.
+Their bodies, as they are: {{$bodies}}
+What each carries: {{$holdings}}
+</the_people_there>
+It is now {{$clock}}; light, dark and the time of day must fit that. Danger here now: {{$danger}}. Left at places nearby that have been drawn on: {{$stock}}.
 
-<character>
-{{$character}}
-</character>
+<what_has_happened_here_lately>
+{{$events}}
+</what_has_happened_here_lately>
 
-with current situation:
-
-<situation>
-{{$narrative}}
-</situation>
-
-The characters present are: {{$present}}. Nobody else is here.
-Everyone in the play, and whether each is he or she: {{$cast}}.
-
-You are the stage, not a character: report what the action physically brings about, and nothing more.
 Respond in exactly two lines:
-#seen <the action as someone standing there saw it, in one short plain sentence>
-#result <what the action brought about that #seen does not already say, as someone standing there could see or hear it: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, something put down or pushed across), write: nothing. That a thing stays as it was (still knotted, still in a hand, undisturbed) is not a result: write nothing>
-The audience reads the character's own words for the action, then only your #result.
-The result must be consistent with the LocalMap and with the facts above.
-Include, when they apply:
-- changes in the physical environment, e.g. 'the door opens', 'the rock falls',...
-- what the facts say {{$name}} gained, lost, found or read, in the words of someone watching
-Do NOT:
-- give {{$name}} or anyone a thing, a wound, an illness or a need met that the facts, Bodies and holdings do not show; if the action uses something {{$name}} does not have, show only what is seen of the try (a hand that finds nothing, a gesture at an empty place), and never say what anyone has or lacks, or where a thing came from
-- say what any other character feels, thinks, decides or does in reply: their reactions are theirs to play
-- have the action succeed at controlling another character (a snatch, a shove, a forced signature): report the attempt and what is physically true so far; the other character answers it
-- introduce objects, documents, people or facts that the action and the situation did not already contain
-- extend the scenario with any follow-on actions or effects
-- explain a rule or why something cannot be, or end with what did not change ('Nothing else changes', 'nothing else moved'): say only what is seen
-- mention 'the facts', 'Bodies' or these instructions: you describe a world, not a ruling
+#seen <the deed as someone standing there saw it, in one short plain sentence, keeping only what the facts allow>
+#result <what the deed brought about that #seen does not already say: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, a thing put down or pushed across), write: nothing. That a thing stays as it was is not a result: write nothing>
+The audience reads the actor's own words for the deed, then only your #result.
+
+The result:
+- says what the facts say was gained, lost, found or read, in the words of someone watching, and what changed in the place;
+- gives nobody a thing, a wound, an illness or a need met that the facts, bodies and holdings do not show. A deed that uses what {{$name}} does not have shows only the try (a hand that finds nothing), and never says what anyone has or lacks or where a thing came from;
+- moves things between people only as the facts say; a deed that takes or moves something otherwise is a try, and the thing stays with its holder;
+- does not make a deed succeed at controlling another character (a snatch, a shove): it shows the attempt, and the other answers it;
+- says nothing of what another character feels, thinks, decides or does in reply: that is theirs to play;
+- brings in no object, document, person or fact that the deed, the place and the people did not already hold; drives off, sets on or ends no danger the facts do not; says nothing of how much is left anywhere beyond the line above;
+- has no follow-on action, no explanation of why something cannot be, no closing 'nothing else changes', and no mention of facts, bodies or these instructions: you describe a world, not a ruling.
 {{$rejected}}
-Do not include any Introductory, explanatory, or discursive text.
 End your response with:
 </end>
 """)]
@@ -1132,11 +1100,11 @@ End your response with:
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
-                  "state": self.current_state, "character": actor.character, "narrative":  actor.narrative.get_summary('medium'),
                   "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
                   "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
-                  "danger": record.danger(actor) or 'none', "events": self.recent_events_text(6),
+                  "danger": record.danger(actor) or 'none',
+                  "events": '\n'.join(self.witnessed(actor, n=8)) or 'nothing yet',   # what happened where the actor is
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked',
                   "facts": facts or 'none'}
@@ -1604,10 +1572,10 @@ Respond with these lines only:
 #when same, or one of: dawn, morning, midday, afternoon, dusk, night
 #location same, or the exact name of a place listed above
 #title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
-#setup the scene's set-up, one or two sentences, true to where things stand
+#setup how the scene opens, one or two sentences, true to where things stand: where the cast is, what is there, what presses on them. It is the opening only: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it; that is played
 #ending what the scene should arrive at, one sentence
 #goal <character name>: that character's goal in the scene (one line for each character)
-#unknown <character name>: one thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of
+#unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
 </end>
 
 On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
