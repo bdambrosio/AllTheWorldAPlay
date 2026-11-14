@@ -19,7 +19,7 @@ map_file_name='forest.py' # needed to trigger narrative creation
 S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical, fearful, and a bit of a romantic. 
-You have an uncomfortable history; maybe it is just as well you don't remember it.
+You remember your life, though there is an uncomfortable history in it you would rather not talk about. What you cannot remember is how you came to be here: your last day before waking is a blank.
 You are informal, chatty and playful when relaxed, but at other times argumentative and defensive.
 You are wary of strangers.
 Your name is Samantha.""", 
@@ -36,6 +36,7 @@ You are strong, and think you love the outdoors, but are basically a nerd.
 You yearn for something more, but don't know what it is.
 You are socially awkward, especially around strangers. 
 You speak informally, but occasionally in a 'budding scientist' style.
+You remember your life well enough, but not how you came to be here: your last day before waking is a blank.
 Your name is Joe.""",
 server_name=server_name)
 J.set_drives([
@@ -43,8 +44,8 @@ J.set_drives([
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     "companionship, community, family, acceptance, trust, intimacy.",
 ])   # (a fourth drive, 'immediate physiological needs', doubled what the body already presses on him, and pulled him to chores)
-S.add_perceptual_input("You think: This is very, very strange. I'm near panic. Who is this guy? And why can't I remember anything?", mode='internal')
-J.add_perceptual_input("You think: Ugh. Where am I? How did I get here? Who is this woman?", mode='internal')
+S.add_perceptual_input("You think: This is very, very strange. I'm near panic. Who is this guy? And why can't I remember yesterday?", mode='internal')
+J.add_perceptual_input("You think: Ugh. Where am I? How did I get here? Why can't I remember last night? Who is this woman?", mode='internal')
 J.add_perceptual_input("You think Whoever she is, she is pretty!", mode='internal')
 
 # Create context with forest scenario

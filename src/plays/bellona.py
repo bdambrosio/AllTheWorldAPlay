@@ -54,5 +54,7 @@ The sun hangs low in the hazy sky, casting an eerie light over the buildings and
 try:
     K.mapAgent.move_to_resource('Park1')
     L.mapAgent.move_to_resource('Park1')
+    # the play turns on his notebook: it is the play's to give, not left to equip_cast (as the lunar torch)
+    K.body.inventory += ['notebook', 'pen']
 except Exception:
     pass

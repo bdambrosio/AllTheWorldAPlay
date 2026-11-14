@@ -129,7 +129,7 @@ resource_rules = {
         },
         {
             'resource_type': resource_types.Park,  # Required by map.py
-            'description': 'A park',
+            'description': 'A park with a fountain that still runs',
             'count': 1,
             'requires_property': True,
             'terrain_weights': {

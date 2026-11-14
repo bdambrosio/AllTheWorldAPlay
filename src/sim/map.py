@@ -1045,10 +1045,14 @@ class WorldMap:
         market_y = random.randint(3 * self.height // 4, self.height - 1)
         
         resource_id = self._generate_resource_id(self.scenario_module.required_resource)
+        # described as the world describes its kind ('map nexus' reached place lists, set-ups and pictures)
+        rtype = self.scenario_module.required_resource
+        described = next((a.get('description') for a in getattr(self.scenario_module, 'resource_rules', {}).get('allocations', [])
+                          if a.get('resource_type') == rtype and a.get('description')), None)
         self.resource_registry[resource_id] = {
             'type': self.scenario_module.required_resource,
             'name': resource_id,
-            'description': "map nexus",
+            'description': described or str(getattr(self.scenario_module, 'required_resource_name', 'a landmark')).replace('_', ' '),
             'location': (market_x, market_y),
             'properties': {}
         }

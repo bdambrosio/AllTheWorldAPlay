@@ -20,7 +20,7 @@ class ForestResources(Enum):
     Berries = auto()
     Mushrooms = auto()
     Apple_Tree = auto()
-    Fallen_Branch = auto()  # Potential shelter
+    Fallen_Branch = auto()  # wood: a branch to carry, a fire
     Spring = auto()     # Water source
     Cave = auto()       # Potential shelter
     Thicket = auto()    # Dense vegetation, potential shelter
@@ -167,7 +167,7 @@ stakes = ("Physical needs (water, food, rest, shelter) and natural hazards (wolv
 # Stage business (sim/survival.py): needs rise with simulation time, resources have affordances,
 # and natural hazards appear. Effects are mechanical; the LLM only narrates them.
 affordances = {
-    'needs': {   # woke at midday, disoriented
+    'needs': {   # where they start: thirsty from the night
         'thirst': {'initial': 0.45, 'per_hour': 0.08, 'neglect_harm': 0.05,
                    'words': ('not thirsty', 'thirsty', 'very thirsty', 'desperately thirsty'),
                    'percepts': {0.5: "Your mouth is dry; you have not had water for a while.",
@@ -188,7 +188,7 @@ affordances = {
                    'Apple_Tree': ['apple', 'apples'], 'Mushrooms': ['mushroom', 'mushrooms', 'fungus', 'fungi'],
                    'Fallen_Branch': ['branch', 'branches', 'stick', 'wood', 'log'],
                    'Thicket': ['thicket', 'bush', 'undergrowth'], 'Cave': ['cave', 'cavern'], 'Hut': ['hut', 'cabin', 'shack']},
-    'actions': [   # order matters: the first action whose verbs match the Do text applies
+    'actions': [   # a deed's action is chosen by the model from these labels (survival.choose_action); verbs serve spoken claims and threat responses
         {'name': 'sleep', 'category': 'survival', 'verbs': ['sleep', 'nap', 'doze'], 'resource_types': ['Cave', 'Hut', 'Thicket'],
          'effects': {'fatigue': -1.0}, 'minutes': 240, 'sets': 'sheltered', 'text': 'sleeps in {resource}'},
         {'name': 'take shelter', 'verbs': ['shelter', 'take cover', 'go inside', 'enter', 'hide inside', 'rest inside', 'crawl into', 'crawl under',

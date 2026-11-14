@@ -396,6 +396,37 @@ class Settled(str):
         return self
 
 
+SETUP_DEEDS = """A scene of an improvised play opens with a set-up; then the actors play it. The set-up says only how the scene opens: where the cast is, what is there, what presses on them.
+
+<setup>
+{{$setup}}
+</setup>
+
+<what_the_scene_is_for>
+{{$purpose}}
+</what_the_scene_is_for>
+
+Which words of the set-up have a character already do something, so that it is played before the actors begin? A deed is taking, finding, giving, opening, building, barring, eating, deciding, agreeing, or saying something. Being somewhere, wanting, needing, carrying what one carries, watching, keeping a distance, or a thing lying there to be found are not deeds; nor is what was done before the scene opens ('they have drunk their fill', 'having walked here').
+Answer in JSON only: {"deeds": ["<the set-up's own words for each deed, exactly as written>"]}, or {"deeds": []} if there are none.
+</end>
+"""
+
+
+def setup_deeds(context, setup, purpose):
+    """The words of a scene's set-up that already play part of the scene, [str]; [] for none or
+    when the check could not be read. (Told the set-up is the opening only, the stage manager
+    still wrote 'she takes the scarf' and 'Joe kneels to build the fire' into it, and the scene
+    then began with them done.)"""
+    if not (setup or '').strip():
+        return []
+    from utils import json_reply
+    reply = context.llm.ask({'setup': setup, 'purpose': purpose or 'not said'}, [UserMessage(content=SETUP_DEEDS)],
+                            tag='record.setup_deeds', temp=0.1, stops=['</end>'], max_tokens=200)
+    found = json_reply.parse(reply) if reply else None
+    deeds = found.get('deeds') if isinstance(found, dict) else None
+    return [d.strip() for d in deeds if isinstance(d, str) and d.strip()] if isinstance(deeds, list) else []
+
+
 def strip(text, claims):
     """`text` without the sentences that carry one of `claims` (a claim found in no sentence is
     let go: this is for a plan's fields, each checked against claims found in all of them)."""

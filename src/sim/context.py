@@ -1606,7 +1606,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
-        for attempt in range(2):
+        deeds_asked, admitted = False, False
+        for attempt in range(3):   # one rewrite for deeds played in the set-up, one for unsupported claims
             reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=460) or ''
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
             if find('skip').lower().startswith('y') and not opens_act:
@@ -1636,6 +1637,18 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
                         entry['unknown'].append(missing.strip())
+            if ablation.enabled('narration_gate') and not deeds_asked:
+                # the set-up is the opening only: what the scene is for is played, not told
+                purpose = f"It is to end: {scene.get('post_narrative', '')}\n" + ' '.join(
+                    f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
+                played = record.setup_deeds(self, scene.get('pre_narrative', ''), purpose)
+                if played:
+                    deeds_asked = True
+                    trace.event('setup_deeds', scene=scene.get('scene_title'), deeds=played)
+                    note = ("\nYour set-up has part of the scene already played: " + '; '.join(played)
+                            + ". The set-up is the opening only: where the cast is, what is there, what presses on them. "
+                              "Leave those deeds for the actors to play, and write it again.\n")
+                    continue
             if not checked:
                 break
             goals = ' '.join(f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
@@ -1663,7 +1676,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # made real where the scene is set (the injury is then in the body, the pool on the map)
             target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
             made, refused = [], []
-            if attempt == 0:   # once: the rewrite that follows is only to take out what was refused
+            if not admitted:   # once: the rewrite that follows is only to take out what was refused
+                admitted = True
                 made, refused, claims = record.admit(self, cast[0], claims, told, 'director', people=cast,
                                                      at=target[0] if target else None)
             brought += made

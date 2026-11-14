@@ -86,8 +86,8 @@ start_time='2024-05-14T08:30:00', scenario_module=coastal,
 server_name=server_name)
 
 # Position characters at appropriate locations
-Maya.mapAgent.move_to_resource('Studio')  # Maya at her studio gallery
-Elijah.mapAgent.move_to_resource('Workshop')  # Elijah at his boat workshop
-Chrys.mapAgent.move_to_resource('Cafe')  
+Maya.mapAgent.move_to_resource('Studio1')  # Maya at her studio gallery
+Elijah.mapAgent.move_to_resource('Workshop1')  # Elijah at his boat workshop
+Chrys.mapAgent.move_to_resource('Cafe1')  
 
 # Let the scenario unfold naturally from here
