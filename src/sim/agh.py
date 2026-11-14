@@ -2742,7 +2742,13 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         #)
             
         if not self.focus_task.peek():
-            raise Exception(f'{self.name} has no focus task')
+            # spoken to with nothing on its stack: the dialog was still open on the speaker's side
+            # while this one's task had ended (Samantha picked berries, her task was done, and her
+            # dialog task went with it; Joe's next line then stopped the play with an exception)
+            self.focus_task.push(Task('dialog with ' + from_actor.name, description='dialog with ' + from_actor.name,
+                                      reason='answer ' + from_actor.name, termination='natural end of dialog', goal=None,
+                                      start_time=self.context.simulation_time, duration=2, actors=[self, from_actor]))
+            trace.event('dialog_task_restored', character=self.name, speaker=from_actor.name)
         duplicative_insert = ''
         system_prompt = """You are an actor in an improvised play, speaking your character's next line.
 You are in the scene, not writing it: say what this person would actually say now, to this listener, to get what they want.
