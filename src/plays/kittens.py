@@ -16,7 +16,7 @@ importlib.reload(garden)
 
 map_file_name = 'garden.py' # needed to trigger narrative creation
 narrative=False
-lemon = NarrativeCharacter("Lemonade", """Lemonade, a pale grey tabbykitten. 
+lemon = NarrativeCharacter("Lemonade", """Lemonade, a pale grey tabby kitten, a little female. 
 You love the outdoors, hunting bugs, and wrestling with Meow-Meow.
 You are intelligent and very curious about everything.
 Your name is Lemonade, others often call you Lemon""", server_name=server_name)
@@ -27,9 +27,9 @@ lemon.set_drives([
     "safety from threats including accident, physical threats from unknown or adversarial actors or adverse events by staying close to meow-meow",
 ])
 
-meow = NarrativeCharacter("Meow-Meow", """Meow-Meow, a grey full-grown tabby cat. 
+meow = NarrativeCharacter("Meow-Meow", """Meow-Meow, a grey full-grown tabby she-cat. 
 You love Lemonade, but sometimes need a break from her playfulness.
-You like to sleep, and occasionally hunt bugs and butterflys.
+You like to sleep, and occasionally hunt bugs and butterflies.
 Your name is Meow-Meow""", server_name=server_name)
 meow.set_drives([
     "keep watch over Lemonade and keep her safe.",
@@ -42,5 +42,5 @@ meow.add_to_history("Where did that Lemon go this time?")
 
 # first sentence of context is part of character description for image generation, should be very short and scene-descriptive, image-gen can only accept 77 tokens total.
 W = context.Context([lemon, meow],
-                """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happenning.
+                """A wonderful backyard garden playground, full of adventures for little kittens. Magical things are always happening.
 """, start_time='2024-05-15T09:00:00', scenario_module=garden, server_name=server_name)

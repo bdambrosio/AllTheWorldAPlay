@@ -736,7 +736,10 @@ def portrait_facts(context, character, mood=''):
 
 def _clause(person, hands=99, named=True):
     held = person['holding'][:hands]
-    return ', '.join(p for p in (person['name'] if named else '', person['looks'], person['condition'],
+    looks = person['looks']
+    if named and re.match(r'(A|An|The) ', looks or ''):   # 'Joe, a young man', not 'Joe, A young man'
+        looks = looks[0].lower() + looks[1:]
+    return ', '.join(p for p in (person['name'] if named else '', looks, person['condition'],
                                  f"carrying {', '.join(held)}" if held else '') if p)
 
 
@@ -767,13 +770,24 @@ def picture_prompt(facts):
     how they stand, the deed in front, the danger, then the set-up sentence, which goes when
     the prompt is over budget (people and the deed never do)."""
     people = facts['people']
-    who = (f"One person, no others: {_clause(people[0])}" if len(people) == 1 else
-           f"{len(people)} people, no others: " + '; '.join(_clause(p) for p in people))
+    deed = facts['deed']
+    # The one doing the deed is told once, with the deed: 'They stand side by side. In the
+    # foreground, Joe kneels at the spring' was drawn as the pair standing and a second Joe
+    # kneeling in front of them (six pictures in eight of one run).
+    doer = next((p for p in people if deed and re.match(rf"{re.escape(p['name'])}\b", deed)), None)
+    if doer is not None:
+        rest = [p for p in people if p is not doer]
+        act = deed[len(doer['name']):].strip()
+        who = (f"{len(people)} {'person' if len(people) == 1 else 'people'}, no others: in the foreground, {_clause(doer)}, {act}"
+               + (('; behind, ' + '; '.join(_clause(p) for p in rest)) if rest else ''))
+    else:
+        who = (f"One person, no others: {_clause(people[0])}" if len(people) == 1 else
+               f"{len(people)} people, no others: " + '; '.join(_clause(p) for p in people))
     where_ = ([f"Interior: inside {facts['place']}, {facts['light']}"] if facts['indoor']
               else ['Wide view', f"{facts['place']}, {facts['light']}"])
     head = [facts['style'], *where_, facts['setting'], who,
-            f"They stand {facts['apart']}" if facts['apart'] else '',
-            f"In the foreground, {facts['deed']}" if facts['deed'] else '',
+            f"They stand {facts['apart']}" if facts['apart'] and doer is None else '',
+            f"In the foreground, {deed}" if deed and doer is None else '',
             f"{facts['threat'][0].upper()}{facts['threat'][1:]}" if facts['threat'] else '']
     # the world the place is in stays (a lunar base: dropped, the gantry was drawn on Earth);
     # the set-up sentence goes first when the prompt is over budget

@@ -1,5 +1,5 @@
 """
-bear_fable_demo.py  –  Minimal scenario for an immersive take on “The Bear and the Two Travelers”.
+aesopBear.py  –  Minimal scenario for an immersive take on “The Bear and the Two Travelers”.
 
 Map module required:  Forest.py  (unaltered)
 """
@@ -33,10 +33,11 @@ map_file_name='forest.py' # needed to trigger narrative creation
 
 Leo = NarrativeCharacter(
     "Leo",
-    """Leo, lanky and chatty, wearing worn traveler's clothes (short tunic, knee-length linen or wool, belted at the waist.)
-You consider Miles your friend, but self-preservation often trumps loyalty. 
-informal Doric/Attic speech
-You enjoy boasting about outdoor skills you half-remember.""",
+    """Leo, a lanky, chatty man, a traveling craftsman of ancient Greece in a worn, belted chiton.
+You consider Miles your friend, but self-preservation often trumps loyalty.
+You speak plainly, like a working man of the Greek towns, in plain English.
+You enjoy boasting about outdoor skills you half-remember.
+Your name is Leo.""",
     server_name=server_name
 )
 
@@ -48,10 +49,11 @@ Leo.set_drives([
 
 Miles = NarrativeCharacter(
     "Miles",
-    """Miles, broad-shouldered, calm, wearing worn tunica, short wool cloak (paenula), caligae sandals. 
-You value camaraderie and expect the same in return. 
-informal Doric/Attic speech
-You are pragmatic, dislike show-offs, and secretly fear wild animals.""",
+    """Miles, a broad-shouldered, calm man, a traveling craftsman of ancient Greece in a worn chiton, a short wool cloak and sandals.
+You value camaraderie and expect the same in return.
+You speak plainly, like a working man of the Greek towns, in plain English.
+You are pragmatic, dislike show-offs, and secretly fear wild animals.
+Your name is Miles.""",
     server_name=server_name
 )
 
@@ -64,8 +66,9 @@ Miles.set_drives([
 # Non-player Bear – very simple internal model, mostly instinctual
 Bear = NarrativeCharacter(
     "Bjorn",
-    """Bjorn, a large black bear, glossy coat, curious yet easily startled. 
-You are hungry after hibernation and prowl the forest edges.""",
+    """Bjorn, a large male black bear with a glossy coat, curious yet easily startled.
+You are hungry after hibernation and prowl the forest edges.
+Your name is Bjorn.""",
     server_name=server_name
 )
 
@@ -94,11 +97,11 @@ and no clear idea where civilisation lies.""",
 )
 
 # Prime their immediate confusion thoughts
-Leo.add_perceptual_input("You think  Where the heck are we? My phone’s dead!", mode="internal")
-Miles.add_perceptual_input("You think  Breathe, stay calm… but why can’t I recall yesterday?", mode="internal")
+Leo.add_perceptual_input("You think: Where in Hades are we? And where's my pack?", mode="internal")
+Miles.add_perceptual_input("You think: Breathe, stay calm... but why can't I recall yesterday?", mode="internal")
 
 # OPTIONAL: if you want the bear to start snoring audibly to foreshadow danger
-Bear.add_perceptual_input("You hear distant rhythmic grunts – your own snores echoing in the cave.", mode="auditory")
+Bear.add_perceptual_input("You wake in your cave, stiff and very hungry.", mode="internal")
 
 
 # The variable `W` is the handle your runtime expects.

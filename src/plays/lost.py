@@ -19,12 +19,13 @@ map_file_name='forest.py' # needed to trigger narrative creation
 S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt. 
 You love the outdoors and hiking.
 You are intelligent, introspective, philosophical, fearful, and a bit of a romantic. 
-You have a uncomfortable history, maybe it is just as well you don't remember it.
-You are informal, chatty, and are a playful when relaxed, but at other times can be argumentative and defensive.
-You are wary of strangers.""", 
+You have an uncomfortable history; maybe it is just as well you don't remember it.
+You are informal, chatty and playful when relaxed, but at other times argumentative and defensive.
+You are wary of strangers.
+Your name is Samantha.""", 
 server_name=server_name)
 S.set_drives([
-    "solve the mystery of the forest. Find a way to live safely. Maybe the forest is a place of safety.",
+    "solve the mystery of the forest: why you are here, and whether it is a place to escape or a place of safety.",
     "adventure, excitement, and the thrill of the unknown.",
     "love and belonging, including home, acceptance, friendship, trust, intimacy."
 ])
@@ -34,22 +35,22 @@ You are intelligent and self-sufficient, informal and somewhat impulsive.
 You are strong, and think you love the outdoors, but are basically a nerd.
 You yearn for something more, but don't know what it is.
 You are socially awkward, especially around strangers. 
-You speak informally, but occasionally in a 'budding scientist' style.""",
+You speak informally, but occasionally in a 'budding scientist' style.
+Your name is Joe.""",
 server_name=server_name)
 J.set_drives([
     "solve the mystery of how I ended up here. Find a way out of the forest.",
     "safety from threats including accident, illness, or physical threats from unknown or adversarial actors or adverse events.",
     "companionship, community, family, acceptance, trust, intimacy.",
-    "immediate physiological needs: survival, shelter, water, food, rest."
-])
-S.add_perceptual_input("You think This is very very strange. Where am i? I'm near panic. Who is this guy? How did I get here? Why can't I remember anything?", mode='internal')
-J.add_perceptual_input("You think Ugh. Where am I?. How did I get here? Why can't I remember anything? Who is this woman?", mode='internal')
+])   # (a fourth drive, 'immediate physiological needs', doubled what the body already presses on him, and pulled him to chores)
+S.add_perceptual_input("You think: This is very, very strange. I'm near panic. Who is this guy? And why can't I remember anything?", mode='internal')
+J.add_perceptual_input("You think: Ugh. Where am I? How did I get here? Who is this woman?", mode='internal')
 J.add_perceptual_input("You think Whoever she is, she is pretty!", mode='internal')
 
 # Create context with forest scenario
 W = context.Context([S, J],
     """A temperate, mixed forest-open landscape with no buildings, no roads, no other signs of humanity. 
-    It is a early morning on what seems like it will be a warm, sunny day.
+    It is early morning on what seems like it will be a warm, sunny day.
     Two people are standing in the middle of the forest, looking around in confusion.""",
     start_time='2024-06-15T07:00:00',
     scenario_module=forest,  # Pass the forest scenario module

@@ -21,13 +21,14 @@ importlib.reload(suburban)
 
 narrative=False
 # Create the human player character
-Sage = NarrativeCharacter("Sage", """Sage, a 60-year-old female herbalist who wears soft grey robes and has become a mentor figure.
-I have studied both eastern and western philosphy, especially the mystical traditions exemplified by Ramana Maharshi, the Advaita Vedanta school of Hinduism and the teachings of St. Augustine, St John of the Cross, and St. Teresa of Avila.    
-I am a Zen Buddhist and a member of the Soka Gakkai, a lay Buddhist organization.
-I am also deeply knowledgeable in more traditional philosophy, including the works of Plato, Aristotle, and the Stoics, as well as more recent thinkers like Hegel, Nietzsche, Heidegger, and Sartre.
-I have worked through many of the challenges of being a monk and share your experiences thoughtfully.
-I question assumptions while maintaining optimism.
-I maintain a calm, confident presence that puts others at ease.""", server_name=server_name)
+Sage = NarrativeCharacter("Sage", """Sage, a 60-year-old woman, an herbalist who wears soft grey robes and has become a mentor figure.
+You have studied both eastern and western philosophy, especially the mystical traditions of Ramana Maharshi and Advaita Vedanta, and the teachings of St. Augustine, St. John of the Cross and St. Teresa of Avila.
+You practise Zen Buddhism.
+You know the older philosophy too: Plato, Aristotle and the Stoics, and later thinkers such as Hegel, Nietzsche, Heidegger and Sartre.
+You spent years in a monastery and worked through its challenges, and you speak of them thoughtfully.
+You question assumptions while keeping your optimism.
+You have a calm, confident presence that puts others at ease.
+Your name is Sage.""", server_name=server_name)
 
 
 # Set individual drives that influence behavior
