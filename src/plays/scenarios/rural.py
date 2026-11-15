@@ -22,6 +22,7 @@ class RuralResources(Enum):
     Blacksmith = auto()
     Farm = auto()
     Market = auto()
+    Strip = auto()      # a strip of wheat land: land a family holds besides its farm, with a deed of its own
 
 class RuralProperty(Enum):
     Farm = auto()
@@ -76,6 +77,8 @@ resource_rules = {
 
     'names': {
         'Farm': ['MarquartFarm', 'FouanFarm'],
+        # strips are put beside a family's farm by the play (laTerre.py), in this order
+        'Strip': ['MarquartUpperStrip', 'MarquartLowerStrip', 'FouanUpperStrip', 'FouanLowerStrip'],
 
     },
     'allocations': [
@@ -123,6 +126,15 @@ resource_rules = {
                 terrain_types.Grassland: 1.0
             }
         },
+        {   # none are scattered by the map: a play places a family's strips beside its farm
+            'resource_type': resource_types.Strip,
+            'description': 'A strip of wheat land',
+            'count': 0,
+            'requires_property': False,
+            'terrain_weights': {
+                terrain_types.Field: 1.0
+            }
+        },
         {
             'resource_type': resource_types.Market,
             'description': 'The village market square',
@@ -140,8 +152,9 @@ resource_rules = {
 
 # What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In this peasant village, land, money, harvest and inheritance are what is at stake: who holds which "
-          "field, who works it, what the wheat fetches at market, who pays whom, and who will inherit. Heat, hard "
-          "labour and thirst are real. A farm belongs to whoever its owner has signed the deed over to: the owner holds "
+          "farm and which strip of land, who works it, what the wheat fetches at market, who pays whom, and who will inherit. Heat, hard "
+          "labour and thirst are real. Land is a farm, or a strip of wheat land beside it; each has its own deed and passes whole. "
+          "It belongs to whoever its owner has signed the deed over to: the owner holds "
           "the deed and signs it over only in person, with the heir standing there. Use these to make concrete, "
           "checkable goals and obstacles tied to the farms, the mill, the market and the family.")
 
@@ -166,14 +179,15 @@ affordances = {
     'currency': 'francs', 'initial_money': 5,
     'tile_minutes': 4,
     'type_nouns': {'Well': ['well'], 'Mill': ['mill', 'miller'], 'Blacksmith': ['blacksmith', 'forge', 'smithy'],
-                   'Farm': ['farm', 'field', 'fields', 'wheat', 'land', 'plot'], 'Market': ['market', 'stall']},
+                   'Farm': ['farm', 'field', 'fields', 'wheat', 'land', 'plot'], 'Market': ['market', 'stall'],
+                   'Strip': ['strip', 'strips']},
     'actions': [
         {'name': 'draw water', 'verbs': ['drink', 'draw water', 'drink water'], 'named_verbs': ['draw', 'haul', 'lower the bucket'],
          'resource_types': ['Well'], 'effects': {'thirst': -0.7}, 'minutes': 10, 'text': 'draws water at {resource} and drinks'},
         # hiring out is on another family's land and is said as such: cutting wheat is 'harvest
         # family wheat' (it stood first with the same verbs, so Jean harvesting became day labour)
         {'name': 'work for wages', 'category': 'work', 'verbs': ['hire out', 'hire myself', 'labour for', 'work for wages', 'day labour', 'day-wage'],
-         'named_verbs': ['hire'], 'resource_types': ['Farm'], 'requires_property': {'owner': '!{household}'},
+         'named_verbs': ['hire'], 'resource_types': ['Farm', 'Strip'], 'requires_property': {'owner': '!{household}'},
          'effects': {'fatigue': 0.25, 'thirst': 0.15}, 'earn': 2, 'minutes': 180,
          'text': 'labours in the fields at {resource} for a day-wage'},
         {'name': 'take possession', 'category': 'work', 'verbs': ['claim', 'take possession', 'stake a claim', 'pace out'],
@@ -181,7 +195,7 @@ affordances = {
          'minutes': 30, 'text': 'takes possession of {resource}, pacing out its boundaries'},
         # '{household}': the farm is the actor's own, or a parent's or spouse's (see laTerre.py)
         {'name': 'harvest family wheat', 'category': 'work', 'verbs': ['harvest', 'reap', 'scythe', 'bring in the wheat'],
-         'named_verbs': ['work', 'cut', 'gather'], 'resource_types': ['Farm'], 'requires_property': {'owner': '{household}'},
+         'named_verbs': ['work', 'cut', 'gather'], 'resource_types': ['Farm', 'Strip'], 'requires_property': {'owner': '{household}'},
          'effects': {'fatigue': 0.3, 'thirst': 0.15}, 'gain': 'sack of wheat', 'minutes': 180,
          'text': "harvests wheat on the family's land at {resource}"},
         {'name': 'grind wheat', 'category': 'work', 'verbs': ['grind', 'mill'], 'resource_types': ['Mill'],
@@ -209,7 +223,7 @@ affordances = {
          'transfer_money': 2, 'minutes': 2, 'text': 'pays {target} two francs'},
         {'name': 'give bread', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share'],
          'transfer': 'loaf of bread', 'minutes': 2, 'text': 'gives {target} a loaf of bread'},
-        # a farm passes when its owner, holding the deed, signs it over with the heir standing there
+        # a farm or a strip passes when its owner, holding its deed, signs it over with the heir standing there
         {'name': 'sign over the farm', 'category': 'social', 'target': 'character',
          'verbs': ['sign over', 'sign the deed', 'signs the deed', 'put my mark', 'makes his mark', 'make my mark', 'deed the farm'],
          'transfer': '*deed', 'conveys': ' deed', 'minutes': 10, 'text': 'signs the {item} over to {target}'},

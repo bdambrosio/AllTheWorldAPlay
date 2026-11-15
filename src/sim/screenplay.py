@@ -53,6 +53,7 @@ class Screenplay:
     question: dict = field(default_factory=dict)   # 'text' (as written), QUESTION_TAGS, 'roles': {name: role}
     frame: dict = field(default_factory=dict)      # 'settles', 'open', 'last'
     clues: list = field(default_factory=list)      # [{'thing', 'place', 'touches'}]
+    facts: list = field(default_factory=list)      # [{'text', 'known_to': [names], 'open': bool}]: what lies behind the play (set_facts)
     threads: list = field(default_factory=list)    # [{'kind': 'found'|'told', 'who', 'what', 'scene'}]: what the play has planted
     act_count: int = 3                             # acts that carry the story; a closing act follows
     acts: list = field(default_factory=list)       # [ActRecord], in the order played
@@ -147,6 +148,45 @@ class Screenplay:
         return '\n'.join(lines)
 
     # ----------------------------------------------------------------- the clues
+    # ----------------------------------------------------------------- what lies behind the play
+    # The director settles, once, two or three things that are so behind the play: each a single
+    # thing that was so before it began, or a standing condition of its world, with who knows it.
+    # Clues are traces of them and the director's own plans are written from them; a character who
+    # knows one is told it privately; nobody else is told. (Nothing was settled behind the clues:
+    # seven piled up in one play with no meaning between them, and in another a father and a
+    # daughter gave opposite terms of the same bargain.)
+    def set_facts(self, reply, names):
+        """Read '#fact <sentence> | known to: <names or nobody> | open: yes/no' lines. names: who
+        may know one (cast and owners); other names are dropped. Three at most."""
+        by_lower = {n.lower(): n for n in names}
+        facts = []
+        for line in re.findall(r'^\s*#fact\s+(.+?)\s*$', reply or '', re.M):
+            fields = [f.strip() for f in line.split('|')]
+            text = fields[0].strip(' "')
+            if not text:
+                continue
+            known, is_open = [], False
+            for f in fields[1:]:
+                key, _, value = f.partition(':')
+                if key.strip().lower().startswith('known'):
+                    known = [by_lower[n.strip().lower()] for n in re.split(r',|\band\b', value) if n.strip().lower() in by_lower]
+                elif key.strip().lower() == 'open':
+                    is_open = value.strip().lower().startswith('y')
+            facts.append({'text': text, 'known_to': known, 'open': is_open})
+        self.facts = facts[:3]
+        return self.facts
+
+    def facts_note(self):
+        """The facts, for the director's own calls (the act as performed, a scene's set-up): never
+        for an actor's prompt or a character's own plan."""
+        if not self.facts:
+            return ''
+        return ("What lies behind this play (the director's own; no character knows any of it except as marked, and "
+                "none of it says what anyone will do):\n"
+                + '\n'.join(f"- {f['text']} [known to: {', '.join(f['known_to']) or 'nobody'}"
+                             + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in self.facts)
+                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it.")
+
     def clue_note(self, now=None):
         """The clues and where each is, for whoever writes a plan. now(clue): where it is at this
         point of the play in a few words ('held by Samantha'), or '' when it lies where it was

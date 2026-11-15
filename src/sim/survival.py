@@ -874,7 +874,6 @@ def add_place(context, kind, description, xy):
                                     'description': description or f'a {kind.lower()}', 'location': tuple(xy), 'properties': {}}
     try:
         world.patches[xy[0]][xy[1]].resources[rid] = world.resource_registry[rid]
-        world._resource_counters[resource_type] = world._resource_counters.get(resource_type, 0) + 1
     except Exception:
         pass
     trace.event('place_added', id=rid, type=kind, description=description)

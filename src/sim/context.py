@@ -1571,6 +1571,7 @@ It is now {{$clock}}.
 Bodies and what each carries: {{$bodies}}
 Dangers this world has: {{$hazards}}. Now: {{$danger}}.
 {{$clues}}
+{{$facts}}
 Where things are now (the world keeps this; a set-up does not move them): {{$things}}
 Where the cast last went: {{$left_for}}
 What has happened lately:
@@ -1632,6 +1633,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
                   'things': '\n'.join(x for x in (survival.things_note(self, people=cast), survival.writings_note(self, people=cast)) if x) or 'nothing tracked',
+                  'facts': self.screenplay.facts_note(),
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
                                         for e in self._exit_parties())
@@ -2238,6 +2240,7 @@ Most critically, this act is written from where the play actually stands.
 #How the previous act left things
 {{$previous_act_post_state}}
 ##
+{{$facts}}
 What has been played stays played: a thing handed over, found, told or admitted is not handed over, found, told or admitted again, and a secret that has come out is no longer a secret. The act goes on from there.
 
 An act is a JSON object containing a sequence of scenes (think of a play).
@@ -2370,6 +2373,8 @@ In performing this integration:
                                  "places": stage.gazetteer(self),
                                  "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
                                  "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
+                                 "facts": ((self.screenplay.facts_note() + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
+                                           if self.screenplay.facts else ''),
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
         # (validate_narrative_act); it had been checked for its dates alone, and a scene with
@@ -2451,6 +2456,7 @@ In performing this integration:
 - What the characters do to settle it must be something this world lets them do: where places are listed below, the actions named at each are what can be done there (a thing can be handed over only if it can first be picked up or carried).
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
+- Facts are what lies behind this play: what you, the director, know to be so, so that everything found or said later fits together. Settle two or three, or none if nothing lies behind this play. Each is ONE thing: either a single thing that happened before the play began (who did what, once, where), or a standing condition of this world, said as a condition. Never a habit ("always", "every time", "whenever"), never what anyone will do or feel in the play, never how the play comes out: the acts are the characters' to make. Use only these people, these places and the kinds of thing this world has. A fact names no person who is not listed above, and turns on nothing this world cannot hold or hand over: what can be owned, given or signed over is what the actions listed at the places below allow, whole and as named (a farm, not a part of one). It says nothing of what can or cannot be done from now on. Say who knows each: names from the characters, or nobody. At most one may be what lies behind the open question (it may be a rule of this world rather than an answer): mark it open, and this episode will not reveal it.
 {{$clue_rule}}
 {{$existing}}
 
@@ -2458,23 +2464,26 @@ Respond with these lines only, one sentence each:
 #settles what this episode settles
 #open what it leaves open
 #last the image or act it should end on
+#fact <one plain sentence> | known to: <names, or nobody> | open: <yes or no>   (one line for each fact; none if nothing lies behind the play)
 {{$clue_format}}
 </end>
 """)]
         places = stage.gazetteer(self) if survival.config(self) else ''
-        clue_rule = ("""- Clues are the one exception to inventing nothing. Name two or three small, ordinary things that will really lie in this world, each at one of the places listed below, that touch the open question without answering it. Draw them from this setting and these people's lives, so that they could belong to no other play. A clue makes the question sharper; it never says who, how or why. Choose places the characters can reach in this episode.
+        clue_rule = ("""- Clues are the one exception to inventing nothing. Name two or three small, ordinary things that will really lie in this world, each at one of the places listed below. Each is a trace of one of your facts, something it would have left behind, and touches the open question without answering it. Draw them from this setting and these people's lives, so that they could belong to no other play. A clue makes the question sharper; it never says who, how or why. Choose places the characters can reach in this episode.
 
 <places>
 """ + places + """
 </places>""") if places else ''
         clue_format = ("#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
-                              'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors),
+                              # who each is, and what each wants (the facts are about these people: it was given their drives alone)
+                              'characters': '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
+                                                      for c in self.actors + self.extras + [n for n in self.npcs if not getattr(n, 'placeholder', False)]),
                               'clue_rule': clue_rule, 'clue_format': clue_format,
                               'existing': (("- The play has already put these in the world. They may serve the episode; do not name another of the same as a clue:\n"
                                             + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
                                            if getattr(self, 'props', None) else '')},
-                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=340) or ''
+                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=520) or ''
         echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
         frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
@@ -2486,7 +2495,13 @@ Respond with these lines only, one sentence each:
                 says = fields[3].strip(' "') if len(fields) > 3 and fields[3].strip(' "').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
                 clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {})})
         self.screenplay.clues = clues[:3]
-        trace.event('episode', **self.episode, clues=self.screenplay.clues)
+        people = [c for c in self.actors + self.extras + self.npcs if not getattr(c, 'placeholder', False)]
+        self.screenplay.set_facts(reply, [c.name for c in people])
+        for fact in self.screenplay.facts:   # who knows one is told it, once and privately
+            for c in people:
+                if c.name in fact['known_to']:
+                    c.add_perceptual_input(f"You know this, and have told no one: {fact['text']}", percept=False, mode='internal')
+        trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
         return self.episode
 
     def place_clues(self):

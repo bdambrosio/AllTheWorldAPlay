@@ -122,6 +122,15 @@ resource_rules = {
             }
         },
         {
+            'resource_type': resource_types.Refrigerator,
+            'description': 'A refrigerator with breakfast things',
+            'count': 1,
+            'requires_property': True,
+            'terrain_weights': {
+                terrain_types.House: 1.0
+            }
+        },
+        {
             'resource_type': resource_types.Car,
             'description': 'A parked car',
             'count': 1,
@@ -203,6 +212,10 @@ affordances = {
         {'name': 'work', 'category': 'work', 'verbs': ['answer email', 'take the meeting', 'finish the report'], 'named_verbs': ['work'],
          'resource_types': ['Office'], 'requires_flag': 'dressed', 'effects': {'fatigue': 0.25}, 'earn': 120,
          'minutes': 240, 'text': 'puts in a block of work at {resource}'},
+        # the interview a candidate has come for: it is sat, dressed, at the office; how it goes is the scene's
+        {'name': 'sit the interview', 'category': 'work', 'verbs': ['interview', 'sit the interview', 'attend the interview', 'go in for the interview'],
+         'resource_types': ['Office'], 'requires_flag': 'dressed', 'effects': {'fatigue': 0.15}, 'minutes': 45, 'sets': 'interviewed',
+         'text': 'sits the interview at {resource}'},
         {'name': 'lend money', 'category': 'social', 'target': 'character', 'verbs': ['lend', 'pay', 'give money', 'hand cash'],
          'transfer_money': 20, 'minutes': 2, 'text': 'gives {target} twenty dollars'},
     ],
