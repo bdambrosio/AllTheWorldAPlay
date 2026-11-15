@@ -155,7 +155,6 @@ class Character:
         self.act = None
         self.previous_action_name = None
         self.look_percept = ''
-        self.recent_exchanges = []   # (other, what I opened with, the last thing they answered): see note_exchange
         # the drives of a character whose play gives it none
         self.drives = [
             Drive( "immediate physiological needs: survival, water, food, clothing, shelter, rest."),
@@ -528,6 +527,7 @@ End your response with:
             act.affordance = (hash_utils.find('affordance', hash_string) or '').strip() or None
             # does the character leave the scene with this act? its writer says (sim/stage.py presence)
             act.leaves = self.leaving_party(hash_utils.find('leaves', hash_string))
+            act.leaves_to = self._leave_to
             return act
         else:
             print(f"Invalid actionable Hash: {hash_string}")
@@ -1352,7 +1352,7 @@ End response with:
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
             if leaving and not self.attempt_only:
-                stage.leave(self, told=True, to=getattr(self, '_leave_to', None))   # the deed has told it (its event follows)
+                stage.leave(self, told=True, to=getattr(act, 'leaves_to', None))   # the deed has told it (its event follows)
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             aimed_at = self._first_character(target, act)
@@ -1452,7 +1452,7 @@ End response with:
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
                 party = act.leaves if isinstance(act.leaves, list) else []
-                to = getattr(self, '_leave_to', None)
+                to = getattr(act, 'leaves_to', None)
                 gone = ('leaves' if not party else f"leaves with {', '.join(c.name for c in party)}") + (f', for {to}.' if to else '.')
                 self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
                 self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
@@ -1883,13 +1883,6 @@ Place tasks least important to the dramatic context early in the plan when possi
 
 """
 
-        goal_memories = []
-        for g in self.goals:
-            memories = self.perceptual_state.get_information_items(g.short_string(), threshold=0.01, max_results=3)
-            for gm in memories:
-                if gm not in goal_memories:
-                    goal_memories.append(gm)
-
         if not goal:
             goal = self.focus_goal
         if not goal:
@@ -1915,7 +1908,6 @@ Place tasks least important to the dramatic context early in the plan when possi
                                prefix=mission, 
                                suffix=suffix, 
                                addl_bindings={"focus_goal":goal.to_string(),
-                                "goal_memories": "\n".join([m.content for m in goal_memories]),
                                 "ntasks": ntasks,
                                 "known_actors": "\n".join([name for name in self.actor_models.names()]),
                                 "achievments": '\n'.join(self.achievments[-5:]),
@@ -2544,7 +2536,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             trace.event('dialog_end', speaker=from_actor.name, listener=self.name,
                         turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
             dialog_as_list = dialog.split('\n') 
-            self.note_exchange(from_actor, dialog_as_list)
             self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
     
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -2552,7 +2543,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             self._pop_dialog_task(from_actor)
             # it would probably be better to have the other actor deactivate the dialog itself
             other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
-            from_actor.note_exchange(self, other_dialog.split('\n'))
             from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
             from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
             from_actor.last_task = from_actor.focus_task.peek()
@@ -2574,29 +2564,11 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             return
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
         action.leaves = getattr(self, '_reply_leaves', None)
+        action.leaves_to = getattr(self, '_reply_leaves_to', None)
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
         await asyncio.sleep(0)
-
-    def own_recent_lines(self, other):
-        """Guidance built from this character's own last two spoken lines: a habit of speech
-        (a metaphor, a pet phrase, one sentence shape) should colour some lines, not every one."""
-        model = self.actor_models.get_actor_model(other.name)
-        mine = [t.split(' says: ', 1)[1] for t in (model.dialog.transcript if model else [])
-                if t.startswith(f'{self.name} says: ')][-2:]
-        if not mine:
-            return ''
-        return ("- Your own last lines were: " + ' / '.join(f"'{m}'" for m in mine)
-                + ". Do not reuse their imagery or their sentence shape. If either used a figure of speech, speak plainly this time.")
-
-    def note_exchange(self, other, dialog_lines):
-        """Remember how a finished dialog went: what this character opened with and the last
-        thing the other answered, so its next act does not open the same exchange again."""
-        mine = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{self.name} says: ')]
-        theirs = [l.split(' says: ', 1)[1] for l in dialog_lines if l.startswith(f'{other.name} says: ')]
-        if mine and theirs:
-            self.recent_exchanges = (self.recent_exchanges + [(other.name, mine[0], theirs[-1])])[-4:]
 
     def done_in_task(self, task):
         """What this character has already done toward a task, to stand beside the task itself.
@@ -2615,24 +2587,6 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                   "Choose what comes next after them; if they have done what the task asks, do what follows from it."
                 + (" You have had your say in this task: now a Do, Move, Look or Think, unless someone has just said something you must answer."
                    if any(a.mode == 'Say' for a in acts[-2:]) else ''))
-
-    def already_said(self, task):
-        """For the act prompt: recent exchanges and what was already said in this task. A scene
-        used to circle one demand, each act re-opening it as a new dialog with no memory that
-        it had just been asked and answered."""
-        parts = []
-        if self.recent_exchanges:
-            parts.append("#Your recent exchanges: what you opened with, and the last answer you got.\n"
-                         + '\n'.join(f"- to {other}: '{asked}' -> {other} answered: '{answer}'"
-                                     for other, asked, answer in self.recent_exchanges)
-                         + "\nDo not open the same exchange again: asked the same way, it gets the same answer. "
-                           "Take the answer as given and do something different: act on it, concede, raise the price, or turn to someone else.\n##")
-        spoken = [a.action for a in (task.acts or []) if a.mode == 'Say']
-        if spoken:
-            parts.append("#In this task you have already said:\n" + '\n'.join(f"- '{line}'" for line in spoken[-2:])
-                         + "\nYou have had your say in this task: now choose a Do, Move, Look or Think, "
-                           "unless someone has just said something you must answer.\n##")
-        return '\n'.join(parts)
 
     EARSHOT_TILES = 4
     MAX_CUT_INS_PER_SCENE = 2     # per character
@@ -2755,7 +2709,6 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
                                       reason='answer ' + from_actor.name, termination='natural end of dialog', goal=None,
                                       start_time=self.context.simulation_time, duration=2, actors=[self, from_actor]))
             trace.event('dialog_task_restored', character=self.name, speaker=from_actor.name)
-        duplicative_insert = ''
         system_prompt = """You are an actor in an improvised play, speaking your character's next line.
 You are in the scene, not writing it: say what this person would actually say now, to this listener, to get what they want.
 A good line does one thing (asks, refuses, offers, concedes, threatens, changes the subject) and leaves the other actor something to answer.
@@ -2840,24 +2793,11 @@ End your response with:
             mapped_goals = self.map_goals(self.focus_goal)
         else:
             mapped_goals = self.map_goals()
-        activity = ''
-        if self.focus_task.peek() != None and self.focus_task.peek().name.startswith('dialog'):
-            activity = f'You are currently actively engaged in {self.focus_task.peek().name}'
-        elif self.focus_task.peek() != None and self.focus_task.peek().name.startswith('internal dialog'):
-            activity = f'You are currently actively engaged in an internal dialog'
         # Get recent memories
         recent_memories = self.structured_memory.get_recent(10)
         memory_text = '\n'.join(memory.to_string() for memory in recent_memories)
         
-        #print("Hear",end=' ')
-        duplicative_insert = ''
-        trying = 0
-
         emotionalState = self.emotionalStance
-
-        actor_genders = ''
-        for actor in self.context.actors+self.context.extras:
-            actor_genders += f'\t{actor.name}: {actor.gender}\n'
 
         scene_notes = self.scene_brief()
         answer_xml = self.llm.ask({
@@ -2870,17 +2810,9 @@ End your response with:
             "name": self.name,
             "goals": mapped_goals,
             "memories": memory_text,  # Updated from 'memory'
-            "activity": activity,
             'history': self.narrative.get_summary('medium'),
             'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
-            'target': 'Your' if self is from_actor else "The person you are speaking to's ",
-            'target_gender': from_actor.gender,
-            'your_gender': self.gender,
-            'actor_genders': actor_genders,
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
-            'duplicative_insert': duplicative_insert,
-            'own_recent': self.own_recent_lines(from_actor),
-            "tempo": stage.speech_tempo(self),
             # own view of the scene only: the full scene JSON revealed the other character's goal
             "scene": f"\n{scene_notes}\n" if scene_notes else '',
             "here_and_now": self.physical_context(),
@@ -2892,6 +2824,7 @@ End your response with:
         if response:
             response = re.split(r'</?\s*(?:reason|response|leaves)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
         self._reply_leaves = self.leaving_party(xml.find('<leaves>', answer_xml))
+        self._reply_leaves_to = self._leave_to
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -3307,13 +3240,15 @@ End your response with:
         """The #leaves field of an act or line: None (stays), 'alone', or the characters who go with
         it. (A yes/no field marked 'follow me' and 'lead the way' as walking out: each left the
         scene by itself and the pair were never seen to go together.)"""
-        value = ' '.join((field or '').strip().lower().split())
-        # where it goes, when it says ('with joe, to the trail northwest'): kept for the exit and the
+        raw = ' '.join((field or '').strip().split())
+        # where it goes, when it says ('with Joe, to the trail northwest'): kept for the exit and the
         # next scene's set-up (a leave kept no destination, and the next scene was set back at the
-        # hut they had walked out of)
-        dest = re.search(r'[;,]?\s+(?:to|toward|towards|for)\s+', value)
-        to = value[dest.end():] if dest else ''
-        value = value[:dest.start()] if dest else value
+        # hut they had walked out of). It follows a comma or semicolon ('with Joe to look for water'
+        # names no place), and keeps its case ('Spring2'). The caller puts it on the act (leaves_to):
+        # kept here alone, the second of two alternative acts overwrote the first one's.
+        dest = re.search(r'\s*[;,]\s*(?:to|toward|towards|for)\s+', raw, re.I)
+        to = raw[dest.end():] if dest else ''
+        value = (raw[:dest.start()] if dest else raw).lower()
         self._leave_to = to.strip(' .;,"\'') or None
         if not value or value.startswith('no'):
             self._leave_to = None
@@ -3323,7 +3258,7 @@ End your response with:
         here = [c for c in self.context.actors + self.context.extras + self.context.npcs
                 if c is not self and getattr(c, 'current_scene', None) is self.context.current_scene
                 and not stage.off_stage(c)]
-        names = {n.strip() for n in value[4:].split(',')}
+        names = {n.strip() for n in re.split(r',|\band\b', value[4:])}
         party = [c for c in here if c.name.lower() in names]
         return party or 'alone'
 
@@ -3331,7 +3266,7 @@ End your response with:
         """Leave the scene, and the ones going along leave with it. told: the departure, with
         who went along, is already in the scene's record."""
         party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
-        to = getattr(self, '_leave_to', None)
+        to = getattr(act, 'leaves_to', None)
         stage.leave(self, party, told=told, to=to)
         for other in party:
             if stage.leave(other, [self] + party, told=told, to=to):

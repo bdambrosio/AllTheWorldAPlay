@@ -247,7 +247,8 @@ def set_scene(context, scene, characters, opens_act):
     target = resolve(context, scene.get('location'), anchor)
     if target is None:
         # 'same' after the cast walked out for a named place: the scene is where they went
-        gone_to = [e.get('to') for e in getattr(context, 'last_scene_exits', []) if e.get('to')]
+        names = {c.name for c in characters}   # where this scene's own cast went, not someone who walked off alone
+        gone_to = [e.get('to') for e in getattr(context, 'last_scene_exits', []) if e.get('to') and e.get('who') in names]
         target = next((t for t in (resolve(context, g, anchor) for g in gone_to) if t), None)
     xy, place = target if target else (anchor, None)
     scene['place'] = place or where(context, xy).removeprefix('at ')
@@ -378,12 +379,6 @@ def tempo(character):
         return 'urgent'
     value = str(scene.get('tempo') or 'calm').strip().lower()
     return value if value in ('calm', 'tense', 'urgent') else 'calm'
-
-
-def speech_tempo(character):
-    """A line for the speech prompts when the moment is not calm."""
-    return {'urgent': "- This moment is urgent: twelve words at most, and no explaining; but it is still your character's own voice and way with words, not a generic shout.",
-            'tense': "- The moment is tense: keep it short, a sentence or two, as this person talks when on edge."}.get(tempo(character), '')
 
 
 def say_limit(character):

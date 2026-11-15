@@ -780,7 +780,10 @@ def writing_of(context, name):
 
 def writings_note(context, xy=None, people=()):
     """What the written things lying near `xy` (all, if None) or held by `people` say, a line each."""
-    names = [p['name'] for p in getattr(context, 'props', []) if xy is None or _distance(p['at'], xy) <= CO_PRESENT_TILES]
+    # at a place: only what is in sight there (a narrator told what a still-hidden paper says would read it out);
+    # with no place (the planners): all of them
+    names = [p['name'] for p in getattr(context, 'props', [])
+             if xy is None or (_distance(p['at'], xy) <= CO_PRESENT_TILES and not p.get('hidden'))]
     names += [i for c in people if getattr(c, 'body', None) is not None for i in c.body.inventory]
     seen, lines = set(), []
     for name in names:

@@ -63,6 +63,10 @@ class Screenplay:
         by its elements on tagged lines (#question, #stakes, #tension, #role <name>: ...,
         #success, #failure). The paragraph is kept as written for the planning prompts; the
         elements are what an actor's notes are built from (story_for)."""
+        # the tags may come on one line ('...costs something. #question ... #stakes ...'): read at
+        # line starts only, the paragraph kept them all, and every actor's notes carried the other's
+        # role and how the play was to succeed and fail
+        reply = re.sub(r'\s+#(question|stakes|tension|success|failure|role)\b', r'\n#\1', reply or '')
         find = lambda tag: next((m.strip() for m in re.findall(rf'^\s*#{tag}\s+(.+)$', reply or '', re.M)), '')
         text = re.sub(r'^\s*#(question|stakes|tension|success|failure|role)\b.*$', '', reply or '', flags=re.M).strip()
         self.question = {'text': text, **{tag: find(tag) for tag in QUESTION_TAGS},

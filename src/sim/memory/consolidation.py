@@ -396,16 +396,10 @@ End with:
         
         # Update recent events
         recent_window = current_time - timedelta(hours=2)  # Last 4 hours
-        recent_abstracts = [abs for abs in memory.get_recent_abstractions(20)
-                           if abs.start_time >= recent_window]
-        recent_concretes = [mem for mem in memory.get_recent(40)
-                           if mem.timestamp >= recent_window]
-        
-        patterns = []   # abstractions are in _lived already, where they stand for memories cleanup removed
         prompt = [UserMessage(content=RECENT_EVENTS.format(
             name=self.owner.name, character=character_desc,
             activity=active_abstract.summary if active_abstract else (narrative.ongoing_activities or 'not known'),
-            lines='\n'.join(f"- {line}" for line in self._lived(memory, recent_window, 40) + patterns) or '- nothing'))]
+            lines='\n'.join(f"- {line}" for line in self._lived(memory, recent_window, 40)) or '- nothing'))]
 
         if not relationsOnly:
             new_events = self.llm.ask({}, prompt, stops=["</end>"], tag='MemoryConsolidator.recent_events', max_tokens=340)

@@ -102,9 +102,11 @@ def quoted_in(quote, text, share=0.8):
     flat = norm(text)
     lines = [set(re.findall(r"[a-z0-9']+", line.lower())) for line in (text or '').split('\n')]
     pieces = [p.strip(" .,;:-—'") for p in re.split(r"\.\.\.|…|;|—|\(|\)|\n|\"|“|”", quote or '')]
-    pieces = [p for p in pieces if len(re.findall(r"[a-z0-9']+", p.lower())) >= 3]
-    if not pieces:
-        return False
+    long = [p for p in pieces if len(re.findall(r"[a-z0-9']+", p.lower())) >= 3]
+    if not long:   # a short quote ('Joe leaves', "I'll go"): found whole, or not at all
+        short = norm(' '.join(p for p in pieces if p))
+        return len(short.split()) >= 2 and short in flat
+    pieces = long
     def found(piece):
         if norm(piece) in flat:
             return True
@@ -299,13 +301,15 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     # a thing lying within reach that the narration has the actor take: the world takes it too
     # (Joe's search found the scarf, the narration had him pick it up, the world left it lying,
     # and from then on the actors had it in hand and the world on the floor). Out of reach, refused.
-    held = [c for c in claims if c[0] == 'holding']
-    claims = [c for c in claims if c[0] != 'holding']
+    # Only for a deed's narration, where `actor` is the doer: a set-up's check has no doer (its
+    # 'actor' is the first of the cast), and a set-up moves nothing (its claim is written out).
+    held = [c for c in claims if c[0] == 'holding'] if source == 'deed' else []
+    claims = [c for c in claims if c not in held]
     for claim in held:
         words = claim[1].lower()
-        here_things = survival.lying(context, stage.here(actor)) + survival.lying(context, stage.here(actor), hidden=True)
-        thing = next((p['name'] for p in here_things if p['name'].lower() in words
-                      or p['name'].lower().split()[-1] in words.split()), None)
+        said = set(re.findall(r"[a-z0-9']+", words))
+        thing = next((p['name'] for p in survival.lying(context, stage.here(actor)) if p['name'].lower() in words
+                      or p['name'].lower().split()[-1] in said), None)
         fact = survival._prop_do(context, actor, 'take', thing, None) if thing else None
         if fact:
             facts.append(fact)

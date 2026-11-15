@@ -966,6 +966,18 @@ End your response with:
             updates = ''
         return updates
     
+    def _exit_parties(self):
+        """The last scene's exits, one for each party that went together (each member's exit names
+        the others: listed as they stand, a pair leaving together read as two leaves or, filtered
+        on that, as none)."""
+        seen, parties = set(), []
+        for e in getattr(self, 'last_scene_exits', []):
+            party = frozenset([e['who']] + list(e.get('with') or []))
+            if party not in seen:
+                seen.add(party)
+                parties.append(e)
+        return parties
+
     def _writings_line(self, actor):
         """For the look and deed narrators: what the written things here say, so that a reading
         is told truly ('' when there are none)."""
@@ -1107,7 +1119,6 @@ End your response with:
         # the narration describes them rather than inventing other outcomes
         facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
                                     targets=act.target if isinstance(act.target, list) else None)
-        history = self.history()
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
@@ -1623,7 +1634,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'things': '\n'.join(x for x in (survival.things_note(self, people=cast), survival.writings_note(self, people=cast)) if x) or 'nothing tracked',
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
-                                        for e in getattr(self, 'last_scene_exits', []) if not any(e['who'] in (o.get('with') or []) for o in getattr(self, 'last_scene_exits', []) if o is not e and o['time'] <= e['time']))
+                                        for e in self._exit_parties())
                               or 'nobody left; they are where the last scene ended'}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
@@ -1665,7 +1676,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
                         entry['unknown'].append(missing.strip())
-            if ablation.enabled('narration_gate') and not deeds_asked:
+            if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
                 # the set-up is the opening only: what the scene is for is played, not told
                 purpose = f"It is to end: {scene.get('post_narrative', '')}\n" + ' '.join(
                     f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
@@ -1765,7 +1776,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_events = []
-        self.last_scene_exits = list(self.scene_exits)   # where the last scene's cast went: the set-up and the stage read it
+        if self.scene_exits:   # where the last scene's cast went: the set-up and the stage read it (kept over a skipped scene)
+            self.last_scene_exits = list(self.scene_exits)
         self.scene_exits = []
         self._scene_transcript_start = len(self.transcript)
 
@@ -1796,6 +1808,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         scene_start = scene["time"] = self.simulation_time   # as established: where the last scene left the clock, or moved on
         hours_between = self._hours_moved
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        self.last_scene_exits = []   # used: the scene is set
         # what each carries as the scene opens: what it carries at the end and did not is a find
         self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
@@ -1830,7 +1843,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json(setup=True)})
             await asyncio.sleep(0)
         if arrival:
-            self.add_event(arrival)
+            self.add_event(arrival, witnesses=[c for c in characters_in_scene if not stage.remote(c)])
             self.current_state += '\n' + arrival
             self.message_queue.put({'name': self.name, 'text': f'    {arrival}'})
 
@@ -2543,7 +2556,7 @@ Respond with one line for each thing, or the single line #none:
         for name, thing in re.findall(r'^\s*#has\s+([^|\n]+?)\s*\|\s*(.+?)\s*$', reply, re.M):
             holder = next((c for c in people if c.name.lower() == name.strip().lower()), None)
             thing = thing.strip(' ."\'').lower()
-            if holder is None or not thing or thing in own or len(given.get(holder.name, [])) >= 2:
+            if holder is None or not thing or thing in ('none', 'nothing', 'n/a', '-') or thing in own or len(given.get(holder.name, [])) >= 2:
                 continue
             if survival.add_thing(self, thing, holder=holder):
                 given.setdefault(holder.name, []).append(thing)
@@ -2721,7 +2734,9 @@ End your response with: </end>""")]
         exits = getattr(self, 'scene_exits' if scene else 'act_exits', [])
         placed = [f"{c.name}: {stage.where(self, stage.here(c))}" for c in cast if getattr(c, 'mapAgent', None) is not None]
         who_is_where = '\n'.join([f"{e['time']} {e['who']} left" + (f" together with {', '.join(e['with'])}" if e['with'] else '')
+                                  + (f", for {e['to']}" if e.get('to') else '')
                                   for e in exits] or ['Nobody left.']) + '\nWhere each is now: ' + '; '.join(placed)
+        bodies_text = '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'
         reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given', 'who_is_where': who_is_where,
                               'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
                               'lines': record.last_lines([str(l).strip() for l in self.transcript[start:] if str(l).strip()], 6000) or 'nothing',
@@ -2734,7 +2749,7 @@ End your response with: </end>""")]
         # an outcome stands on words that are in the record: a deed on what happened, a saying on
         # what was said. ('Samantha's bargain is won' stood on Joe's 'Fine, we search together';
         # 'they split the night into watches' on 'I'll wake you', and he never woke her.)
-        events_text = '\n'.join(self.scene_events if scene else self.act_events)
+        events_text = '\n'.join(list(self.scene_events if scene else self.act_events) + [who_is_where, bodies_text])
         lines_text = '\n'.join(str(l) for l in self.transcript[start:])
         outcomes = []
         for entry in found.get('outcomes') or []:
@@ -3466,6 +3481,8 @@ End your response with </end>
         """A line spoken in the play: into the transcript as the audience is shown it, and into the
         record as heard by the speaker and `hearers`."""
         self.transcript.append(f'{speaker.name}: "{text}"')
+        if getattr(self, 'current_scene', None) is None:
+            hearers = self._cast()
         self._enter('speech', text, speaker, [speaker] + [c for c in hearers if c is not None])
 
     def _enter(self, kind, text, doer, witnesses):
@@ -3488,7 +3505,9 @@ End your response with </end>
             return [doer] + list(doer.bystanders())
         # what comes about there (a hazard, an arrival) is seen by those there in person, not by
         # those in the scene by radio (stage.remote)
-        return [c for c in self._cast() if getattr(c, 'current_scene', None) is scene and not stage.remote(c)]
+        there = [c for c in self._cast() if getattr(c, 'current_scene', None) is scene and not stage.remote(c)]
+        # while a scene is being set its cast is not yet in it (a danger that came on then was seen by nobody)
+        return there or [c for c in self._cast() if not stage.remote(c)]
 
     def witnessed(self, character, n=None, since=None, kinds=None):
         """What `character` has seen and heard of the play, oldest first, as lines for a prompt:
