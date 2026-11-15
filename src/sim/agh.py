@@ -336,6 +336,8 @@ End your response with:
         stylizer = getattr(self, 'speech_stylizer', None)
         if stylizer is not None and stylizer.voice_line():
             description += f'\nHow you speak: {stylizer.voice_line()}.'
+        if getattr(self, 'own_past', ''):   # settled by the director at the start (Context.frame_episode)
+            description += f'\nFrom your own past, known here to you alone unless you tell it: {self.own_past}'
         if self.actor_models.get_known_actor_relationship(self.name):
             description += '\n\n' + self.actor_models.get_known_actor_relationship(self.name)
         if type(description) != str:
@@ -2182,7 +2184,7 @@ It serves this goal: {{$goal_string}}
 The question: after what is already done and said, what one act now moves {{$name}} toward what this task is for?
 - The task says what {{$name}} is after, not lines to recite. What {{$name}} has already said or done in the play ('What you have seen and heard lately', 'Done so far') is not said or done again, in the same words or in others: go on from it.
 - Take up the latest thing said or done to {{$name}}: answer it, use it, or refuse it.
-- {{$name}}'s drives and emotional stance decide how boldly and in what way.
+- {{$name}}'s drives and emotional stance decide how boldly and in what way. Pressing for a thing outright is one way among several: {{$name}} may tease, confide something, do the other a good turn, give a little to get a little, change the subject or go quiet, as this person would with this listener; not the way of {{$name}}'s own last two acts.
 
 Modes:
 - Say: words {{$name}} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, giving, taking or going is a Do or a Move. Do not name what you and the other are to each other or what the moment means; ask, refuse, offer or tease, and let that show it.
@@ -2239,7 +2241,9 @@ Respond only with the two acts.
                                               "here_and_now": self.physical_context(events=False),
                                               "affordance_line": survival.affordance_prompt_line(self),
                                               "act_note": survival.act_note(self),
-                                              "director_notes": self.director_notes(),
+                                              # the scene and this actor's objective, not the play's theme: given 'is trust itself
+                                              # the trap?', the actors said 'Trap—one that fed us'
+                                              "director_notes": self.director_notes(story=False),
                                               "modes": modes,
                                               "name": self.name}, 
                                tag = 'Character.generate_acts',
@@ -2296,6 +2300,7 @@ and identify any new commitments to act now made in it, by {{$name}}, by {{$othe
 Any commitment reported must be definite, immediate, non-hypothetical, and remain unfulfilled at the end of the transcript.
 A commitment must come from a clear, firm statement of intent to act, not from a question, an opinion, a statement of fact, or other conversational noise.
 Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments.
+A promise for later is not a commitment to act now. What is put off to another time or place ("tomorrow at the fountain", "after we eat", "on the road", "once it is dark", "next time") is not reported: only what is to be done at once, here, before this scene ends.
 
 <hypothetical commitments example>
 Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
@@ -2710,8 +2715,8 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
                                       start_time=self.context.simulation_time, duration=2, actors=[self, from_actor]))
             trace.event('dialog_task_restored', character=self.name, speaker=from_actor.name)
         system_prompt = """You are an actor in an improvised play, speaking your character's next line.
-You are in the scene, not writing it: say what this person would actually say now, to this listener, to get what they want.
-A good line does one thing (asks, refuses, offers, concedes, threatens, changes the subject) and leaves the other actor something to answer.
+You are in the scene, not writing it: say what this person would actually say now, to this listener.
+A good line does one thing (asks, refuses, offers, concedes, threatens, teases, lets something slip, changes the subject) and leaves the other actor something to answer.
 People in conversation speak plainly and often incompletely; they do not deliver slogans, aphorisms or speeches.
 """ + ("Bodily needs, the place the characters are in, and what has just happened are real; let them shape what is said."
        if getattr(self, 'body', None) is not None else
@@ -2767,7 +2772,8 @@ Keep your character's own way of speaking (see 'How you speak') from line to lin
 {{$statement}}
 </what_was_just_said>
 
-The question: what does {{$name}} say back, now, to get what {{$name}} is after?
+The question: what does {{$name}} say back, now?
+{{$way}}
 - First decide whether {{$name}} goes along with it. {{$name}} may doubt, refuse or push back, as how {{$name}} sees {{$speaker}} and what {{$name}} wants decide; agreeing, {{$name}} agrees without repeating it.
 - One turn: {{$say_limit}}. Make one point and leave the rest for later turns.
 - Answer what was said: do not open by saying its words back as a question ("A trap?"), and do not take on its way of talking. {{$name}} speaks in {{$name}}'s own voice ('How you speak').
@@ -2800,9 +2806,11 @@ End your response with:
         emotionalState = self.emotionalStance
 
         scene_notes = self.scene_brief()
+        idle = self is not from_actor and self._idle_turn()
         answer_xml = self.llm.ask({
             'speaker': speaker,
-            'say_limit': stage.say_limit(self),
+            'say_limit': "25 words at most, as this person talks at ease" if idle else stage.say_limit(self),
+            'way': (self.IDLE_LINE if idle else self.WAYS).replace('{name}', self.name),
             'character': self.get_character_description(),
             'emotionalState': emotionalState.to_definition(),
             'statement': f'{from_actor.name}: {message}' if self is not from_actor else message,
@@ -2848,6 +2856,35 @@ End your response with:
         # (response, source task, the LLM's <reason> -- parsed but dropped before)
         return response, response_source, reason
     
+    # What a reply is for. (Every line was asked for 'to get what {name} is after', every scene
+    # objective was 'press her on ...', and two people with different cards spoke in one voice of
+    # deals and demands: 'Deal', 'fair trade', 'say it plain', from both, for eleven scenes.)
+    WAYS = ("- {name} is after something ('what_you_are_after'), and is also a person, with a past and a nature ('your_character') "
+            "that get in the way of asking for it straight. There are more ways to go at a thing than pressing for it: teasing, charm, "
+            "confiding something, doing the other a good turn, giving a little to get a little, changing the subject, going quiet. "
+            "Choose the way {name} would choose with this listener now, and not the way of {name}'s own last two lines.")
+    # Once in a scene, a line that is for nothing: where a card's 'chatty, philosophical' or
+    # 'budding scientist' can be heard. (No line was ever asked for but as a move toward a goal.)
+    IDLE_LINE = ("- This one line is not for anything. For a moment the pressure is off, and {name} says what crosses {name}'s mind, "
+                 "in {name}'s most usual voice ('How you speak'): something noticed here, a joke, a memory that the place or the talk "
+                 "brings up, a plain curious question about the other person. If what was just said asked something, {name} answers it "
+                 "in passing, and goes on to this. It gets {name} nothing, and is not turned into a bargain or a test.")
+    IDLE_AFTER = 2   # replies in the scene before the idle one
+
+    def _idle_turn(self):
+        """True for one reply of this character in each scene: its third, when no danger is on it."""
+        scene = getattr(self.context, 'current_scene', None)
+        if scene is None:
+            return False
+        if getattr(self, '_idle_scene', None) is not scene:
+            self._idle_scene, self._scene_replies, self._idle_done = scene, 0, False
+        self._scene_replies += 1
+        if self._idle_done or self._scene_replies <= self.IDLE_AFTER or stage.tempo(self) == 'urgent':
+            return False
+        self._idle_done = True
+        trace.event('idle_line', character=self.name)
+        return True
+
     async def admissible_goals(self, goals):
         """test if any of the goals meet preconditions"""
         admissible_goals = []
@@ -3205,7 +3242,7 @@ End your response with:
         scene = self.context.current_scene
         if not scene:
             return ''
-        return self.director_notes()   # the scene is the director's to describe, and is given as notes
+        return self.director_notes(story=False)   # the scene is the director's to describe, and is given as notes (not the play's theme)
 
     # ------------------------------------------------------------------ the director's notes
     # What the director tells the actor playing this character: the story, what this act is
@@ -3295,6 +3332,8 @@ End your response with:
             parts += [f"The story the company is telling:\n{self.story_note()}" if self.story_note() else '', self.act_direction()]
         if d.get('setup') or d.get('title'):
             parts.append(f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}".rstrip(': '))
+        if stage.kind_note(self):
+            parts.append(stage.kind_note(self))
         if d.get('ending'):
             parts.append(f"Where it is heading (not so yet, and not certain: play toward it, never as if it had happened): {d['ending']}")
         if d.get('goal'):

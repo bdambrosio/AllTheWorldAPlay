@@ -31,6 +31,9 @@ LOCATION_FIELD = ('"location": string, // a place named under Places (e.g. its e
                   'from the scene before. Name a part of the day only when what happens in the scene depends on it (a night watch, '
                   'a dawn departure): the play then moves on to the next such time\n'
                   ' "tempo": "calm" | "tense" | "urgent", // urgent: danger or a deadline is on them now, and nobody has time for talk\n'
+                  ' "kind": "confrontation" | "shared job" | "lull" | "confession" | "play", // confrontation: one presses, the other resists. '
+                  'shared job: something has to be done with the hands, and the talk goes on beside it. lull: the pressure is off; they rest, eat, '
+                  'look about, talk of what is not urgent. confession: one tells what they have kept back, or comes near it. play: a game, a joke, a dare\n'
                   ' "business": {"<character name>": ["<action>@<place>"]}, // the physical actions this scene\'s ending depends on, '
                   'as listed under Places (e.g. "drink@Spring2"); {} when it depends on none')
 SCENE_RULES = """Scenes within an act are continuous: each starts where the previous one ended, and when it ended unless its "when" names a later part of the day.
@@ -39,7 +42,10 @@ Give a scene a different location only when the action must move there; the cast
 A scene's title, set-up and ending must fit its "when": a scene called a night watch has "when": "night". When a scene moves the play on, hours pass off stage and the cast is taken to have eaten, drunk and rested as it could: do not spend the scene on that. Move the play on at most once within an act; the clock times you write are not used for this.
 A jump to a distant place belongs at the start of an act.
 A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is listed under business, and is so only if a character does it in that scene.
-Someone the cast list says takes part by radio or phone is in a scene by voice only: never at its place, never handed anything or touched."""
+Someone the cast list says takes part by radio or phone is in a scene by voice only: never at its place, never handed anything or touched.
+Not every scene is a confrontation: people are known by how they work, rest, joke and tell things as much as by how they fight. An act of three or more scenes has at least one of another kind, and after a danger or a hard scene the next is a lull or a shared job.
+Trust, forgiveness, love or an alliance is never an ending as a thing said or agreed. It is a deed that costs the doer something this world keeps track of: the only weapon handed over, sleeping first, eating what the other gathered, telling what was kept back.
+A confrontation ends, in that scene, with something given, taken, found out or refused for good. It never ends with the question put off ("deferred", "later", "tomorrow", "on the road", "not dropped"): what a character will not give is refused there, and the next scene goes on from the refusal, not back to the question."""
 
 
 def here(character):
@@ -383,8 +389,37 @@ def tempo(character):
     return value if value in ('calm', 'tense', 'urgent') else 'calm'
 
 
+# What sort of scene this is, for the actor: every scene was a confrontation ('press her on ...'),
+# played 'on edge' at twenty words a line, so a card's 'chatty, rambling, philosophical when relaxed'
+# was never heard, and nothing was learned of anyone except under questioning.
+KINDS = {'shared job': ("This scene is a shared job: something has to be done with the hands, and the talk goes on beside the work, "
+                        "about it and about other things. Nobody is cornering anybody.", "25 words at most"),
+         'lull': ("This scene is a lull: the pressure is off for now. People rest, eat, look about, talk of what is not urgent and let "
+                  "each other be. Nobody presses or tests anybody; what is learned of the other is learned by the way.",
+                  "40 words at most, as this person talks at ease"),
+         'confession': ("In this scene someone tells what they have kept back, or comes near it and turns away. It is slow: the one "
+                        "telling chooses how much, and the one hearing listens more than asks.", "40 words at most, unhurried"),
+         'play': ("This scene is play: a game, a joke, a dare, a contest with nothing riding on it. It is light; what it shows of each "
+                  "is shown by how they play.", "25 words at most")}
+
+
+def kind(character):
+    """The scene's kind as the plan gave it ('lull', 'shared job', ...), '' for a confrontation, an
+    unknown kind, or whenever a threat is on the character."""
+    scene = character.context.current_scene or {}
+    value = ' '.join(str(scene.get('kind') or '').strip().lower().replace('_', ' ').split())
+    return value if value in KINDS and tempo(character) != 'urgent' else ''
+
+
+def kind_note(character):
+    return KINDS[kind(character)][0] if kind(character) else ''
+
+
 def say_limit(character):
-    """How long a spoken turn may be, for the act prompt's one length rule: by the moment's tempo."""
+    """How long a spoken turn may be, for the act prompt's one length rule: by the scene's kind,
+    and in a confrontation by the moment's tempo."""
+    if kind(character):
+        return KINDS[kind(character)][1]
     return {'urgent': "12 words at most, no explaining, still in the character's own voice",
             'tense': "20 words at most: a sentence or two, as this person talks on edge"}.get(tempo(character), "30 words at most")
 

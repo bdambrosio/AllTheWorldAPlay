@@ -176,6 +176,16 @@ class Screenplay:
         self.facts = facts[:3]
         return self.facts
 
+    def set_past(self, reply, name):
+        """Read '#past <name> | <sentence>' for one person and keep it among the facts, known to
+        that person alone ('of': whose past it is). Returns the sentence, '' when there is none."""
+        for who, text in re.findall(r'^\s*#past\s+([^|\n]+?)\s*\|\s*(.+?)\s*$', reply or '', re.M):
+            text = text.strip(' "')
+            if who.strip().lower() == name.lower() and text and text.lower().rstrip('.') not in ('none', 'nothing', 'n/a', '-'):
+                self.facts = [f for f in self.facts if f.get('of') != name] + [{'text': text, 'known_to': [name], 'open': False, 'of': name}]
+                return text
+        return ''
+
     def facts_note(self):
         """The facts, for the director's own calls (the act as performed, a scene's set-up): never
         for an actor's prompt or a character's own plan."""
@@ -183,7 +193,7 @@ class Screenplay:
             return ''
         return ("What lies behind this play (the director's own; no character knows any of it except as marked, and "
                 "none of it says what anyone will do):\n"
-                + '\n'.join(f"- {f['text']} [known to: {', '.join(f['known_to']) or 'nobody'}"
+                + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f['known_to']) or 'nobody'}"
                              + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in self.facts)
                 + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it.")
 

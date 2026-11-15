@@ -1611,7 +1611,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 """)]
         if opens_act and not survival.config(self):
             return False   # no world to hold an opening scene to
-        planned = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo')}
+        planned = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo', 'kind')}
         # not while a danger is on the cast: it would be left standing, hours behind them
         may_move = self._may_move_on(opens_act) and not getattr(self, 'active_threat', None)
         moving = ('"same" means now, and is right for most scenes. Name a later part of the day only when what the scene is for depends on it '
@@ -2295,7 +2295,7 @@ Each **scene** object must have:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
+ "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 3 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
  }
@@ -2457,6 +2457,7 @@ In performing this integration:
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
 - Facts are what lies behind this play: what you, the director, know to be so, so that everything found or said later fits together. Settle two or three, or none if nothing lies behind this play. Each is ONE thing: either a single thing that happened before the play began (who did what, once, where), or a standing condition of this world, said as a condition. Never a habit ("always", "every time", "whenever"), never what anyone will do or feel in the play, never how the play comes out: the acts are the characters' to make. Use only these people, these places and the kinds of thing this world has. A fact names no person who is not listed above, and turns on nothing this world cannot hold or hand over: what can be owned, given or signed over is what the actions listed at the places below allow, whole and as named (a farm, not a part of one). It says nothing of what can or cannot be done from now on. Say who knows each: names from the characters, or nobody. At most one may be what lies behind the open question (it may be a rule of this world rather than an answer): mark it open, and this episode will not reveal it.
+{{$past_rule}}
 {{$clue_rule}}
 {{$existing}}
 
@@ -2465,6 +2466,7 @@ Respond with these lines only, one sentence each:
 #open what it leaves open
 #last the image or act it should end on
 #fact <one plain sentence> | known to: <names, or nobody> | open: <yes or no>   (one line for each fact; none if nothing lies behind the play)
+{{$past_format}}
 {{$clue_format}}
 </end>
 """)]
@@ -2475,7 +2477,14 @@ Respond with these lines only, one sentence each:
 """ + places + """
 </places>""") if places else ''
         clue_format = ("#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
+        # A person's own past, beside the facts of the plot. (A sketch says 'an uncomfortable history
+        # she would rather not talk about' and nothing settled what it was: asked, she could only
+        # refuse, in every scene, and nothing of her could ever be found out or told.)
+        leads = ', '.join(c.name for c in self.actors)
+        past_rule = (f"- Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from it: plain and particular (what, where, with whom). Say what happened and stop: not what it made of them. It gives a reason for something their description says of them and contradicts nothing in it. People who are not in the play may be in it, unnamed (a brother, an employer). It is not about the open question and is not one of the facts above; it says nothing of what the person will do in the play: it is theirs to keep back or to tell. Write none for a person whose description says they do not remember their past.") if leads else ''
+        past_format = f"#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)" if leads else ''
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
+                              'past_rule': past_rule, 'past_format': past_format,
                               # who each is, and what each wants (the facts are about these people: it was given their drives alone)
                               'characters': '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
                                                       for c in self.actors + self.extras + [n for n in self.npcs if not getattr(n, 'placeholder', False)]),
@@ -2483,7 +2492,7 @@ Respond with these lines only, one sentence each:
                               'existing': (("- The play has already put these in the world. They may serve the episode; do not name another of the same as a clue:\n"
                                             + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
                                            if getattr(self, 'props', None) else '')},
-                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=520) or ''
+                             prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=700) or ''
         echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
         frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
@@ -2497,9 +2506,11 @@ Respond with these lines only, one sentence each:
         self.screenplay.clues = clues[:3]
         people = [c for c in self.actors + self.extras + self.npcs if not getattr(c, 'placeholder', False)]
         self.screenplay.set_facts(reply, [c.name for c in people])
+        for c in self.actors:   # a person's own past stays on its card (get_character_description): its own prompts only
+            c.own_past = self.screenplay.set_past(reply, c.name)
         for fact in self.screenplay.facts:   # who knows one is told it, once and privately
             for c in people:
-                if c.name in fact['known_to']:
+                if c.name in fact['known_to'] and not fact.get('of'):
                     c.add_perceptual_input(f"You know this, and have told no one: {fact['text']}", percept=False, mode='internal')
         trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
         return self.episode
@@ -3228,7 +3239,7 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
 
 ## Current Situation
 {{$current_situation}}
-
+{{$facts}}
 ## Task
 Generate an act-specific central narrative that:
 1. **Focuses the overall question** - Narrows the play-level dramatic question to what THIS act must resolve
@@ -3247,18 +3258,20 @@ A paragraph or two including the following elements:
 3. Act-Specific Character Roles: [for each character]
     - {character_name}: [How their overall role manifests specifically in this act - (5-6 words each) who drives decisions, who creates obstacles, etc.]
 4. Required Scene Types: [for each scene type]
-    - {scene_type_name}: [tension builders, confrontations, forced choices, etc.] plus short description of scene focus (4-5 words)
+    - {scene_type_name}: [a confrontation, a forced choice, a shared job, a lull after pressure, a confession, play: not every scene presses] plus short description of scene focus (4-5 words)
 5. Success Scenario: [What this act accomplishing its focus looks like, in terms of setting up the next act (5-6 words)]
 6. Failure Scenario: [What this act failing at its focus looks like, in terms of setting up the next act (5-6 words)]
+7. Change: [for each character] What is different in this person, not in the plot, by the end of the act: what they hold to as it opens (a belief about themselves or the other, a guard they keep up, a habit of their nature), what the act presses them to give up or to risk, and what that costs them. It goes on from where the acts already played left them, and is shown in something they do that costs them, never in something they say or agree to. (20-25 words each)
 
 Your response should be consistent with the play-level central narrative and the previous acts.
 
 Generate the act-specific framework that will guide scene-level planning.
 
-After the framework, repeat three of its elements on lines of their own, exactly in this form, one #role line for each character:
+After the framework, repeat four of its elements on lines of their own, exactly in this form, one #role line and one #change line for each character:
 #focus <the Central Focus>
 #stakes <the Stakes>
 #role <character name>: <that character's role in this act>
+#change <character name>: <as the act opens ...; by its end ...; at the cost of ...>
 """)]
         # (each character's narrative summary was reset to empty here every act, erasing the
         # record of what had actually happened before the plans that use it)
@@ -3282,16 +3295,22 @@ After the framework, repeat three of its elements on lines of their own, exactly
                                  "previous_scenes_summary": self.screenplay.so_far() or 'None: this is the first act.',   # what happened, not what was planned
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
                                  "act_specific_guidelines": act_guidance[self.screenplay.kind(act_number)],
-                                 "current_situation": self.current_state}, 
-                                 prompt, max_tokens=420, stops=['</end>'], tag='act_central_narrative')
+                                 "current_situation": self.current_state,
+                                 # each person's own past is here: a change in a person has somewhere to come from
+                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note()}\n" if self.screenplay.facts_note() else ''},
+                                 prompt, max_tokens=600, stops=['</end>'], tag='act_central_narrative')
         if response:
             # the tagged lines are what an actor is given (Character.act_direction): the act's focus
             # and stakes and its own role, not the others' roles or the scenes still to come
             find = lambda tag: (hash_utils.find(tag, response) or '').strip()
             act = self.screenplay.act
             act.focus = {'focus': find('focus'), 'stakes': find('stakes'),
-                         'roles': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#role\s+([^:\n]+):\s*(.+)$', response, re.M)}}
-            act.framework = re.sub(r'^\s*#(focus|stakes|role)\b.*$', '', response, flags=re.M).strip()
+                         'roles': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#role\s+([^:\n]+):\s*(.+)$', response, re.M)},
+                         # the change planned in each person: for whoever plans the act's scenes (it is in the
+                         # framework), never for the actor, who would play its end at once
+                         'changes': {n.strip().strip('*'): r.strip() for n, r in re.findall(r'^\s*#change\s+([^:\n]+):\s*(.+)$', response, re.M)}}
+            act.framework = re.sub(r'^\s*#(focus|stakes|role|change)\b.*$', '', response, flags=re.M).strip()
+            trace.event('act_changes', changes=act.focus['changes'])
         return self.act_central_narrative or None
     
     def embed_task(self, task):
@@ -3801,7 +3820,7 @@ Scene format is as follows:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
- "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is)." 
+ "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
  }

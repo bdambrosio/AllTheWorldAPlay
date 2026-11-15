@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from typing import Dict, List, Optional, Tuple
 from sim.cognitive.DialogManager import Dialog
 from utils import hash_utils
@@ -30,6 +31,8 @@ class KnownActor:
         self.relationship: str = self._relationship_base
         self.tensions: List[str] = []
         self.recent_relationship_update: bool = False
+        self.ledger = {k: [] for k in self.LEDGER}   # what stands between the two (update_ledger)
+        self._ledger_from = 0                        # index into the record: what the ledger has read
 
     def to_json(self):
         """Convert KnownActor state to JSON-serializable dict, excluding runtime references"""
@@ -41,7 +44,8 @@ class KnownActor:
             'distance': self.distance,
             'relationship': self.relationship,
             'dialog': self.dialog.to_json() if self.dialog else None,
-            'tensions': self.tensions
+            'tensions': self.tensions,
+            'ledger': self.ledger
         }
     
     @classmethod
@@ -65,6 +69,7 @@ class KnownActor:
         known_actor._relationship_notes = []
         known_actor.relationship = data['relationship']
         known_actor.tensions = data['tensions']
+        known_actor.ledger = {k: list((data.get('ledger') or {}).get(k) or []) for k in cls.LEDGER}
         # Restore dialog if it exists, passing the resolved characters
         if data['dialog']:
             known_actor.dialog = Dialog.from_json(data['dialog'], owner, actor_agh)
@@ -187,31 +192,8 @@ End with:
             return
 
         if self.owner.name != self.actor_agh.name:
-            prompt = [UserMessage(content=f"""Analyze relationship between these characters based on recent interactions.
-Character: 
-{self.owner.character}
-
-Other Character: {self.actor_agh.name}
-
-Previous Relationship Estimate:
-{self.relationship}
-
-Recent Interactions:
-{chr(10).join(f"- {text}" for text in char_memories)}
-
-Create a short (6-10 word) update to the relationship estimate above that captures any changes in:
-1. Character's perception of the other character's nature
-2. Character's current emotional state towards the other character
-3. Character's trust level for the other character - are their goals and drives aligned with yours, will they act in your interest?
-4. Any recent changes in their relationship with you?
-
-Respond with a concise change in the relationship estimate of up to 10 words. Do not include any, reasoning, introductory, explanatory or markdown formatting.
-If there are no changes, no response is needed.
-End with:
-</end>
-""")]
-        else:
-            prompt = [UserMessage(content=f"""Analyze self-model of this character based on recent thoughts.
+            return self.update_ledger(char_memories)
+        prompt = [UserMessage(content=f"""Analyze self-model of this character based on recent thoughts.
 Character: 
 {self.owner.character}
 
@@ -239,6 +221,83 @@ End with:
             self.recent_relationship_update = True
 
     MAX_RELATIONSHIP_NOTES = 5
+
+    # What stands between two people, kept in parts. (The short update asked for ten words on
+    # 'perception, emotional state, trust level', and five of them stacked up as 'trust slightly
+    # strained', 'trust fraying', 'trust strained': one dial, read by an actor who then had nothing
+    # to say to the other but a demand for proof. A relationship is also what each has let the
+    # other see, what is owed, what is wanted and unsaid, and what the two now have between them.)
+    LEDGER = {'shown': "What you have let {other} see of you",
+              'seen': "What {other} has let you see of {them}",
+              'owed': "Owed between you",
+              'wants': "What you want from {other} and have not said",
+              'shared': "Yours between the two of you",
+              'stands': "Where you stand with {other} now"}
+    LEDGER_KEEP = {'shown': 4, 'seen': 4, 'owed': 4, 'wants': 1, 'shared': 4, 'stands': 1}
+
+    LEDGER_PROMPT = """Two people in a play have just had the exchange below. Keep {{$owner}}'s account of what stands between {{$owner}} and {{$other}}, as {{$owner}} knows it.
+
+<who_{{$owner}}_is>
+{{$character}}
+</who_{{$owner}}_is>
+
+<the_account_so_far>
+{{$ledger}}
+</the_account_so_far>
+
+<what_has_just_passed>
+{{$lines}}
+</what_has_just_passed>
+
+Add what this exchange adds, and only what its lines show. Most exchanges add one or two lines; a line that would repeat the account so far is left out.
+- shown: something of {{$owner}}'s own self that {{$owner}} let {{$other}} see or hear: a fear, a memory, a liking, a weakness, a thing {{$owner}} is good at. Not a plan, a demand or a question.
+- seen: the same of {{$other}}, as {{$owner}} saw or heard it.
+- owed: a debt either way, named with who owes whom: a thing given or done for the other, a promise made, a wrong done and not put right.
+- wants: the one thing {{$owner}} now wants from {{$other}} and has not asked for aloud: not a thing to be handed over or a fact to be told, but something of the other person (to be believed, to be thanked, to be let off, to be stayed with).
+- shared: something that happened and is now theirs between the two: a danger or a job come through together, a thing given and kept, a joke about something that took place. Never a word, phrase or image either of them used: wording is not recorded here.
+- stands: how {{$owner}} now stands with {{$other}}, in {{$owner}}'s own terms, twelve words at most. It replaces the last one.
+
+Each line is one plain statement of ten words or so, in the second person to {{$owner}} ("You told him about the yellow counter"). Give only the lines that are new, each on a line of its own starting with its tag; give #stands always:
+#shown ...
+#seen ...
+#owed ...
+#wants ...
+#shared ...
+#stands ...
+</end>
+"""
+
+    def update_ledger(self, lines):
+        """After an exchange: add to the ledger what it showed. lines: the exchange as text lines,
+        used when the record has nothing new that the owner witnessed."""
+        owner, other = self.owner, self.actor_agh
+        context = getattr(owner, 'context', None)
+        if context is not None and hasattr(context, 'witnessed_entries'):
+            entries, self._ledger_from = context.witnessed_entries(owner, self._ledger_from)
+            seen = [context.entry_line(e) for e in entries][-30:]
+            lines = seen or lines
+        if not lines:
+            return
+        reply = owner.llm.ask({'owner': owner.name, 'other': other.name, 'character': owner.character,
+                               'ledger': self.ledger_text() or 'Nothing yet: they have only just met.',
+                               'lines': '\n'.join(lines)},
+                              [UserMessage(content=self.LEDGER_PROMPT)], tag='KnownActor.update_ledger', max_tokens=220, stops=['</end>']) or ''
+        added = {}
+        for key, text in re.findall(r'^\s*#(' + '|'.join(self.LEDGER) + r')\s+(.+?)\s*$', reply, re.M):
+            text = text.strip(' ."')
+            if text and not re.match(r'(none|nothing|n/a|no\b|\.\.\.|-)', text.lower()) and text not in self.ledger[key]:
+                self.ledger[key] = (self.ledger[key] + [text])[-self.LEDGER_KEEP[key]:]
+                added.setdefault(key, []).append(text)
+        if added:
+            self.recent_relationship_update = True
+            trace.event('ledger', owner=owner.name, other=other.name, added=added)
+
+    def ledger_text(self):
+        """The ledger as lines for a prompt, in the owner's second person; '' when it is empty."""
+        other = self.actor_agh
+        them = {'female': 'herself', 'male': 'himself'}.get(str(getattr(other, 'gender', '') or '').lower(), 'themselves')
+        return '\n'.join(f"{head.format(other=other.name, them=them)}: {'; '.join(self.ledger[key])}."
+                         for key, head in self.LEDGER.items() if self.ledger.get(key))
 
     def _add_relationship_note(self, note):
         self._relationship_notes.append(note)
@@ -288,6 +347,7 @@ End with:
         except Exception:
             pass
         lines.append(self.relationship)
+        lines.append(self.ledger_text())
         if self.goal:
             lines.append(f"What you take them to be after: {self.goal}")
         return '\n'.join(l for l in lines if l)
