@@ -447,8 +447,10 @@ The act's central narrative, for reference:
             act_id = act['act_number']
             if not response:
                 return None
-            response = response.replace("```json", "").replace("```", "").strip()
-            updated_act = json.loads(response)
+            # read tolerantly: a stray half fence or text after the JSON broke the plain parse
+            updated_act = json_reply.parse(response)
+            if not isinstance(updated_act, dict):
+                updated_act = json.loads(response.replace("```json", "").replace("```", "").strip())
         except Exception as e:
             print(f'Error parsing updated act: {e}')
             logger.error(f'Error parsing updated act: {e}')

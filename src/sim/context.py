@@ -2357,7 +2357,9 @@ In performing this integration:
                 continue
             response = response.replace("```json", "").replace("```", "").strip()
             try:
-                act = json.loads(response)
+                act = json_reply.parse(response)   # tolerant of text after the JSON
+                if not isinstance(act, dict):
+                    act = json.loads(response)
             except Exception as e:
                 print(f'Error parsing integrated act: {e}')
                 act = self.repair_json(response, e)
@@ -2620,7 +2622,14 @@ End your response with: </end>"""
                 for character in players:
                     acts = (character.plan or {}).get('acts') or []
                     outline = acts[number - 1] if number <= len(acts) else {"act_number": number, "act_title": "Closing" if closing else f"Act {number}"}
-                    drafts.append([character, character.replan_narrative_act(outline, focus, post_state, kind=record.kind)])
+                    draft = character.replan_narrative_act(outline, focus, post_state, kind=record.kind)
+                    # a draft that could not be written: the character's own outline stands for it, or
+                    # it is left out (it was passed on as None, and the play stopped between acts)
+                    draft = draft or (outline if outline.get('scenes') else None)
+                    if draft is None:
+                        trace.event('act_draft_missing', act=number, character=character.name)
+                        continue
+                    drafts.append([character, draft])
                 if not drafts:
                     stop(f'no character has a plan for act {number}')
                     return

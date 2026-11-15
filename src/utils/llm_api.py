@@ -602,6 +602,10 @@ class LLM():
                 self._record_call(tag, start, response)
                 start = time.time()
                 options.max_tokens = 2 * max_tokens + 200
+                if not response.strip() and getattr(options, 'reasoning', None) in ('high', 'medium'):
+                    # all of it went to thinking: more room buys more thinking (Francoise's act draft
+                    # thought 4400 tokens, then 6000, and wrote nothing). Asked to think less, it answers.
+                    options.reasoning = 'low'
                 print(f'{tag} cut off at {max_tokens} tokens, asked again...', end='')
                 response = self.run_request(input, prompt_msgs, options, log=log, trace=trace)
             elif isinstance(response, str) and not response.strip() and tag not in MAY_ANSWER_EMPTY:
