@@ -755,6 +755,42 @@ def whereabouts_of(context, name):
     return ''
 
 
+# --------------------------------------------------------------------------- written things
+# A letter, a deed, a tally: what it says is a fact of the world, settled once, not made up by
+# whoever reads it out. (The tally in laTerre was 'the signed field tally' and nothing more: the
+# father said Fouan wanted his north field, the daughter read that her hand and Fouan's north
+# field went to the Marquarts, and the deal she read gave the son what he wanted.) The world's
+# narrators and checks are told it; a character knows it once it has read it or been told.
+def write(context, name, text):
+    """Settle what a written thing says."""
+    name = re.sub(r'^(a|an|the|some)\s+', '', (name or '').strip().lower())[:40]
+    if name and (text or '').strip():
+        context.__dict__.setdefault('writings', {})[name] = text.strip()
+        trace.event('writing', name=name, says=text.strip()[:300])
+
+
+def writing_of(context, name):
+    """What a written thing says, or ''. Matched as whereabouts_of matches a thing."""
+    name = re.sub(r'^(a|an|the|some)\s+', '', (name or '').strip().lower())[:40]
+    for key, text in (getattr(context, 'writings', None) or {}).items():
+        if key == name or key.endswith(' ' + name) or name.endswith(' ' + key):
+            return text
+    return ''
+
+
+def writings_note(context, xy=None, people=()):
+    """What the written things lying near `xy` (all, if None) or held by `people` say, a line each."""
+    names = [p['name'] for p in getattr(context, 'props', []) if xy is None or _distance(p['at'], xy) <= CO_PRESENT_TILES]
+    names += [i for c in people if getattr(c, 'body', None) is not None for i in c.body.inventory]
+    seen, lines = set(), []
+    for name in names:
+        text = writing_of(context, name)
+        if text and name not in seen:
+            seen.add(name)
+            lines.append(f"{name}: it says: {text}")
+    return '\n'.join(lines)
+
+
 def things_note(context, xy=None, people=()):
     """Where the things of the play are now, for any prompt that writes about them: each thing
     lying loose, with its place and where in it (prop spot), and what each of `people` carries.
@@ -791,12 +827,14 @@ def searchable(context, res):
                for a in (config(context) or {}).get('actions', []))
 
 
-def add_thing(context, name, holder=None, at=None, hidden=False):
+def add_thing(context, name, holder=None, at=None, hidden=False, says=None):
     """A thing comes into the world: in `holder`'s hands, or lying at `at` (hidden: not seen
-    until someone searches there). Returns the fact."""
+    until someone searches there). says: what it says, if it is a written thing (write). Returns the fact."""
     name = re.sub(r'^(a|an|the|some)\s+', '', name.strip().lower())[:40]
     if not name:
         return ''
+    if says:
+        write(context, name, says)
     if holder is not None and getattr(holder, 'body', None) is not None:
         if name not in holder.body.inventory:
             holder.body.inventory.append(name)

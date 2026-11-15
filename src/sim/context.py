@@ -966,6 +966,12 @@ End your response with:
             updates = ''
         return updates
     
+    def _writings_line(self, actor):
+        """For the look and deed narrators: what the written things here say, so that a reading
+        is told truly ('' when there are none)."""
+        w = survival.writings_note(self, stage.here(actor), [actor] + list(actor.bystanders()))
+        return (f"What the written things here say (the world's record; tell it truly when one is read): {w}\n") if w else ''
+
     async def look(self, actor, act):
         """ This is the world determining the effects of an actor action"""
         action = act.action
@@ -992,6 +998,7 @@ End your response with:
 {{$bodies}}
 What each carries: {{$holdings}}
 </the_people_there>
+{{$writings}}
 Everyone in the play, and whether each is he or she: {{$cast}}.
 It is now {{$clock}}. Danger here now: {{$danger}}.
 
@@ -1017,6 +1024,7 @@ End your response with:
         inputs = {"name": actor.name, "action": action, "local_map": local_map, "toward": f' (toward {toward})' if toward else '',
                   "history": '\n'.join(self.witnessed(actor, n=12)) or 'nothing yet',
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
+                  "writings": self._writings_line(actor),
                   "danger": record.danger(actor) or 'none', "cast": record.cast(self),
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked'}
@@ -1071,6 +1079,7 @@ Present: {{$present}}. Nobody else is here. Everyone in the play, and whether ea
 Their bodies, as they are: {{$bodies}}
 What each carries: {{$holdings}}
 </the_people_there>
+{{$writings}}
 It is now {{$clock}}; light, dark and the time of day must fit that. Danger here now: {{$danger}}. Left at places nearby that have been drawn on: {{$stock}}.
 
 <what_has_happened_here_lately>
@@ -1104,6 +1113,7 @@ End your response with:
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
                   "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
+                  "writings": self._writings_line(actor),
                   "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
                   "danger": record.danger(actor) or 'none',
                   "events": '\n'.join(self.witnessed(actor, n=8)) or 'nothing yet',   # what happened where the actor is
@@ -1610,7 +1620,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
-                  'things': survival.things_note(self, people=cast) or 'nothing tracked',
+                  'things': '\n'.join(x for x in (survival.things_note(self, people=cast), survival.writings_note(self, people=cast)) if x) or 'nothing tracked',
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
                                         for e in getattr(self, 'last_scene_exits', []) if not any(e['who'] in (o.get('with') or []) for o in getattr(self, 'last_scene_exits', []) if o is not e and o['time'] <= e['time']))
@@ -2441,7 +2451,7 @@ Respond with these lines only, one sentence each:
 <places>
 """ + places + """
 </places>""") if places else ''
-        clue_format = "#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder>   (one line for each clue)" if places else ''
+        clue_format = ("#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors),
                               'clue_rule': clue_rule, 'clue_format': clue_format},
@@ -2450,8 +2460,13 @@ Respond with these lines only, one sentence each:
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
         frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
         self.episode = frame if frame['settles'] and frame['open'] else {}
-        self.screenplay.clues = [{'thing': thing.strip(' ."\''), 'place': place.strip(), 'touches': touches.strip()}
-                                 for thing, place, touches in re.findall(r'^\s*#clue\s+([^|\n]+)\|([^|\n]+)\|\s*(.+?)\s*$', reply, re.M)][:3]
+        clues = []
+        for line in re.findall(r'^\s*#clue\s+(.+?)\s*$', reply, re.M):
+            fields = [f.strip() for f in line.split('|')]
+            if len(fields) >= 3 and fields[0] and fields[1]:
+                says = fields[3].strip(' "') if len(fields) > 3 and fields[3].strip(' "').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
+                clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {})})
+        self.screenplay.clues = clues[:3]
         trace.event('episode', **self.episode, clues=self.screenplay.clues)
         return self.episode
 
@@ -2473,7 +2488,7 @@ Respond with these lines only, one sentence each:
                 continue
             clue['place'] = spot[1]
             clue['hidden'] = survival.searchable(self, res)
-            if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden']):
+            if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden'], says=clue.get('says')):
                 placed.append(clue)
         self.screenplay.clues = placed
         trace.event('clues_placed', clues=placed)
@@ -2587,7 +2602,8 @@ End your response with: </end>"""
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
                 + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                 + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
-                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else ''))
+                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else '')
+                + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.actors + self.extras)) else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the

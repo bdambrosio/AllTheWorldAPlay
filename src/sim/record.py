@@ -32,7 +32,7 @@ from utils.Messages import UserMessage
 from utils import json_reply
 
 NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed at, spoken of
-KINDS = ('item', 'holding', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender')
+KINDS = ('item', 'holding', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender', 'writing')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
 
@@ -63,6 +63,7 @@ A statement is unsupported when it is one of these:
 - time: light, dark or a time of day that does not fit Time. Words that do fit it are supported, in any form ('early morning light' at nine in the morning).
 - stock: how much is left somewhere, other than as Stock says.
 - gender: someone called he or she, him or her, sir or madam, a man or a woman, against what Cast says they are.
+- writing: what a written thing says, read out, quoted or told, other than what Writings records it says (another promise, name, sum or term).
 - outcome: only when Settled refuses the action (it says 'cannot', 'must move there first', 'still has it', 'nothing to') and the narration has it done all the same; or Settled has it done and the narration has it fail. When Settled is 'none' there is no outcome claim: one character touching, pushing, pinning, gripping or striking another, or handling a thing it holds, is allowed.
 Everything the record does not keep is allowed: the ground, plants, weather that fits the time, the clothes a person wears, sounds, gestures, how a thing looks or feels, whatever the action itself says the character does with its own body, and everything of the mind: what anyone thinks, feels, fears, wants, knows, remembers or has forgotten is never a 'condition'.
 
@@ -71,7 +72,7 @@ What Settled says happened is supported, in the narration's own words (he bites 
 Most narration has nothing unsupported. When you are not sure, it is supported.
 
 Respond ONLY with JSON, no prose, no markdown, in this shape:
-{"findings": [{"kind": "<item, holding, condition, presence, place, time, stock, outcome or gender>", "words": "<the narration's own words, exactly>"}]}
+{"findings": [{"kind": "<item, holding, condition, presence, place, time, stock, outcome, gender or writing>", "words": "<the narration's own words, exactly>"}]}
 with "findings": [] when nothing is unsupported.
 </end>
 """
@@ -178,6 +179,8 @@ def of(context, actor, people=None):
         'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
         'Lying here, for anyone present to take or use: ' + (', '.join(p['name'] for p in survival.lying(context, at)) or 'nothing'),
+        *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
+           + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
         'Stock: ' + (survival.stock(actor) or 'nothing has been used up'),
         'Danger: ' + (danger(actor) or 'none'),
     ])
@@ -549,9 +552,10 @@ Find only statements of these kinds. The first four are said of now:
 - body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested). Saying what Bodies does show, in any words ("my throat's dry" when thirsty), is no finding; fear, relief and other states of mind are not the body.
 - where: {{$name}} says it, or someone present, is now at a place other than where Present puts them. Naming a place, pointing at it, heading for it or talking about going there is not being there.
 - time: {{$name}} speaks of the hour, the light or the part of the day as it is now, against Time: a greeting counts ("Morning" said at night). Speaking of a time to come ("before dark", "tonight", "tomorrow") is no finding, nor is a colour or a thing ("the dark fruit").
-And two that may be about anyone in the play, present or not:
+And three that may be about anyone in the play, present or not:
 - gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
 - knows: the line states, uses or takes for granted something listed under does_not_know (a name not yet heard, another's condition or purpose not yet shown). Asking about it, guessing at it and saying so, or suspecting it aloud is not knowing it. Nor is it a finding once the thing has been shown or said in {{$name}}'s presence (see what {{$name}} has heard, and the record): it is known from then on, and a name is known in whatever form it was given.
+- writing: {{$name}} says what a written thing says (read it out, quotes it, tells its terms) other than what Writings records. Guessing at what it says, or saying it has not read it, is no finding; nor is a deliberate lie marked as one.
 Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water"). When you are not sure, it is no finding.
 
 Also say whether the line hands a thing the speaker really has (in Holdings) to someone present, in so many words ("Here, take the branch"), and whether it tells its hearers what someone is called (the speaker's own name or another's; a short form such as 'Sam' counts).
@@ -591,7 +595,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender', 'knows')
+SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender', 'knows', 'writing')
 
 
 def speech_claims(context, speaker, found):
