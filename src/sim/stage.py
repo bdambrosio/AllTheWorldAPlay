@@ -233,7 +233,7 @@ def set_scene(context, scene, characters, opens_act):
     somewhere else, it is played where the characters who were in the previous scene now are,
     and newcomers join them there. (It was played where its first-named character stood, so a
     scene that brought Francoise to Jean walked Jean to Francoise's farm instead.) With nobody
-    carried over, it is the previous scene's place; in a first scene, where its first character is.
+    carried over, it is where its own first character (there in person) is.
     A scene that opens an act puts its cast in place; any other scene has them walk, and the
     clock moves on by the longest walk."""
     if not characters:
@@ -243,7 +243,9 @@ def set_scene(context, scene, characters, opens_act):
     # the scene is where those there in person are, not where a voice on the radio is
     carried = [c for c in carried if not (getattr(c, 'remote', None) or '').strip()] or carried
     first = next((c for c in characters if not (getattr(c, 'remote', None) or '').strip()), characters[0])
-    anchor = here(carried[0]) if carried else previous['xy'] or here(first)
+    # with nobody carried over, the scene is where its own cast is ('same' sent a scene set in
+    # Fouan's kitchen, with Fouan and his daughter in it, to the farm the last scene was played at)
+    anchor = here(carried[0]) if carried else here(first)
     target = resolve(context, scene.get('location'), anchor)
     if target is None:
         # 'same' after the cast walked out for a named place: the scene is where they went

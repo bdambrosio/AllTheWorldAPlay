@@ -21,7 +21,6 @@ J = NarrativeCharacter("Jean", """Jean Marquart, a hardworking young unmarried p
 You left military service to return to the family farm.
 You are strong, honest and committed to working the land, but have a quick temper.
 You hope to inherit a share of the family farm and make a living as a farmer.
-But your father will not divide the farm while he lives: you have no land of your own, and without land no father in the village will give you his daughter.
 You speak plainly and directly, in English with a French peasant's turns of phrase, as a volatile 19th-century peasant speaks to an acquaintance.
 Your name is Jean.""", server_name=server_name)
 J.drives = [Drive("maintaining and working the family farm"),
@@ -34,7 +33,6 @@ F = NarrativeCharacter("Francoise", """Francoise Fouan, an attractive unmarried 
 You are hardworking and stoic, accustomed to the unending labor required on a farm.
 You conceal your feelings and speak carefully, knowing every word will be gossiped about in the village.
 You dream of marrying and having a farm of your own to manage one day.
-Your father keeps his papers to himself, and you do not know what he has signed for your future.
 You speak carefully, in English with a French peasant's turns of phrase, as a 19th-century young woman speaks to an acquaintance.
 Your name is Francoise.""", server_name=server_name)
 F.drives = [Drive("finding a good husband to marry, gaining status and security"),
@@ -56,28 +54,17 @@ W.image_style = 'Watercolor painting in soft pastel tones, loose brushwork, 19th
 J.mapAgent.move_to_resource('MarquartFarm')
 # each farm belongs to the father (an NPC), not to the '<Farm>_owner' placeholder the map creates
 # ... and each father holds the deed to his farm: it passes only when he signs it over, both present
-# The bargain the play turns on is the play's to settle (an episode plan that only named 'the
-# fathers' bargaining' left the actors to make up its terms, and the terms they made up gave Jean
-# what he wanted): Marquart will not divide his farm and covets Fouan's north field; Fouan has
-# signed Francoise and that field to Buteau, a neighbour with land, and told her nothing.
-W.set_resource_owner('MarquartFarm', 'Marquart', "Marquart, an ageing peasant farmer and a man, Jean's father, owner of MarquartFarm. "
-                     "You will not divide your farm while you live: Jean gets no share until you are in the ground. "
-                     "You covet the Fouan north field, which borders your land, and would give Jean a strip of his own at once "
-                     "if his marriage brought that field to your farm. You keep these thoughts to yourself."
+W.set_resource_owner('MarquartFarm', 'Marquart', "Marquart, an ageing peasant farmer and a man, Jean's father, owner of MarquartFarm"
                      ).body.inventory.append('MarquartFarm deed')
 W.reference_manager.declare_relationship('Marquart', 'father of', 'Jean', 'child_of')
 J.look()
 F.mapAgent.move_to_resource('FouanFarm')
-W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer and a man, Francoise's father, owner of FouanFarm. "
-                     "You fear for your old age. Yesterday you signed a tally with Buteau, a neighbour who has land of his own: "
-                     "Francoise's hand in marriage after the harvest, with your north field as her dowry. You have not told Francoise. "
-                     "Marquart has hinted that he wants that field too."
+W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer and a man, Francoise's father, owner of FouanFarm"
                      ).body.inventory.append('FouanFarm deed')
 # what the tally says is settled here, once (survival.write): read aloud, it says this and nothing else
 W.props = getattr(W, 'props', [])
 survival.add_thing(W, 'signed tally', at=W.map.resource_registry['FouanFarm']['location'],
-                   says="Signed by Fouan and Buteau: Francoise Fouan's hand in marriage to Buteau after the harvest, "
-                        "with the Fouan north field as her dowry.")
+                   says="Signed by Fouan: Francoise Fouan's hand is promised in marriage after the harvest.")
 next(p for p in W.props if p['name'] == 'signed tally')['spot'] = 'on the kitchen table, under the lamp'
 W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'child_of')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", mode='internal')

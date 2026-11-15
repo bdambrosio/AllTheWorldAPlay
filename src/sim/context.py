@@ -2026,6 +2026,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             wrapup += f" Assessed outcome: {true_outcomes.replace(chr(10), '; ')}."
         self.current_scene['wrapup'] = wrapup
         self.act_scene_wrapups.append(wrapup)
+        # who was in it: a character is told the wrap-ups of its own scenes only (record.seen_by)
+        self.__dict__.setdefault('wrapup_casts', {})[wrapup] = {c.name for c in characters_in_scene}
         self.current_state += '\n' + wrapup
         # what happened is the characters' to remember; what the director judged it came to is not
         lived = wrapup.split(' Assessed outcome:')[0]
@@ -2450,6 +2452,7 @@ In performing this integration:
 - What it leaves open is a larger question this episode cannot answer (how they came to be here, what this place is, what lies beyond it). It may be touched on; it is not answered, and nobody pretends it has been.
 - The last image is what the audience is left looking at: one act or picture that shows what was settled without anyone saying it, with the open question still standing behind it.
 {{$clue_rule}}
+{{$existing}}
 
 Respond with these lines only, one sentence each:
 #settles what this episode settles
@@ -2467,7 +2470,10 @@ Respond with these lines only, one sentence each:
         clue_format = ("#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'characters': '\n'.join(f"{c.name}: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in self.actors),
-                              'clue_rule': clue_rule, 'clue_format': clue_format},
+                              'clue_rule': clue_rule, 'clue_format': clue_format,
+                              'existing': (("- The play has already put these in the world. They may serve the episode; do not name another of the same as a clue:\n"
+                                            + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
+                                           if getattr(self, 'props', None) else '')},
                              prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=340) or ''
         echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
@@ -2714,6 +2720,7 @@ Rules:
 - An animal, a person or a danger did not appear unless the record shows it appearing. Nobody is hurt, healed, fed, armed or dead unless what happened or the bodies say so.
 - Then add what the record shows that matters and the plan did not foresee: a choice made, a thing handed over or refused, a parting, an injury, something admitted.
 - A line written between dots (...like this...) is a private thought: it shows what someone thinks, not that anything happened.
+- In what_happened, 'X does something -> result' gives the deed in the actor's own words, then what came of it. The result is what happened: where it says the deed failed, found nothing or the thing was not there, the deed is an attempt, and what it set out to do (read, take, find, open) did not happen.
 - A claim in parts happened only if every part did: "she leaves at dawn, he stays behind" did not happen if they left together, or if nobody left.
 - What someone says shows only that it was said. "I found it in the woods" is an outcome as "she says she found it in the woods"; where she found it is what happened shows. Pretending (a feigned limp) does not undo what the bodies show.
 - Who left, who went together and who stayed are read from who_left_and_where_they_are, not from the lines.

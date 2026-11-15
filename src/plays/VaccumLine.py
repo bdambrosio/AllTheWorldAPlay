@@ -126,11 +126,6 @@ try:
     # she is welding the line as the play opens: the torch is the play's, not left to equip_cast
     # (which gave it in one run and not the next, and the world then told her she had no torch)
     Jade.body.inventory.append('welding torch')
-    # suit air runs down outside only: the Commander is in the pressurised airlock, Novak on Earth
-    # (neither was sheltered, and Novak, on Earth, was given 'suit air past half')
-    for inside in (Cmdr, Novak):
-        inside.body.sheltered = True
-        inside.body.levels['oxygen'] = 0.0
 except Exception:
     pass
 

@@ -2815,7 +2815,7 @@ End your response with:
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             # own view of the scene only: the full scene JSON revealed the other character's goal
             "scene": f"\n{scene_notes}\n" if scene_notes else '',
-            "here_and_now": self.physical_context(),
+            "here_and_now": self.physical_context() + self._overheard(from_actor),
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
         # The line ends where anything that is not the line begins. (One model closed its
@@ -3313,6 +3313,15 @@ End your response with:
             parts.append(f"What {self.name} does not know (it is found out in the scene, or not at all):\n" + '\n'.join(f'- {u}' for u in missing))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
+
+    def _overheard(self, other):
+        """For a reply to `other`: what anyone else has lately said in this character's hearing
+        (the talk with `other` is in the prompt's own block). In a scene of three, the reply to
+        one knew nothing of what the third had just said."""
+        context = self.context
+        rows = [e for e in getattr(context, 'record_entries', [])[-30:] if e['kind'] == 'speech' and self.name in e['witnesses']
+                and e['doer'] not in (self.name, other.name)][-4:]
+        return ('\nAlso said in your hearing:\n' + '\n'.join(context.entry_line(e) for e in rows)) if rows else ''
 
     def physical_context(self, events=True):
         """Where the character is, its body, recent physical events, and what it could do here.

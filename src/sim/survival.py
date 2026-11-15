@@ -778,6 +778,12 @@ def writing_of(context, name):
     return ''
 
 
+def read_by(context, character):
+    """What the written things `character` has read say, a line each ('' if none)."""
+    return '\n'.join(f"{name}: it says: {writing_of(context, name)}"
+                     for name, who in (getattr(context, 'readers', None) or {}).items() if character.name in who)
+
+
 def writings_note(context, xy=None, people=()):
     """What the written things lying near `xy` (all, if None) or held by `people` say, a line each."""
     # at a place: only what is in sight there (a narrator told what a still-hidden paper says would read it out);
@@ -895,7 +901,8 @@ def change_body(character, need, worse, size):
 # the ground. 'Samantha takes the shoe from Joe's hands' matched none of the world's actions it
 # was offered and was settled as searching the hut; a stick was told as handed over, twice,
 # while the world kept it where it was.)
-PROP_GLOSS = {'give': "puts it in {other}'s hands", 'offer': 'offers or shows it; {other} may then take it',
+PROP_GLOSS = {'read': 'a written thing, here or in hand: you learn what it says',
+              'give': "puts it in {other}'s hands", 'offer': 'offers or shows it; {other} may then take it',
               'share': '{other} has it too and you keep it; when either of you uses it up, it is used up for both, and does both good',
               'put down': 'leaves it lying here', 'take': 'it is lying here',
               'take from': '{other} is holding it: it comes away only if {other} has held it out'}
@@ -921,6 +928,9 @@ def prop_offers(character):
         out[f'put down {item}'] = ('put down', item, None)
     for prop in lying(context, _here(character)):
         out.setdefault(f"take {prop['name']}", ('take', prop['name'], None))
+    for name in list(dict.fromkeys(body.inventory)) + [p['name'] for p in lying(context, _here(character))]:
+        if writing_of(context, name):
+            out[f'read {name}'] = ('read', name, None)
     for other in near:
         for item in dict.fromkeys(other.body.inventory):
             if not item.startswith(private):
@@ -960,6 +970,13 @@ def _prop_do(context, character, kind, item, other):
             held_out.append((item, character.name, other.name))
         fact = f"{character.name} holds out the {item} to {other.name}; {character.name} still has it."
         _record(character, {'name': 'hold out', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
+    elif kind == 'read' and writing_of(context, item):
+        # the reader knows it from now on (read_by); the words are the reader's own, not the room's:
+        # they go to its memory, and the record says only that it read
+        context.__dict__.setdefault('readers', {}).setdefault(item, set()).add(character.name)
+        character.add_perceptual_input(f"You read the {item}. It says: {writing_of(context, item)}", percept=False, mode='internal')
+        fact = f"{character.name} reads the {item}."
+        _record(character, {'name': 'read', 'category': 'explore'}, fact, 'model', applied=True)
     elif kind == 'put down' and item in body.inventory:
         body.inventory.remove(item)
         forget(character)

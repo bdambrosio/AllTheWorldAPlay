@@ -89,7 +89,10 @@ def seen_by(character):
     opening = '' if getattr(context, '_opening_done', False) else context.initial_state.strip() + '\n\n'
     if not survival.config(context):
         return getattr(context, '_state_base', '') or context.initial_state
-    lately = ' '.join(w.split(' Assessed outcome:')[0] for w in getattr(context, 'act_scene_wrapups', [])[-2:])
+    # the scenes this character was in (it was told, 'as you can see for yourself', what happened in scenes it was not in)
+    casts = getattr(context, 'wrapup_casts', {})
+    own = [w for w in getattr(context, 'act_scene_wrapups', []) if character.name in casts.get(w, {character.name})]
+    lately = ' '.join(w.split(' Assessed outcome:')[0] for w in own[-2:])
     return opening + situation(context, lately, viewer=character)
 
 
@@ -643,6 +646,9 @@ def speech(context, speaker, line, listener=None):
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
     unknown = '\n'.join(f'- {m}' for m in missing) or 'nothing listed'
     heard = _heard(speaker, listener)
+    read = survival.read_by(context, speaker)
+    if read and 'Writings' not in about:
+        about += '\nWritings (what the written things the speaker has read say): ' + read.replace('\n', '; ')
     reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
                             tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=200)
     found = json_reply.parse(reply)

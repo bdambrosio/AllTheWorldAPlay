@@ -27,7 +27,7 @@ What {name} was last doing:
 What {name} saw, heard, did, thought and was told, oldest first:
 {lines}
 
-Tell only what the lines above say happened. Add no event, place, meal, sleep, sight or words that they do not give; where they skip time, say only that time passed. Keep what {name} chose and why, where the lines say it.
+A line 'X does something -> result' gives the deed and what came of it; where the result says it failed or found nothing, or the line is marked a try, the thing was not done (she did not read a paper the result says was not there). Tell only what the lines above say happened. Add no event, place, meal, sleep, sight or words that they do not give; where they skip time, say only that time passed. Keep what {name} chose and why, where the lines say it.
 Use about as many words as the lines carry: a sentence or two for one or two lines, and never more than 150 words. When there is more than that holds, keep what changed things: what was found, given, decided or said that mattered, and leave out the rest.
 Respond with the account only.
 End with:
@@ -138,7 +138,12 @@ class MemoryConsolidator:
     def _create_semantic_abstraction(self, memory: StructuredMemory, cluster: SemanticCluster, current_time: datetime):
         """Create abstraction from semantic cluster"""
         cluster_memories = cluster.items
-        
+        # a cluster already summarised is not summarised again (the test came after the call: of 112
+        # summaries asked for in a play, 80 were thrown away)
+        ids = {mem.memory_id for mem in cluster_memories}
+        if ids and any(len(ids & set(existing.instances)) / len(ids) > 0.5 for existing in memory.abstract_memories):
+            return
+
         # Generate semantic summary using LLM
         memory_texts = [mem.to_string() for mem in cluster_memories]
         
