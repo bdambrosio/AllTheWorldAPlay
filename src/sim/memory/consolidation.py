@@ -341,8 +341,8 @@ End your response with:
         context = getattr(self.owner, 'context', None) or getattr(self, 'context', None)
         if context is not None and hasattr(context, 'record_entries'):
             name = self.owner.name
-            rows += [(e['time'], context.entry_line(e)) for e in context.record_entries
-                     if name in e['witnesses'] and e['time'] >= since]
+            rows += [(k['time'], context.entry_line(k)) for k in (context._kept(e) for e in context.record_entries
+                                                                   if name in e['witnesses'] and e['time'] >= since) if k]
         seen, out = set(), []
         for _, text in sorted(rows, key=lambda r: r[0]):   # once each: a memory and the abstraction standing for it read the same
             key = ' '.join(text.split()).lower()

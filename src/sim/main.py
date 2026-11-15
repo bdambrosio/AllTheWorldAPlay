@@ -63,9 +63,26 @@ app.add_middleware(
 sessions: Dict[str, int] = {}
 
 class WebSocketManager:
+    """Sends what the engine reports to every connected page. (There was one queue, read by
+    whichever connection got there first: with a second connection open, a script driving the
+    play or another tab, each saw about half the lines, and a watched scene read as one
+    character speaking three times running.)"""
+    WAITING = 500   # messages kept while nobody is connected, for the next page to connect
+
     def __init__(self):
         self._lock = asyncio.Lock()
-        self._message_queue = asyncio.Queue()
+        self._queues = {}     # websocket -> the messages still to send it
+        self._waiting = []    # what came while nobody was connected
+
+    def connect(self, websocket):
+        queue = asyncio.Queue()
+        for message in self._waiting:
+            queue.put_nowait(message)
+        self._waiting.clear()
+        self._queues[websocket] = queue
+
+    def disconnect(self, websocket):
+        self._queues.pop(websocket, None)
         
     @asynccontextmanager
     async def send_lock(self):
@@ -82,13 +99,19 @@ class WebSocketManager:
             await asyncio.sleep(0.05)
             
     async def process_queue(self, websocket):
+        queue = self._queues[websocket]
         while True:
-            message = await self._message_queue.get()
+            message = await queue.get()
             await self.send_message(websocket, message)
-            self._message_queue.task_done()
-            
+            queue.task_done()
+
     def queue_message(self, message):
-        self._message_queue.put_nowait(message)
+        if not self._queues:
+            self._waiting.append(message)
+            del self._waiting[:-self.WAITING]
+            return
+        for queue in self._queues.values():
+            queue.put_nowait(message)
 
 class SimulationManager:
     def __init__(self):
@@ -200,6 +223,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     })
     
     # Start the message queue processing task
+    ws_manager.connect(websocket)
     queue_task = asyncio.create_task(ws_manager.process_queue(websocket))
     
     async def send_command_ack(command: str):
@@ -250,6 +274,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
     except WebSocketDisconnect:
         queue_task.cancel()
+        ws_manager.disconnect(websocket)
         print(f"Client disconnected: {session_id}")
         # Stop simulation if running
         if session_id in sessions:
@@ -262,6 +287,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             
     except Exception as e:
         queue_task.cancel()
+        ws_manager.disconnect(websocket)
         print(f"Error in websocket handler: {e}")
         # Clean up on other errors too
         if session_id in sessions:

@@ -675,7 +675,7 @@ If absolutely no information is available for any field, use "unknown" for that 
     def history(self):
         """What has lately happened in the play: the record's latest entries. (It was each
         actor's last five memories, each fact once per actor who had a copy of it.)"""
-        return '\n'.join(self.entry_line(e) for e in self.record_entries[-20:])
+        return '\n'.join(self.entry_line(e) for e in self.record_entries[-20:] if e['text'])
 
     def generate_image_description(self):
         return "wide-view photorealistic style. "+self.current_state
@@ -1120,7 +1120,7 @@ End your response with:
         facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
                                     targets=act.target if isinstance(act.target, list) else None,
                                     resolved=getattr(act, 'resolved', None) or None)
-        if self.deed_kind == 'shared':
+        if self.deed_kind in ('shared', survival.PASSING):
             # a gesture, a posture, a touch: the actor's own words are the whole of it, and the
             # world's part is the fact. No narrator tells what came of it (told, a gesture became
             # an event: 'the notes hang in the quiet where the fountain used to sound')
@@ -1652,7 +1652,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                               or 'nobody left; they are where the last scene ended'}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought = {}, [], '', []
-        deeds_asked, admitted = False, False
+        deeds_asked, admitted, ending_asked = False, False, False
         for attempt in range(3):   # one rewrite for deeds played in the set-up, one for unsupported claims
             reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=460) or ''
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
@@ -1701,6 +1701,18 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     note = ("\nYour set-up has part of the scene already played: " + '; '.join(played)
                             + ". The set-up is the opening only: where the cast is, what is there, what presses on them. "
                               "Leave those deeds for the actors to play, and write it again.\n")
+                    continue
+            if checked and not ending_asked and attempt < 2:
+                # the ending is held to what bodies can do here, as the actors' deeds are: an ending
+                # that needs more can never be played ('strips off his shirt and hands it over')
+                ending_asked = True
+                beyond = record.ending_beyond(self, scene.get('post_narrative', ''), cast)
+                if beyond:
+                    trace.event('ending_beyond', scene=scene.get('scene_title'), ending=scene.get('post_narrative', ''), beyond=beyond)
+                    note = ("\nYour ending has someone do what nobody can do in this world: " + '; '.join(beyond)
+                            + ". Bodies can do only the actions listed at the places, the acts under 'Anywhere', and give, hold out, take or put down "
+                              "a thing that is held or lying there. Write the ending again so that it turns on what is said, told, chosen or refused, "
+                              "or on one of those acts.\n")
                     continue
             if not checked:
                 break
@@ -1870,6 +1882,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
         self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
         survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
+        self.pass_scene()       # nor is anything kept of the last scene's passing acts
 
         # A choice the scene turns on is made before the scene is played and shapes that
         # character's goal in it. (It was asked for after the scene, from the plan, so Samantha
@@ -2063,6 +2076,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 staleness = asdict(self.staleness_detector.compute_staleness_metrics())
             except Exception:
                 pass
+        self.pass_scene()
         trace.event('scene_end', outcomes=outcomes, post_narrative=self.current_scene.get('post_narrative'),
                     wrapup=self.current_scene.get('wrapup'),
                     staleness=staleness)
@@ -2783,12 +2797,16 @@ End your response with: </end>""")]
                                   + (f", for {e['to']}" if e.get('to') else '')
                                   for e in exits] or ['Nobody left.']) + '\nWhere each is now: ' + '; '.join(placed)
         bodies_text = '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'
-        reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given', 'who_is_where': who_is_where,
-                              'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
-                              'lines': record.last_lines([str(l).strip() for l in self.transcript[start:] if str(l).strip()], 6000) or 'nothing',
-                              'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'},
-                             prompt, tag='check_post_state_ambiguity', temp=0.1, stops=['</end>'], max_tokens=700)
-        found = json_reply.parse(reply) if reply else None
+        found = None
+        for _ in range(2):   # a long scene's check sometimes comes back empty: it left the scene with no outcomes at all
+            reply = self.llm.ask({'unit': 'scene' if scene else 'act', 'post_state': post_state or 'none given', 'who_is_where': who_is_where,
+                                  'events': '\n'.join(self.scene_events if scene else self.act_events) or 'nothing recorded',
+                                  'lines': record.last_lines([str(l).strip() for l in self.transcript[start:] if str(l).strip()], 6000) or 'nothing',
+                                  'bodies': '; '.join(f'{c.name}: {c.body.summary()}' for c in cast) or 'not tracked'},
+                                 prompt, tag='check_post_state_ambiguity', temp=0.1, stops=['</end>'], max_tokens=900)
+            found = json_reply.parse(reply) if reply else None
+            if isinstance(found, dict):
+                break
         if not isinstance(found, dict):
             trace.event('check_unreadable', of='outcomes', reply=(reply or '')[:300])
             return []
@@ -3515,21 +3533,47 @@ End your response with </end>
         level = words[0].upper() if words else ''
         return level if level in Context.SIGNIFICANCE_LEVELS else 'NOISE'
 
-    def add_event(self, text, doer=None, witnesses=None, also=()):
+    def add_event(self, text, doer=None, witnesses=None, also=(), lasting=None):
         """Record a concrete physical event (see recent_events), with who saw it.
+        lasting: for a deed with a passing part, what of it is kept once the scene is over ('' =
+        nothing). Those present see the whole of it while the scene runs; the scene's wrap-up, its
+        outcomes, memories and what stands between people are made from `lasting` alone.
+        (pass_scene turns the entry into what lasts.)
         witnesses: those who saw it; by default the doer (`doer`, or the cast member whose name
         opens the text) and those standing with it (Character.bystanders), with `also` (whom it was
         done to); with no doer, everyone in the scene being played, or the whole cast outside one."""
         text = ' '.join(str(text).split())   # whole: cut at 300 characters, one event in six ended mid-word
         if text:
-            line = f'{self.simulation_time.strftime("%H:%M")} {text}'
-            self.recent_events.append(line)
-            self.scene_events.append(line)
-            self.act_events.append(line)
+            kept = text if lasting is None else ' '.join(str(lasting).split())
+            if kept:
+                line = f'{self.simulation_time.strftime("%H:%M")} {kept}'
+                self.recent_events.append(line)
+                self.scene_events.append(line)
+                self.act_events.append(line)
             if witnesses is None:
                 witnesses = self._present_at(doer or self._named_first(text)) + [c for c in also if c is not None]
             self._enter('event', text, doer or self._named_first(text), witnesses)
-            trace.event('world_event', text=text)
+            if lasting is not None:
+                self.record_entries[-1]['lasting'] = kept
+            trace.event('world_event', text=text, **({'passing': True, 'lasting': kept} if lasting is not None else {}))
+
+    def pass_scene(self):
+        """The scene is over: what was only passing in it is gone from the record, and a deed
+        with a passing part is kept as what the world settled of it."""
+        for e in self.record_entries:
+            if 'lasting' in e:
+                kept = e.pop('lasting')
+                e['text'] = kept
+                if not kept:
+                    e['witnesses'] = frozenset()   # nobody has it to recall
+
+    @staticmethod
+    def _kept(e):
+        """A record entry as it will stand after its scene: itself; with its lasting text; or
+        None when nothing of it lasts. For whatever is made to be remembered."""
+        if 'lasting' not in e:
+            return e
+        return {**e, 'text': e['lasting']} if e['lasting'] else None
 
     def say(self, speaker, text, hearers=()):
         """A line spoken in the play: into the transcript as the audience is shown it, and into the
@@ -3592,7 +3636,7 @@ End your response with </end>
         """The record entries `character` witnessed, from index `start` of the record on, with
         the index to start from next time: (entries, next_start)."""
         name = getattr(character, 'name', character)
-        return ([e for e in self.record_entries[start:] if name in e['witnesses']], len(self.record_entries))
+        return ([k for k in (self._kept(e) for e in self.record_entries[start:] if name in e['witnesses']) if k], len(self.record_entries))
 
     @staticmethod
     def entry_line(e):

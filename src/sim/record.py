@@ -475,6 +475,42 @@ def setup_deeds(context, setup, purpose):
     return [d.strip() for d in deeds if isinstance(d, str) and d.strip()] if isinstance(deeds, list) else []
 
 
+ENDING = """A scene of an improvised play is planned to end as below. The actors can make their characters' bodies do only what is listed under What bodies can do; whatever else the ending needs done with hands or bodies cannot be played.
+
+<ending>
+{{$ending}}
+</ending>
+
+What bodies can do:
+{{$can}}
+Things held, and lying where the scene is set:
+{{$things}}
+
+Which words of the ending have someone do a physical thing that is none of these? Opening, shutting, barring or wedging a door; putting on or taking off a garment; tearing, breaking, lighting, building or making a thing; moving, pulling, holding or striking another person; using or handing over a thing that is not listed as held or lying there.
+These are never findings: what is said, told, sung, asked, admitted, chosen or refused; where people stand, sit or go; a look, a nod, a hand held out; eating, drinking, resting or sleeping where a place offers it; a thing listed above given, held out, taken, put down, shown, put away, or sounded if it is an instrument; what a danger of this world does.
+When you are not sure, it is no finding.
+
+Answer in JSON only: {"beyond": ["<the ending's own words for each such act, exactly as written>"]}, or {"beyond": []} if there are none.
+</end>
+"""
+
+
+def ending_beyond(context, ending, cast):
+    """The words of a scene's planned ending that have a body do what no body can do in this
+    world, [str]; [] for none or when the check could not be read. (The actors are held to the
+    actions on offer; a plan that ended on 'he strips off his shirt and hands it over' gave them
+    a scene that could not reach its end.)"""
+    if not (ending or '').strip() or not cast:
+        return []
+    from utils import json_reply
+    reply = context.llm.ask({'ending': ending, 'can': stage.gazetteer(context) or 'nothing listed',
+                             'things': '\n'.join(x for x in (survival.things_note(context, people=cast), survival.writings_note(context, people=cast)) if x) or 'nothing'},
+                            [UserMessage(content=ENDING)], tag='record.ending_beyond', temp=0.1, stops=['</end>'], max_tokens=200)
+    found = json_reply.parse(reply) if reply else None
+    beyond = found.get('beyond') if isinstance(found, dict) else None
+    return [b.strip() for b in beyond if isinstance(b, str) and b.strip()] if isinstance(beyond, list) else []
+
+
 def strip(text, claims):
     """`text` without the sentences that carry one of `claims` (a claim found in no sentence is
     let go: this is for a plan's fields, each checked against claims found in all of them)."""
@@ -554,11 +590,12 @@ What {{$name}} does not know (the director's list; the actor was told, the chara
 {{$line}}
 </line>
 
-Find only statements of these kinds. The first four are said of now:
+Find only statements of these kinds. The first five are said of now:
 - holds: {{$name}} says it has, holds, offers or hands over a thing that Holdings does not give it ("Here, clean water" with no water in hand; "take one" when it holds none of the thing meant). A thing Holdings does give it is no finding, whatever it is called ("this", "it", "one"). Fetching or finding a thing later is not holding it.
 - body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested). Saying what Bodies does show, in any words ("my throat's dry" when thirsty), is no finding; fear, relief and other states of mind are not the body.
 - where: {{$name}} says it, or someone present, is now at a place other than where Present puts them. Naming a place, pointing at it, heading for it or talking about going there is not being there.
 - time: {{$name}} speaks of the hour, the light or the part of the day as it is now, against Time: a greeting counts ("Morning" said at night). Speaking of a time to come ("before dark", "tonight", "tomorrow") is no finding, nor is a colour or a thing ("the dark fruit").
+- done: {{$name}} says that a physical act has just been done here, or is being done as it speaks, by itself or by someone present, when what {{$name}} has lived and heard does not show it done: a thing written, eaten, opened, pocketed, handed over, a door shut ("There, written, fresh as the ink"; "Pocketed already"; "Plate's clean" when nobody has eaten). Words do nothing physical. What the record shows was done, said in any words, is no finding; nor is a plan, an order, an offer, or a thing done before the play or in an earlier scene.
 And three that may be about anyone in the play, present or not:
 - gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
 - knows: the line states, uses or takes for granted something listed under does_not_know (a name not yet heard, another's condition or purpose not yet shown). Asking about it, guessing at it and saying so, or suspecting it aloud is not knowing it. Nor is it a finding once the thing has been shown or said in {{$name}}'s presence (see what {{$name}} has heard, and the record): it is known from then on, and a name is known in whatever form it was given.
@@ -602,7 +639,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'gender', 'knows', 'writing')
+SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing')
 
 
 def speech_claims(context, speaker, found):
@@ -714,17 +751,15 @@ def gone(act):
 
 
 def judge(context, character, act):
-    """Have a Do judged, once, before it can be chosen: act.resolved is the action it is
-    ('drink@Spring1', 'sit', 'take the arm of@Joe'), or '' when it cannot be done, with
-    act.refusal saying why. Acts of other modes, and worlds with no rules, are not judged."""
+    """Have a Do judged, once, before it can be chosen: act.resolved is what it is made of
+    ('drink@Spring1', 'kneel + take the arm of@Joe', 'passing'), or '' when it cannot be done,
+    with act.refusal saying why. Acts of other modes, and worlds with no rules, are not judged."""
     if not _is_do(act) or getattr(act, 'resolved', None) is not None:
         return
     if not survival.config(context) or getattr(character, 'body', None) is None:
         return
-    label, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
-    if label == 'several':
-        label, why = None, 'it is more than one act: a deed is one act'
-    act.resolved, act.refusal = label or '', '' if label else why
+    parts, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
+    act.resolved, act.refusal = ' + '.join(parts), '' if parts else why
 
 
 def _unsound(context, character, act):
@@ -746,6 +781,10 @@ def sound_deeds(context, character, acts):
     if sound and len(sound) < len(acts):
         trace.event('deed_check', character=character.name, outcome='passed_over',
                     deeds=[a.action[:160] for a in acts if a not in sound])
+        for a in acts:   # what was refused is what the plays ask of the world and do not get (tools/refusals.py)
+            if a not in sound and _is_do(a):
+                trace.event('deed_refused', character=character.name, deed=a.action[:300], why=[getattr(a, 'refusal', '') or 'not here'],
+                            label=getattr(a, 'affordance', None), again=False, passed_over=True)
     return sound or acts
 
 
@@ -760,10 +799,11 @@ Why not:
 {{$lacks}}
 {{$name}} is carrying: {{$holding}}. Lying here: {{$lying}}.
 
-What {{$name}} can do here, each of them one act:
+What {{$name}} can do here:
 {{$offered}}
+- or a small passing act that changes nothing (a touch, a closer look, a pat on the ground)
 
-Write the deed again as ONE of those acts: what {{$name}} does instead, toward the same end and in the same manner. One sentence, in the third person and present tense, no longer than the original. Do not mention what cannot be done.
+Write the deed again as one of those acts, or two of them done together: what {{$name}} does instead, toward the same end and in the same manner. One sentence, in the third person and present tense, no longer than the original. Do not mention what cannot be done.
 Respond with the deed only.
 </end>
 """

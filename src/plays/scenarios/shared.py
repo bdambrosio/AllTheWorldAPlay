@@ -14,7 +14,9 @@ the one here.
                 position  where the doer stands with respect to someone, likewise
                 contact   the doer touching someone, until either lets go, moves, or the scene ends
     target      'character': done to or toward someone in reach (label 'name@Who')
-    item        True: done with a thing the doer holds (label 'name <thing>@Who')
+    item        True: done with a thing the doer holds (label 'name <thing>@Who', or 'name <thing>'
+                when it has no target)
+    fact        what the record keeps of it ({actor}, {item}); without one a gesture leaves nothing
     sets        posture: the word the body then carries ('sitting'); position and contact: the
                 words between the two ('close to', 'has the arm of'); None with 'clears': undoes
     gloss       what it is, for the actor and for whoever judges a deed; {other} is the target
@@ -33,6 +35,9 @@ actions = [
      'gloss': "a movement of hand, head or face meant for {other}: holds out an open hand, nods, points, beckons, meets their eyes, waits facing them; touches nobody, moves nothing"},
     {'name': 'show', 'kind': 'gesture', 'target': 'character', 'item': True,
      'gloss': "holds a thing already in hand where {other} can see it; it stays in hand"},
+
+    {'name': 'stow', 'kind': 'gesture', 'item': True, 'fact': '{actor} puts the {item} away and still has it.',
+     'gloss': "puts a thing already in hand into a pocket, a belt or under an arm; it is still theirs and still carried"},
 
     {'name': 'sit', 'kind': 'posture', 'sets': 'sitting', 'gloss': 'sits down where they are'},
     {'name': 'kneel', 'kind': 'posture', 'sets': 'kneeling', 'gloss': 'kneels or crouches where they are'},

@@ -1299,9 +1299,12 @@ End response with:
             # Get action consequences from world
             await asyncio.sleep(0)
             consequences, world_updates, character_updates = await self.context.do(self, act)
+            # a passing act (or a passing part of the deed) is seen and not kept: what stays of the
+            # deed after the scene is what the world settled, and nothing of the rest
+            passing = bool(getattr(self.context, 'deed_passing', False))
             if character_updates and len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
-            notices = self.process_consequences(act_arg, reason, consequences)
+            notices = '' if passing and not (consequences or '').strip() else self.process_consequences(act_arg, reason, consequences)
             await asyncio.sleep(0)
             # the act text often starts with the character's own name ('Xue pulls a tablet ...')
             deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg)
@@ -1340,7 +1343,11 @@ End response with:
             # appended here after it had been emptied: every deed was a bare 'Joe:', and what
             # reads the transcript, the outcome check and the task review, saw speech only.)
             shown = re.sub(rf'^{re.escape(self.name)}\s+', '', told)
-            self.context.transcript.append(f'{self.name} {shown}')
+            kept = re.sub(survival.BODY_NOTE, '', result).strip() if passing else None   # what outlasts the scene of a deed with a passing part
+            if not passing:
+                self.context.transcript.append(f'{self.name} {shown}')
+            elif kept:
+                self.context.transcript.append(kept)
             await asyncio.sleep(0)
             self.show = ''
             # what the world told the doer and not the audience: why it was refused, its own notes
@@ -1362,7 +1369,7 @@ End response with:
                                    + (' (it does not happen)' if self.attempt_only else '')
                                    + (f' -> {visible_result}' if visible_result else ''),
                                    doer=self, also=[aimed_at] if isinstance(aimed_at, Character)
-                                   and aimed_at is not self and not stage.off_stage(aimed_at) else [])
+                                   and aimed_at is not self and not stage.off_stage(aimed_at) else [], lasting=kept)
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -2188,7 +2195,7 @@ The question: after what is already done and said, what one act now moves {{$nam
 
 Modes:
 - Say: words {{$name}} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, giving, taking or going is a Do or a Move. Do not name what you and the other are to each other or what the moment means; ask, refuse, offer or tease, and let that show it.
-- Do: ONE physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words. It is one of the actions listed under 'You could do here' or 'Anywhere, you can also', done in {{$name}}'s own manner: nothing else can be done in this world. Clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force. A second act is a second Do, later.
+- Do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words. It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together ('kneels at the water and drinks'), in {{$name}}'s own manner; or it is a small passing act that changes nothing (traces the print with a fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force.
 - Move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
 - Look: look around, or toward one of the eight compass points.
 - Think: a private thought, in the first person; nobody hears it.
