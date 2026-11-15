@@ -4,7 +4,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
-import sim.survival as survival
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -61,11 +60,6 @@ J.look()
 F.mapAgent.move_to_resource('FouanFarm')
 W.set_resource_owner('FouanFarm', 'Fouan', "Fouan, an old peasant farmer and a man, Francoise's father, owner of FouanFarm"
                      ).body.inventory.append('FouanFarm deed')
-# what the tally says is settled here, once (survival.write): read aloud, it says this and nothing else
-W.props = getattr(W, 'props', [])
-survival.add_thing(W, 'signed tally', at=W.map.resource_registry['FouanFarm']['location'],
-                   says="Signed by Fouan: Francoise Fouan's hand is promised in marriage after the harvest.")
-next(p for p in W.props if p['name'] == 'signed tally')['spot'] = 'on the kitchen table, under the lamp'
 W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'child_of')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", mode='internal')
 J.add_perceptual_input("You think - That Francoise is a hard worker, and pretty too. If I ever had my own farm she would be a good partner.", mode='internal')
