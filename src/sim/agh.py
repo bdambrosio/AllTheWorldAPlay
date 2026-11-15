@@ -2188,7 +2188,7 @@ The question: after what is already done and said, what one act now moves {{$nam
 
 Modes:
 - Say: words {{$name}} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, giving, taking or going is a Do or a Move. Do not name what you and the other are to each other or what the moment means; ask, refuse, offer or tease, and let that show it.
-- Do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words.
+- Do: ONE physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words. It is one of the actions listed under 'You could do here' or 'Anywhere, you can also', done in {{$name}}'s own manner: nothing else can be done in this world. Clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force. A second act is a second Do, later.
 - Move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
 - Look: look around, or toward one of the eight compass points.
 - Think: a private thought, in the first person; nobody hears it.
@@ -3384,6 +3384,8 @@ End your response with:
         actions = survival.available_actions(self, part='known')
         if actions:
             parts.append('You could do here: ' + actions)
+        if survival.shared_line(self):
+            parts.append(survival.shared_line(self))
         return '\n'.join(parts)
 
     def _time_in_play(self):

@@ -1118,7 +1118,19 @@ End your response with:
         # survival mechanics (sim/survival.py) settle eating, drinking, shelter, threats ...;
         # the narration describes them rather than inventing other outcomes
         facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
-                                    targets=act.target if isinstance(act.target, list) else None)
+                                    targets=act.target if isinstance(act.target, list) else None,
+                                    resolved=getattr(act, 'resolved', None) or None)
+        if self.deed_kind == 'shared':
+            # a gesture, a posture, a touch: the actor's own words are the whole of it, and the
+            # world's part is the fact. No narrator tells what came of it (told, a gesture became
+            # an event: 'the notes hang in the quiet where the fountain used to sound')
+            actor.settled_notes, actor.deed_refused = [], False
+            self.last_consequences, self.last_updates = facts or '', ''
+            self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, facts or '')})
+            await asyncio.sleep(0.1)
+            return facts or '', facts or '', ''
+        if facts is None and survival.config(self) and getattr(actor, 'body', None) is not None:
+            trace.event('free_deed', character=actor.name, deed=str(action)[:300])   # a deed no gate judged: none should come here
         local_map = actor.mapAgent.get_detailed_visibility_description()
         local_map = xml.format_xml(local_map)
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
@@ -1857,6 +1869,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
         self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
+        survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
 
         # A choice the scene turns on is made before the scene is played and shapes that
         # character's goal in it. (It was asked for after the scene, from the plan, so Samantha
@@ -2791,7 +2804,7 @@ End your response with: </end>""")]
                 kind = str(entry.get('kind') or 'done').strip().lower()
                 backed = bool(shown_by) and record.quoted_in(shown_by, events_text if kind != 'said' else lines_text + '\n' + events_text)
                 if entry.get('happened') is True and shown_by and not backed:
-                    trace.event('outcome_unbacked', outcome=str(entry['outcome'])[:200], kind=kind, shown_by=shown_by[:200])
+                    trace.event('outcome_unbacked', outcome=str(entry['outcome'])[:200], sort=kind, shown_by=shown_by[:200])
                 outcomes.append({'outcome': str(entry['outcome']).strip(), 'test': entry.get('happened') is True and backed,
                                  'shown_by': shown_by[:200], 'kind': kind})
         return outcomes
@@ -3261,7 +3274,7 @@ A paragraph or two including the following elements:
     - {scene_type_name}: [a confrontation, a forced choice, a shared job, a lull after pressure, a confession, play: not every scene presses] plus short description of scene focus (4-5 words)
 5. Success Scenario: [What this act accomplishing its focus looks like, in terms of setting up the next act (5-6 words)]
 6. Failure Scenario: [What this act failing at its focus looks like, in terms of setting up the next act (5-6 words)]
-7. Change: [for each character] What is different in this person, not in the plot, by the end of the act: what they hold to as it opens (a belief about themselves or the other, a guard they keep up, a habit of their nature), what the act presses them to give up or to risk, and what that costs them. It goes on from where the acts already played left them, and is shown in something they do that costs them, never in something they say or agree to. (20-25 words each)
+7. Change: [for each character] What is different in this person, not in the plot, by the end of the act: what they hold to as it opens (a belief about themselves or the other, a guard they keep up, a habit of their nature), what the act presses them to give up or to risk, and what that costs them. It goes on from where the acts already played left them, and is shown by what it costs them: something told that exposes them, a position given up, a way out let go. Never a feeling or a trust merely declared, and never a physical act this world has no action for. (20-25 words each)
 
 Your response should be consistent with the play-level central narrative and the previous acts.
 

@@ -134,6 +134,7 @@ class Body:
     last_tick: Optional[datetime] = None
     warned: set = field(default_factory=set)
     cfg: dict = field(default_factory=dict, repr=False)
+    bearing: list = field(default_factory=list)     # 'sitting', 'holding the arm of Joe': this scene's (shared actions)
 
     def level(self, need):
         return self.levels.get(need, 0.0)
@@ -150,13 +151,13 @@ class Body:
             parts.append(f"{self.money:g} {self.cfg['currency']}")
         if self.sheltered:
             parts.append('in shelter')
-        parts += sorted(self.flags)
+        parts += sorted(self.flags) + list(self.bearing)
         return '; '.join(parts)
 
     def condition(self):
         """How the body is, in words, without what it carries: 'very thirsty; tired; in shelter'."""
         return '; '.join([_word(self.cfg, n, v) for n, v in self.levels.items()]
-                         + (['in shelter'] if self.sheltered else []) + sorted(self.flags))
+                         + (['in shelter'] if self.sheltered else []) + sorted(self.flags) + list(self.bearing))
 
     def visible(self):
         """The body as another person sees it: hurt or not, what is carried, sheltered or not.
@@ -169,6 +170,7 @@ class Body:
             parts.append('carrying ' + ', '.join(carried))
         if self.sheltered:
             parts.append('in shelter')
+        parts += list(self.bearing)
         return '; '.join(parts) or 'nothing remarkable'
 
     def adjust(self, need, delta):
@@ -610,9 +612,8 @@ def affordance_prompt_line(character):
         return ''
     offered = available_actions(character)
     example = next((p.split(' (')[0] for p in offered.split('; ') if p and not p.startswith('THREAT')), 'rest')
-    return ("\n#affordance only for a Do whose action text itself performs one of the actions listed under 'You could do here' "
-            f"(the text says you {example.split('@')[0]}, not that you look at or think about it): that action's exact label "
-            f"(e.g. {example}); omit for any other act.")
+    return ("\n#affordance for every Do: the exact label of the one action it is, from 'You could do here' or 'Anywhere, you can also' "
+            f"(e.g. {example}; sit; gesture to@Name). The text says you do it, not that you look at or think about it. Omit for any other mode.")
 
 
 _CLAIM = re.compile(r"\bI(?:'m|’m| am)\s+(?:\w+ly\s+)?(\w+ing)\b", re.I)
@@ -895,7 +896,7 @@ def change_body(character, need, worse, size):
 # Things that no action of this world covers (a shoe found in a hut, a tally stick, a page) are
 # handed over, held out, taken and put down all the same. What can be done with them is read from
 # the world each time (who holds what, what lies here, who is in reach) and offered to the same
-# judgement that picks any other action of a deed (choose_action).
+# judgement that says what a deed is (classify_deed).
 # (This was done by matching the deed's verbs: 'give', 'hand', 'take', 'grab', a list of words for
 # the ground. 'Samantha takes the shoe from Joe's hands' matched none of the world's actions it
 # was offered and was settled as searching the hut; a stick was told as handed over, twice,
@@ -1009,6 +1010,121 @@ def _prop_do(context, character, kind, item, other):
     return fact
 
 
+# ---------------------------------------------------------------------- shared stage actions
+# What a body can do anywhere (plays/scenarios/shared.py): gestures, which change nothing, and
+# posture, position and contact, which last until the doer moves or the scene ends. They are
+# kept on the context (poses, between) and worded onto each body (Body.bearing), so that every
+# prompt that shows a body shows how it is arranged. (A deed that was none of the world's
+# actions was the narrator's to tell, and whatever it told became so: a shirt came off, could
+# not then be handed over because the world held no shirt, and was told as vanished.)
+def shared_actions(context):
+    """The shared actions this world takes: all of them unless it says otherwise."""
+    cfg = config(context)
+    if not cfg or cfg.get('shared') is False:
+        return []
+    from plays.scenarios import shared
+    skip = {a['name'].lower() for a in cfg.get('actions', [])} | {w.lower() for w in cfg.get('without', ())}
+    return [a for a in shared.actions if a['name'].lower() not in skip]
+
+
+def _arrangement(context):
+    return context.__dict__.setdefault('poses', {}), context.__dict__.setdefault('between', [])
+
+
+def _bear(context):
+    """Word each body's arrangement from the context's (Body.bearing)."""
+    poses, between = _arrangement(context)
+    for c in _embodied(context):
+        c.body.bearing = ([poses[c.name]] if c.name in poses else []) + [f'{words} {b}' for a, words, b, _ in between if a == c.name]
+
+
+def unpose(context, character=None):
+    """Whoever moves off is no longer sitting, nor touching or placed by anyone; with no
+    character, nobody is (a new scene)."""
+    poses, between = _arrangement(context)
+    if character is None:
+        poses.clear()
+        between.clear()
+    else:
+        poses.pop(character.name, None)
+        between[:] = [e for e in between if character.name not in (e[0], e[2])]
+    _bear(context)
+
+
+def shared_offers(character):
+    """{label: (action, other, item)}: the shared actions the character could do now."""
+    context, body = character.context, getattr(character, 'body', None)
+    acts = shared_actions(context) if context else []
+    if not acts or body is None:
+        return {}
+    poses, between = _arrangement(context)
+    me = character.name
+    near = [o for o, d in _present(character) if d <= CO_PRESENT_TILES and getattr(o, 'body', None) is not None]
+    out = {}
+    for action in acts:
+        if action.get('target') == 'character':
+            for other in near:
+                if action.get('clears') and not any(k == 'contact' and {a, b} == {me, other.name} for a, _, b, k in between):
+                    continue   # nothing to let go of
+                if action.get('item'):
+                    for item in dict.fromkeys(body.inventory):
+                        out[f"{action['name']} {item}@{other.name}"] = (action, other, item)
+                else:
+                    out[f"{action['name']}@{other.name}"] = (action, other, None)
+        elif action.get('clears'):
+            if me in poses:
+                out[action['name']] = (action, None, None)
+        elif poses.get(me) != action.get('sets') or action['kind'] == 'gesture':
+            out[action['name']] = (action, None, None)
+    return out
+
+
+def shared_line(character):
+    """The shared actions as one standing line for an act prompt: the names once, not one entry
+    for each person (the list of what can be done here is cut at fourteen)."""
+    offers = shared_offers(character)
+    if not offers:
+        return ''
+    alone = list(dict.fromkeys(a['name'] for a, other, _ in offers.values() if other is None))
+    toward = list(dict.fromkeys(a['name'] + (' <a thing you hold>' if a.get('item') else '') for a, other, _ in offers.values() if other is not None))
+    who = list(dict.fromkeys(other.name for _, other, _ in offers.values() if other is not None))
+    line = 'Anywhere, you can also: ' + '; '.join(alone)
+    if toward:
+        line += f". With someone in reach ({', '.join(who)}), as 'name@who': " + '; '.join(toward)
+    return line + '.'
+
+
+def _shared_do(context, character, action, other, item):
+    """Do a shared action: nothing for a gesture; the arrangement for the rest. Returns the fact
+    line for the record ('' for a gesture: the actor's own words are all there is to it)."""
+    poses, between = _arrangement(context)
+    me, kind = character.name, action['kind']
+    fact = ''
+    if kind == 'posture':
+        if action.get('clears'):
+            poses.pop(me, None)
+            fact = f'{me} is on their feet.'
+        else:
+            poses[me] = action['sets']
+            fact = f"{me} is {action['sets']}."
+    elif kind == 'position':
+        poses.pop(me, None)   # it takes being on one's feet
+        between[:] = [e for e in between if not (e[0] == me and e[3] == 'position')] + [(me, action['sets'], other.name, 'position')]
+        fact = f"{me} is {action['sets']} {other.name}."
+    elif kind == 'contact':
+        if action.get('clears'):
+            between[:] = [e for e in between if not (e[3] == 'contact' and {e[0], e[2]} == {me, other.name})]
+            fact = f'{me} and {other.name} are no longer touching.'
+        else:
+            between[:] = [e for e in between if not (e[0] == me and e[2] == other.name and e[3] == 'contact')] + [(me, action['sets'], other.name, 'contact')]
+            fact = f"{me} is {action['sets']} {other.name}."
+    _bear(context)
+    _record(character, {'name': action['name'], 'category': 'stage'}, fact or f"{me}: {action['name']}.", 'model', applied=True,
+            target=other.name if other is not None else None)
+    trace.event('shared_deed', character=me, action=action['name'], sort=kind, other=other.name if other is not None else None, item=item)
+    return fact
+
+
 def shared_out(context, character, item, effects):
     """`character` has used up `item`. Those it was shared with (see _prop_do 'share') and who
     still hold it lose it too and get the same good of it. Returns their names."""
@@ -1038,81 +1154,108 @@ def _give_label(cfg, item, to_name):
     return ''
 
 
-DEED_ACTION = """A character in a play does the deed below. The world it lives in has rules for some actions, listed under Actions. Say which one of them, if any, the deed itself performs.
+DEED_ACTION = """A character in a play is about to do the deed below. In this world a physical act is one of the actions listed under Actions, and nothing else can be done. Say which one of them the deed is.
 
-{{$name}} does:
+{{$name}} is about to:
 <deed>
 {{$deed}}
 </deed>
+{{$claimed}}
+{{$name}} holds: {{$holding}}. Lying here: {{$lying}}.
 
-Actions ({{$name}} could do these now; each is 'name@where', with how far off it is or what it does):
+Actions ({{$name}} could do these now; each is 'name@where' or 'name@who', with how far off it is or what it does):
 {{$offered}}
 
-A deed performs an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring, talking about water, sitting back, leaning, gesturing or waiting is none of them. A thing is given only when the deed puts it in the other's hands; holding it out, offering it or showing it is 'hold out'. Looking at, turning over or using a thing already in hand is none of them. An action some way off is performed only if the deed goes there to do it ("walks to the spring and drinks"). If the deed does one of them and more besides, name the one it does. An action marked as one {{$name}} cannot do now ('has no canned food', 'nothing to give') is not performed, whatever the deed says: the deed is then a try at it, and the answer is null. When you are not sure, it is none.
+- A deed is an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring or talking about water is not. A thing is given only when the deed puts it in the other's hands; holding it out or offering it is 'hold out'; holding it up to be seen is 'show'. An action some way off is done only if the deed goes there to do it.
+- One deed is one action. A deed that does two or more things, each of which is or would need an action of its own ("pockets the thread, turns east and waits for him"; "sits down and takes her hand"), is several. How it is done (slowly, without a word, eyes on her face) and what the doer then waits for are manner, not a second act.
+- The gesture actions change nothing, and the contact actions only touch: a deed that pushes, pulls, pins, drags, holds back or moves another person is none of the actions.
+- The gesture actions change nothing. A deed that moves, opens, shuts, breaks, marks, lights, puts on or takes off anything, or that makes another person do something or takes a thing from their grip that was not held out, is none of the actions. So is a deed that uses a thing not listed as held or lying here.
+- An action marked as one {{$name}} cannot do now ('has no canned food', 'nothing to give') is not done, whatever the deed says: the answer is null.
+- When you are not sure which action it is, it is null.
 
-Respond ONLY with JSON, no prose, in this shape:
+Respond ONLY with JSON, no prose, in one of these shapes:
 {"action": "<the action exactly as listed, the part before the bracket, e.g. drink@Spring1>"}
-or, when the deed performs none of them:
-{"action": null}
+{"action": "several"}
+{"action": null, "why": "<what in the deed no listed action covers, six words at most>"}
 </end>
 """
 
 
-def choose_action(context, character, act_text, label=None):
-    """The world action a deed performs, as a label for _chosen ('drink@Spring1', a threat
-    response), or None. Asked of the model, with the actor's own #affordance label as a hint:
-    the deed was matched to actions by their verbs ('sits back against the counter' was resting,
-    at a bus stop six tiles off, and walked her out of the scene), and an actor's label was
-    checked by the same verbs. None when the reply cannot be read: the deed is then the
-    narrator's, and no rule applies (the safe side: nothing is used up, nobody walks)."""
-    from utils import json_reply
-    from utils.Messages import UserMessage
-    # each offer is one line (the joined line was split on '; ', which an entry may contain:
-    # 'take a branch@Fallen_Branch4 (9 tiles Southeast; first Move: ...)' reached the model as
-    # two broken ones), with what can be done with the things held and lying here (prop_offers)
+def deed_offers(character):
+    """Everything the character could do now as lines for a judge or for the actor who is sent
+    back: the world's actions, what can be done with things, the shared actions."""
     offered = [o.strip() for o in offered_actions(character) if o.strip()]
     offered += [f"{name} ({PROP_GLOSS[kind].format(other=other.name if other is not None else '')})"
                 for name, (kind, item, other) in prop_offers(character).items()]
+    offered += [f"{name} ({action['gloss'].format(other=other.name if other is not None else '')})"
+                for name, (action, other, item) in shared_offers(character).items()]
+    return offered
+
+
+def classify_deed(context, character, act_text, label=None):
+    """What a deed is, judged before it is played: (label, why).
+      ('drink@Spring1', '')   one of the actions on offer (a world action, a thing handed or
+                              taken, a shared action, a threat response)
+      ('several', '')         more than one act: to be written again as one
+      (None, why)             none of them: it cannot be done in this world
+    label: the actor's own #affordance, shown to the judge as a claim to check. An unreadable
+    reply is (None, ...): what cannot be judged is not done. (The judgement used to be made when
+    the deed was played, and a deed that was none of the world's actions was then the
+    narrator's to tell as it liked.)"""
+    from utils import json_reply
+    from utils.Messages import UserMessage
+    offered = deed_offers(character)
     if not offered:
-        return None
-    # (the actor's own label for the deed was given here as a hint, and drew the answer to it:
-    # two deeds with a shoe, labelled 'search', were settled as searching)
+        return None, 'nothing can be done here'
+    body = character.body
     reply = context.llm.ask({'name': character.name, 'deed': act_text,
+                             'claimed': f"\nIts actor calls it: {label}\n" if label else '',
+                             'holding': ', '.join(body.inventory) or 'nothing',
+                             'lying': ', '.join(p['name'] for p in lying(context, _here(character))) or 'nothing',
                              'offered': '\n'.join(f'- {o}' for o in offered)},
-                            [UserMessage(content=DEED_ACTION)], tag='survival.choose_action', temp=0.1,
-                            stops=['</end>'], max_tokens=60)
+                            [UserMessage(content=DEED_ACTION)], tag='survival.classify_deed', temp=0.1,
+                            stops=['</end>'], max_tokens=70)
     found = json_reply.parse(reply)
     if not isinstance(found, dict):
         trace.event('check_unreadable', of='deed_action', reply=(reply or '')[:300])
-        return None
+        return None, 'the deed could not be judged'
     chosen = found.get('action')
     if not isinstance(chosen, str) or not chosen.strip() or chosen.strip().lower() in ('null', 'none'):
-        if label:
-            trace.event('affordance_label_rejected', character=character.name, label=label, act_text=(act_text or '')[:200])
-        return None
+        return None, str(found.get('why') or 'no action here covers it').strip()
     chosen = chosen.strip().split(' (')[0]
+    if chosen.lower() == 'several':
+        return 'several', ''
     names = {o.split(' (')[0].split(': ')[0].lower() for o in offered}
     threat = active_threat_for(character)
     responses = set(threat['hazard'].get('responses', {}).keys()) if threat else set()
     if chosen.lower() not in names and chosen.split('@')[0].lower() not in responses:
         trace.event('check_unreadable', of='deed_action', reply=f'not offered: {chosen}')
-        return None
-    return chosen
+        return None, 'no action here covers it'
+    return chosen, ''
 
 
-def resolve_do(context, character, act_text, affordance=None, targets=None):
-    """Apply the mechanics of a Do, if it is one of the world's actions. Returns a fact line for the
-    narration, or None when it is not (the LLM decides as before). `targets`: the act's characters."""
+def resolve_do(context, character, act_text, affordance=None, targets=None, resolved=None):
+    """Apply the mechanics of a Do. Returns a fact line for the narration, or None when the deed
+    is none of the actions on offer. `targets`: the act's characters. `resolved`: what the deed
+    was judged to be before it was chosen (record.sound_deeds); a deed that comes here unjudged
+    is judged now. context.deed_kind says what was done: 'world', 'thing', 'shared' or None."""
     cfg = config(context)
     body = getattr(character, 'body', None)
+    context.deed_kind = None
     if not cfg or body is None:
         return None
     text = (act_text or '').lower().replace('’', "'").replace('‘', "'")
-    # which of the world's actions the deed performs is the model's to say (choose_action)
-    label = choose_action(context, character, act_text, affordance)
+    label = resolved if resolved is not None else classify_deed(context, character, act_text, affordance)[0]
+    if label == 'several':
+        label = None
     prop = next((v for k, v in prop_offers(character).items() if k.lower() == label.lower()), None) if label else None
     if prop:   # a thing handed over, held out, taken or put down
+        context.deed_kind = 'thing'
         return _prop_do(context, character, *prop)
+    shared = next((v for k, v in shared_offers(character).items() if k.lower() == label.lower()), None) if label else None
+    if shared:
+        context.deed_kind = 'shared'
+        return _shared_do(context, character, *shared)
     chosen = _chosen(context, character, label) if label else None
     via = 'label' if affordance and label else 'model'
 
@@ -1125,6 +1268,7 @@ def resolve_do(context, character, act_text, affordance=None, targets=None):
 
     if chosen and chosen[0] == 'action':
         _, action, near, target = chosen
+        context.deed_kind = 'world'
         return _apply(context, character, action, near, target, via, act_text or '')
 
     return None
@@ -1362,6 +1506,8 @@ def travel(character, x, y, advance_clock=True):
     cfg = config(context) or {}
     start = _here(character)
     tiles = _distance(start, (x, y))
+    if tiles:
+        unpose(context, character)   # whoever walks off is no longer sitting, nor holding anyone's arm
     costs = getattr(context.map.scenario_module, 'infrastructure_rules', {}).get('terrain_costs', {})
     try:
         terrain = context.map.patches[x][y].terrain_type.name

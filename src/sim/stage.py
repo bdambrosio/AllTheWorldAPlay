@@ -44,7 +44,8 @@ A jump to a distant place belongs at the start of an act.
 A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is listed under business, and is so only if a character does it in that scene.
 Someone the cast list says takes part by radio or phone is in a scene by voice only: never at its place, never handed anything or touched.
 Not every scene is a confrontation: people are known by how they work, rest, joke and tell things as much as by how they fight. An act of three or more scenes has at least one of another kind, and after a danger or a hard scene the next is a lull or a shared job.
-Trust, forgiveness, love or an alliance is never an ending as a thing said or agreed. It is a deed that costs the doer something this world keeps track of: the only weapon handed over, sleeping first, eating what the other gathered, telling what was kept back.
+What bodies can do in a scene is what Places lists: the actions at each place, the things held or lying there (given, held out, taken, put down), and the acts under 'Anywhere'. Nothing else physical happens in this world. A set-up or an ending never has a door opened or barred, a garment put on or taken off, a thing torn, lit, broken or made, or one person moved or held by another, unless Places lists the action for it; nor a thing that is not listed as there.
+Trust, forgiveness, love or an alliance is never an ending merely declared ("says she trusts him"). It is shown by what it costs: telling something that exposes the teller, giving up a position held until now, or letting go of a way out (staying when one could leave, letting the other lead or keep the watch). A thing handed over counts only when it is a thing the world holds.
 A confrontation ends, in that scene, with something given, taken, found out or refused for good. It never ends with the question put off ("deferred", "later", "tomorrow", "on the road", "not dropped"): what a character will not give is refused there, and the next scene goes on from the refusal, not back to the question."""
 
 
@@ -321,6 +322,10 @@ def gazetteer(context):
         lines.append(f"- {rid}: {res.get('description') or res.get('type')}"
                      + (f', owned by {owner}' if owner else '') + f' ({reach})'
                      + (f"; can be done there: {', '.join(offers)}" if offers else ''))
+    shared = survival.shared_actions(context)
+    if shared:   # what a body can do wherever it is: the planner is held to the same acts as the actors
+        lines.append('- Anywhere, with whoever is there: ' + '; '.join(a['name'] for a in shared)
+                     + '. With a thing someone holds or that lies there: give, hold out, take, put down.')
     return '\n'.join(lines)
 
 

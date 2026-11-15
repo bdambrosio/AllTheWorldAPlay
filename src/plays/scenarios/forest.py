@@ -188,7 +188,7 @@ affordances = {
                    'Apple_Tree': ['apple', 'apples'], 'Mushrooms': ['mushroom', 'mushrooms', 'fungus', 'fungi'],
                    'Fallen_Branch': ['branch', 'branches', 'stick', 'wood', 'log'],
                    'Thicket': ['thicket', 'bush', 'undergrowth'], 'Cave': ['cave', 'cavern'], 'Hut': ['hut', 'cabin', 'shack']},
-    'actions': [   # a deed's action is chosen by the model from these labels (survival.choose_action); verbs serve spoken claims and threat responses
+    'actions': [   # a deed's action is chosen by the model from these labels (survival.classify_deed); verbs serve spoken claims and threat responses
         {'name': 'sleep', 'category': 'survival', 'verbs': ['sleep', 'nap', 'doze'], 'resource_types': ['Cave', 'Hut', 'Thicket'],
          'effects': {'fatigue': -1.0}, 'minutes': 240, 'sets': 'sheltered', 'text': 'sleeps in {resource}'},
         {'name': 'take shelter', 'verbs': ['shelter', 'take cover', 'go inside', 'enter', 'hide inside', 'rest inside', 'crawl into', 'crawl under',

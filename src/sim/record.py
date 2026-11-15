@@ -692,63 +692,13 @@ def speech(context, speaker, line, listener=None):
     return result, None
 
 
+
 # --------------------------------------------------------------------------- deeds
-# An actor is told what it holds, and still writes deeds with things it does not have: Joe
-# 'brandishing the branch' with empty hands, Samantha 'snapping a thick branch from the ground'
-# four tiles from the nearest. Performed, such a deed can only be told as a failure ('her fingers
-# closing on air'), and a scene of them is slapstick. So a deed is looked at before it is done.
-# The test is the world's own and needs no model: does the deed use one of the things the
-# world's actions deal in, which the actor neither holds nor can get where it stands? or treat
-# its own unhurt body as hurt? A deed that fails is passed over for another the actor offered,
-# or written again in the same spirit from what the actor does have.
-USING = ['grip', 'swing', 'raise', 'brandish', 'thrust', 'wave', 'wield', 'hold', 'jab', 'plant', 'drive', 'brace', 'lower', 'hand',
-         'give', 'pass', 'slide', 'throw', 'toss', 'drop', 'strike', 'hit', 'club', 'swat', 'eat', 'chew', 'bite', 'munch', 'offer',
-         'shove', 'kick', 'wedge', 'drag', 'stack', 'crack', 'split', 'sign', 'read', 'show', 'lean on']
-GETTING = ['take', 'grab', 'snatch', 'seize', 'pick up', 'snap', 'break off', 'wrench', 'gather', 'collect', 'pluck', 'pick', 'lift', 'fetch']
-HURT = (r"\b(his|her|my|own)\s+(\w+\s+){0,2}(swollen|injured|wounded|bleeding|broken|sprained|twisted|bandaged|bruised|torn|hurt)\b"
-        r"|\b(limp(s|ing)?|bleed(s|ing)?|nurs(es|ing))\b")
-
-
-def deed_lacks(context, character, text):
-    """What a deed rests on that is not so, in words for the actor: [] when the deed is sound."""
-    cfg = survival.config(context)
-    body = getattr(character, 'body', None)
-    if not cfg or body is None or getattr(character, 'mapAgent', None) is None or not text:
-        return []
-    low = text.lower().replace('’', "'")
-    at = stage.here(character)
-    lacks = []
-    others = [c for c in character.bystanders() if getattr(c, 'body', None) is not None]
-    threat = survival.active_threat_for(character)
-    # a verb form after 'his', 'the', ... is a thing ('Samantha's hands'), not a deed
-    verbs = re.sub(r"\b(his|her|their|its|my|your|our|the|a|an|\w+'s)\s+\w+", r'\1', low)
-    for kind in survival.item_kinds(context):
-        noun = kind.split()[-1].lower()
-        stem = noun[:-3] if noun.endswith('ies') else noun[:-1] if noun.endswith('s') and len(noun) > 4 else noun
-        if not re.search(rf"\b{re.escape(stem)}\w*", low):
-            continue
-        using, getting = survival._matches(verbs, USING), survival._matches(verbs, GETTING)
-        if not (using or getting):
-            continue   # it is looked at, pointed out or spoken of, not used
-        if any(stem in i.lower() for i in body.inventory) or any(stem in p['name'] for p in survival.lying(context, at)):
-            continue
-        if re.search(rf"\b(\w+'s|her|his|their)\s+(\w+\s+)?{re.escape(stem)}", low) and any(stem in i.lower() for o in others for i in o.body.inventory):
-            continue   # it is someone else's, and they have it
-        sources = sorted((stage._distance(at, res['location']), rid) for rid, res in context.map.resource_registry.items()
-                         if stem in rid.lower())
-        reach = cfg.get('approach_tiles', 8)
-        if sources and (sources[0][0] <= stage.AT_PLACE_TILES or (getting and not using and sources[0][0] <= reach and not threat)):
-            continue   # it is to be had here, or the deed is to go and get it
-        where = (f"; the nearest is at {sources[0][1]}, {sources[0][0]} tiles {stage._direction(at, context.map.resource_registry[sources[0][1]]['location']).lower()}"
-                 + (', and with danger this close there is no walking over to it' if threat else '')) if sources else ''
-        lacks.append(f"{character.name} has no {noun}{where}")
-    harm = survival._harm(cfg)['name']
-    if (re.search(HURT, low) and body.levels.get(harm, 0.0) < survival.NEED_FELT
-            and not re.search(r"\b\w+'s\s+(\w+\s+){0,2}(swollen|injured|wounded|bleeding|broken|bruised)", low)):
-        lacks.append(f"{character.name} is unhurt")
-    return lacks
-
-
+# A Do is judged before it can be chosen (survival.classify_deed): it is one of the actions the
+# world or the stage offers, or it is not done. One that is not is written again once from what
+# can be done (mend_deed), and failing that is not played. (Deeds were checked by lists of verbs
+# against the things the world names: 'Joe has no rope' turned a rope handed over into 'pulls the
+# branch from his belt', and what no list caught was the narrator's to make true.)
 def _mode(act):
     return str(getattr(act, 'mode', '')).split('.')[-1]
 
@@ -763,10 +713,28 @@ def gone(act):
     return [t for t in targets if t is not None and hasattr(t, 'name') and stage.off_stage(t)]
 
 
+def judge(context, character, act):
+    """Have a Do judged, once, before it can be chosen: act.resolved is the action it is
+    ('drink@Spring1', 'sit', 'take the arm of@Joe'), or '' when it cannot be done, with
+    act.refusal saying why. Acts of other modes, and worlds with no rules, are not judged."""
+    if not _is_do(act) or getattr(act, 'resolved', None) is not None:
+        return
+    if not survival.config(context) or getattr(character, 'body', None) is None:
+        return
+    label, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
+    if label == 'several':
+        label, why = None, 'it is more than one act: a deed is one act'
+    act.resolved, act.refusal = label or '', '' if label else why
+
+
 def _unsound(context, character, act):
     """Why this act cannot be done as written: [] when it can."""
     lacks = [f'{t.name} has left and is not here' for t in gone(act)] if _mode(act) in ('Do', 'Say') else []
-    return lacks + (deed_lacks(context, character, act.action) if _is_do(act) else [])
+    if _is_do(act):
+        judge(context, character, act)
+        if getattr(act, 'resolved', None) == '':
+            lacks.append(act.refusal or 'no action here covers it')
+    return lacks
 
 
 def sound_deeds(context, character, acts):
@@ -781,18 +749,21 @@ def sound_deeds(context, character, acts):
     return sound or acts
 
 
-REDO = """A character in a play was about to do the deed below, but it rests on something that is not so.
+REDO = """A character in a play was about to do the deed below, but in this world it cannot be done as written.
 
 {{$name}} was about to:
 <deed>
 {{$deed}}
 </deed>
 
-What is so:
+Why not:
 {{$lacks}}
 {{$name}} is carrying: {{$holding}}. Lying here: {{$lying}}.
 
-Write the deed again: what {{$name}} does instead, toward the same end and in the same manner, with what it has and where it stands. If the end was to have the missing thing, the deed is to go for it. One sentence, in the same grammatical form as the original, no longer than it was. Do not mention what is missing.
+What {{$name}} can do here, each of them one act:
+{{$offered}}
+
+Write the deed again as ONE of those acts: what {{$name}} does instead, toward the same end and in the same manner. One sentence, in the third person and present tense, no longer than the original. Do not mention what cannot be done.
 Respond with the deed only.
 </end>
 """
@@ -813,18 +784,32 @@ def mend_deed(context, character, act):
         # speech nobody heard (..."Aight, I'm down"...)
         act.mode, act.target, act.unshown = 'Think', [], True
         return True
+    offered = survival.deed_offers(character)
+    trace.event('deed_refused', character=character.name, deed=act.action[:300], why=lacks, label=getattr(act, 'affordance', None), again=False)
     again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
                              'holding': ', '.join(character.body.inventory) or 'nothing',
-                             'lying': ', '.join(p['name'] for p in survival.lying(context, stage.here(character))) or 'nothing'},
+                             'lying': ', '.join(p['name'] for p in survival.lying(context, stage.here(character))) or 'nothing',
+                             'offered': '\n'.join(f'- {o}' for o in offered) or '- nothing physical; only words'},
                             [UserMessage(content=REDO)], tag='record.redo', temp=0.5, stops=['</end>'], max_tokens=90)
     again = (again or '').strip().strip('"“”').strip()
-    left = deed_lacks(context, character, again) if again else lacks
+    before = act.action
     if again and gone(act):
         act.target = [t for t in act.target if t not in gone(act)] if isinstance(act.target, list) else []
+    if again:
+        act.action, act.affordance, act.resolved = again, None, None
+        left = _unsound(context, character, act)
+    else:
+        left = lacks
     outcome = 'redone' if again and not left else 'unfixed'
-    trace.event('deed_check', character=character.name, outcome=outcome, lacks=lacks, before=act.action, after=again)
-    if outcome == 'redone':
-        act.action = again
-        if getattr(act, 'affordance', None):
-            act.affordance = None   # the label was for the deed as it was
-    return outcome == 'redone'
+    trace.event('deed_check', character=character.name, outcome=outcome, lacks=lacks, before=before, after=again)
+    if outcome == 'unfixed':
+        # Sent back once and still not something this world lets a body do: it is not done, and
+        # not shown. The actor is told, once, so that the next act goes another way. (A deed
+        # that could not be done was played, then taken back on the page: a shirt held out,
+        # then 'her fist closes on air'.)
+        trace.event('deed_refused', character=character.name, deed=(again or before)[:300], why=left, label=None, again=True)
+        character.add_perceptual_input(f"You meant to do this and found you could not, here: {before} ({'; '.join(left)}). "
+                                       f"Go at it another way: in words, or by one of the acts open to you.", percept=False, mode='internal')
+        act.mode, act.target, act.unshown = 'Think', [], True
+        act.action = f"I cannot do that here: {before}"
+    return True
