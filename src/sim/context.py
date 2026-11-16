@@ -29,6 +29,7 @@ import time
 from sim.prompt import ask as default_ask
 from sim.trace import trace
 import sim.survival as survival
+import sim.scene as scene_owner
 import sim.stage as stage
 import sim.record as record
 from sim.screenplay import Screenplay
@@ -130,6 +131,7 @@ class Context():
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
         self.last_update_time = self.simulation_time
+        self.owner = None   # of the scene being played (sim/scene.py)
         self.current_scene = None
         # world-image throttle (see act_image_json): last render time, scene and file index
         self._world_image_at = 0.0
@@ -1968,6 +1970,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 
         # ok, actors - live!
         scene_integrated_task_plan = await self.integrate_task_plans(scene)
+        # the scene's owner writes its sheet, then arranges what the actors proposed into beats
+        if scene_owner.open_scene(self, scene):
+            beats = self.owner.arrange(list(self.scene_integrated_task_plan))
+            if beats:
+                self.scene_integrated_task_plan = beats
         self.scene_history = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.scene_task_budget = len(self.scene_integrated_task_plan)  # see place_commitment
@@ -1977,7 +1984,18 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         trace.event('scene_plan', entries=[{'actor': e['actor'].name, 'task_id': e['task'].id, 'task': e['task'].name}
                                            for e in self.scene_integrated_task_plan])
         while self.scene_integrated_task_plan_index < len(self.scene_integrated_task_plan):
+            if scene_owner.owner_of(self) and self.owner.closed:
+                # the scene has arrived where it was planned to: what is left of its schedule is
+                # not played (two searches of a rubbish bin after the page had been read)
+                trace.event('scene_closed', unplayed=[f"{e['actor'].name}: {e['task'].name}"
+                                                      for e in self.scene_integrated_task_plan[self.scene_integrated_task_plan_index:]])
+                break
             scene_task = self.scene_integrated_task_plan[self.scene_integrated_task_plan_index]
+            if scene_owner.owner_of(self) and self.owner.winding and not getattr(scene_task['task'], 'leaves', False):
+                # the scene has had its lines: of what is left only a leaving is played
+                trace.event('task_skipped', character=scene_task['actor'].name, task=scene_task['task'].name, why='the scene has had its lines')
+                self.scene_integrated_task_plan_index += 1
+                continue
             pending = len(self.scene_integrated_task_plan) - self.scene_integrated_task_plan_index
             if scene_task.get('optional') and pending > self.scene_task_budget:
                 # an optional (RELEVANT) commitment, and the scene is already over budget
@@ -2001,6 +2019,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             #await character.request_task_choice([task]) #not needed, cog_cycle will do it
             character.focus_task = Stack()
             character.focus_task.push(task)
+            if scene_owner.owner_of(self):
+                self.owner.now = task   # the beat being played, as refreshed
             trace.event('scene_task', character=character.name, task_id=task.id, task=task.name,
                         planned_task_id=scene_task['task'].id, index=self.scene_integrated_task_plan_index,
                         inserted=scene_task.get('inserted_at') is not None, optional=bool(scene_task.get('optional')))
@@ -2046,6 +2066,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # each character's goal in the scene is judged and put away (Character.close_scene_goal)
         for character in characters_in_scene:
             await character.close_scene_goal()
+        if scene_owner.owner_of(self):   # the sheet as the scene leaves it, beside the record's own reading below
+            trace.event('sheet_end', outcomes=self.owner.final(), checks=self.owner.checks, closed=self.owner.closed)
         true_outcomes = ''
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
@@ -2101,6 +2123,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
+        self.owner = None
         self._opening_done = True   # the play's opening description was for its first scene (record.seen_by)
         return true_outcomes
 
@@ -2906,6 +2929,7 @@ End your response with: </end>""")]
         if len(on_stage) < 2 or len([c for c in on_stage if c is not character and c not in party]) > 1:
             return True   # the scene goes on without it
         allowed = not self.staying_tasks_left() or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
+        # (staying_tasks_left is 0 once the scene's owner has closed it: a scene that has arrived may be left)
         if not allowed:
             trace.event('exit_held', character=character.name, played=self.scene_integrated_task_plan_index + 1, planned=len(plan))
         return allowed
@@ -2913,6 +2937,8 @@ End your response with: </end>""")]
     def staying_tasks_left(self):
         """How many of the scene's planned tasks are still to be played here: those after the one
         being played that do not themselves take anyone out of the scene (Task.leaves)."""
+        if scene_owner.owner_of(self) and (self.owner.closed or self.owner.winding):
+            return 0   # the scene has arrived, or has had its lines: nothing more need be played here
         plan = self.scene_integrated_task_plan or []
         return len([e for e in plan[self.scene_integrated_task_plan_index + 1:] if not getattr(e['task'], 'leaves', False)])
 

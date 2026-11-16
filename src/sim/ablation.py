@@ -8,8 +8,9 @@ and lasts until the next load. Everything is enabled by default.
   drive_appraisal  drives that move with events (sim/cognitive/drives.py); off, they rest at their baselines
   narration_gate   the check of narration against the world's record (sim/record.py); off, narration stands as written
   speech_gate      the check of a spoken line against what its speaker must know (record.speech); off, lines stand as written
+  scene_owner      the owner of a scene while it is played (sim/scene.py); off, tasks, talks and exits end as they did before it
 """
-FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate')
+FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate', 'scene_owner')
 _disabled: set = set()
 
 

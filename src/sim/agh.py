@@ -10,6 +10,7 @@ import sim.survival as survival
 import sim.stage as stage
 import sim.ablation as ablation
 import sim.record as record
+import sim.scene as scene_owner
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -1081,7 +1082,15 @@ End response with:
             # reported satisfied and left on the stack, to be played for all its acts.)
             satisfied, progress = bool(task.acts), 100
         else:
-            satisfied, progress = await self.test_termination(task, termination_check, consequences, world_updates, type='task')
+            # in a scene with an owner the owner says whether the beat is done (sim/scene.py):
+            # one reading of the page for the beat, the talk and the scene, not one each
+            owner = scene_owner.owner_of(self.context)
+            verdict = owner.check(task) if owner is not None and task is owner.current_task() else None   # not a task pushed on top of the beat
+            if verdict is not None:
+                satisfied = verdict['beat'] == 'done' or owner.closed
+                progress = 100 if satisfied else 0
+            else:
+                satisfied, progress = await self.test_termination(task, termination_check, consequences, world_updates, type='task')
 
         weighted_acts = len(task.acts) + 2*len([act for act in task.acts if act.mode in ('Say', Mode.Say)])
         trace.event('task_check', character=self.name, task_id=task.id, task=task.name,
@@ -1505,7 +1514,11 @@ End response with:
                 # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
                 target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.add_turn(self, content)
-                await target.hear(self, act_arg, source)
+                owner = scene_owner.owner_of(self.context)
+                if owner is not None:   # the scene's owner runs the talk, a turn at a time (sim/scene.py)
+                    await owner.converse(self, target, act_arg, source)
+                else:
+                    await target.hear(self, act_arg, source)
 
          # After action completes, update record with results
         # Notify other actors of action
@@ -2451,6 +2464,23 @@ End your response with:
             return False
         if stage.tempo(self) == 'urgent':
             return True   # one exchange, then back to what is happening
+        owner = scene_owner.owner_of(self.context)
+        verdict = owner.check(owner.current_task()) if owner is not None else None
+        if verdict is not None:
+            # the owner's reading of the page (sim/scene.py): the talk is over when the scene has
+            # arrived, or when its beat is done and nothing waits for an answer; a question put is
+            # answered; and no talk runs on without end
+            lines = len(transcript.split('\n'))
+            run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
+            run = 4 if run else 0
+            if owner.closed:
+                over = True
+            elif verdict['awaiting']:
+                over = lines > 12 + run   # a question is answered, but not for ever
+            else:
+                over = verdict['beat'] == 'done' or owner.winding or lines > random.randint(8, 10) + run
+            trace.event('talk_check', listener=self.name, lines=lines, beat=verdict['beat'], awaiting=verdict['awaiting'], over=bool(over))
+            return bool(over)
         prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
 #Transcript

@@ -269,6 +269,8 @@ PLAN_TAGS = frozenset((
     'NarrativeCharacter.write_narrative', 'integrate_narratives', 'act_central_narrative',
     'frame_episode', 'NarrativeCharacter.replan_narrative_act', 'NarrativeCharacter.replan_scene',
     'reground_scene', 'plan_serves_drives',
+    'scene.outcomes',   # a scene's planned ending as what to watch for (sim/scene.py): written once, read at every check
+    'scene.beats',      # the actors' proposals arranged into the scene's beats (sim/scene.py)
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
     'check_post_state_ambiguity'))   # what a scene or act came to: the acting model passed an ending that was not played
 # More of the play's calls can go to the planner, by group, so that the acting model writes the
@@ -292,6 +294,9 @@ PLAN_GROUPS = {
 
 def plan_tags():
     """The calls the planner writes: PLAN_TAGS and the groups ATWAP_PLAN_GROUPS names."""
+    only = [t.strip() for t in os.environ.get('ATWAP_PLAN_ONLY', '').split(',') if t.strip()]
+    if only:   # the planner writes these calls and no others (e.g. 'scene.outcomes': one call a scene)
+        return frozenset(only)
     spec = os.environ.get('ATWAP_PLAN_GROUPS', 'world,character').strip().lower()
     groups = [] if spec in ('', 'none') else [g.strip() for g in spec.split(',') if g.strip()]
     unknown = [g for g in groups if g not in PLAN_GROUPS]
