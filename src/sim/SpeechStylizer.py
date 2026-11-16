@@ -111,7 +111,7 @@ class SpeechStylizer:
 </character>
 
 Write:
-#habits one sentence, 30 words at most: what marks this character's speech (vocabulary, sentence length, what they reach for when excited or afraid). Use every speech trait the description states; add none that contradict it.
+#habits one sentence, 30 words at most: what marks this character's speech (vocabulary, sentence length, what they reach for when excited or afraid). Use every speech trait the description states; add none that contradict it. Only how the words sound: nothing of what the character wants, hides, is after or does to other people (that is not a way of talking, and an actor told it as one does it in every line).
 #sample a line this character might say when calm, 12 words at most
 #sample a line when excited or showing off what they know, 12 words at most
 #sample a line when frightened or angry, 8 words at most

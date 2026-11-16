@@ -1615,8 +1615,11 @@ Respond with these lines only:
 #ending what the scene should arrive at, one sentence
 #goal <character name>: that character's goal in the scene (one line for each character)
 #unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
+#keeps <character name>: a thing that character knows and does NOT say, show or let slip in this scene (one line for each such thing; none for a character who keeps nothing back)
 #thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
 </end>
+
+On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see Facts for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, give no line for it. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
 
 On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
 {{$strangers}}
@@ -1685,11 +1688,15 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # what each character has still to find out: a note for its actor (Character.director_notes)
             for entry in (scene.get('characters') or {}).values():
                 if isinstance(entry, dict):
-                    entry['unknown'] = []
+                    entry['unknown'], entry['keeps'] = [], []
             for name, missing in re.findall(r'#unknown\s+([^:\n]+):\s*(.+)', reply):
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
                         entry['unknown'].append(missing.strip())
+            for name, kept in re.findall(r'#keeps\s+([^:\n]+):\s*(.+)', reply):
+                for key, entry in (scene.get('characters') or {}).items():
+                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
+                        entry['keeps'].append(kept.strip())
             if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
                 # the set-up is the opening only: what the scene is for is played, not told
                 purpose = f"It is to end: {scene.get('post_narrative', '')}\n" + ' '.join(
@@ -1801,6 +1808,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 scene['when'] = stage.part_of(planned) + (' next day' if planned.date() > self.simulation_time.date() else '')
         survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
+        self.scene_integrated_task_plan, self.scene_integrated_task_plan_index = [], 0   # the last scene's schedule is not this one's
         self.scene_events = []
         if self.scene_exits:   # where the last scene's cast went: the set-up and the stage read it (kept over a skipped scene)
             self.last_scene_exits = list(self.scene_exits)
@@ -1893,7 +1901,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.direction = {'title': scene.get('scene_title', ''), 'place': scene.get('place', ''),
                                    'setup': scene.get('pre_narrative', ''), 'ending': scene.get('post_narrative', ''),
                                    'goal': planned.get('goal', '') if isinstance(planned, dict) else '',
-                                   'decision': None, 'unknown': list(planned.get('unknown') or []) if isinstance(planned, dict) else []}
+                                   'decision': None, 'unknown': list(planned.get('unknown') or []) if isinstance(planned, dict) else [],
+                                   'keeps': list(planned.get('keeps') or []) if isinstance(planned, dict) else []}
         # A character is given one such choice in an act at most. (Nine scenes in ten were said
         # to turn on a choice, nearly always the same character's, and each choice gives up one
         # of that character's drives: by the last act it had none left standing.)
@@ -2883,9 +2892,10 @@ End your response with: </end>""")]
     def exit_allowed(self, character, act):
         """Whether `character` may go out of the scene with this act. An exit that leaves one
         person or nobody on stage ends the scene, so it waits until the scene has been played:
-        everyone in it has played one of their planned tasks, and half the planned tasks are
-        played. ('Agreed, water first' marked as leaving ended a scene after one task of six.)
-        A count, not a model's opinion of whether the scene feels over."""
+        no planned task is left but ones that are themselves a leaving (Task.leaves, which are
+        played last). A danger on the cast lifts this. ('Agreed, water first' marked as leaving
+        ended a scene after one task of six; at half played, 'want to go find out?' ended one
+        with four of six unplayed.) A count, not a model's opinion of whether the scene feels over."""
         scene = self.current_scene
         plan = self.scene_integrated_task_plan or []
         if scene is None or not plan:
@@ -2895,12 +2905,16 @@ End your response with: </end>""")]
                     if getattr(c, 'current_scene', None) is scene and not stage.off_stage(c)]
         if len(on_stage) < 2 or len([c for c in on_stage if c is not character and c not in party]) > 1:
             return True   # the scene goes on without it
-        played = plan[:self.scene_integrated_task_plan_index + 1]   # with the task now being played
-        had_a_turn = {e['actor'] for e in played}
-        allowed = len(played) * 2 >= len(plan) and all(c in had_a_turn for c in on_stage if any(e['actor'] is c for e in plan))
+        allowed = not self.staying_tasks_left() or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
         if not allowed:
-            trace.event('exit_held', character=character.name, played=len(played), planned=len(plan))
+            trace.event('exit_held', character=character.name, played=self.scene_integrated_task_plan_index + 1, planned=len(plan))
         return allowed
+
+    def staying_tasks_left(self):
+        """How many of the scene's planned tasks are still to be played here: those after the one
+        being played that do not themselves take anyone out of the scene (Task.leaves)."""
+        plan = self.scene_integrated_task_plan or []
+        return len([e for e in plan[self.scene_integrated_task_plan_index + 1:] if not getattr(e['task'], 'leaves', False)])
 
     def told_briefly(self, account):
         """An act's record (its scene wrap-ups) as two or three sentences for the audience."""
@@ -3463,6 +3477,9 @@ After the framework, repeat four of its elements on lines of their own, exactly 
                 if actor_tasks[actor.name]['next_task_index'] >= len(plan):
                     remaining.remove(actor)
 
+        # a task that takes someone out of the scene ends it, so it is played after all the others
+        # ('find water' as one character's second task emptied a scene with four of six unplayed)
+        self.scene_integrated_task_plan.sort(key=lambda e: bool(getattr(e['task'], 'leaves', False)))
         return self.scene_integrated_task_plan
     
     def format_scene_integrated_task_plan(self):

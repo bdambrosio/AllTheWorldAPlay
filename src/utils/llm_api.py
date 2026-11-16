@@ -35,6 +35,14 @@ FIREWORKS_MODEL = 'accounts/fireworks/models/glm-5p3-flash'
 # enable_thinking False and thinking disabled are refused). It spent up to ~250 reasoning tokens
 # on a check, from the same budget as the answer: at 96 the JSON was cut off. Used only if spent.
 FIREWORKS_HEADROOM = 512
+# Together (server_name 'together') takes the same requests as Fireworks. Inkling 2 Small (Thinking
+# Machines) reasons at every setting: about a hundred tokens at 'low' and 'none', several hundred
+# to two thousand at 'medium' and above, at some 500 tokens a second. It plays at 'low': at
+# 'medium' its lines were no better and a character asked for something of her own gave nothing
+# (8 recorded turns, 2026-11-15). Key: TOGETHER_API_KEY.
+TOGETHER_URL = 'https://api.together.xyz/v1'
+TOGETHER_MODEL = 'thinkingmachines/Inkling-2-Small'
+OPENAI_STYLE = {'fireworks': (FIREWORKS_URL, 'FIREWORKS_PROJECT_KEY'), 'together': (TOGETHER_URL, 'TOGETHER_API_KEY')}
 LOCAL_THINKING_HEADROOM = 1024   # the same, for a local model that always thinks (LLM.thinks); GLM-5.3 at low took up to ~600
 # Claude Haiku 5.5 on the Anthropic API (server_name 'haiku'). Key: CLAUDE_API_KEY or ANTHROPIC_API_KEY.
 # How much every call thinks before it answers: ATWAP_EFFORT = off | low | medium | high. Calls
@@ -214,7 +222,7 @@ MECHANICAL_TAGS = frozenset((
     # matter; a sentence restating a check; a 1-10 rating mixed with chance; quoted pieces of the past
     'test_termination', 'MemoryConsolidator.semantic_summary', 'MemoryConsolidator.enhance_summary', 'do_consequences',
     'completion_statement', 'natural_dialog_end', 'record.told'))
-THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'haiku': 'medium'}
+THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'together': 'low', 'haiku': 'medium'}
 # calls whose prompt allows an empty answer ('or an empty string if none are relevant'): any other
 # call that answers empty is asked again
 MAY_ANSWER_EMPTY = frozenset(('do_consequences',))
@@ -329,6 +337,9 @@ class LLM():
             self.openai_client = OpenAIClient(model_name=self.model)
         if self.server_name == 'vllm':
             self.model = _served_model_id(LLM_BASE_URL)
+        if self.server_name == 'together':
+            self.model = model_name or TOGETHER_MODEL
+            self.reasoning_effort = 'low'
         if self.server_name == 'fireworks':
             self.model = model_name or FIREWORKS_MODEL
             self.reasoning_effort = 'low'   # 'medium' for whole-play rubrics
@@ -391,7 +402,7 @@ class LLM():
 
         if 'openai' in self.server_name:
             return self.openai_client.executeRequest(prompt=substituted_prompt, options=options)
-        if self.server_name == 'fireworks':
+        if self.server_name in OPENAI_STYLE:
             return self._fireworks_request(substituted_prompt, options)
         if self.server_name == 'haiku':
             return self._haiku_request(substituted_prompt, options)
@@ -495,7 +506,8 @@ class LLM():
         if stops:
             request['stop_sequences'] = stops
         if effort == 'off':
-            request['thinking'] = {'type': 'disabled'}
+            # Sonnet 5.5 refuses 'disabled'; its way of not thinking is 'between_tools'
+            request['thinking'] = {'type': 'between_tools' if 'sonnet' in self.model else 'disabled'}
         else:   # the thinking is spent from the same budget as the answer
             request.update(thinking={'type': 'adaptive'}, output_config={'effort': effort},
                            max_tokens=budget + REASONING_TOKENS)
@@ -511,9 +523,10 @@ class LLM():
     def _fireworks_request(self, messages, options, retries=6):
         """Fireworks chat completion with backoff on 429/5xx (the account's rate limit, not the
         model's, is what throttles; see the workbench yaml)."""
-        key = os.environ.get('FIREWORKS_PROJECT_KEY')
+        url, key_name = OPENAI_STYLE[self.server_name]
+        key = os.environ.get(key_name)
         if not key:
-            raise RuntimeError('FIREWORKS_PROJECT_KEY is not set (source ~/.config/secrets.env)')
+            raise RuntimeError(f'{key_name} is not set (source ~/.config/secrets.env)')
         # the engine's budgets are for the answer alone (some are 10 or 20 tokens); this model
         # spends a few reasoning tokens from the same budget even at 'low', so it gets headroom
         effort = getattr(options, 'reasoning', None) or getattr(self, 'reasoning_effort', 'low')
@@ -525,7 +538,7 @@ class LLM():
         delay = 2.0
         for attempt in range(retries):
             try:   # a connection that hung held the play for five minutes: give up sooner, try again
-                response = requests.post(f'{FIREWORKS_URL}/chat/completions', json=body, timeout=(10, 120),
+                response = requests.post(f'{url}/chat/completions', json=body, timeout=(10, 120),
                                          headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
                 if attempt >= 1:
@@ -543,7 +556,7 @@ class LLM():
                 time.sleep(delay)
                 delay = min(delay * 2, 60)
                 continue
-            raise Exception(f'{response.status_code} from Fireworks: {response.text[:300]}')
+            raise Exception(f'{response.status_code} from {self.server_name}: {response.text[:300]}')
 
     def _record_call(self, tag, start, response, error=None):
         calls = getattr(self, 'recent_calls', None)

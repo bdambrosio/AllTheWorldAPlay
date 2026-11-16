@@ -451,6 +451,9 @@ End your response with:
                         actors = actors, 
                         start_time = start_time, 
                         duration = duration)
+            # a task that takes its character out of the scene is played after the others
+            # (Context.integrate_task_plans) and is the only kind an exit may come from (exit_allowed)
+            task.leaves = (hash_utils.find('leaves', task_hash) or '').strip().lower().startswith('y')
             return task
         else:
             print(f"Warning: Invalid task generation response for {task_hash}") 
@@ -1790,8 +1793,12 @@ End response with:
         
         suffix = """
 
-Create at most {{$ntasks}} specific, actionable task(s), individually distinct and collectively exhaustive for achieving the focus goal.
-The tasks must be designed to achieve the focus goal in light of the central narrative, act specific narrative, and scene given below.
+Create at most {{$ntasks}} specific, actionable task(s): the different things {{$name}} does in this scene, in light of the focus goal, the central narrative, the act specific narrative and the scene given below.
+
+What kind of list this is depends on the focus goal:
+- If the focus goal is a job of work (something to find, make, carry, mend, reach), the tasks may be its steps.
+- If the focus goal is something wanted from another person (an answer, an admission, a promise, their staying), the tasks are NOT steps toward it. At most one task asks or works on that person for it. Once asked, it is given or refused, and no later task asks for the same thing in other words. Every other task is something of {{$name}}'s own: it comes from another of your drives, from your past or your nature, from the place and what can be done in it, or it is something you offer, show, tell, make or try. It would be worth doing if the focus goal did not exist.
+- A task's termination is something {{$name}} can bring about alone, or that either answer from the other person satisfies (told, or refused). Never one that waits for the other person to give in.
 
 ##Dramatic Context
 <central_narrative>
@@ -1826,14 +1833,13 @@ Consider how your chosen task_plan:
 
 Choose tasks that drive narrative forward, not just maintain status quo.
 
-The tasks should be at a granularity such that they collectively cover all the steps necessary to achieve the focus goal.
-Each task should be an important component of the overall narrative arc of the scene achieving the focus goal. Do not include tasks merely to fill time or number of tasks.
+Each task should be a part of the scene worth watching for itself. Do not include tasks merely to fill time or number of tasks.
 Each task should contain the potential for a narrative beat: learn something new, relationship shift, powerful emotion, change in power dynamics, etc.
 Where appropriate, drawn from typical life scripts.
 Also, the collective duration of the tasks should be less than any duration or completion time required for the focus goal.
                               
-A task is a specific objective that can be achieved in the current situation and which is a major step in satisfying the focus goal.
-The new task(s) should be distinct from one another, and each should advance the focus goal.
+A task is a specific objective that can be achieved in the current situation.
+The new task(s) should be distinct from one another: different in what is done and in what is wanted, not the same want put more strongly.
 Use known actor names in the task description unless deliberately introducing a new actor. Characters known to this character include:
 {{$known_actors}}
 
@@ -1851,12 +1857,13 @@ Each task begins with its #name line and ends with ## as shown below. Insert a s
 be careful to insert line breaks only where shown, separating a value from the next tag:
 
 #name brief (4-6 words) task name
-#description terse (6-8 words) statement of the action to be taken: what is done or pressed for, not the words to be said (the actor finds those when it is played).
+#description terse (6-8 words) statement of the action to be taken: what is done, offered, shown or asked, not the words to be said (the actor finds those when it is played).
 #reason (6-10 words) what you want out of this, in your own terms: what you want the other person to do, say, show or feel, or what you want to have or know. This is your intent for the task; it is kept if the action later has to change.
 #actors the names of any other actors involved in this task, comma separated. if no other actors, use None
 #start_time (2-3 words) expected start time of the action
 #duration (2-3 words) expected duration of the action in minutes
 #termination (5-7 words) condition test to validate goal completion, specific and objectively verifiable.
+#leaves yes or no: yes only if doing this task takes {{$name}} away from this scene's place (setting off for somewhere else, alone or with the others). Such a task ends the scene, so it is the last in your list, and most scenes have none.
 ##
 
 
@@ -2476,7 +2483,9 @@ End your response with:
                 print(f'{self.name} natural_dialog_end: invalid rating: {response}')
                 rating = 7
         # force end to run_on conversations
-        end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10))
+        # talk at ease runs longer than talk under pressure (the scene's kind, stage.KINDS)
+        run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
+        end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10) + run)
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
     
@@ -2597,8 +2606,13 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
                              for a in acts[-4:])
                 + "\nThese are done (a try that did not happen may be tried another way) and cannot be done again or thought over as if still to do. "
                   "Choose what comes next after them; if they have done what the task asks, do what follows from it."
-                + (" You have had your say in this task: now a Do, Move, Look or Think, unless someone has just said something you must answer."
-                   if any(a.mode == 'Say' for a in acts[-2:]) else ''))
+                + ('' if not any(a.mode == 'Say' for a in acts[-2:]) else
+                   # where nobody is pressing anybody the talk is the scene: held to one Say a task,
+                   # a 'shared job' was eight berry-pickings in a row and nine spoken lines
+                   " You have spoken in this task. You may speak again, of something other than what you last spoke of: the work in hand, "
+                   "this place, something of your own that it brings to mind, a plain question about the other person. Or a Do, Move, Look or Think."
+                   if stage.kind(self) in ('shared job', 'lull', 'play') else
+                   " You have had your say in this task: now a Do, Move, Look or Think, unless someone has just said something you must answer."))
 
     EARSHOT_TILES = 4
     MAX_CUT_INS_PER_SCENE = 2     # per character
@@ -2879,14 +2893,20 @@ End your response with:
     IDLE_AFTER = 2   # replies in the scene before the idle one
 
     def _idle_turn(self):
-        """True for one reply of this character in each scene: its third, when no danger is on it."""
+        """True for one reply of this character in each scene: its third, when no danger is on it;
+        and for every third after that in a scene where nobody is pressing anybody."""
         scene = getattr(self.context, 'current_scene', None)
         if scene is None:
             return False
         if getattr(self, '_idle_scene', None) is not scene:
             self._idle_scene, self._scene_replies, self._idle_done = scene, 0, False
         self._scene_replies += 1
-        if self._idle_done or self._scene_replies <= self.IDLE_AFTER or stage.tempo(self) == 'urgent':
+        if self._scene_replies <= self.IDLE_AFTER or stage.tempo(self) == 'urgent':
+            return False
+        # where nobody presses anybody, every third reply: with no demand to answer, one such
+        # line in a scene left the rest with nothing to talk about but the job
+        easy = stage.kind(self) in ('shared job', 'lull', 'play')
+        if self._idle_done and not (easy and (self._scene_replies - self.IDLE_AFTER - 1) % 3 == 0):
             return False
         self._idle_done = True
         trace.event('idle_line', character=self.name)
@@ -3357,6 +3377,17 @@ End your response with:
         missing = self.does_not_know()
         if missing:
             parts.append(f"What {self.name} does not know (it is found out in the scene, or not at all):\n" + '\n'.join(f'- {u}' for u in missing))
+        if self.context.current_scene is not None and self.context.staying_tasks_left() \
+                and not getattr(self.context, 'active_threat', None) and stage.tempo(self) != 'urgent':
+            parts.append(f"The scene is not over: there is more to be played here. Nobody sets off for anywhere else yet, and {self.name} "
+                         f"does not propose going now; a need to go (water, food, shelter) is spoken of as for after this.")
+        if d.get('keeps'):
+            # (with the pressing gone from a first meeting, Kidd told his lost hours in his fourth
+            # line and Joe his blank night in his second: the plan kept both for the next scene)
+            parts.append(f"What {self.name} keeps back in this scene. {self.name} knows it and it weighs on {self.name}, but it is not said, "
+                         f"not hinted at and not let slip here, however the talk turns: asked near it, {self.name} gives less than the truth, "
+                         f"talks of something else, or says plainly that it is not for telling. A later scene brings it out:\n"
+                         + '\n'.join(f'- {k}' for k in d['keeps']))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
 
