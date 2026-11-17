@@ -21,8 +21,9 @@ The owner holds the scene's sheet and is asked, as the scene is played, where it
              tried, failed and left behind), whether the beat being played is done, whether
              the last line waits for an answer
   converse() a talk, one actor's turn at a time, in a loop here (it was calls inside calls)
-  closed     every 'happens' outcome is reached: the scene has arrived, and what is left of its
-             schedule is not played
+  closed     every 'happens' outcome is reached: the scene has arrived
+  over       closed, and the scene has had FLOOR spoken lines: what is left of its schedule is
+             not played. Arrived sooner, it plays on through its beats
   winding    the scene has had its lines, or every 'happens' outcome is reached or gone and one
              at least is gone (it has nowhere left to arrive): no beat is begun but a leaving,
              a talk ends at the next line that asks nothing, and anyone may go
@@ -150,6 +151,10 @@ PAGE_TURNS = 80   # the latest turns shown to the tracker; a scene rarely has mo
 # (With talks held open while a question waited and leaving held while beats remained, a first
 # scene ran past eighty lines, the last thirty of them about to walk to a spring.)
 LINES = {'easy': 40, 'other': 32}
+# And how few it may have: a scene that arrives with fewer spoken lines than this is not yet
+# over while beats of its schedule are unplayed. (Closed on arrival, first scenes ended after
+# four lines and after eleven, the actors' own business unplayed: the people were not seen.)
+FLOOR = {'easy': 13, 'other': 11}
 
 
 class Owner:
@@ -197,6 +202,24 @@ class Owner:
     def spoken(self):
         return len([e for e in self.context.record_entries[self.start:] if e.get('kind') == 'speech'])
 
+    def _easy(self):
+        kind = ' '.join(str(self.scene.get('kind') or '').strip().lower().replace('_', ' ').split())
+        return 'easy' if kind in ('shared job', 'lull', 'confession', 'play') else 'other'
+
+    @property
+    def over(self):
+        """The scene has arrived and has had lines enough to be a scene: what is left of its
+        schedule is not played. Arrived with fewer, it goes on to its next beat (the scene's
+        schedule running out ends it as it always did)."""
+        if not self.closed:
+            return False
+        if self.spoken() >= FLOOR[self._easy()]:
+            return True
+        if not getattr(self, '_held', False):
+            self._held = True
+            trace.event('scene_held', spoken=self.spoken(), floor=FLOOR[self._easy()])
+        return False
+
     @property
     def spent(self):
         """No 'happens' outcome is still open and one at least is gone: the scene has not
@@ -208,8 +231,7 @@ class Owner:
     def winding(self):
         """The scene has had its lines, or is spent: no more beats are begun here but a leaving,
         a talk ends at the next line that asks nothing, and anyone may go."""
-        kind = ' '.join(str(self.scene.get('kind') or '').strip().lower().replace('_', ' ').split())
-        lines = self.spoken() >= LINES['easy' if kind in ('shared job', 'lull', 'confession', 'play') else 'other']
+        lines = self.spoken() >= LINES[self._easy()]
         over = lines or self.spent
         if over and not getattr(self, '_wound', False):
             self._wound = True

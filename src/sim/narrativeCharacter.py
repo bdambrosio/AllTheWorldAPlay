@@ -397,7 +397,7 @@ Each scene object has:
 - "characters" (object: {"<Name>": {"goal": "<one-line playable goal>"}})
 - "action_order" (array of names: each occurrence is a beat led by that character; only characters in the scene's "characters")
 - "pre_narrative" (string, at most 20 words: the immediate set-up and stakes, concrete and specific, e.g. 'Laura doesn't love you', not 'there is a secret')
-- "post_narrative" (string, at most 20 words: how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice: 'says aloud that he stays' is not an ending; his staying is)
+- "post_narrative" (string, at most 20 words: what is said or done on stage that ends the scene, as one or two things a watcher could point at: a thing told, refused, agreed, handed over or put away, or a deed the place offers. It may add one thing that is still not said or done when the scene ends. What a character is hiding is told only where the act's plan calls for it; elsewhere the scene ends on the refusal, the dodge or the thing put away, which can be pointed at as well. Not how anyone feels or what they notice or decide; not what the weather, an animal or a danger does; and nobody goes off alone unless that going is the ending. Nobody announces a feeling or a choice: 'says aloud that he trusts her' is not an ending; handing her the key is)
 - "task_budget" (int, optional: the number of beats; the number of characters in the scene, or slightly more for complex scenes)
 
 An example of the form only (its content is not this play's):

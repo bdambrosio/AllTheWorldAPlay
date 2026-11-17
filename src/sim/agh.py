@@ -1087,7 +1087,7 @@ End response with:
             owner = scene_owner.owner_of(self.context)
             verdict = owner.check(task) if owner is not None and task is owner.current_task() else None   # not a task pushed on top of the beat
             if verdict is not None:
-                satisfied = verdict['beat'] == 'done' or owner.closed
+                satisfied = verdict['beat'] == 'done' or owner.over
                 progress = 100 if satisfied else 0
             else:
                 satisfied, progress = await self.test_termination(task, termination_check, consequences, world_updates, type='task')
@@ -2473,7 +2473,7 @@ End your response with:
             lines = len(transcript.split('\n'))
             run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
             run = 4 if run else 0
-            if owner.closed:
+            if owner.over:
                 over = True
             elif verdict['awaiting']:
                 over = lines > 12 + run   # a question is answered, but not for ever

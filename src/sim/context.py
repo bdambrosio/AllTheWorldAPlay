@@ -1984,7 +1984,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         trace.event('scene_plan', entries=[{'actor': e['actor'].name, 'task_id': e['task'].id, 'task': e['task'].name}
                                            for e in self.scene_integrated_task_plan])
         while self.scene_integrated_task_plan_index < len(self.scene_integrated_task_plan):
-            if scene_owner.owner_of(self) and self.owner.closed:
+            if scene_owner.owner_of(self) and self.owner.over:
                 # the scene has arrived where it was planned to: what is left of its schedule is
                 # not played (two searches of a rubbish bin after the page had been read)
                 trace.event('scene_closed', unplayed=[f"{e['actor'].name}: {e['task'].name}"
@@ -2354,7 +2354,7 @@ Each **scene** object must have:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
+ "post_narrative": "Short prose (≤20 words): what is said or done on stage that ends the scene, as one or two things a watcher could point at: a thing told, refused, agreed, handed over or put away, or a deed the place offers. It may add one thing that is still not said or done when the scene ends. What a character is hiding is told only where the act's plan calls for it; elsewhere the scene ends on the refusal, the dodge or the thing put away, which can be pointed at as well. Not how anyone feels or what they notice or decide; not what the weather, an animal or a danger does; and nobody goes off alone unless that going is the ending. Nobody announces a feeling or a choice ('says aloud that he trusts her' is not an ending; handing her the key is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 3 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
  }
@@ -2937,7 +2937,7 @@ End your response with: </end>""")]
     def staying_tasks_left(self):
         """How many of the scene's planned tasks are still to be played here: those after the one
         being played that do not themselves take anyone out of the scene (Task.leaves)."""
-        if scene_owner.owner_of(self) and (self.owner.closed or self.owner.winding):
+        if scene_owner.owner_of(self) and (self.owner.over or self.owner.winding):
             return 0   # the scene has arrived, or has had its lines: nothing more need be played here
         plan = self.scene_integrated_task_plan or []
         return len([e for e in plan[self.scene_integrated_task_plan_index + 1:] if not getattr(e['task'], 'leaves', False)])
@@ -3920,7 +3920,7 @@ Scene format is as follows:
  "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
- "post_narrative": "Short prose (≤20 words): how things stand at the end and what tension lingers, shown in what the characters do. Nobody announces a feeling or a choice ('says aloud that he stays' is not an ending; his staying is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
+ "post_narrative": "Short prose (≤20 words): what is said or done on stage that ends the scene, as one or two things a watcher could point at: a thing told, refused, agreed, handed over or put away, or a deed the place offers. It may add one thing that is still not said or done when the scene ends. What a character is hiding is told only where the act's plan calls for it; elsewhere the scene ends on the refusal, the dodge or the thing put away, which can be pointed at as well. Not how anyone feels or what they notice or decide; not what the weather, an animal or a danger does; and nobody goes off alone unless that going is the ending. Nobody announces a feeling or a choice ('says aloud that he trusts her' is not an ending; handing her the key is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
  }
