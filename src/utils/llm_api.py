@@ -600,7 +600,7 @@ class LLM():
                                     stops=stops, stop_on_json=stop_on_json, model=model)
         options.reasoning = _reasoning.get(tag) or (THINK_EFFORT.get(self.server_name)
                                                     if getattr(self, 'auto_reasoning', True) and tag not in MECHANICAL_TAGS else None)
-        if tag in _routed() and (plan := planner()) is not None and plan is not self and plan.server_name != self.server_name:
+        if tag in _routed() and (plan := planner()) is not None and plan is not self and (plan.server_name, plan.model) != (self.server_name, self.model):
             plan.owner = self.owner
             response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
                                 top_p=top_p, stops=stops, stop_on_json=stop_on_json, model=model, log=log, trace=trace)

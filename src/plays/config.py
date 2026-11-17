@@ -37,8 +37,8 @@ plan_model_name = None
 if os.environ.get('ATWAP_PLAN_LLM'):
     plan_server_name = os.environ['ATWAP_PLAN_LLM']
     plan_model_name = os.environ.get('ATWAP_PLAN_MODEL') or None
-if plan_server_name in ('same', 'none', '', server_name):
-    plan_server_name = None
+if plan_server_name in ('same', 'none', '') or (plan_server_name == server_name and (plan_model_name or model_name) == model_name):
+    plan_server_name = None   # the same server with another model named is a planner (GLM-5.3 planning for GLM-5.3-Flash)
 # With a planner, it also keeps the world and plans each character's part (utils/llm_api.py
 # PLAN_GROUPS: 'world', 'character'), so a local acting model writes only the lines.
 # ATWAP_PLAN_GROUPS=none sends it only the play's plan; 'world' or 'character' one of the two.

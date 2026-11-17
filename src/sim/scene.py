@@ -10,16 +10,22 @@ and one that had not could empty on a spoken line.
 The owner holds the scene's sheet and is asked, as the scene is played, where it stands:
 
   sheet      the planned ending as two to four outcomes, written before the first line
-             ('happens': a thing said or done; 'holds': a thing that must not happen first)
+             ('happens': a thing said or done at one moment; 'holds': a thing that must not
+             happen, or a state that must not change, before the scene ends)
   arrange()  the scene's beats: what each character's actor proposed (its task plan), read
              together beside the sheet, with repeats dropped, a beat added for an outcome nobody
              proposed to bring about, and a leaving put last. The beats are Tasks, so all that
              reads a task (the page, the trace, a character's memory of what it did) is unchanged.
-  check()    after an act and before a reply: which outcomes are now reached, whether the beat
-             being played is done, whether the last line waits for an answer
+  check()    after an act and before a reply: which outcomes are now reached, which can no
+             longer be ('gone': refused and the refusal accepted, come about another way, or
+             tried, failed and left behind), whether the beat being played is done, whether
+             the last line waits for an answer
   converse() a talk, one actor's turn at a time, in a loop here (it was calls inside calls)
   closed     every 'happens' outcome is reached: the scene has arrived, and what is left of its
              schedule is not played
+  winding    the scene has had its lines, or every 'happens' outcome is reached or gone and one
+             at least is gone (it has nowhere left to arrive): no beat is begun but a leaving,
+             a talk ends at the next line that asks nothing, and anyone may go
 
 What reads it: Context.run_scene (the beats; the scene is over), Character.clear_task_if_satisfied
 (the beat is done), Character.natural_dialog_end (the talk is over), Character.acts (a line said
@@ -35,6 +41,15 @@ Tested offline on ten recorded scenes before it was built (logs/review-20261115/
 outcomes were judged as a reader judged them 28 times in 30, and no scene was closed early.
 Whether the beat is 'stalled' is asked for and traced, and decides nothing: the acting model does
 not tell circling from talk.
+
+'gone' was added after four first scenes in six could not close, none of them through a refused
+deed: an outcome the characters turned down ("Split up? No"), one overtaken (a name given before
+it was asked for), one tried that failed (a strip of cloth reached for and not let go), and a
+state written as an event ('neither leaves as the light fades': now a 'holds'). Tested offline on
+eleven recorded scenes, old wording against new (logs/review-20261116/gone): all four outcomes
+that could no longer happen were called gone, none that later happened was, and outcomes were read
+as a reader read them 32 times in 33 (31 before). A 'gone' counts once two checks running say it:
+a single one was twice taken back at the next look.
 
 Off with the ablation switch 'scene_owner'. An unplanned play has no scenes and no owner.
 """
@@ -53,8 +68,8 @@ Planned ending: {{$ending}}
 What each is after: {{$goals}}
 
 Write two to four outcomes. Each is one thing the planned ending needs, small enough to be seen in a single line or deed.
-- "kind": "happens" for something that must be said or done on stage (a thing told, admitted, refused, handed over, a deed done). Write it so that one could point at the line or deed that does it.
-- "kind": "holds" for something that must NOT happen before the scene ends (a secret not told, a question not asked, a thing not opened). Write what would break it. Only where the planned ending itself says a thing is not done, not said or kept back; most endings have none.
+- "kind": "happens" for something that is said or done on stage at one moment (a thing told, admitted, refused, handed over, a deed done). Write it so that one could point at the line or deed that does it.
+- "kind": "holds" for something that is so only if it lasts until the scene ends: a thing that must NOT happen before then (a secret not told, a question not asked, a thing not opened), or a state that must not change (nobody leaves, it stays shut). Write what would break it. Only where the planned ending's own words say a thing is not done, not said, kept back or stays as it is; most endings have none.
 - Only what the planned ending says. Nothing from how it opens, and nothing the ending does not ask for.
 - One outcome is one thing. Leave out what merely goes with it (the light, what is on someone's hands, where they stand), unless the ending turns on that.
 - What someone feels, notices, decides or understands is not an outcome unless the ending has it said or shown; then write the saying or the showing.
@@ -80,10 +95,11 @@ The scene so far. A line with a name and quoted words was spoken; any other line
 
 Answer four things.
 
-1. For each outcome above that is still open: has it happened now?
+1. For each outcome above not yet REACHED or BROKEN: has it happened now?
 - Judge only from what the turns show said or done. A thing offered, promised, proposed, intended, asked for, talked about or about to happen has not happened.
 - A deed happened only as far as its line says. If it says the thing stayed where it was, or that nothing passed, it did not happen, whatever is said afterwards.
 - An outcome in several parts has happened only when every part has.
+- For a 'happens' outcome that has not happened, say also whether it still can. It is "gone" when the turns show it no longer can in this scene: the one who was to do it refused and the other gave way; or what it was for has come about another way (she was to be asked her name, and gave it unasked); or it was tried, it failed, and the two have since gone on to other things. Not yet tried, put off, or refused and still being pressed is not gone.
 - A 'holds' outcome stays open until the turns show the very thing it forbids; then it is broken.
 - Give the turn number and quote the words that show it.
 
@@ -95,13 +111,13 @@ Answer four things.
 3. "awaiting": true if the last turn is a question, an offer or a demand put to someone who has not yet answered it; false if it is an answer, an agreement, a refusal, a remark that asks nothing, or a deed.
 
 4. What should happen next:
-- "close": every 'happens' outcome has been reached. The scene has arrived.
+- "close": every 'happens' outcome has been reached or is gone. The scene has arrived, or has nowhere left to arrive.
 - "next_beat": the beat is done or stalled and the scene has not arrived.
 - "continue": otherwise.
 
 JSON only:
-{"happens": [{"n": 1, "reached": true or false, "turn": 0, "by": "the words that show it"}], "holds": [{"n": 4, "broken": true or false, "turn": 0, "by": "the words that break it"}], "beat": "going" or "done" or "stalled", "awaiting": true or false, "why": "12 words at most", "next": "continue" or "next_beat" or "close"}
-List only outcomes still open, each under its own kind. "broken": true only when you can quote the turn that does the forbidden thing; if you cannot, it is false.
+{"happens": [{"n": 1, "reached": true or false, "gone": true or false, "turn": 0, "by": "the words that show it"}], "holds": [{"n": 4, "broken": true or false, "turn": 0, "by": "the words that break it"}], "beat": "going" or "done" or "stalled", "awaiting": true or false, "why": "12 words at most", "next": "continue" or "next_beat" or "close"}
+List only outcomes not yet REACHED or BROKEN, each under its own kind. "broken" and "gone": true only when you can quote the turn that shows it; if you cannot, it is false.
 End your response with: </end>"""
 
 BEATS = """A scene of an improvised play is about to be played. The actor of each character has proposed, without seeing the other's, what that character does in it. Arrange the proposals into the scene's beats.
@@ -140,7 +156,7 @@ class Owner:
     def __init__(self, context, scene):
         self.context, self.scene = context, scene
         self.start = len(context.record_entries)   # the scene's page is the record from here on
-        self.outcomes = []        # [{'kind', 'text', 'state': 'open' | 'reached' | 'broken', 'turn', 'by'}]
+        self.outcomes = []        # [{'kind', 'text', 'state': 'open' | 'reached' | 'gone' | 'broken', 'turn', 'by'}]
         self.closed = False
         self.checks = 0
         self._seen = 0            # turns of the page already looked at
@@ -182,14 +198,22 @@ class Owner:
         return len([e for e in self.context.record_entries[self.start:] if e.get('kind') == 'speech'])
 
     @property
+    def spent(self):
+        """No 'happens' outcome is still open and one at least is gone: the scene has not
+        arrived and has nowhere left to arrive."""
+        states = [o['state'] for o in self.outcomes if o['kind'] == 'happens']
+        return 'gone' in states and 'open' not in states
+
+    @property
     def winding(self):
-        """The scene has had its lines: no more beats are begun here but a leaving, a talk ends
-        at the next line that asks nothing, and anyone may go."""
+        """The scene has had its lines, or is spent: no more beats are begun here but a leaving,
+        a talk ends at the next line that asks nothing, and anyone may go."""
         kind = ' '.join(str(self.scene.get('kind') or '').strip().lower().replace('_', ' ').split())
-        over = self.spoken() >= LINES['easy' if kind in ('shared job', 'lull', 'confession', 'play') else 'other']
+        lines = self.spoken() >= LINES['easy' if kind in ('shared job', 'lull', 'confession', 'play') else 'other']
+        over = lines or self.spent
         if over and not getattr(self, '_wound', False):
             self._wound = True
-            trace.event('scene_winding', spoken=self.spoken())
+            trace.event('scene_winding', spoken=self.spoken(), why='lines' if lines else 'outcomes gone')
         return over
 
     def page(self):
@@ -305,7 +329,8 @@ class Owner:
         first = len(page) - len(shown)
         turns = '\n'.join(f"{first + i + 1}{' NEW' if first + i >= self._seen else ''}. {line}" for i, line in enumerate(shown))
         outcomes = '\n'.join(f"{i + 1}. [{o['kind']}] {o['text']} -- "
-                             + ('still open' if o['state'] == 'open' else f"{o['state'].upper()} at turn {o['turn']}")
+                             + ('still open' if o['state'] == 'open' else f"GONE at turn {o['turn']}, unless it has happened since"
+                                if o['state'] == 'gone' else f"{o['state'].upper()} at turn {o['turn']}")
                              for i, o in enumerate(self.outcomes))
         scene = self.scene
         reply = self.context.llm.ask({'title': scene.get('scene_title', ''), 'place': scene.get('location', ''),
@@ -317,16 +342,27 @@ class Owner:
         if not isinstance(found, dict) or found.get('beat') not in ('going', 'done', 'stalled'):
             trace.event('check_unreadable', of='scene.track', reply=(reply or '')[:300])
             return None
-        for field, flag in (('happens', 'reached'), ('holds', 'broken')):
+        said = {}
+        for field in ('happens', 'holds'):
             for row in found.get(field) or []:
                 try:
                     n = int(row.get('n')) - 1
                 except (TypeError, ValueError, AttributeError):
                     continue
-                if 0 <= n < len(self.outcomes) and self.outcomes[n]['state'] == 'open' and self.outcomes[n]['kind'] == field \
-                        and row.get(flag) is True:
-                    self.outcomes[n].update(state=flag, turn=row.get('turn'), by=str(row.get('by') or '')[:200])
-                    trace.event('outcome_' + flag, n=n + 1, text=self.outcomes[n]['text'], turn=row.get('turn'), by=self.outcomes[n]['by'])
+                if 0 <= n < len(self.outcomes) and self.outcomes[n]['kind'] == field:
+                    said[n] = row
+        for n, o in enumerate(self.outcomes):
+            row = said.get(n) or {}
+            flag = 'reached' if o['kind'] == 'happens' else 'broken'
+            if o['state'] in ('open', 'gone') and row.get(flag) is True:   # a gone outcome may still happen
+                o.update(state=flag, turn=row.get('turn'), by=str(row.get('by') or '')[:200])
+                trace.event('outcome_' + flag, n=n + 1, text=o['text'], turn=row.get('turn'), by=o['by'])
+            elif o['kind'] == 'happens' and o['state'] == 'open':
+                # gone once two checks running say so: a single one has been taken back at the next look
+                o['_gone'] = o.get('_gone', 0) + 1 if row.get('gone') is True else 0
+                if o['_gone'] >= 2:
+                    o.update(state='gone', turn=row.get('turn'), by=str(row.get('by') or '')[:200])
+                    trace.event('outcome_gone', n=n + 1, text=o['text'], turn=row.get('turn'), by=o['by'])
         was_closed = self.closed
         self.closed = all(o['state'] == 'reached' for o in self.outcomes if o['kind'] == 'happens')
         self._seen, self._beat = len(page), beat
