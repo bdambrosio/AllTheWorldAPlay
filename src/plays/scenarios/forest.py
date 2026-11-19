@@ -207,8 +207,9 @@ affordances = {
         {'name': 'take a branch', 'verbs': [], 'named_verbs': ['take', 'pick up', 'grab', 'gather', 'collect', 'break off', 'lift', 'snap', 'break', 'wrench', 'seize'],
          'resource_types': ['Fallen_Branch'], 'gain': 'branch', 'minutes': 3, 'deplete': 4,
          'text': 'takes a sturdy branch from {resource}'},
-        {'name': 'build a fire', 'verbs': ['fire', 'kindle', 'campfire', 'light a fire'], 'resource_types': None,
-         'requires': 'branch', 'consumes': 'branch', 'minutes': 20, 'sets': 'fire', 'text': 'builds a small fire'},
+        # (No 'build a fire' here. How a fire is made, fed, banked and put out is not written ahead: the
+        # keeper models it when someone first sets about one, sim/keeper.py. The wolf is still 'blocked_by'
+        # fire below: that is the name a model's effect is matched to.)
         {'name': 'rest', 'verbs': ['rest', 'sit down', 'catch breath', 'lie down', 'recover'], 'resource_types': None,
          'effects': {'fatigue': -0.15}, 'minutes': 20, 'text': 'rests for a while'},
         {'name': 'gather berries', 'category': 'survival', 'verbs': ['stash', 'pocket'], 'named_verbs': ['gather', 'collect', 'save', 'pluck', 'pick', 'harvest', 'strip'],

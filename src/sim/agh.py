@@ -10,6 +10,7 @@ import sim.survival as survival
 import sim.stage as stage
 import sim.ablation as ablation
 import sim.record as record
+import sim.keeper as keeper
 import sim.scene as scene_owner
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -3338,6 +3339,9 @@ End your response with:
             parts.append('You could do here: ' + actions)
         if survival.shared_line(self):
             parts.append(survival.shared_line(self))
+        kept = keeper.offer_lines(self) if body is not None else []
+        if kept:   # what the things here allow, as this world has come to model them (sim/keeper.py)
+            parts.append('With the things here you could also, as a Do: ' + '; '.join(kept))
         if record.refusals_note(self):
             parts.append(record.refusals_note(self))
         return '\n'.join(parts)

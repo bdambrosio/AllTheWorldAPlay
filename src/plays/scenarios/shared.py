@@ -22,7 +22,7 @@ the one here.
     gloss       what it is, for the actor and for whoever judges a deed; {other} is the target
 
 Not here, on purpose: force on a person (a grab, a shove: who prevails is not settled by a
-gesture), and anything that changes a thing, a garment or the place (a door, a tap, a fire):
+gesture; 'lead' only offers), and anything that changes a thing, a garment or the place (a door, a tap, a fire):
 those are a world's to give, where it tracks what they change.
 """
 
@@ -61,6 +61,9 @@ actions = [
      'gloss': "puts their arms round {other}; {other} may let go"},
     {'name': 'stand back to back with', 'kind': 'contact', 'target': 'character', 'sets': 'back to back with',
      'gloss': "sets their back against {other}'s; {other} may let go"},
+    # moving someone is an offer, not force: the one led comes if they choose (their next act says)
+    {'name': 'lead', 'kind': 'contact', 'target': 'character', 'sets': 'leading',
+     'gloss': "takes {other}'s hand or arm and starts off with them, or draws them up or aside; {other} comes only if they choose, and may let go"},
     {'name': 'let go of', 'kind': 'contact', 'target': 'character', 'sets': None, 'clears': True,
      'gloss': "ends any touch between themselves and {other}, whoever began it"},
 ]

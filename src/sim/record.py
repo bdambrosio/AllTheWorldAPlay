@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, stage, survival
+from sim import ablation, keeper, stage, survival
 from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
@@ -797,6 +797,11 @@ def judge(context, character, act):
     if not survival.config(context) or getattr(character, 'body', None) is None:
         return
     parts, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
+    if not parts and not survival.active_threat_for(character) and ablation.enabled('keeper'):
+        # not among what the world and the stage already have: the keeper says how the world works
+        # for it, or that it cannot happen here and why (sim/keeper.py)
+        kept = keeper.consider(context, character, act.action)
+        parts, why = ([keeper.KEPT], '') if kept['can'] else ([], kept['why'] or why)
     act.resolved, act.refusal = ' + '.join(parts), '' if parts else why
 
 

@@ -68,6 +68,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sim.trace import trace
+from sim import keeper
 
 DEFAULT_HARM = {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')}
 CO_PRESENT_TILES = 2       # a target character must be this close for a social action
@@ -855,6 +856,11 @@ def state_of(context, name):
     return getattr(context, 'thing_states', {}).get(str(name).lower(), '')
 
 
+def set_state(context, name, state):
+    """How a thing now is, by whatever left it so (handling, or a change its model has: sim/keeper.py)."""
+    context.__dict__.setdefault('thing_states', {})[str(name).lower()] = state
+
+
 def named(context, thing):
     """A thing as it is listed for whoever acts, judges or tells: its name, where in the place it
     is, and how it has been left. thing: a name, or a prop lying somewhere."""
@@ -1211,7 +1217,7 @@ Actions ({{$name}} could do these now; each is 'name@where' or 'name@who', with 
 - A deed is an action only when doing what it says is doing that action: drinking from the spring is drinking; looking at the spring or talking about water is not. A thing is given only when the deed puts it in the other's hands; holding it out or offering it is 'hold out'; holding it up to be seen is 'show'. An action some way off is done only if the deed goes there to do it.
 - A deed may be two or three of the actions done one after another ("kneels at the water and drinks", "sits down and takes her hand"): name each, in order. How it is done (slowly, without a word, eyes on her face) and what the doer then waits for are manner, not a further act.
 - passing: a small act that is none of the listed actions and leaves nothing that anyone would later need to know: it puts nothing away, opens, shuts, breaks, lights or makes nothing, moves no thing from where it is kept, changes no garment, passes no thing between hands, and does nothing to another person by force. Tracing a print with a fingertip, patting the ground beside oneself, setting a foot beside a mark to compare, tapping a thing someone holds, squaring one's shoulders, wiping one's hands on one's clothes, walking a slow circle round someone where they stand: each is passing. (Putting a held thing in a pocket is the action 'stow', where it is listed.) It is seen, and then it is gone. It may stand alone or be one part of a deed.
-- The contact actions only touch: a deed that pushes, pulls, pins, drags, holds back or moves another person is not an action and not passing.
+- The contact actions only touch, except 'lead': taking someone by the hand or arm and starting off with them, or drawing them to their feet or aside, is 'lead' where it is listed, and they come only if they choose. A deed that shoves, pins, drags, carries or holds back another person against their will is not an action and not passing.
 - handle: ordinary handling of ONE thing listed as held or lying here, done with the hands and with what is held, that leaves that thing lastingly different, so that someone coming later would find it so, and leaves nothing else different: opens or shuts it, folds or unfolds it, turns back an edge and leaves it so, snaps or breaks it, splits it in two, ties, wraps, wipes or empties it. Turning a thing over, weighing it in the hand, holding it up, or holding it against another thing to compare leaves nothing different: those are passing. Write handling as 'handle <the thing exactly as listed>: <how the thing is left, two to five words>' ("handle branch: snapped into short lengths"). It may stand alone or be one part of a deed.
 - It is not handling, and not passing, when the deed makes a thing that was not there, lights, feeds, banks or puts out a fire, opens a way or a hiding place, repairs a thing so that it works again, eats, drinks or treats a body, or carries off a thing marked as part of the place: each of those is one of the listed actions where this world has it, and cannot be done where it has not.
 - A deed, or a part of one, that changes a garment or the place itself (takes off a shirt, shuts a tap, wedges a door, digs, moves earth), or that uses or changes a thing not listed as held or lying here, is not an action, not handling and not passing.
@@ -1233,6 +1239,7 @@ def deed_offers(character):
                 for name, (kind, item, other) in prop_offers(character).items()]
     offered += [f"{name} ({action['gloss'].format(other=other.name if other is not None else '')})"
                 for name, (action, other, item) in shared_offers(character).items()]
+    offered += keeper.offer_lines(character)   # what the things here allow, as the world has come to model them
     return offered
 
 
@@ -1333,6 +1340,10 @@ def _do_one(context, character, label, text, act_text, via):
     handled = re.match(r'handle\s+(.+?)\s*:\s*(.+)$', label, re.I)
     if handled:
         return 'thing', _handle(context, character, handled.group(1), handled.group(2))
+    if label == keeper.KEPT:   # a deed the keeper placed: its models say what it makes and changes
+        return 'world', keeper.perform(context, character, act_text)
+    if label.lower() in {k.lower() for k in keeper.offers(character)}:
+        return 'world', keeper.do_offer(context, character, label)
     prop = next((v for k, v in prop_offers(character).items() if k.lower() == label.lower()), None)
     if prop:   # a thing handed over, held out, taken or put down
         return 'thing', _prop_do(context, character, *prop)
@@ -1615,7 +1626,7 @@ def _blocked(context, character, hazard):
     fire = getattr(context, 'survival_fire', None)
     near_fire = bool(fire and fire['until'] > context.simulation_time and _distance(fire['at'], _here(character)) <= 2)
     return (('sheltered' in blocks and body.sheltered) or ('fire' in blocks and near_fire)
-            or any(b in body.flags for b in blocks))
+            or any(b in body.flags for b in blocks) or keeper.keeps_off(context, character, hazard['name']))
 
 
 def _hazard_source(context, character, hazard):
@@ -1874,7 +1885,7 @@ def _respond_to_threat(context, character, threat, text, chosen=None):
             continue
         p = response.get('success', 0.5)
         for item, bonus in response.get('bonus', {}).items():
-            if item == 'fire' and getattr(context, 'survival_fire', None):
+            if item == 'fire' and (getattr(context, 'survival_fire', None) or keeper.keeps_off(context, character, threat['hazard']['name'])):
                 p += bonus
             elif item in character.body.inventory or item in character.body.flags:
                 p += bonus
