@@ -19,6 +19,22 @@ from sim.trace import trace
 
 logger = logging.getLogger('simulation_core')
 
+class Part:
+    """An owner's part that nobody has been cast in. A world may say a kind of place has an owner
+    (a mill, a farm, a hut). Until a play file, the director or a planned scene calls for that
+    person (Context.cast_part), the place holds this and no character exists: nobody to be seen
+    from afar, described or paid for. `name` is what a world action's refusal shows."""
+    def __init__(self, place):
+        self.place = place
+        self.name = f'the owner of {place}'
+
+
+def uncast_parts(context):
+    """[(place id, Part)] for the owned places nobody has been cast at."""
+    return [(rid, res['properties']['owner']) for rid, res in context.map.resource_registry.items()
+            if isinstance(res.get('properties', {}).get('owner'), Part)]
+
+
 SAME_PLACE = ('', 'same', 'same place', 'same location', 'same as before', 'here', 'unchanged')
 AT_PLACE_TILES = 2        # this close to a place is 'at' it
 GAZETTEER_PLACES = 14     # places listed for the playwright, nearest first
@@ -84,10 +100,40 @@ def remote(character):
     return words
 
 
+def supporting_note(context):
+    """For the prompts that plan and fit scenes (not the leads' own drafts): the supporting actors,
+    what each wants and where each is, and that a scene set there has them in it. '' when the
+    play has none in person on the map."""
+    people = [c for c in context.supporting() if getattr(c, 'mapAgent', None) is not None and not remote(c)]
+    if not people:
+        return ''
+    def line(c):
+        said = ' '.join((getattr(c, 'original_character', None) or getattr(c, 'character', '') or '').split())
+        wants = '; '.join(d.text for d in (getattr(c, 'drives', None) or [])[:2])
+        return f"- {c.name}: {said}" + (f" Wants: {wants}." if wants else '') + f" Now {where(context, here(c))}."
+    return ("\nPeople of this world who are not at the centre of the play, and where each is:\n" + '\n'.join(line(c) for c in people)
+            + '\nA scene set where one of them is has that person in it: list them in its "characters", with a goal of their own drawn from what they want, '
+              'and in its "action_order". A goal says what that person is after in the scene, never what they tell or what anyone decides. '
+              'They are in no scene set elsewhere unless that scene has a reason for them to come.')
+
+
+def supporting_at(context, xy, but=()):
+    """The supporting actors who are at a place in person: they are in any scene set there."""
+    return [c for c in context.supporting() if c not in but and getattr(c, 'mapAgent', None) is not None
+            and not remote(c) and _distance(here(c), xy) <= AT_PLACE_TILES]
+
+
 def off_stage(character):
     """Has this character left the scene now being played?"""
     scene = getattr(getattr(character, 'context', None), 'current_scene', None)
     return scene is not None and getattr(character, 'left_scene', None) is scene
+
+
+def not_in_scene(character):
+    """While a scene is being played: is this character no part of it? (A line said to someone
+    by name was answered by them wherever on the map they were.)"""
+    scene = getattr(getattr(character, 'context', None), 'current_scene', None)
+    return scene is not None and character.name != 'Viewer' and getattr(character, 'current_scene', None) is not scene
 
 
 def leave(character, party=(), told=False, to=None):
@@ -319,9 +365,12 @@ def gazetteer(context):
     for d, rid, res, offers in listed:
         nearest = min(cast, key=lambda c: _distance(here(c), res['location']))
         reach = 'here' if d <= AT_PLACE_TILES else f'{d} tiles from {nearest.name}, about {round(d * minutes_per_tile)} min walk'
-        owner = getattr(res.get('properties', {}).get('owner'), 'name', res.get('properties', {}).get('owner'))
+        owner = res.get('properties', {}).get('owner')
+        # an uncast owner is said only where what can be done there depends on whose it is
+        owned = ((', has an owner' if survival.ownership_used(context, res.get('type')) else '') if isinstance(owner, Part)
+                 else f", owned by {getattr(owner, 'name', owner)}" if owner else '')
         lines.append(f"- {rid}: {res.get('description') or res.get('type')}"
-                     + (f', owned by {owner}' if owner else '') + f' ({reach})'
+                     + owned + f' ({reach})'
                      + (f"; can be done there: {', '.join(offers)}" if offers else ''))
     shared = survival.shared_actions(context)
     if shared:   # what a body can do wherever it is: the planner is held to the same acts as the actors
@@ -440,7 +489,15 @@ def pending_business(character):
     mine = next((v for k, v in business.items() if str(k).lower() == character.name.lower()), None) or []
     mine = [mine] if isinstance(mine, str) else mine
     done = getattr(character, 'scene_deeds', [])
-    return [str(b) for b in mine if str(b).split('@')[0].strip().lower() not in done]
+    # only what this world lets a body do: a plan's own invention ('quench signal fire@Cave1') was
+    # given to the actor as something it must do, and the stage refused it five times running
+    cfg = survival.config(character.context) or {}
+    real = {a['name'].lower() for a in cfg.get('actions', [])} | {a['name'].lower() for a in survival.shared_actions(character.context)}
+    unreal = [str(b) for b in mine if str(b).split('@')[0].strip().lower() not in real]
+    if unreal and scene.get('_business_dropped') != unreal:
+        scene['_business_dropped'] = unreal
+        trace.event('business_dropped', character=character.name, business=unreal, why='no such action in this world')
+    return [str(b) for b in mine if str(b) not in unreal and str(b).split('@')[0].strip().lower() not in done]
 
 
 def whereabouts(character):
@@ -591,8 +648,7 @@ def _on_stage(context):
     never in a picture of his own office), else those marked as in it, else the main cast. The
     scene picture is taken before the cast is marked, and showed the whole main cast. Those in
     the scene by radio are not in its picture."""
-    everyone = [c for c in list(context.actors) + list(getattr(context, 'extras', []))
-                if getattr(c, 'mapAgent', None) is not None and not remote(c)]
+    everyone = [c for c in context.everyone() if getattr(c, 'mapAgent', None) is not None and not remote(c)]
     scene = context.current_scene
     named = []
     if isinstance(scene, dict):

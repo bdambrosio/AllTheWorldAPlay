@@ -645,63 +645,6 @@ Do not include any reasoning, introductory, explanatory, or discursive text, any
 
 
 
-    def say_target(self, act_mode, text, source=None):
-        """Determine the intended recipient of a message"""
-        #if len(self.context.actors) == 2:
-        #    for actor in self.context.actors:
-        #        if actor.name != self.name:
-        #            if actor.name.lower() in text.lower():
-        #                return actor.name
-        if 'dialog with ' in source.name:
-            return source.name.strip().split('dialog with ')[1].strip()
-        
-        prompt = [UserMessage(content="""Determine the intended hearer of the message below spoken by you.
-Background:
-{{$character}}
-
-You're recent history has been:
-
-<history>
-{{$history}}
-</history>
-        
-Known other actors include:
-        
-<actors>
-{{$actors}}
-</actors>
-        
-The message is an {{$action_type}} and its content is:
-        
-<Message>
-{{$message}}
-</Message>
-
-If the message is an internal thought, respond with the name of the actor the thought is about.
-If the message is a spoken message, respond with the name of the intended recipient. For example 'Ask Mary about John' would respond with 'Mary'.
-An intended recipient may be another known actor or a third party. Note that known actors are not always the intended recipient.
-Respond using the following XML format:
-
-  <name>intended recipient name</name>
-
-End your response with:
-</end>
-""")]
-        #print('say target')
-        response = self.llm.ask({
-            'character': self.get_character_description(),
-            'history': self.narrative.get_summary('medium'),
-            'actors': '\n'.join([actor.name for actor in self.context.actors if actor != self]+[npc.name for npc in self.context.npcs]),
-            'action_type': 'internal thought' if act_mode == 'Think' else 'spoken message',
-            "message": text
-        },  prompt, tag='Agh.say_target', temp=0.2, stops=['</end>'], max_tokens=20)
-
-        candidate = xml.find('<name>', response)
-        if candidate is not None:
-            target, _ = self.actor_models.resolve_character(candidate.strip())   # (context.resolve_reference never existed)
-            if target:
-                return target.name
-        return None
     # World interaction methods
 
     CONSEQUENCES = """{{$name}} did this: {{$deed}}
@@ -753,12 +696,13 @@ End your response with:
             self.add_perceptual_input(notices, mode='internal')
  
         visible_actors = []
-        for dir in view.keys():
-            if 'characters' in view[dir]:
-                for character_name in view[dir]['characters']:
-                    character, character_name= self.actor_models.resolve_character(character_name['name'])
-                    if character:
-                        visible_actors.append(character)  
+        # those near enough to be in the view as written (hash_direction_info's distance), not
+        # everyone in line of sight on the map: two people under an apple tree 'saw' the owners
+        # of a cave and a hut half an hour's and an hour's walk off, and remembered it
+        for character_name in characters:
+            character, character_name = self.actor_models.resolve_character(character_name)
+            if character and character not in visible_actors:
+                visible_actors.append(character)
         
         # update actor visibility.
         self.actor_models.set_all_actors_invisible()
@@ -782,12 +726,6 @@ End your response with:
         return percept_summary
 
     # Utility methods
-    def other(self):
-        """Get the other actor in the context"""
-        for actor in self.context.actors+self.context.npcs:
-            if actor != self:
-                return actor
-        return None
 
     # Initialization and persistence
     def initialize(self, ui=None):
@@ -800,24 +738,9 @@ End your response with:
         self.narrative.active_drives = [d.text for d in self.drives]
 
 
-    def greet(self):
-        """Initial greeting behavior"""
-        for actor in self.context.actors:
-            if actor == self:
-                return
-            message = f"Hi, I'm {self.name}"
-            actor.show += f'\n{self.name}: {message}'
-            return
-    
     def is_visible(self, actor):
         """Check if an actor is visible to the current actor"""
         return actor.mapAgent.is_visible(self)
-
-    def see(self):
-        """Add initial visual memories of other actors"""
-        for actor in self.context.actors+self.context.npcs:
-            if actor != self:
-                self.add_perceptual_input(f'You see {actor.name}', mode='visual')
 
     def set_drives(self, drive_texts: List[str]) -> None:
         """The character's drives, most important first (sim/cognitive/drives.py)."""
@@ -1479,8 +1402,8 @@ End response with:
                 self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
                 self._leave_with(act, told=True)
                 target = None
-            elif target is not None and isinstance(target, Character) and stage.off_stage(target):
-                target = None   # said to someone who has gone: nobody hears it
+            elif target is not None and isinstance(target, Character) and (stage.off_stage(target) or stage.not_in_scene(target)):
+                target = None   # said to someone who has gone, or who is not in this scene: nobody hears it
             # open dialog
             if target:
                 if not self.actor_models.get_actor_model(target.name, create_if_missing=True).dialog.active:
@@ -2119,63 +2042,6 @@ End your response with: </end>"""
             object.completion_statement = statement
             self.add_perceptual_input(statement, mode='internal')
         return done, object.progress
-
-    def refine_say_act(self, act: Act, task: Task):
-        """Refine a say act to be more natural and concise"""
-        if act.target:
-            target = act.target[0]
-            target_name = act.target[0].name
-        elif task.actors:
-            for actor in task.actors+self.context.npcs:
-                if actor is not self:
-                    target = actor
-                    target_name = actor.name
-                    break
-        if not target or target_name is None:
-            target_name = self.say_target(act.mode, act.action, task)
-        if target_name is None:
-            return act
-        
-        dialog = self.actor_models.get_actor_model(target_name, create_if_missing=True).dialog.get_transcript(20)
-        if dialog is None or len(dialog) == 0:
-            return act
-        prompt = [UserMessage(content="""Revise the following proposed text to say given the previous dialog with {{$target}}.
-
-<previous_dialog>
-{{$dialog}}
-</previous_dialog>
-
-<proposed_text>
-{{$act_arg}}
-</proposed_text>  
-
-<relationship>
-{{$relationship}}
-</relationship>
-
-<character>
-{{$character}}
-</character>
-
-Respond ONLY with the revised text to say.
-Your revised text should be about the same length as the proposed text, and naturally extend the previous dialog.
-Speak in the first person, using the character's voice.
-Do not repeat the previous dialog.
-Do not include any introductory, explanatory, formative, or discursive text.
-End response with:
-</end>
-""")]
-
-        relationship = self.actor_models.get_actor_model(target_name, create_if_missing=True).get_relationship()
-        response = self.llm.ask({
-                            "act_arg": act.action,
-                            "dialog": dialog,
-                            "target": target_name,
-                            "relationship": relationship,
-                            "character": self.get_character_description()
-                    }, prompt, tag='refine_say_act', temp=0.6, stops=['</end>'])
-
-        return act
 
     def generate_acts(self, task: Task, goal: Goal=None):
         in_dialog = self.check_if_in_dialog_subtask()
@@ -3406,6 +3272,10 @@ End your response with:
             parts.append(f"Where it is heading (not so yet, and not certain: play toward it, never as if it had happened): {d['ending']}")
         if d.get('goal'):
             parts.append(f"Your objective in it: {d['goal']}")
+        if self in getattr(self.context, 'npcs', ()):   # a supporting actor cast for this performance: no card, no past written
+            parts.append(f"{self.name} is not one of the people this play is about. {self.name} knows their own place and business, "
+                         f"what is given above as known to them, and what they see and hear now. What {self.name} was not there for and has not "
+                         f"been told, {self.name} does not know: say so or let it pass, and make up no history, names or reasons to fill it.")
         if d.get('decision'):
             choice, reason = d['decision']
             parts.append(f"In the course of the scene {self.name} comes to choose: {choice}" + (f" ({reason})" if reason else '')
@@ -3454,9 +3324,12 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
-        here_things = [p['name'] + (f" ({p['spot']})" if p.get('spot') else '') for p in survival.lying(self.context, stage.here(self))]
+        here_things = [survival.named(self.context, p) for p in survival.lying(self.context, stage.here(self))]
         if here_things:   # the actor saw nothing of what lay at its feet but what it carried
             parts.append('Lying here: ' + ', '.join(here_things))
+        left = [survival.named(self.context, i) for i in (body.inventory if body is not None else []) if survival.state_of(self.context, i)]
+        if left:   # how what it carries has been left by handling
+            parts.append('Of what you carry: ' + ', '.join(left))
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         if events:   # what it saw done (what was said is in the prompt's own dialog block)
             parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))
@@ -3465,6 +3338,8 @@ End your response with:
             parts.append('You could do here: ' + actions)
         if survival.shared_line(self):
             parts.append(survival.shared_line(self))
+        if record.refusals_note(self):
+            parts.append(record.refusals_note(self))
         return '\n'.join(parts)
 
     def _time_in_play(self):
@@ -3711,6 +3586,9 @@ End your response with:
                     if hasattr(actor, 'name'):  # Ensure it's a valid character
                         self.context.staleness_detector.record_turn(actor)
             act_count += 1
+            if record.beat_refused(self, task):   # the stage will not have what this beat is for: it is given up
+                trace.event('beat_dropped', character=self.name, task=task.name, why='its deed was refused twice')
+                break
             # a danger strikes when its time comes, between one act and the next: it was applied
             # only after the whole task, so acts written before it (sniffing a cup) were played
             # after the gang had hit

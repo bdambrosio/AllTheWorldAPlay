@@ -218,15 +218,20 @@ class Screenplay:
                 return text
         return ''
 
-    def facts_note(self):
+    def facts_note(self, pasts=False):
         """The facts, for the director's own calls (the act as performed, a scene's set-up): never
-        for an actor's prompt or a character's own plan."""
-        if not self.facts:
+        for an actor's prompt or a character's own plan. pasts: with each person's own past, for
+        the calls that say how a person changes or what they keep back. Whoever writes the scenes
+        is not given them: a past is its owner's to tell or keep. (Given Joe's, the planner wrote
+        'use the story of the two rattling fans' into his goal in four scenes and then into
+        Samantha's; it was told three times as if new.)"""
+        facts = [f for f in self.facts if pasts or not f.get('of')]
+        if not facts:
             return ''
         return ("What lies behind this play (the director's own; no character knows any of it except as marked, and "
                 "none of it says what anyone will do):\n"
                 + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f['known_to']) or 'nobody'}"
-                             + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in self.facts)
+                             + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in facts)
                 + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it."
                 + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No scene has anyone tell all of it, and no character knows any of it before a thing or a person has shown it." if self.standing else ''))
 

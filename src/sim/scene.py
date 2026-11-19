@@ -137,7 +137,7 @@ JSON only:
 List only outcomes not yet REACHED or BROKEN, each under its own kind. "broken" and "gone": true only when you can quote the turn that shows it; if you cannot, it is false.
 End your response with: </end>"""
 
-BEATS = """A scene of an improvised play is about to be played. The actor of each character has proposed, without seeing the other's, what that character does in it. Arrange the proposals into the scene's beats.
+BEATS = """A scene of an improvised play is about to be played. The actor of each character has proposed, without seeing the others', what that character does in it. Arrange the proposals into the scene's beats.
 
 Scene: '{{$title}}', at {{$place}}{{$kind}}
 How it opens: {{$setup}}
@@ -149,13 +149,13 @@ What each is after: {{$goals}}
 The proposals:
 {{$proposals}}
 
-Write three to six beats, in the order they are to be played. A beat is one thing one character sets out to do; the other answers it as they will.
+Write three to six beats, in the order they are to be played. A beat is one thing one character sets out to do; whoever it is put to answers it as they will.
 - Take a proposal as it stands wherever you can: give its number as "from" and leave "name", "what" and "done_when" empty.
 - Two beats never go after the same thing. Where two proposals ask for, offer or do the same thing (in the same words or in others, by the same character or by both), keep one and drop the other. A proposal that is a later stage of the same demand ("ask", then "press", then "hold to it") is the same thing.
 - Each 'happens' outcome needs a beat that can bring it about. If no proposal can, write a new beat for the character who would do it: "from" is null, and it is written from what that character wants and knows, never from what another keeps back.
-- Keep the beats that are a character's own business and ask nothing of the other (work in hand, a joke, something offered, shown or told): the people are seen in those. A scene is not only its ending.
-- Order: what a later beat needs comes before it; the beats that bring about the ending come late; a beat that takes anyone away from this place is the last of all. Both characters have beats, and neither has more than two running.
-- "done_when": something the character can bring about alone, or that either answer from the other satisfies (told, or refused). Never one that waits for the other to give in.
+- Keep the beats that are a character's own business and ask nothing of anyone else (work in hand, a joke, something offered, shown or told): the people are seen in those. A scene is not only its ending.
+- Order: what a later beat needs comes before it; the beats that bring about the ending come late; a beat that takes anyone away from this place is the last of all. Every character who proposed has a beat, and none has more than two running.
+- "done_when": something the character can bring about alone, or that either answer from the one it is put to satisfies (told, or refused). Never one that waits for someone else to give in.
 
 JSON only:
 {"beats": [{"who": "<character>", "from": 1 or null, "name": "4 to 6 words, or empty", "what": "6 to 10 words: what is done, offered, shown or asked; or empty", "done_when": "5 to 8 words, or empty", "leaves": true or false}], "dropped": [{"p": 2, "why": "8 words at most"}]}
@@ -309,7 +309,7 @@ class Owner:
                     task.name, task.description = name, what
                     task.termination = done or task.termination
             elif actor is not None and name and what and getattr(actor, 'focus_goal', None) is not None:
-                other = next((a.name for a in cast.values() if a is not actor), 'None')
+                other = ', '.join(a.name for a in cast.values() if a is not actor) or 'None'
                 task = actor.validate_and_create_task(f"#name {name}\n#description {what}\n#reason the scene needs it of {actor.name}\n#actors {other}\n"
                                                       f"#start_time now\n#duration 5 minutes\n#termination {done or what}\n##", actor.focus_goal)
                 if task is None:

@@ -139,8 +139,7 @@ def cast(context, people=None):
     character's description and everyone else as a bare name, and a name like Hu, Xue or Xiaoyu
     says nothing: one scene had Hu as 'him', Xiaoyu as 'her' and then 'his', and 'the lady' said
     to a man. `people`: those to list; the whole cast by default."""
-    people = people or [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
-                        if not getattr(c, 'placeholder', False)]   # not the map's 'Cave1_owner'
+    people = people or list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
     def what(c):
         sex = (getattr(c, 'gender', '') or '').strip().lower() or 'not stated'
         by = (getattr(c, 'remote', None) or '').strip()
@@ -733,7 +732,7 @@ def speech(context, speaker, line, listener=None):
         return line, None   # unreadable: the line stands as written
     # a name told in a line is known from then on to everyone who heard it
     said = {str(n).strip().lower() for n in (found.get('names') or []) if isinstance(n, str)}
-    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', [])) if c.name.lower() in said}
+    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if c.name.lower() in said}
     if told:
         for hearer in people:
             if hearer is not speaker and getattr(hearer, 'unknown_names', None):
@@ -824,7 +823,37 @@ def sound_deeds(context, character, acts):
             if a not in sound and _is_do(a):
                 trace.event('deed_refused', character=character.name, deed=a.action[:300], why=[getattr(a, 'refusal', '') or 'not here'],
                             label=getattr(a, 'affordance', None), again=False, passed_over=True)
+                refused(context, character, a.action, getattr(a, 'refusal', '') or 'not here')
     return sound or acts
+
+
+# What the stage has refused a character in the scene being played: kept so that the actor is
+# told and does not try the same thing in other words, and so that a beat whose deed is refused
+# twice is given up. (Each try was judged alone: one man tried five wordings of banking a fire
+# in one scene, and the scene could not end while he did.)
+BEAT_REFUSALS = 2   # chosen deeds refused in one beat before the beat is given up
+
+
+def refused(context, character, deed, why, chosen=False):
+    task = character.focus_task.peek() if getattr(character, 'focus_task', None) is not None else None
+    context.__dict__.setdefault('scene_refusals', []).append(
+        {'who': character.name, 'deed': ' '.join(str(deed).split())[:200], 'why': '; '.join(why) if isinstance(why, (list, tuple)) else str(why),
+         'task': getattr(task, 'id', None), 'chosen': chosen})
+
+
+def refusals_note(character):
+    """For the actor: what it has tried in this scene that the stage does not allow."""
+    mine = [r for r in getattr(character.context, 'scene_refusals', []) if r['who'] == character.name]
+    if not mine:
+        return ''
+    return ("Tried by you in this scene and not possible here: " + ' | '.join(f"{r['deed']} ({r['why']})" for r in mine[-4:])
+            + ". None of these can be done here in any wording: do not try them again or work toward them; do something else, or say it in words.")
+
+
+def beat_refused(character, task):
+    """Has the stage refused the deed this character chose, twice, in this beat?"""
+    return len([r for r in getattr(character.context, 'scene_refusals', [])
+                if r['chosen'] and r['who'] == character.name and r['task'] == getattr(task, 'id', None)]) >= BEAT_REFUSALS
 
 
 REDO = """A character in a play was about to do the deed below, but in this world it cannot be done as written.
@@ -865,9 +894,10 @@ def mend_deed(context, character, act):
         return True
     offered = survival.deed_offers(character)
     trace.event('deed_refused', character=character.name, deed=act.action[:300], why=lacks, label=getattr(act, 'affordance', None), again=False)
+    refused(context, character, act.action, lacks, chosen=True)
     again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
-                             'holding': ', '.join(character.body.inventory) or 'nothing',
-                             'lying': ', '.join(p['name'] for p in survival.lying(context, stage.here(character))) or 'nothing',
+                             'holding': ', '.join(survival.named(context, i) for i in character.body.inventory) or 'nothing',
+                             'lying': ', '.join(survival.named(context, p) for p in survival.lying(context, stage.here(character))) or 'nothing',
                              'offered': '\n'.join(f'- {o}' for o in offered) or '- nothing physical; only words'},
                             [UserMessage(content=REDO)], tag='record.redo', temp=0.5, stops=['</end>'], max_tokens=90)
     again = (again or '').strip().strip('"“”').strip()

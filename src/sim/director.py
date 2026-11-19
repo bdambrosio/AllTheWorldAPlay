@@ -1,14 +1,16 @@
-"""The director of a play that stands on a question from its sketch (docs/director-design.md 1.6
-and 1.7; Context.standing_question, set in the play file).
+"""The director of a play that stands on a question (docs/director-design.md 1.6 and 1.7). A play
+file asks for one with `W.directed = True`; it holds no question of its own.
 
-The question is the same every night. Part of it asks what is so: that part is settled here,
-afresh for each performance, before the first act. The rest asks what the people of the play do
-about it: that part is theirs, in play, and nothing here plans it.
+The question is written here for each performance, from the sketch (Context.standing_question is
+tonight's). Part of it asks what is so: that part is settled here, afresh for each performance,
+before the first act. The rest asks what the people of the play do about it: that part is theirs,
+in play, and nothing here plans it.
 
 This is the light director. Three rounds of offline plans (logs/review-20261118/standing) showed
 that the more a director settles, the more it writes what the characters did before the play and
 the terms of their choice. So it settles little:
 
+  question  the question the play stands on tonight, from what the sketch leaves unexplained
   answers   several answers the question could have tonight, written by one or more planner
             models; one is picked by code, never by a model's preference
   behind    the picked answer as a few facts (mostly about the place), the things that show
@@ -19,15 +21,9 @@ No steer and no planned choice: the act planners are given the question and told
 for anyone (Context.episode_note). What is written here comes back in the line forms
 Context.frame_episode already reads (#fact, #clue, #past), with #person added.
 
-Not yet played: the wording was run once offline for form (2026-11-18) and has had no live run.
+Played once (lost-20261119-084100), with the question still written in the play file.
 """
 import os, re, json, random
-
-WHOSE = """<standing_question>
-{standing}
-</standing_question>
-
-Part of the standing question asks what is so. That part you settle tonight, as fact, and the people of the play do not know it. The rest asks what these people do about it. That part is theirs: they answer it in the performance, by what they do, and nothing you write says how, leans toward one way, or sets the terms of it."""
 
 SKETCH = """<setting>
 {setting}
@@ -41,7 +37,34 @@ SKETCH = """<setting>
 {places}
 </places>"""
 
-ANSWERS = """You are the director of an improvised play that is performed many times from the same sketch. The people and the place are the same every night, and so is the question the play stands on. What is so behind that question is not: each night you settle it afresh, and the performance is a different play.
+QUESTION = """You are the director of an improvised play that is performed many times from the same sketch. The people and the place are the same every night. Before each performance you write, from the sketch, the question the play stands on that night. It is read to the audience before the first act.
+
+""" + SKETCH + """
+
+<questions_of_earlier_nights>
+{earlier}
+</questions_of_earlier_nights>
+
+Write the question tonight's play stands on.
+
+- It comes from what the sketch leaves unexplained for these people: what they do not know or cannot remember, how they come to be where they are, what this place or another person is to them. It takes up the largest of these, the one these people themselves most want answered, and need not take up all of it.
+- It adds nothing to the sketch and supposes nothing the sketch does not say: no person, thing, place or event of your own, and no hint of an answer.
+- It has two parts. The first asks what is so as the play begins: something that has already happened or is already the case, that these people do not know, and that can be found out during the play. It never asks what will happen tonight (whether they will reach a place, win a thing, be caught by the dark), and never what a person at the centre of the play feels or wants: those are the play's to show. The second part asks what these people do once they know, or if they never do: that is theirs to answer by what they do, and it is asked openly, not as a choice between two ways you name.
+- It asks and does not answer, and leans toward no answer. Nothing in it says how the play comes out.
+- It is two to four short questions in plain words, sixty words at most, naming the people as an audience would ('these two', or by name).
+- It is not a question of an earlier night with the words changed: it comes at what the sketch leaves unexplained from another side, or asks after what these people do in another way.
+
+Respond with one line only:
+#question <the question>
+</end>"""
+
+WHOSE = """<standing_question>
+{standing}
+</standing_question>
+
+Part of the standing question asks what is so. That part you settle tonight, as fact, and the people of the play do not know it. The rest asks what these people do about it. That part is theirs: they answer it in the performance, by what they do, and nothing you write says how, leans toward one way, or sets the terms of it."""
+
+ANSWERS = """You are the director of an improvised play that is performed many times from the same sketch. The people and the place are the same every night. The question the play stands on tonight was written from the sketch and is given below. What is so behind it you settle afresh each night, and the performance is a different play.
 
 """ + SKETCH + """
 
@@ -61,7 +84,7 @@ Respond with five lines only, each in this form:
 #answer <number> | <what is so, two or three plain sentences> | found by: <two to four things or traces and the listed place of each> | person: <who knows a part, where they are, and what they want; or none> | short: <the answer in one sentence of at most 25 words>
 </end>"""
 
-PERSON = ("One person besides those at the centre of the play may know a part of it: one that a listed place names as its owner, or another person the sketch lists. "
+PERSON = ("One person besides those at the centre of the play may know a part of it: the owner of one of the places listed as having an owner nobody has yet been cast as, or another person the sketch lists. "
           "They are alive, awake and at a listed place as the play begins. They want something of their own that would be harder to have if these people knew all of it: "
           "so they are not there to explain, and nothing says what they will tell.")
 NO_PERSON = "No person other than those at the centre of the play knows any of it."
@@ -84,7 +107,7 @@ If none is, respond with the single line:
 #none
 </end>"""
 
-BEHIND = """You are the director of an improvised play. The play stands on a question from its sketch. What is so behind that question tonight has been chosen and is given below. Settle it as a few facts and the things that show them.
+BEHIND = """You are the director of an improvised play. The play stands on a question, written for tonight from its sketch. What is so behind that question tonight has been chosen and is given below. Settle it as a few facts and the things that show them.
 
 """ + SKETCH + """
 
@@ -95,22 +118,22 @@ BEHIND = """You are the director of an improvised play. The play stands on a que
 </tonight>
 
 - Facts: three or four, each ONE thing that is so: a standing condition of this place, or a single thing that happened before the play began. Never what anyone will do or feel in the play, and never what the people at the centre of it wanted, agreed to or chose before it. Use only these people, these places (by their exact names) and the kinds of thing this world has. Say who knows each as the play begins: names from the people, or nobody. The people at the centre do not know what the sketch says they do not remember.
-- Things: two or three small, ordinary things that really lie in this world, each at one of the places listed, each a trace of one fact. A thing shows what a person standing there would see; it does not explain. At most one is written, by a person, by hand, before the play, to someone and for a reason of their own: it says what that person would have written then and no more, and never the whole of what is so. Choose places these people can reach today.
+- Things: two or three small, ordinary things that really lie in this world, each at one of the places listed, each a trace of one fact. Each is an object that can be picked up, or a mark on the ground, a wall or a tree at that spot: never a view, a sound, a smell or a stretch of country. A thing shows what a person standing there would see; it does not explain. Its wording and its question name no other object that is not itself one of these things or a listed place: if marks lie under a sling, the sling is one of the things, or there is no sling. At most one is written, by a person, by hand, before the play, to someone and for a reason of their own: it says what that person would have written then and no more, and never the whole of what is so. Choose places these people can reach today.
 {person_rule}
 - Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from all this: plain and particular (what, where, with whom), somewhere else in their life. It gives a reason for something their description says of them and contradicts nothing in it. Write none for a person whose description says they do not remember their past.
 - Nothing here says what anyone will do in the play, or how it comes out.
 
 Respond with these lines only, one sentence each:
 #fact <one plain sentence> | known to: <names, or nobody>   (three or four lines)
-#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is the written one: its words, in one or two plain sentences; else leave empty>   (two or three lines)
+#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is the written one: its words, in one or two plain sentences; else leave empty> | <loose if it can be picked up and carried; fixed if it is a mark or a part of the place>   (two or three lines)
 {person_format}#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)
 </end>"""
 
 PERSON_BEHIND = ("- A person who knows a part: the one named in what is so tonight, if it names one. Say who they are in one sentence as a description of a person (age, manner, what they do here), "
                  "the listed place where they are as the play begins, and the one or two things they want. They know only the facts you mark them as knowing. Nothing says what they will tell or do: they are played, like the others.")
-PERSON_FORMAT = "#person <a name> | <exact name of the listed place where they are> | <who they are, one sentence> | wants: <one or two things, separated by ';'>   (one line, or none)\n"
+PERSON_FORMAT = "#person <their own first name, one word: a person's name, never a place's or a role's> | <exact name of the listed place where they are> | <who they are, one sentence> | wants: <one or two things, separated by ';'>   (one line, or none)\n"
 
-READ = """You are the director of an improvised play. The play stands on a question from its sketch. What is so behind it tonight was settled before the play and is given below; the people of the play did not know it. An act has just been played.
+READ = """You are the director of an improvised play. The play stands on a question, written for tonight from its sketch. What is so behind it tonight was settled before the play and is given below; the people of the play did not know it. An act has just been played.
 
 """ + WHOSE + """
 
@@ -179,9 +202,9 @@ def _history_path(play):
     return os.path.expanduser(f'~/.local/share/alltheworldaplay/performances/{os.path.splitext(os.path.basename(play or "play"))[0]}.jsonl')
 
 
-def history(play, n=3):
+def history(play, n=3, key='short'):
     try:
-        return [json.loads(l).get('short', '') for l in open(_history_path(play)) if l.strip()][-n:]
+        return [e for e in (json.loads(l).get(key, '') for l in open(_history_path(play)) if l.strip()) if e][-n:]
     except OSError:
         return []
 
@@ -221,6 +244,19 @@ def _ask(llm, prompt, tag, max_tokens):
     return (llm.ask({}, [UserMessage(content=prompt)], tag=tag, temp=0.7, stops=['</end>'], max_tokens=max_tokens) or '').replace('</end>', '').strip()
 
 
+def question(context, setting, people, places):
+    """The question the play stands on tonight, written from the sketch by one of the backends
+    (which one is by chance); '' when it could not be made."""
+    from sim.trace import trace
+    name, llm, tag = random.Random(os.environ.get('ATWAP_SEED') or None).choice(_backends(context))
+    earlier = history(context.play_file, key='question')
+    reply = _ask(llm, QUESTION.format(setting=setting, people=people, places=places,
+                                      earlier='\n'.join(f'- {q}' for q in earlier) or 'None: this is the first night.'), tag, 300)
+    found = _lines('question', reply) or ([' '.join(reply.split())] if reply.strip().endswith('?') and '#' not in reply else [])   # the tag left off
+    trace.event('director_question', by=name, question=found[0] if found else '', earlier=earlier)
+    return found[0] if found else ''
+
+
 def settle(context, setting, people, places, leads):
     """Settle what is so behind the standing question tonight. Returns the reply in the line forms
     frame_episode reads (#fact, #clue, #past, and #person), '' when it could not be made."""
@@ -253,7 +289,7 @@ def settle(context, setting, people, places, leads):
     if '#fact' not in reply:
         trace.event('director_failed', step='behind')
         return ''
-    remember(context.play_file, {'seed': seed, 'short': chosen['short'] or chosen['so'], 'by': chosen['by']})
+    remember(context.play_file, {'seed': seed, 'question': standing, 'short': chosen['short'] or chosen['so'], 'by': chosen['by']})
     return reply
 
 

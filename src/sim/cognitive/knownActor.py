@@ -387,7 +387,11 @@ class KnownActorManager:
     def create_character(self, reference_text):
         """create a new character - used only after resolve_reference fails to find an existing character"""
         actor_name = reference_text.strip().capitalize()
-        actor_agh = self.context.get_npc_by_name(actor_name, description=reference_text, x=self.owner.mapAgent.x, y=self.owner.mapAgent.y, create_if_missing=True)
+        # someone spoken to or of whom nobody has cast: a supporting actor from here on, standing
+        # where the one who named them is, and in the scene being played
+        actor_agh = self.context.cast_part(actor_name, description=reference_text, xy=(self.owner.mapAgent.x, self.owner.mapAgent.y))
+        if self.context.current_scene and getattr(self.owner, 'current_scene', None) is self.context.current_scene:
+            actor_agh.current_scene = self.context.current_scene
         self._store(actor_name, actor_agh)
         self.resolution_cache[actor_name] = (actor_agh, actor_name)
         if self.context.current_scene:

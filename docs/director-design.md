@@ -227,7 +227,12 @@ now written there once, as `W.standing_question`. With it, 1.5 becomes:
    which carrier at which place. The last act puts the choice to them: where, what is in whose
    hands, and what pulls each of them each way. Nothing says what either chooses.
 
-There is no sides step and no question step: the question is the sketch's. This settles the two
+**Changed 2026-11-19 (Bruce, watching `lost-20261119-084100`):** the question is not written in the play file. A play file
+asks for a director with `W.directed = True`, and the director writes the question for each performance from the
+sketch (`director.QUESTION`), before the answers step; the last three nights' questions are given to it so that
+tonight's is another. Offline test: `logs/review-20261119/question/`.
+
+As first built, there was no sides step and no question step: the question was the sketch's. This settles the two
 decisions of Part 5 for a play with a standing question (the sides are the pulls, written by the
 director who knows what is so; both characters choose, separately). A play without a standing
 question keeps 1.5 as it was, and those two decisions stay open for it.

@@ -121,13 +121,12 @@ class Context():
 
         voices = self.voice_service.get_voices()
  
+        # An owned kind of place has an owner's part, and nobody in it until someone is cast
+        # (cast_part). (Each had a whole character from the start, 'Cave1_owner': thirteen that
+        # no scene used in one play, and two people 'seen' from an hour's walk off in another.)
         for resource_id, resource in self.map.resource_registry.items():
-            has_owner = self.check_resource_has_npc(resource)
-            if has_owner:
-                owner:Character = self.get_npc_by_name(resource['name']+'_owner'.capitalize(), description=f'{resource["name"]}_owner owns {resource["name"]} ', x=resource['location'][0], y=resource['location'][1], create_if_missing=True)
-                owner.placeholder = True   # the map's stand-in for an owner, not a person of the play
-                resource['properties']['owner'] = owner.mapAgent
-                self.reference_manager.declare_relationship(resource['name'], 'owned by', owner.name, 'owner of')
+            if self.check_resource_has_npc(resource):
+                resource['properties']['owner'] = stage.Part(resource_id)
 
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
@@ -142,10 +141,11 @@ class Context():
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
         self.map_file = None
-        # The question this play stands on every night, from its play file ('' for a play that has none).
-        # What is so behind it is settled afresh for each performance (sim/director.py); what the
-        # characters do about it is theirs.
-        self.standing_question = ''
+        # A play file may ask for a director (sim/director.py). Each performance it writes the question
+        # the play stands on from the sketch and settles what is so behind it; what the characters do
+        # about it is theirs.
+        self.directed = False            # the play file asks for a director (sim/director.py)
+        self.standing_question = ''      # the question the play stands on tonight, written by the director
         self.narrative_level= False
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
@@ -792,38 +792,62 @@ If absolutely no information is available for any field, use "unknown" for that 
         return {'show': ' \n\n'+self.current_state, 'image': image}
 
     def get_actor_by_name(self, name):
-        """Helper to find actor by name"""
-        for actor in self.actors+self.extras:
+        """Anyone of the play by name: a lead or a supporting actor."""
+        for actor in self.everyone():
             if actor.name == name:
                 return actor
         return None
 
-    def set_resource_owner(self, resource_id, owner_name, description=None):
-        """Make `owner_name` the owner of a resource: a cast member, or an NPC created here (a
-        play names the real owner, e.g. a character's father, in place of the '<Resource>_owner'
-        NPC that __init__ gives every owned resource type). Returns the owner."""
-        resource = self.map.resource_registry[resource_id]
-        owner = next((a for a in self.actors + self.extras if a.name == owner_name), None)
-        if owner is None:
-            x, y = resource['location']
-            owner = self.get_npc_by_name(owner_name, description=description or f'{owner_name} owns {resource_id}',
-                                         x=x, y=y, create_if_missing=True)
-        previous = resource['properties'].get('owner')
-        previous_name = getattr(previous, 'name', None)
-        if previous_name and previous_name != owner.name:
+    # ------------------------------------------------------------------ who is in the play
+    # Leads: the play's characters. They draft the acts, have a past of their own and change.
+    # Supporting actors: people of the play file who are not leads (extras) and people cast while
+    # it runs (npcs): a place's owner, someone the director or a scene calls for. Each is a whole
+    # character with a body, a description and wants, in a scene when it is set where they are
+    # or the plan names them; they draft nothing, have no past written for them and do not
+    # develop. An owner's part nobody is cast in is not a person at all (stage.Part).
+    def leads(self):
+        return list(self.actors)
+
+    def supporting(self):
+        return list(self.extras) + list(self.npcs)
+
+    def everyone(self):
+        return list(self.actors) + list(self.extras) + list(self.npcs)
+
+    def cast_part(self, name, description=None, place=None, wants=(), owns=True, unknown=False, xy=None):
+        """Cast a supporting actor: the one way a person who is not a lead comes into the play.
+        `name` may be someone already in it (a lead's father who also owns the strips) or new.
+        place: a resource id, where a new person stands, and whose owner they become when `owns`
+        (xy: where they stand when no place is named; beside the first lead otherwise).
+        wants: their drives, one or two things. unknown: the leads do not know their name, nor
+        they the leads', until it is said. Returns the character."""
+        name = name.strip()
+        who = next((c for c in self.everyone() if c.name.lower() == name.lower()), None)
+        resource = self.map.resource_registry.get(place) if place else None
+        new = who is None
+        if new:
+            x, y = resource['location'] if resource else xy or stage.here(self.actors[0])
+            who = self.get_npc_by_name(name, description=description or name, x=x, y=y, create_if_missing=True)
+        if resource is not None and owns:
+            previous = getattr(resource['properties'].get('owner'), 'name', None)
             relations = self.reference_manager.relationships
-            relations.pop(previous_name, None)
-            for name in list(relations):
-                relations[name] = [(rel, other) for rel, other in relations[name] if other != previous_name]
-            if not any(r['properties'].get('owner') is previous for rid, r in self.map.resource_registry.items()
-                       if rid != resource_id):
-                self.npcs = [n for n in self.npcs if n.name != previous_name]
-                if previous in self.map.agents:
-                    self.map.agents.remove(previous)
-        resource['properties']['owner'] = owner.mapAgent
-        self.reference_manager.declare_relationship(resource_id, 'owned by', owner.name, 'owner of')
-        survival.give_body(self, owner)   # an owner with a part to play can hold things and be dealt with
-        return owner
+            if previous and previous != who.name and not isinstance(resource['properties'].get('owner'), stage.Part):
+                relations[place] = [r for r in relations.get(place, []) if r != ('owned by', previous)]
+                relations[previous] = [r for r in relations.get(previous, []) if r != ('owner of', place)]
+            if ('owned by', who.name) not in relations.get(place, []):
+                self.reference_manager.declare_relationship(place, 'owned by', who.name, 'owner of')
+            resource['properties']['owner'] = who.mapAgent
+        survival.give_body(self, who)   # can hold things and be dealt with
+        if wants:
+            who.set_drives(list(wants))
+        if unknown:
+            for lead in self.actors:
+                lead.unknown_names = set(getattr(lead, 'unknown_names', None) or ()) | {who.name}
+            who.unknown_names = {lead.name for lead in self.actors}
+        if new:
+            who.look()
+        trace.event('part_cast', name=who.name, place=place, owns=bool(resource is not None and owns), wants=list(wants), new=new, unknown=unknown)
+        return who
 
     def plausible_npc(self, name):
         """Check if a name is plausible for an NPC"""
@@ -881,7 +905,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         first_name = reference_text.strip().split(' ')[0]
         for actor in self.actors+self.extras+self.npcs:
             if actor.name == reference_text or actor.name == first_name:
-                return (actor, reference_text)
+                return (actor, actor.name)
             
         # Then check NPCs
         for npc in self.npcs:
@@ -1373,9 +1397,10 @@ End your response with:
             # drives="Revelation"/>
             character_name = map.normalize_name_for_enum_lookup(character['name'])
             character_description = character['description'] + '. '+character['motivation']
-            new_character = self.get_npc_by_name(character_name, character_description, x=0, y=0, create_if_missing=True)
-            new_character.drives = [Drive(drive.strip()) for drive in character['motivation'].split('.')]
-            self.extras.append(new_character)
+            # a supporting actor from here on, beside the leads (they were made at the map's corner and
+            # listed twice, as an extra and as an npc)
+            new_character = self.cast_part(character_name, character_description,
+                                           wants=[d.strip() for d in character['motivation'].split('.') if d.strip()][:2])
 
         for state_change in analysis['entities']['state_change']:
             print(f"State change: {state_change['name']} - {state_change['drive']} - {state_change['value']}")
@@ -1390,7 +1415,7 @@ End your response with:
         self.current_state += f"\n\n{intervention_description}"
             
         # Notify all characters about the intervention
-        for actor in self.actors + self.extras:
+        for actor in self.everyone():
             actor.add_perceptual_input(intervention_description, mode='environmental')
             
         # a director's note: it reaches the characters (above) and the trace, not the audience
@@ -1472,25 +1497,6 @@ End your response with:
     def get_widget(self, entity):
         """Get widget reference for entity"""
         return self.widget_refs.get(entity)
-
-
-    def map_actor(self, actor):
-        mapped_actor = f"""<actor>
-    <name>{actor.name}</name>
-    <character>
-        {actor.character.replace('\n', ' ')}
-    </character>
-    <goals>
-    {'\n'+'\n        '.join([actor.goals[goal]['name'] for goal in actor.goals])}
-    </goals>
-    <tasks>
-        {'\n        '.join([hash_utils.find('name', task) for task in actor.focus_goal.task_plan]) if actor.focus_goal else ''}   
-    </tasks>
-    <memories>
-        {actor.lived(6).replace(chr(10), chr(10) + '        ')}
-    </memories>
-</actor>"""
-        return mapped_actor
 
 
     def check_resource_has_npc(self, resource):
@@ -1675,7 +1681,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
         threat = getattr(self, 'active_threat', None)
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                  'places': stage.gazetteer(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
+                  'places': stage.gazetteer(self) + stage.supporting_note(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
                   'strangers': self.strangers_note(),
                   'clues': '\n'.join(n for n in (self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
                                                    self.screenplay.thread_note()) if n),
@@ -1685,7 +1691,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
                   'things': '\n'.join(x for x in (survival.things_note(self, people=cast), survival.writings_note(self, people=cast)) if x) or 'nothing tracked',
-                  'facts': self.screenplay.facts_note(),
+                  'facts': self.screenplay.facts_note(pasts=True),
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
                                         for e in self._exit_parties())
@@ -1773,8 +1779,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                      for c in (self.screenplay.clues or [])]
             settled = '\n'.join(([f"Lying at {target[1]}, where the scene is set: {', '.join(there) or 'nothing'}"] if target else [])
                                 + ([f"Where each of these is now: {'; '.join(clues)}"] if clues else [])) or None
+            # whoever of the supporting cast is at that place is in the scene: a set-up may have them there
+            at_place = stage.supporting_at(self, target[0], but=cast) if target else []
             found = record.check(self, cast[0], f"A scene is set at {scene.get('location') or 'the same place'}; the cast walks there if it is elsewhere.",
-                                 settled, told, people=cast) or []
+                                 settled, told, people=cast + at_place) or []
             # where the scene is set is the plan's to say, and a danger of this world that the
             # set-up brings on is made real (survival.stage_hazard)
             claims = [(kind, words) for kind, words in found
@@ -1864,8 +1872,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character_name = character_name.capitalize().strip()
             character, canonical_character_name = self.resolve_character(character_name)
             if character is None:
-                print(f'Character {character_name} not found in scene {scene["scene_title"]}')
-                character = self.get_npc_by_name(character_name, create_if_missing=True)
+                # a name the plan brings on that nobody has been cast as: a supporting actor from here
+                # on, and the owner of the scene's place where that part is open
+                spot = stage.resolve(self, scene.get('location'), stage.here(self.actors[0]))
+                rid = spot[1] if spot else None
+                open_part = bool(rid) and isinstance(self.map.resource_registry.get(rid, {}).get('properties', {}).get('owner'), stage.Part)
+                character = self.cast_part(character_name, place=rid if open_part else None)
             else:
                 character_name = canonical_character_name
             if character not in characters_in_scene:
@@ -1884,6 +1896,18 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         hours_between = self._hours_moved
         arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         self.last_scene_exits = []   # used: the scene is set
+        # A supporting actor who is at the scene's place is in the scene, whether or not the plan
+        # named them: on stage, with an objective of their own from what they want. (A woman the
+        # director put in a cave was in none of the four scenes played in it: nothing but a
+        # planner naming her could bring her on, and no planner was told she was there.)
+        planned_cast = [c.name for c in characters_in_scene]
+        scene_xy = (getattr(self, 'previous_scene', None) or {}).get('xy')
+        for person in (stage.supporting_at(self, scene_xy, but=characters_in_scene) if scene_xy else []):
+            characters_in_scene.append(person)
+            wants = '; '.join(d.text for d in (getattr(person, 'drives', None) or [])[:2])
+            scene.setdefault('characters', {})[person.name] = {
+                'goal': f"You are at {scene['place']} when the others come. Deal with them as someone who wants: {wants or 'to be left to your own business'}."}
+            scene['action_order'] = list(scene.get('action_order') or []) + [person.name]
         # what each carries as the scene opens: what it carries at the end and did not is a find
         self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
         survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
@@ -1905,7 +1929,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         trace.event('scene_start', title=scene.get('scene_title'), location=scene.get('location'),
                     pre_narrative=scene.get('pre_narrative'), planned_post=scene.get('post_narrative'),
                     goals={name: (c or {}).get('goal') for name, c in (scene.get('characters') or {}).items()},
-                    action_order=scene.get('action_order'))
+                    action_order=scene.get('action_order'), cast=planned_cast,
+                    present=[c.name for c in characters_in_scene if c.name not in planned_cast])
         self.scene_pre_narrative = ''
         if scene.get('pre_narrative'):
             self.current_state += '\n\n'+scene['pre_narrative']
@@ -1930,6 +1955,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
         self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
+        self.scene_refusals = []   # what the stage has refused in this scene (record.refused)
         survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
         self.pass_scene()       # nor is anything kept of the last scene's passing acts
 
@@ -2090,8 +2116,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.scene_integrated_task_plan_index += 1
             # a scene between people is over when they have gone: the one left behind went on
             # trying to bed down beside a woman who had walked out (bellona)
+            # ... and when every lead in it has gone, whoever stays behind at their own place
             still_here = [c for c in characters_in_scene if not stage.off_stage(c)]
-            if len(characters_in_scene) > 1 and len(still_here) <= 1:
+            leads_in = [c for c in characters_in_scene if c in self.actors]
+            if len(characters_in_scene) > 1 and (len(still_here) <= 1 or (leads_in and not any(c in still_here for c in leads_in))):
                 trace.event('scene_emptied', left=[c.name for c in characters_in_scene if stage.off_stage(c)],
                             remaining=[c.name for c in still_here])
                 break
@@ -2290,7 +2318,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
                 self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
         self.play_file = play_file
-        if self.standing_question:   # the play's question is the sketch's: the characters' proposals are their own views of it, not merged into another
+        if self.directed:   # the director writes tonight's question from the sketch
+            self.standing_question = director.question(self, **self.sketch_for_director())
+            if not self.standing_question:
+                self.message_queue.put({'name': self.name, 'text': '----- the director could not write a question; the play is played without a director -----'})
+        if self.standing_question:   # the characters' proposals are their own views of it, not merged into another
             self.screenplay.set_question(f"{self.standing_question}\n#question {self.standing_question}")
             trace.event('central_question', question=self.standing_question, standing=True)
         else:
@@ -2488,11 +2520,11 @@ In performing this integration:
                                  "central_dramatic_question": self.central_narrative,
                                  "act_directives": act_directives,
                                  "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
-                                 "places": stage.gazetteer(self),
+                                 "places": stage.gazetteer(self) + stage.supporting_note(self),
                                  "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
                                  "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
                                  "facts": ((self.screenplay.facts_note() + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
-                                           if self.screenplay.facts else ''),
+                                           if self.screenplay.facts_note() else ''),
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
         # (validate_narrative_act); it had been checked for its dates alone, and a scene with
@@ -2546,6 +2578,16 @@ In performing this integration:
                 except Exception:
                     earliest = scene['time']
 
+
+    def sketch_for_director(self):
+        """The sketch as the director is given it: the setting, the people with what each wants, the places."""
+        people = '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
+                           for c in self.everyone())
+        places = stage.gazetteer(self) if survival.config(self) else ''
+        parts = [rid for rid, _ in stage.uncast_parts(self)]
+        if places and parts:   # where the director may put a person of its own
+            places += f"\nPlaces with an owner nobody has yet been cast as: {', '.join(parts)}."
+        return {'setting': self.initial_state.strip(), 'people': people, 'places': places or 'No places are listed.'}
 
     def frame_episode(self):
         """Settle, before the first act, what this playthrough is to settle and what it leaves
@@ -2602,9 +2644,7 @@ Respond with these lines only, one sentence each:
         past_rule = (f"- Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from it: plain and particular (what, where, with whom). Say what happened and stop: not what it made of them. It gives a reason for something their description says of them and contradicts nothing in it. People who are not in the play may be in it, unnamed (a brother, an employer). It is not about the open question and is not one of the facts above; it says nothing of what the person will do in the play: it is theirs to keep back or to tell. Write none for a person whose description says they do not remember their past.") if leads else ''
         past_format = f"#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)" if leads else ''
         standing = bool(self.standing_question)
-        cast_note = '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
-                              for c in self.actors + self.extras + [n for n in self.npcs if not getattr(n, 'placeholder', False)])
-        reply = director.settle(self, self.initial_state.strip(), cast_note, places or 'No places are listed.', leads) if standing else None
+        reply = director.settle(self, leads=leads, **self.sketch_for_director()) if standing else None
         if standing and not reply:
             self.message_queue.put({'name': self.name, 'text': '----- the director could not settle what lies behind the play; it is played without -----'})
         if standing:
@@ -2613,7 +2653,7 @@ Respond with these lines only, one sentence each:
                               'past_rule': past_rule, 'past_format': past_format,
                               # who each is, and what each wants (the facts are about these people: it was given their drives alone)
                               'characters': '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
-                                                      for c in self.actors + self.extras + [n for n in self.npcs if not getattr(n, 'placeholder', False)]),
+                                                      for c in self.everyone()),
                               'clue_rule': clue_rule, 'clue_format': clue_format,
                               'existing': (("- The play has already put these in the world. They may serve the episode; do not name another of the same as a clue:\n"
                                             + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
@@ -2632,9 +2672,11 @@ Respond with these lines only, one sentence each:
             fields = [f.strip() for f in line.split('|')]
             if len(fields) >= 3 and fields[0] and fields[1]:
                 says = fields[3].strip(' "') if len(fields) > 3 and fields[3].strip(' "').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
-                clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {})})
+                fixed = len(fields) > 4 and fields[4].strip().lower().startswith('fixed')   # a mark or a part of the place (the director's clues say which)
+                clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {}),
+                              **({'fixed': True} if fixed else {})})
         self.screenplay.clues = clues[:3]
-        people = [c for c in self.actors + self.extras + self.npcs if not getattr(c, 'placeholder', False)]
+        people = self.everyone()
         self.screenplay.set_facts(reply, [c.name for c in people])
         for c in self.actors:   # a person's own past stays on its card (get_character_description): its own prompts only
             c.own_past = self.screenplay.set_past(reply, c.name)
@@ -2647,9 +2689,9 @@ Respond with these lines only, one sentence each:
         return self.episode
 
     def director_person(self, person):
-        """Bring the director's person who knows a part into the play: at the place named, as its
-        owner where the map had only a stand-in, with a description and wants, played like anyone
-        else. Nothing says what they will tell. Returns the character, None when there is none."""
+        """Bring the director's person who knows a part into the play: cast at the place named, as
+        its owner where the place has an owner's part, with a description and wants, played like
+        any supporting actor. Nothing says what they will tell. Returns the character, or None."""
         if not person:
             return None
         anchor = stage.here(self.actors[0]) if self.actors else None
@@ -2659,15 +2701,8 @@ Respond with these lines only, one sentence each:
             trace.event('director_person_dropped', **person)
             return None
         try:
-            description = f"{person['name']}, {person['description']}"
-            if res['properties'].get('owner') is not None:   # the place's owner, in place of the map's stand-in
-                who = self.set_resource_owner(spot[1], person['name'], description)
-            else:   # someone who is at a place nobody owns
-                x, y = res['location']
-                who = self.get_npc_by_name(person['name'], description=description, x=x, y=y, create_if_missing=True)
-                survival.give_body(self, who)
-            if person['wants']:
-                who.set_drives(person['wants'])
+            who = self.cast_part(person['name'], f"{person['name']}, {person['description']}", place=spot[1], wants=person['wants'],
+                                 owns=isinstance(res['properties'].get('owner'), stage.Part), unknown=True)
         except Exception as e:
             trace.event('director_person_dropped', error=f'{type(e).__name__}: {e}', **person)
             return None
@@ -2692,7 +2727,7 @@ Respond with these lines only, one sentence each:
                 continue
             clue['place'] = spot[1]
             clue['hidden'] = survival.searchable(self, res)
-            if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden'], says=clue.get('says')):
+            if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden'], says=clue.get('says'), fixed=bool(clue.get('fixed'))):
                 placed.append(clue)
         self.screenplay.clues = placed
         trace.event('clues_placed', clues=placed)
@@ -2805,7 +2840,7 @@ End your response with: </end>"""
                 return (f"This is the last act. The play stands on this question: {frame['standing']} "
                         "Show where these people now are with it, in what they do: what they have found out and what each has chosen, as far as they have. "
                         "Settle nothing for them that they have not settled themselves; it may end with part of it still not found. Nobody sums it up." + so_far)
-            return (f"The play stands on this question, tonight as every night: {frame['standing']} "
+            return (f"The play stands on this question tonight: {frame['standing']} "
                     "What is so behind it is there to be found; what these people do about it is theirs. "
                     "Each act should bring them nearer to what is so by their own doing (a place gone to, a thing found, a person met), or make it harder to walk past. "
                     "Plan no scene that answers the question for anyone, and no ending that has a person choose what to do about it: a scene may bring someone to a choice and stop there."
@@ -3034,6 +3069,8 @@ End your response with: </end>""")]
                 decisions.append({'character': str(entry['character']).strip(), 'decision': str(entry['decision']).strip(), 'choices': choices[:3]})
         return decisions[:1]
 
+    EXIT_HOLDS = 2   # times a scene's open outcome may hold an exit
+
     def exit_allowed(self, character, act):
         """Whether `character` may go out of the scene with this act. An exit that leaves one
         person or nobody on stage ends the scene, so it waits until the scene has been played:
@@ -3057,6 +3094,16 @@ End your response with: </end>""")]
         owner = scene_owner.owner_of(self)
         waits = (owner is not None and not owner.winding and not getattr(owner.current_task(), 'leaves', False)
                  and any(o['kind'] == 'happens' and o['state'] == 'open' for o in owner.outcomes))
+        # An open outcome holds an exit twice in a scene and no more. What is still open may be
+        # the going itself, or something the stage will not let be done: held without limit, two
+        # people announced their leaving seventeen times in one scene and sat down in the next,
+        # their planned ending ('he points to the gap, she matches his first steps') never allowed.
+        if waits and not self.staying_tasks_left():
+            owner.exit_holds = getattr(owner, 'exit_holds', 0) + 1
+            if owner.exit_holds > self.EXIT_HOLDS:
+                trace.event('exit_released', character=character.name, held=owner.exit_holds - 1,
+                            open=[o['text'] for o in owner.outcomes if o['kind'] == 'happens' and o['state'] == 'open'])
+                waits = False
         allowed = (not self.staying_tasks_left() and not waits) or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
         # (staying_tasks_left is 0 once the scene's owner has closed it: a scene that has arrived may be left)
         if not allowed:
@@ -3324,7 +3371,7 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
                 # regard to case), and a name the plan spelled its own way got an empty goal
                 # from one of them and no tasks from another. A name that is nobody in the cast
                 # is left as written: the scene brings that person on.
-                cast_name = lambda name: next((c.name for c in self.actors + self.extras
+                cast_name = lambda name: next((c.name for c in self.everyone()
                                                if c.name.lower() == str(name).strip().lower()), str(name).strip())
                 scene["characters"] = {cast_name(name): entry for name, entry in scene["characters"].items()}
                 if isinstance(scene.get("action_order"), list):
@@ -3499,7 +3546,7 @@ After the framework, repeat four of its elements on lines of their own, exactly 
                                  "act_specific_guidelines": act_guidance[self.screenplay.kind(act_number)],
                                  "current_situation": self.current_state,
                                  # each person's own past is here: a change in a person has somewhere to come from
-                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note()}\n" if self.screenplay.facts_note() else ''},
+                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note(pasts=True)}\n" if self.screenplay.facts_note(pasts=True) else ''},
                                  prompt, max_tokens=600, stops=['</end>'], tag='act_central_narrative')
         if response:
             # the tagged lines are what an actor is given (Character.act_direction): the act's focus
@@ -4065,7 +4112,7 @@ Scene format is as follows:
                                     "scene_number": scene_number,
                                     "act_number": act_number,
                                     "location_field": stage.LOCATION_FIELD,
-                                    "places": stage.gazetteer(self),
+                                    "places": stage.gazetteer(self) + stage.supporting_note(self),
                                     "act": json.dumps(act, indent=1, default=datetime_handler),
                                     "intervention": intervention,
                                     "act_central_narrative": self.act_central_narrative,

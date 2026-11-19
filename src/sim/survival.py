@@ -199,8 +199,8 @@ def attach(context):
 
 
 def give_body(context, character):
-    """A Body for one character, if the world has affordances and it has none yet. NPCs get one
-    when a play gives them a part (Context.set_resource_owner): a father who can hold a deed."""
+    """A Body for one character, if the world has affordances and it has none yet. A supporting
+    actor gets one when cast (Context.cast_part): a father who can hold a deed."""
     cfg = config(context)
     if cfg and getattr(character, 'body', None) is None and getattr(character, 'mapAgent', None) is not None:
         levels = {n: d.get('initial', 0.2) for n, d in _need_defs(cfg).items()}
@@ -416,9 +416,16 @@ FAMILY_OWNER_RELATIONS = ('father of', 'mother of', 'husband of', 'wife of')
 
 
 def _prop_value(value):
-    """A resource property as config and text use it: an owner is stored as a map agent
-    (Context gives each owned resource an owner NPC), and compared and shown by name."""
+    """A resource property as config and text use it: an owner is stored as a person's map agent,
+    or as the uncast part (stage.Part), and compared and shown by name."""
     return getattr(value, 'name', value)
+
+
+def ownership_used(context, resource_type):
+    """Does anything that can be done at this kind of place depend on, or change, whose it is?"""
+    return any(str(resource_type) in (a.get('resource_types') or ())
+               and ('owner' in (a.get('requires_property') or {}) or 'owner' in (a.get('sets_property') or {}) or a.get('conveys'))
+               for a in (config(context) or {}).get('actions', []))
 
 
 def _household_owns(character, owner):
@@ -707,8 +714,8 @@ def holdings(character):
     if body is None or not config(character.context):
         return ''
     people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
-    here = ', '.join(p['name'] + (f" ({p['spot']})" if p.get('spot') else '') for p in lying(character.context, _here(character)))
-    return '\n'.join([f"{p.name}: {', '.join(i for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
+    here = ', '.join(named(character.context, p) for p in lying(character.context, _here(character)))
+    return '\n'.join([f"{p.name}: {', '.join(named(character.context, i) for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
                       for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
 
 
@@ -837,9 +844,40 @@ def searchable(context, res):
                for a in (config(context) or {}).get('actions', []))
 
 
-def add_thing(context, name, holder=None, at=None, hidden=False, says=None):
+# A thing has a state as well as a holder or a place: how it has been left by whoever last
+# handled it ('snapped into short lengths', 'edge lifted', 'folded small'). Ordinary handling of
+# a thing that is held or lying here is always open to a body (classify_deed 'handle'), and the
+# world keeps what it leaves: it is shown wherever the thing is listed. (Anything that changed a
+# thing was refused unless the world had an action for it: in one play twenty deeds, among them
+# lifting the edge of a canvas, snapping a branch and breaking an apple in two.) A thing may
+# also be fixed where it is, a mark or a part of the place: looked at and handled, never taken.
+def state_of(context, name):
+    return getattr(context, 'thing_states', {}).get(str(name).lower(), '')
+
+
+def named(context, thing):
+    """A thing as it is listed for whoever acts, judges or tells: its name, where in the place it
+    is, and how it has been left. thing: a name, or a prop lying somewhere."""
+    name = thing['name'] if isinstance(thing, dict) else str(thing)
+    notes = [n for n in ((thing.get('spot') if isinstance(thing, dict) else ''),
+                         ('part of the place' if isinstance(thing, dict) and thing.get('fixed') else ''), state_of(context, name)) if n]
+    return name + (f" ({'; '.join(notes)})" if notes else '')
+
+
+def _handle(context, character, thing, state):
+    """Ordinary handling of a thing held or lying here: the thing is left as `state`."""
+    state = ' '.join(str(state).split()).strip(' .')[:60]
+    context.__dict__.setdefault('thing_states', {})[thing.lower()] = state
+    fact = f"The {thing} is now {state}."
+    _record(character, {'name': 'handle', 'category': 'survival'}, fact, 'model', applied=True)
+    trace.event('thing_handled', character=character.name, thing=thing, state=state)
+    return fact
+
+
+def add_thing(context, name, holder=None, at=None, hidden=False, says=None, fixed=False):
     """A thing comes into the world: in `holder`'s hands, or lying at `at` (hidden: not seen
-    until someone searches there). says: what it says, if it is a written thing (write). Returns the fact."""
+    until someone searches there; fixed: a mark or a part of the place, not to be carried off).
+    says: what it says, if it is a written thing (write). Returns the fact."""
     name = re.sub(r'^(a|an|the|some)\s+', '', name.strip().lower())[:40]
     if not name:
         return ''
@@ -852,7 +890,7 @@ def add_thing(context, name, holder=None, at=None, hidden=False, says=None):
     else:
         context.props = getattr(context, 'props', [])
         if not any(p['name'] == name for p in lying(context, at)):
-            context.props.append({'name': name, 'at': tuple(at), **({'hidden': True} if hidden else {})})
+            context.props.append({'name': name, 'at': tuple(at), **({'hidden': True} if hidden else {}), **({'fixed': True} if fixed else {})})
         fact = f"There is {_a(name)} here."
     trace.event('thing_added', name=name, holder=holder.name if holder is not None else None)
     return fact
@@ -927,7 +965,8 @@ def prop_offers(character):
                 out[f'share {item}@{other.name}'] = ('share', item, other)
         out[f'put down {item}'] = ('put down', item, None)
     for prop in lying(context, _here(character)):
-        out.setdefault(f"take {prop['name']}", ('take', prop['name'], None))
+        if not prop.get('fixed'):   # a mark or a part of the place is not carried off
+            out.setdefault(f"take {prop['name']}", ('take', prop['name'], None))
     for name in list(dict.fromkeys(body.inventory)) + [p['name'] for p in lying(context, _here(character))]:
         if writing_of(context, name):
             out[f'read {name}'] = ('read', name, None)
@@ -1173,12 +1212,14 @@ Actions ({{$name}} could do these now; each is 'name@where' or 'name@who', with 
 - A deed may be two or three of the actions done one after another ("kneels at the water and drinks", "sits down and takes her hand"): name each, in order. How it is done (slowly, without a word, eyes on her face) and what the doer then waits for are manner, not a further act.
 - passing: a small act that is none of the listed actions and leaves nothing that anyone would later need to know: it puts nothing away, opens, shuts, breaks, lights or makes nothing, moves no thing from where it is kept, changes no garment, passes no thing between hands, and does nothing to another person by force. Tracing a print with a fingertip, patting the ground beside oneself, setting a foot beside a mark to compare, tapping a thing someone holds, squaring one's shoulders, wiping one's hands on one's clothes, walking a slow circle round someone where they stand: each is passing. (Putting a held thing in a pocket is the action 'stow', where it is listed.) It is seen, and then it is gone. It may stand alone or be one part of a deed.
 - The contact actions only touch: a deed that pushes, pulls, pins, drags, holds back or moves another person is not an action and not passing.
-- A deed, or a part of one, that changes a thing, a garment or the place (takes off a shirt, snaps a twig, shuts a tap, wedges a door), or that uses a thing not listed as held or lying here, is not an action and not passing.
+- handle: ordinary handling of ONE thing listed as held or lying here, done with the hands and with what is held, that leaves that thing lastingly different, so that someone coming later would find it so, and leaves nothing else different: opens or shuts it, folds or unfolds it, turns back an edge and leaves it so, snaps or breaks it, splits it in two, ties, wraps, wipes or empties it. Turning a thing over, weighing it in the hand, holding it up, or holding it against another thing to compare leaves nothing different: those are passing. Write handling as 'handle <the thing exactly as listed>: <how the thing is left, two to five words>' ("handle branch: snapped into short lengths"). It may stand alone or be one part of a deed.
+- It is not handling, and not passing, when the deed makes a thing that was not there, lights, feeds, banks or puts out a fire, opens a way or a hiding place, repairs a thing so that it works again, eats, drinks or treats a body, or carries off a thing marked as part of the place: each of those is one of the listed actions where this world has it, and cannot be done where it has not.
+- A deed, or a part of one, that changes a garment or the place itself (takes off a shirt, shuts a tap, wedges a door, digs, moves earth), or that uses or changes a thing not listed as held or lying here, is not an action, not handling and not passing.
 - An action marked as one {{$name}} cannot do now ('has no canned food', 'nothing to give') is not done, whatever the deed says.
 - If any part of the deed is neither a listed action nor passing, the whole deed cannot be done: the answer is null. When you are not sure, it is null.
 
 Respond ONLY with JSON, no prose, in one of these shapes:
-{"actions": ["<a listed action exactly as listed, the part before the bracket, e.g. drink@Spring1; or the word passing>", ...]}   (one to three, in order)
+{"actions": ["<a listed action exactly as listed, the part before the bracket, e.g. drink@Spring1; or handle <thing>: <how it is left>; or the word passing>", ...]}   (one to three, in order)
 {"actions": null, "why": "<what in the deed is neither, six words at most>"}
 </end>
 """
@@ -1215,11 +1256,11 @@ def classify_deed(context, character, act_text, label=None):
     body = character.body
     reply = context.llm.ask({'name': character.name, 'deed': act_text,
                              'claimed': f"\nIts actor calls it: {label}\n" if label else '',
-                             'holding': ', '.join(body.inventory) or 'nothing',
-                             'lying': ', '.join(p['name'] for p in lying(context, _here(character))) or 'nothing',
+                             'holding': ', '.join(named(context, i) for i in body.inventory) or 'nothing',
+                             'lying': ', '.join(named(context, p) for p in lying(context, _here(character))) or 'nothing',
                              'offered': '\n'.join(f'- {o}' for o in offered) or '- none here'},
                             [UserMessage(content=DEED_ACTION)], tag='survival.classify_deed', temp=0.1,
-                            stops=['</end>'], max_tokens=110)
+                            stops=['</end>'], max_tokens=130)
     found = json_reply.parse(reply)
     if not isinstance(found, dict):
         trace.event('check_unreadable', of='deed_action', reply=(reply or '')[:300])
@@ -1235,7 +1276,15 @@ def classify_deed(context, character, act_text, label=None):
     names = {o.split(' (')[0].split(': ')[0].lower() for o in offered}
     threat = active_threat_for(character)
     responses = set(threat['hazard'].get('responses', {}).keys()) if threat else set()
-    for part in parts:
+    things = {i.lower(): i for i in list(body.inventory) + [p['name'] for p in lying(context, _here(character))]}
+    for n, part in enumerate(parts):
+        handled = re.match(r'handle\s+(.+?)\s*:\s*(.+)$', part, re.I)
+        if handled:   # ordinary handling of a thing that is held or lying here
+            thing = things.get(handled.group(1).strip().lower()) or things.get(re.sub(r'^(the|a|an)\s+', '', handled.group(1).strip().lower()))
+            if thing is None:
+                return [], 'it handles a thing that is not here'
+            parts[n] = f'handle {thing}: {handled.group(2).strip()}'
+            continue
         if part.lower() != PASSING and part.lower() not in names and part.split('@')[0].lower() not in responses:
             trace.event('check_unreadable', of='deed_action', reply=f'not offered: {part}')
             return [], 'no action here covers it'
@@ -1281,6 +1330,9 @@ def resolve_do(context, character, act_text, affordance=None, targets=None, reso
 def _do_one(context, character, label, text, act_text, via):
     """One action of a deed, by its label: (kind, fact line), or (None, None) when the label is
     no longer something the character can do (an earlier part of the deed changed that)."""
+    handled = re.match(r'handle\s+(.+?)\s*:\s*(.+)$', label, re.I)
+    if handled:
+        return 'thing', _handle(context, character, handled.group(1), handled.group(2))
     prop = next((v for k, v in prop_offers(character).items() if k.lower() == label.lower()), None)
     if prop:   # a thing handed over, held out, taken or put down
         return 'thing', _prop_do(context, character, *prop)

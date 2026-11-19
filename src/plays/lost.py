@@ -57,11 +57,9 @@ W = context.Context([S, J],
     scenario_module=forest,  # Pass the forest scenario module
     server_name=server_name)
 W.strangers()   # neither knows the other's name until it is said
-# The question this play stands on, every night. What is so behind it is settled afresh for each
-# performance (sim/director.py); what these two do about it is theirs, in play.
-W.standing_question = ("Why are these two here, and how did they come to be here? Is this a place to escape or a place of safety, "
-                       "and is there a way out? If there is a way out, will they take it? If there is not, or they do not take it, "
-                       "how do they live here?")
+# This play has a director (sim/director.py): each performance it writes the question the play
+# stands on from this sketch and settles what is so behind it; what these two do about it is theirs.
+W.directed = True
 # how this play's pictures are made (sim/stage.py picture and portrait); the default is photographic
 W.image_style = 'Watercolor painting, sunlit, soft pastel tones, loose washes, dappled light, thin mist among the far trees, a quiet air of mystery'
 
