@@ -40,6 +40,7 @@ function App() {
   const sendingLock = useRef(false);
   const [choiceRequest, setChoiceRequest] = useState(null);
   const [showDirectorChair, setShowDirectorChair] = useState(false);
+  const [plan, setPlan] = useState(null);   // the plan of the performance, for the Director's Chair
   const [activeTab, setActiveTab] = useState(0);
   const [pendingTabEvent, setPendingTabEvent] = useState(null);
   const [pendingExplorerEvent, setPendingExplorerEvent] = useState(null);
@@ -160,12 +161,16 @@ function App() {
                   setWorldState({});
                   setLogText('');
                   setChoiceRequest(null);
+                  setPlan(null);
                 }
                 if (data.command === 'load_play' && pendingPlayLoadRef.current) {
                   console.log('Debug - setting currentPlay to:', pendingPlayLoadRef.current);
                   setCurrentPlay(pendingPlayLoadRef.current);
                   pendingPlayLoadRef.current = null;
                 }
+                break;
+              case 'plan':
+                setPlan(data.plan);
                 break;
               case 'chat_response':
                 console.log('chat_response:', data.text);
@@ -623,6 +628,7 @@ function App() {
         {showDirectorChair && (
           <DirectorChairModal
             characters={characters}
+            plan={plan}
             onClose={() => setShowDirectorChair(false)}
             sendCommand={sendCommand}
           />

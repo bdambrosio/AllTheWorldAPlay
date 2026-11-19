@@ -2431,6 +2431,11 @@ End your response with:
             significance = None
             if in_scene:
                 significance = self.context.evaluate_commitment_significance(owners[0], other if owners[0] is self else self, task)
+            if in_scene and scene_owner.owner_of(self.context) is not None:
+                # where the scene has an owner a thing agreed between two is one beat, the first
+                # party's: as a beat for each it was played twice ('eat small pile', 'sit out last
+                # hour'), and ten such beats in eight scenes pushed the arranged ones off the end
+                owners = owners[:1]
             owner_tasks = []
             for i, owner in enumerate(owners):
                 # a joint commitment becomes a task for each party (it ran for one party only)
@@ -2457,7 +2462,8 @@ End your response with:
         #    return True
         if from_actor and from_actor.name.lower() == 'viewer':
             return False
-        transcript = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog() # this is dialog from the perspective of self.
+        dialog = from_actor.actor_models.get_actor_model(self.name).dialog
+        transcript = dialog.get_current_dialog() # this is dialog from the perspective of self.
         if f'{self.name} says: ' not in transcript:
             # whoever is spoken to answers at least once: ending here left the speaker to repeat
             # the same proposal three times to someone who never replied
@@ -2470,7 +2476,9 @@ End your response with:
             # the owner's reading of the page (sim/scene.py): the talk is over when the scene has
             # arrived, or when its beat is done and nothing waits for an answer; a question put is
             # answered; and no talk runs on without end
-            lines = len(transcript.split('\n'))
+            # the talk's turns, not the lines of `transcript`: that is its last ten, so no limit
+            # above ten was ever met, and a talk on a beat that could not finish ran 41 lines
+            lines = dialog.turn_count
             run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
             run = 4 if run else 0
             if owner.over:
@@ -2481,6 +2489,9 @@ End your response with:
                 over = verdict['beat'] == 'done' or owner.winding or lines > random.randint(8, 10) + run
             trace.event('talk_check', listener=self.name, lines=lines, beat=verdict['beat'], awaiting=verdict['awaiting'], over=bool(over))
             return bool(over)
+        keeper = scene_owner.budget_of(self.context)
+        if keeper is not None and keeper.winding:
+            return True   # no sheet to read, but the scene has had its lines
         prompt = [UserMessage(content="""Given the following dialog transcript, rate the naturalness of ending at this point.
 
 #Transcript

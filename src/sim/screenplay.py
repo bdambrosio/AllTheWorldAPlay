@@ -54,6 +54,9 @@ class Screenplay:
     frame: dict = field(default_factory=dict)      # 'settles', 'open', 'last'
     clues: list = field(default_factory=list)      # [{'thing', 'place', 'touches'}]
     facts: list = field(default_factory=list)      # [{'text', 'known_to': [names], 'open': bool}]: what lies behind the play (set_facts)
+    standing: bool = False                         # the play stands on a question from its sketch (sim/director.py): its facts are to be found
+    known: dict = field(default_factory=dict)      # {name: what that person has come to, of what is so} (director.read)
+    walked_past: int = 0                           # acts in a row that came no nearer to what is so
     threads: list = field(default_factory=list)    # [{'kind': 'found'|'told', 'who', 'what', 'scene'}]: what the play has planted
     act_count: int = 3                             # acts that carry the story; a closing act follows
     acts: list = field(default_factory=list)       # [ActRecord], in the order played
@@ -121,6 +124,35 @@ class Screenplay:
         record of events and assessed outcomes, not what was planned for it."""
         return '\n\n'.join(f"Act {a.number}, '{a.title}': {a.summary}" for a in self.performed())
 
+    # ----------------------------------------------------------------- the plan, for the director's chair
+    def view(self):
+        """The record as plain data for the Director's Chair: what is settled for this
+        performance and how far it has been played. Acts are written one at a time, so an act
+        not yet reached has no entry; one whose plan is still being written has its focus only."""
+        def scene(s):
+            people = s.get('characters') or {}
+            return {'number': s.get('scene_number'), 'title': s.get('scene_title', ''),
+                    'place': s.get('location', ''), 'when': s.get('when') or '',
+                    'cast': [{'name': str(name), 'goal': entry.get('goal', '') if isinstance(entry, dict) else '',
+                              'keeps': list(entry.get('keeps') or []) if isinstance(entry, dict) else []}
+                             for name, entry in (people.items() if isinstance(people, dict) else [])],
+                    'setup': s.get('pre_narrative', ''), 'ending': s.get('post_narrative', ''),
+                    'played': bool(s.get('wrapup')), 'wrapup': s.get('wrapup', ''),
+                    'outcomes': [{'text': o.get('outcome', ''), 'happened': o.get('test') is True}
+                                 for o in s.get('outcomes') or [] if isinstance(o, dict)]}
+        def act(a):
+            plan = a.plan or {}
+            return {'number': a.number, 'kind': a.kind, 'title': a.title, 'written': a.plan is not None,
+                    'focus': a.focus.get('focus', ''), 'stakes': a.focus.get('stakes', ''),
+                    'roles': dict(a.focus.get('roles') or {}),
+                    'opens': plan.get('act_pre_state', ''), 'ending': plan.get('act_post_state', ''),
+                    'scenes': [scene(s) for s in plan.get('scenes') or [] if isinstance(s, dict)],
+                    'choices': list(a.choices), 'played': a.performed, 'summary': a.summary}
+        return {'question': dict(self.question), 'frame': dict(self.frame),
+                'facts': [dict(f) for f in self.facts], 'clues': [dict(c) for c in self.clues],
+                'threads': [dict(t) for t in self.threads], 'known': dict(self.known),
+                'act_count': self.act_count, 'acts': [act(a) for a in self.acts]}
+
     # ----------------------------------------------------------------- the threads
     MAX_THREADS = 12
 
@@ -144,7 +176,7 @@ class Screenplay:
         lines += [f"- told by {t['who']}: \"{t['what']}\" (in '{t['scene']}')" for t in told]
         lines.append("Pick up at least two: a found thing used, questioned or compared; pieces of the past set beside each other "
                      "so that they meet (two memories that fit, or that cannot both be true). Picking up is not explaining: "
-                     "the open question stays open.")
+                     + ("what these people make of it is theirs." if self.standing else "the open question stays open."))
         return '\n'.join(lines)
 
     # ----------------------------------------------------------------- the clues
@@ -173,7 +205,7 @@ class Screenplay:
                 elif key.strip().lower() == 'open':
                     is_open = value.strip().lower().startswith('y')
             facts.append({'text': text, 'known_to': known, 'open': is_open})
-        self.facts = facts[:3]
+        self.facts = facts[:4 if self.standing else 3]
         return self.facts
 
     def set_past(self, reply, name):
@@ -195,7 +227,8 @@ class Screenplay:
                 "none of it says what anyone will do):\n"
                 + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f['known_to']) or 'nobody'}"
                              + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in self.facts)
-                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it.")
+                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it."
+                + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No scene has anyone tell all of it, and no character knows any of it before a thing or a person has shown it." if self.standing else ''))
 
     def clue_note(self, now=None):
         """The clues and where each is, for whoever writes a plan. now(clue): where it is at this
@@ -210,4 +243,5 @@ class Screenplay:
         return ("Things that are really there to be found, where each is now, and what each touches on:\n"
                 + '\n'.join(f"- {c['thing']}, {where(c)}: {c['touches']}" for c in self.clues)
                 + "\nA scene may lead a character to one and turn on its being found. "
-                  "None of them answers the open question; nothing else is hidden in this world.")
+                + ("Each shows a part of what is so and none shows all of it; nothing else is hidden in this world." if self.standing
+                   else "None of them answers the open question; nothing else is hidden in this world."))

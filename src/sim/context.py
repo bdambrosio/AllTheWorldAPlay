@@ -31,6 +31,7 @@ from sim.trace import trace
 import sim.survival as survival
 import sim.scene as scene_owner
 import sim.stage as stage
+import sim.director as director
 import sim.record as record
 from sim.screenplay import Screenplay
 from sim import ablation
@@ -141,6 +142,10 @@ class Context():
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
         self.map_file = None
+        # The question this play stands on every night, from its play file ('' for a play that has none).
+        # What is so behind it is settled afresh for each performance (sim/director.py); what the
+        # characters do about it is theirs.
+        self.standing_question = ''
         self.narrative_level= False
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
         self.scene_task_budget = 0  # plan length at scene start (place_commitment, run_scene)
@@ -292,6 +297,36 @@ class Context():
         places near the cast with what each offers (sim/stage.py)."""
         return f"Terrain: {', '.join(self.map.terrain_types.__members__)}\n{stage.gazetteer(self)}"
 
+
+    def plan_view(self):
+        """The plan of this performance for the Director's Chair: the screenplay record
+        (Screenplay.view), with where the play now stands: the scene being played, its sheet
+        and its beats. Places are given in the world's own words, as the audience reads them."""
+        view = self.screenplay.view()
+        scene = self.current_scene
+        if scene:
+            owner = self.owner
+            at = self.scene_integrated_task_plan_index
+            view['now'] = {'act': self.screenplay.act.number if self.screenplay.act else None,
+                           'scene': scene.get('scene_number'), 'title': scene.get('scene_title', ''),
+                           'outcomes': [{'kind': o.get('kind', ''), 'text': o.get('text', ''), 'state': o.get('state', 'open')}
+                                        for o in (owner.outcomes if owner is not None else [])],
+                           'beats': [{'who': e['actor'].name, 'what': e['task'].name, 'played': i < at, 'playing': i == at}
+                                     for i, e in enumerate(self.scene_integrated_task_plan or [])]}
+        def plain(x):
+            if isinstance(x, str):
+                return stage.plain(self, x)
+            if isinstance(x, dict):
+                return {k: plain(v) for k, v in x.items()}
+            return [plain(v) for v in x] if isinstance(x, list) else x
+        return plain(view)
+
+    def send_plan(self):
+        """Send the plan to the Director's Chair: called where the plan changes."""
+        try:
+            self.message_queue.put({'name': '', 'text': 'plan_update', 'data': self.plan_view()})
+        except Exception as e:   # a view that cannot be built must not stop the play
+            logger.error(f'plan view failed: {type(e).__name__}: {e}')
 
     # The screenplay's parts under the names the prompts have always read them by.
     @property
@@ -1764,6 +1799,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # but the refused thing becomes the scene's plain purpose.
             for key in ('pre_narrative', 'post_narrative'):
                 kept = record.strip(scene.get(key, ''), claims)
+                if key == 'post_narrative' and not kept and scene.get(key, '').strip():
+                    # an ending of one sentence: the refused part is taken out and the rest kept
+                    kept = record.ending_without(self, scene[key], [words for _, words in claims])
+                    trace.event('ending_cut', scene=scene.get('scene_title'), was=scene[key], kept=kept, refused=[words for _, words in claims])
                 if kept != scene.get(key, ''):
                     changed[key] = scene[key] = kept
             for name, entry in (scene.get('characters') or {}).items():
@@ -1971,13 +2010,15 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # ok, actors - live!
         scene_integrated_task_plan = await self.integrate_task_plans(scene)
         # the scene's owner writes its sheet, then arranges what the actors proposed into beats
-        if scene_owner.open_scene(self, scene):
-            beats = self.owner.arrange(list(self.scene_integrated_task_plan))
+        owner = scene_owner.open_scene(self, scene)
+        if owner is not None:
+            beats = owner.arrange(list(self.scene_integrated_task_plan))
             if beats:
                 self.scene_integrated_task_plan = beats
         self.scene_history = []
         self.scene_integrated_task_plan_index = 0 # using explicit index allows cog cycle to insert tasks!
         self.scene_task_budget = len(self.scene_integrated_task_plan)  # see place_commitment
+        self.send_plan()
         # where the scene stood when its tasks were planned: a task is looked at again
         # (refresh_task) only in the light of what has happened since
         self._scene_plan_mark = (len(self.scene_events), len(self.transcript))
@@ -1991,9 +2032,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                                                       for e in self.scene_integrated_task_plan[self.scene_integrated_task_plan_index:]])
                 break
             scene_task = self.scene_integrated_task_plan[self.scene_integrated_task_plan_index]
-            if scene_owner.owner_of(self) and self.owner.winding and not getattr(scene_task['task'], 'leaves', False):
-                # the scene has had its lines: of what is left only a leaving is played
-                trace.event('task_skipped', character=scene_task['actor'].name, task=scene_task['task'].name, why='the scene has had its lines')
+            if scene_owner.budget_of(self) and self.owner.winding and not getattr(scene_task['task'], 'leaves', False):
+                # the scene has had its lines, or has nowhere left to arrive: of what is left only a leaving is played
+                trace.event('task_skipped', character=scene_task['actor'].name, task=scene_task['task'].name,
+                            why='the scene has nowhere left to arrive' if self.owner.spent else 'the scene has had its lines')
                 self.scene_integrated_task_plan_index += 1
                 continue
             pending = len(self.scene_integrated_task_plan) - self.scene_integrated_task_plan_index
@@ -2009,13 +2051,23 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 trace.event('task_skipped', character=character.name, task=scene_task['task'].name, why='left the scene')
                 self.scene_integrated_task_plan_index += 1
                 continue
+            owner = scene_owner.owner_of(self)
+            if (owner is not None and ablation.enabled('owner_beats') and not getattr(scene_task['task'], 'leaves', False)
+                    and not owner.closed and owner.already_done(scene_task['task'])):
+                # what the beat was for has been got already, in the talk of an earlier one
+                trace.event('task_skipped', character=character.name, task=scene_task['task'].name, why='already played')
+                self.scene_integrated_task_plan_index += 1
+                continue
             character_name = character.name
             task = scene_task['task']
             character.focus_goal = scene_task['goal']
             character.focus_goal.task_plan = [task]
             # refresh task to ensure it is up to date with the latest information
-            task = character.refresh_task(task, self.scene_integrated_task_plan, 
-                                          final_task=self.scene_integrated_task_plan_index == len(self.  scene_integrated_task_plan)-1)
+            # (not where the scene has an owner: the beats were arranged beside the sheet, and this
+            # look, which never saw the sheet, replaced the beat that carried the ending)
+            if not (scene_owner.owner_of(self) and ablation.enabled('owner_beats')):
+                task = character.refresh_task(task, self.scene_integrated_task_plan,
+                                              final_task=self.scene_integrated_task_plan_index == len(self.scene_integrated_task_plan)-1)
             #await character.request_task_choice([task]) #not needed, cog_cycle will do it
             character.focus_task = Stack()
             character.focus_task.push(task)
@@ -2124,6 +2176,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         await asyncio.sleep(0.1)
         self.current_scene = None
         self.owner = None
+        self.send_plan()
         self._opening_done = True   # the play's opening description was for its first scene (record.seen_by)
         return true_outcomes
 
@@ -2135,6 +2188,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.current_act = act
         if self.screenplay.act:
             self.screenplay.act.plan = act
+        self.send_plan()
         scenes = act.get('scenes', [])
         if len(scenes) == 0:
             logger.error(f'No scenes in act: {act["act_title"]}')
@@ -2235,7 +2289,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             for character in cast(List[NarrativeCharacter], self.actors):
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
                 self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
-        await self.merge_central_narratives()
+        self.play_file = play_file
+        if self.standing_question:   # the play's question is the sketch's: the characters' proposals are their own views of it, not merged into another
+            self.screenplay.set_question(f"{self.standing_question}\n#question {self.standing_question}")
+            trace.event('central_question', question=self.standing_question, standing=True)
+        else:
+            await self.merge_central_narratives()
         self.message_queue.put({'name':'Prologue', 'text':f'{self.central_narrative}\n'})
         # Settled before any character plans its acts, so that the plans are written knowing
         # them: what this episode settles and leaves open, the clues that lie in the world, and
@@ -2542,7 +2601,15 @@ Respond with these lines only, one sentence each:
         leads = ', '.join(c.name for c in self.actors)
         past_rule = (f"- Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from it: plain and particular (what, where, with whom). Say what happened and stop: not what it made of them. It gives a reason for something their description says of them and contradicts nothing in it. People who are not in the play may be in it, unnamed (a brother, an employer). It is not about the open question and is not one of the facts above; it says nothing of what the person will do in the play: it is theirs to keep back or to tell. Write none for a person whose description says they do not remember their past.") if leads else ''
         past_format = f"#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)" if leads else ''
-        reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
+        standing = bool(self.standing_question)
+        cast_note = '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
+                              for c in self.actors + self.extras + [n for n in self.npcs if not getattr(n, 'placeholder', False)])
+        reply = director.settle(self, self.initial_state.strip(), cast_note, places or 'No places are listed.', leads) if standing else None
+        if standing and not reply:
+            self.message_queue.put({'name': self.name, 'text': '----- the director could not settle what lies behind the play; it is played without -----'})
+        if standing:
+            self.director_person(director.read_person(reply or ''))
+        reply = reply if standing else self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'past_rule': past_rule, 'past_format': past_format,
                               # who each is, and what each wants (the facts are about these people: it was given their drives alone)
                               'characters': '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"
@@ -2552,10 +2619,14 @@ Respond with these lines only, one sentence each:
                                             + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
                                            if getattr(self, 'props', None) else '')},
                              prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=700) or ''
+        reply = reply or ''
         echo = r'^(what (this episode|it) (settles|leaves open)|the image or act it should end on)\s*:?\s*'   # the format line, said back
         frame = {k: re.sub(echo, '', (hash_utils.find(k, reply) or '').strip(), flags=re.I).strip() for k in ('settles', 'open', 'last')}
         frame = {k: (v[0].upper() + v[1:] if v else v) for k, v in frame.items()}
         self.episode = frame if frame['settles'] and frame['open'] else {}
+        if standing:   # nothing is planned to be settled, and nothing is held open: the question stands and the characters answer it
+            self.episode = {'standing': self.standing_question, 'settles': '', 'open': '', 'last': ''}
+            self.screenplay.standing = True
         clues = []
         for line in re.findall(r'^\s*#clue\s+(.+?)\s*$', reply, re.M):
             fields = [f.strip() for f in line.split('|')]
@@ -2572,7 +2643,36 @@ Respond with these lines only, one sentence each:
                 if c.name in fact['known_to'] and not fact.get('of'):
                     c.add_perceptual_input(f"You know this, and have told no one: {fact['text']}", percept=False, mode='internal')
         trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
+        self.send_plan()
         return self.episode
+
+    def director_person(self, person):
+        """Bring the director's person who knows a part into the play: at the place named, as its
+        owner where the map had only a stand-in, with a description and wants, played like anyone
+        else. Nothing says what they will tell. Returns the character, None when there is none."""
+        if not person:
+            return None
+        anchor = stage.here(self.actors[0]) if self.actors else None
+        spot = stage.resolve(self, person['place'], anchor) if anchor is not None else None
+        res = self.map.resource_registry.get(spot[1]) if spot else None
+        if res is None:
+            trace.event('director_person_dropped', **person)
+            return None
+        try:
+            description = f"{person['name']}, {person['description']}"
+            if res['properties'].get('owner') is not None:   # the place's owner, in place of the map's stand-in
+                who = self.set_resource_owner(spot[1], person['name'], description)
+            else:   # someone who is at a place nobody owns
+                x, y = res['location']
+                who = self.get_npc_by_name(person['name'], description=description, x=x, y=y, create_if_missing=True)
+                survival.give_body(self, who)
+            if person['wants']:
+                who.set_drives(person['wants'])
+        except Exception as e:
+            trace.event('director_person_dropped', error=f'{type(e).__name__}: {e}', **person)
+            return None
+        trace.event('director_person', name=who.name, place=spot[1], wants=person['wants'])
+        return who
 
     def place_clues(self):
         """Put the episode's clues in the world, each at the place the director named for it:
@@ -2596,6 +2696,7 @@ Respond with these lines only, one sentence each:
                 placed.append(clue)
         self.screenplay.clues = placed
         trace.event('clues_placed', clues=placed)
+        self.send_plan()
         return placed
 
     def equip_cast(self):
@@ -2697,6 +2798,23 @@ End your response with: </end>"""
         frame = getattr(self, 'episode', None) or {}
         if not frame:
             return ''
+        if frame.get('standing'):
+            known = getattr(self.screenplay, 'known', None) or {}
+            so_far = ('\nWhat each has come to so far, of what lies behind it: ' + ' '.join(f'{n}: {k}' for n, k in known.items())) if known else ''
+            if closing:
+                return (f"This is the last act. The play stands on this question: {frame['standing']} "
+                        "Show where these people now are with it, in what they do: what they have found out and what each has chosen, as far as they have. "
+                        "Settle nothing for them that they have not settled themselves; it may end with part of it still not found. Nobody sums it up." + so_far)
+            return (f"The play stands on this question, tonight as every night: {frame['standing']} "
+                    "What is so behind it is there to be found; what these people do about it is theirs. "
+                    "Each act should bring them nearer to what is so by their own doing (a place gone to, a thing found, a person met), or make it harder to walk past. "
+                    "Plan no scene that answers the question for anyone, and no ending that has a person choose what to do about it: a scene may bring someone to a choice and stop there."
+                    + so_far
+                    + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
+                    + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
+                    + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
+                    + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else '')
+                    + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.actors + self.extras)) else ''))
         if closing:
             return (f"This is the last act of the episode. It closes what the episode set out to settle: {frame['settles']} "
                     f"Show it settled in what the characters do; nobody says it. "
@@ -2736,6 +2854,7 @@ End your response with: </end>"""
                 if focus is None:
                     stop(f'could not settle what act {number} is about')
                     return
+                self.send_plan()   # the act's focus, while its scenes are being written
                 if self.episode_note(closing=closing):   # every act is planned knowing what the episode is for
                     focus = f'{focus}\n\n{self.episode_note(closing=closing)}'
                 drafts = []
@@ -2764,6 +2883,9 @@ End your response with: </end>"""
                     return
                 await self.run_narrative_act(act, number)
                 post_state = await self.close_act(act)
+                if self.standing_question and not closing:   # what of it they have now come to, for the next act's planners
+                    director.read(self, post_state, [c.name for c in players])
+                    self.send_plan()
             self.message_queue.put({'name': '', 'text': '\n----- end of episode -----'})
             trace.event('episode_end', **(self.episode or {}))
         except Exception as e:
@@ -2928,16 +3050,24 @@ End your response with: </end>""")]
                     if getattr(c, 'current_scene', None) is scene and not stage.off_stage(c)]
         if len(on_stage) < 2 or len([c for c in on_stage if c is not character and c not in party]) > 1:
             return True   # the scene goes on without it
-        allowed = not self.staying_tasks_left() or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
+        # and, where the scene has an owner, until nothing it was to arrive at is still open,
+        # unless the beat being played is itself the leaving (an ending may be the going: 'they
+        # set out together for the spring'). Two walked off to a spring from a talk, the branch
+        # one of them was to take up still lying there.
+        owner = scene_owner.owner_of(self)
+        waits = (owner is not None and not owner.winding and not getattr(owner.current_task(), 'leaves', False)
+                 and any(o['kind'] == 'happens' and o['state'] == 'open' for o in owner.outcomes))
+        allowed = (not self.staying_tasks_left() and not waits) or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
         # (staying_tasks_left is 0 once the scene's owner has closed it: a scene that has arrived may be left)
         if not allowed:
-            trace.event('exit_held', character=character.name, played=self.scene_integrated_task_plan_index + 1, planned=len(plan))
+            trace.event('exit_held', character=character.name, played=self.scene_integrated_task_plan_index + 1, planned=len(plan),
+                        why='an outcome is still open' if waits and not self.staying_tasks_left() else 'beats are still to be played')
         return allowed
 
     def staying_tasks_left(self):
         """How many of the scene's planned tasks are still to be played here: those after the one
         being played that do not themselves take anyone out of the scene (Task.leaves)."""
-        if scene_owner.owner_of(self) and (self.owner.over or self.owner.winding):
+        if (scene_owner.owner_of(self) and self.owner.over) or (scene_owner.budget_of(self) and self.owner.winding):
             return 0   # the scene has arrived, or has had its lines: nothing more need be played here
         plan = self.scene_integrated_task_plan or []
         return len([e for e in plan[self.scene_integrated_task_plan_index + 1:] if not getattr(e['task'], 'leaves', False)])
@@ -2969,6 +3099,7 @@ End your response with </end>
         self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
         if self.screenplay.act:
             self.screenplay.act.summary, self.screenplay.act.post_state = summary.strip(), post_state
+            self.send_plan()
         for character in cast(List[NarrativeCharacter], self.actors):
             character.reason_over(post_state)
         return post_state

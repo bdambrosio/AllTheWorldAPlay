@@ -610,6 +610,11 @@ class SimulationServer:
                     self.sim_context.choice_response.put_nowait(response)
                 await asyncio.sleep(0.1)
                 return
+            elif cmd_name == 'get_plan':   # the Director's Chair asks for the plan as it now stands
+                if self.sim_context:
+                    await self.send_result({'type': 'plan', 'plan': self.sim_context.plan_view()})
+                await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'set_autonomy':
                 await self.set_autonomy_cmd(command)
                 await asyncio.sleep(0.1)
@@ -695,6 +700,9 @@ class SimulationServer:
                             'type': 'world_update',
                             'world': world_data
                         })
+                        continue
+                    elif message['text'] == 'plan_update':   # the plan, for the Director's Chair
+                        await self.send_result({'type': 'plan', 'plan': message['data']})
                         continue
                     elif 'chat_response' in message.keys():
                         await self.send_result({

@@ -42,7 +42,17 @@ FIREWORKS_HEADROOM = 512
 # (8 recorded turns, 2026-11-15). Key: TOGETHER_API_KEY.
 TOGETHER_URL = 'https://api.together.xyz/v1'
 TOGETHER_MODEL = 'thinkingmachines/Inkling-2-Small'
-OPENAI_STYLE = {'fireworks': (FIREWORKS_URL, 'FIREWORKS_PROJECT_KEY'), 'together': (TOGETHER_URL, 'TOGETHER_API_KEY')}
+# GPT-6.2 Sol on the OpenAI API (server_name 'sol'), as a planner: ATWAP_PLAN_LLM=sol. It takes
+# reasoning_effort low, medium, high or xhigh and nothing less; no temperature, top_p or stop.
+# On twelve recorded planner prompts (2026-11-17, logs/review-20261117/sol.json) a blind reader
+# ranked its scene endings above Sonnet 5.5's at every effort and found low, medium and high
+# alike; seconds a call 14, 21 and 46 (Sonnet 10). It plans at 'low' (ATWAP_SOL_EFFORT).
+# Key: OPENAI_API_KEY.
+SOL_URL = 'https://api.openai.com/v1'
+SOL_MODEL = 'gpt-6.2-sol'
+SOL_EFFORTS = ('low', 'medium', 'high', 'xhigh')
+OPENAI_STYLE = {'fireworks': (FIREWORKS_URL, 'FIREWORKS_PROJECT_KEY'), 'together': (TOGETHER_URL, 'TOGETHER_API_KEY'),
+                'sol': (SOL_URL, 'OPENAI_API_KEY')}
 LOCAL_THINKING_HEADROOM = 1024   # the same, for a local model that always thinks (LLM.thinks); GLM-5.3 at low took up to ~600
 # Claude Haiku 5.5 on the Anthropic API (server_name 'haiku'). Key: CLAUDE_API_KEY or ANTHROPIC_API_KEY.
 # How much every call thinks before it answers: ATWAP_EFFORT = off | low | medium | high. Calls
@@ -272,7 +282,8 @@ PLAN_TAGS = frozenset((
     'scene.outcomes',   # a scene's planned ending as what to watch for (sim/scene.py): written once, read at every check
     'scene.beats',      # the actors' proposals arranged into the scene's beats (sim/scene.py)
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
-    'check_post_state_ambiguity'))   # what a scene or act came to: the acting model passed an ending that was not played
+    'check_post_state_ambiguity',
+    'director.answers', 'director.behind', 'director.read'))   # what lies behind a play that stands on a question (sim/director.py)   # what a scene or act came to: the acting model passed an ending that was not played
 # More of the play's calls can go to the planner, by group, so that the acting model writes the
 # lines and nothing else (ATWAP_PLAN_GROUPS, default 'world,character' whenever there is a
 # planner; 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it
@@ -345,6 +356,12 @@ class LLM():
         if self.server_name == 'together':
             self.model = model_name or TOGETHER_MODEL
             self.reasoning_effort = 'low'
+        if self.server_name == 'sol':
+            self.model = model_name or SOL_MODEL
+            self.reasoning_effort = os.environ.get('ATWAP_SOL_EFFORT', 'low').strip().lower()
+            if self.reasoning_effort not in SOL_EFFORTS:
+                raise ValueError(f"ATWAP_SOL_EFFORT '{self.reasoning_effort}' is not one of {', '.join(SOL_EFFORTS)}")
+            print(f'  {self.model}, effort {self.reasoning_effort}')
         if self.server_name == 'fireworks':
             self.model = model_name or FIREWORKS_MODEL
             self.reasoning_effort = 'low'   # 'medium' for whole-play rubrics
@@ -540,6 +557,10 @@ class LLM():
                 "stop": options.stops or None, "reasoning_effort": effort}
         if effort != 'low':   # longer thinking reads back 'End with </end>', and a stop matched there ends the reply: cut here (LLM.ask)
             body["stop"] = None
+        if self.server_name == 'sol':   # its own effort whatever the call asks; the thinking is spent from the same budget
+            effort = self.reasoning_effort
+            body = {"model": self.model, "messages": messages, "reasoning_effort": effort,
+                    "max_completion_tokens": options.max_tokens + (FIREWORKS_HEADROOM if effort == 'low' else 2 * REASONING_TOKENS)}
         delay = 2.0
         for attempt in range(retries):
             try:   # a connection that hung held the play for five minutes: give up sooner, try again

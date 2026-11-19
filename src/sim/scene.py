@@ -52,6 +52,22 @@ that could no longer happen were called gone, none that later happened was, and 
 as a reader read them 32 times in 33 (31 before). A 'gone' counts once two checks running say it:
 a single one was twice taken back at the next look.
 
+Three things found in eight scenes of 2026-11-17 (logs/review-20261117) and changed:
+  - a talk's length was counted from a transcript cut to its last ten lines, so no limit above
+    ten was ever met and one talk ran 41 lines: the talk's turns are counted (natural_dialog_end)
+  - the beats were arranged once and then changed in play by two older steps that never saw the
+    sheet: each beat was looked at again before it was played (refresh_task: 17 times in 41 the
+    beat was replaced, three of them the beat that carried the ending, and one by a beat that
+    contradicted it), and a thing agreed in talk became a beat for each party (ten beats in
+    eight scenes). With an owner a beat is played as arranged (switch 'owner_beats'), and a
+    thing agreed between two is one beat
+  - (after the first whole play, lost-20261117-104840) a beat already played in the talk of an
+    earlier one is not begun (already_done), unless the scene has arrived short of its floor
+    and is playing on: there a beat is what gives it its lines
+  - the cast walked out with an outcome still open: an exit that empties the stage waits for
+    the outcomes as well as the beats, unless the beat being played is itself the leaving
+    (Context.exit_allowed)
+
 Off with the ablation switch 'scene_owner'. An unplanned play has no scenes and no owner.
 """
 from __future__ import annotations
@@ -335,7 +351,7 @@ class Owner:
             self._talking, self._pending = False, None
 
     # ------------------------------------------------------------------ the tracker
-    def check(self, task=None):
+    def check(self, task=None, recount=True):
         """Where the scene stands now: {'beat': 'going' | 'done' | 'stalled', 'awaiting': bool,
         'next': ...}, or None when there is nothing to go on. Asked again with nothing new on the
         page and the same beat, it gives the answer it gave."""
@@ -381,6 +397,8 @@ class Owner:
                 trace.event('outcome_' + flag, n=n + 1, text=o['text'], turn=row.get('turn'), by=o['by'])
             elif o['kind'] == 'happens' and o['state'] == 'open':
                 # gone once two checks running say so: a single one has been taken back at the next look
+                if not recount:
+                    continue   # a second look at the same page (already_done) is not a second check running
                 o['_gone'] = o.get('_gone', 0) + 1 if row.get('gone') is True else 0
                 if o['_gone'] >= 2:
                     o.update(state='gone', turn=row.get('turn'), by=str(row.get('by') or '')[:200])
@@ -394,6 +412,26 @@ class Owner:
         if self.closed and not was_closed:
             trace.event('scene_arrived', at=len(page))
         return self._verdict
+
+    def already_done(self, task):
+        """A beat about to be begun has been played already: what it was for was got, or refused
+        for good, in the talk of an earlier beat. Two looks at the page, and both must say so.
+
+        (A scene's first talk often covers the scene: Joe said he was scared, and the beat 'Say
+        plainly I am scared' then had him say it again eight lines on; a branch handed over was
+        handed over twice; and beats already played held an exit until two people walked a trail
+        in talk, standing still. Tried on the 37 beats of that play that had a page before them
+        (logs/review-20261117/beat_done.json): one look called 'done' three beats that were not
+        (an apple not yet eaten, a map not yet picked up); where two looks agreed, eight beats,
+        none of them was still to play.)"""
+        if not self.active or task is None:
+            return False
+        first = self.check(task)
+        if not first or first['beat'] != 'done':
+            return False
+        self._verdict = None   # look again at the same page
+        again = self.check(task, recount=False)
+        return bool(again) and again['beat'] == 'done'
 
     @staticmethod
     def _beat_line(task):
@@ -423,13 +461,24 @@ def owner_of(context):
     return owner if owner is not None and owner.active and context.current_scene is owner.scene else None
 
 
+def budget_of(context):
+    """Whoever keeps the line budget of the scene being played, or None: its owner, or an owner
+    whose sheet could not be written (it has no outcomes to watch, and still counts the lines)."""
+    owner = getattr(context, 'owner', None)
+    return owner if owner is not None and context.current_scene is owner.scene else None
+
+
 def open_scene(context, scene):
-    """Give the scene an owner and write its sheet. Not while a danger is on the cast: such a
-    scene is about meeting the danger, and ends as the world ends it."""
+    """Give the scene an owner and write its sheet; the owner is returned when it has a sheet.
+    Not while a danger is on the cast: such a scene is about meeting the danger, and ends as the
+    world ends it. An owner with no sheet (no ending was planned, or none was left: an ending cut
+    to nothing by the world's check gave a second scene of 47 lines with nothing to end it) is
+    kept for the line budget alone (budget_of): the scene is wound up when it has had its lines."""
     context.owner = None
     if not ablation.enabled('scene_owner') or getattr(context, 'active_threat', None):
         return None
-    owner = Owner(context, scene)
-    if owner.write_sheet():
-        context.owner = owner
-    return context.owner
+    context.owner = owner = Owner(context, scene)
+    if not owner.write_sheet():
+        trace.event('scene_unowned', why='no ending' if not (scene.get('post_narrative') or '').strip() else 'no sheet could be written')
+        return None
+    return owner

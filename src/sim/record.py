@@ -269,10 +269,11 @@ For each numbered entry, one line, in one of these forms:
 #thing <n> item | <one of the things the actions use> | held by <a person present> OR lying here
 #thing <n> place | <one of the kinds of place> | <what it is, a few words: 'a rain pool in a hollow log'>
 #thing <n> body | <a person present> | <one of the bodily states> | worse OR better | slightly OR clearly OR badly
+#thing <n> absent
 #thing <n> none
 When the text means one of the things the world already has, give that thing's name exactly as listed, wherever the text puts it.
 A prop is a thing nobody acts on through the world's rules: a tool, a paper, a cup, a phone, a rope. It is ordinary when it would be found at such a place, or on such a person, without remark (a sickle on a farm, a phone in an office, a pen in a pocket). It is unusual when it is a find that changes what the characters can do, and always when it is a weapon, a medicine, a means of making fire or light, or a means of calling for help (a knife or a radio in a forest, a cache of supplies: one line for each thing in it).
-Use 'place' for anything that gives water, food, shelter or rest, whatever it is called. Use 'none' when the entry is not a thing or a bodily state at all, or fits no form.
+Use 'place' for anything that gives water, food, shelter or rest, whatever it is called. Use 'absent' when the text does not put the thing here at all: it is only spoken of, remembered, wished for or compared to, or it belongs to someone's past or to another place (the lamp her mother kept, the knife he left at home). A thing somebody in the text holds, hands over, finds or uses with their hands is here, and is not 'absent'. Use 'none' when the entry is not a thing or a bodily state at all, or fits no form.
 </end>
 """
 
@@ -336,13 +337,20 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     at = tuple(at) if at else stage.here(actor)
     person = lambda name: next((c for c in people if c.name.lower() == name.strip().lower()), None)
     seen = set()
-    for number, form, rest in re.findall(r'^\s*#thing\s+(\d+)\s+(\w+)\s*\|?\s*(.*?)\s*$', reply, re.M):
+    # one line an entry: with \s between the fields a '#thing 1 none' took the next line as its
+    # own, and the entry on that line was never read (30 of 290 recorded replies)
+    for number, form, rest in re.findall(r'^[ \t]*#thing[ \t]+(\d+)[ \t]+(\w+)[ \t]*\|?[ \t]*(.*?)[ \t]*$', reply, re.M):
         index = int(number) - 1
         if not 0 <= index < len(new):
             continue
         seen.add(index)
         fields = [f.strip() for f in rest.split('|')]
         form, fact, why = form.lower(), '', ''
+        if form == 'absent':
+            # spoken of, remembered, or somewhere else: nothing is made and nothing is written out
+            # (a direction to 'use her grandfather's pink ribbons to ask' put the ribbons of her
+            # childhood in Joe's hands, and two scenes were then planned around them)
+            continue
         if form in ('prop', 'item') and len(fields) >= 2 and fields[0]:
             name = fields[0].lower()
             holder = person(fields[1].lower().removeprefix('held by')) if 'held by' in fields[1].lower() else None
@@ -509,6 +517,37 @@ def ending_beyond(context, ending, cast):
     found = json_reply.parse(reply) if reply else None
     beyond = found.get('beyond') if isinstance(found, dict) else None
     return [b.strip() for b in beyond if isinstance(b, str) and b.strip()] if isinstance(beyond, list) else []
+
+
+ENDING_CUT = """A scene of an improvised play was planned to end as below. Part of that ending cannot be played on this stage and has to go.
+
+<ending>
+{{$ending}}
+</ending>
+
+What cannot be played:
+{{$refused}}
+
+Write the ending again with every part listed there taken out. Everything else that is said or done in it stays, in its own words and in the same order. What is left has to read as whole sentences: a clause that only leaned on a part taken out goes with it, and so does a name left with nothing said or done. Put nothing in the place of what went and add nothing new.
+
+Answer in JSON only: {"ending": "<the ending without that part>"}
+</end>
+"""
+
+
+def ending_without(context, ending, refused):
+    """`ending` with the parts in `refused` ([str]) taken out and the rest left as it was, or ''
+    when it could not be read. For an ending that the cut by sentences (strip) would leave empty:
+    it is one sentence, and the whole of it went for one clause ('they split what the shelves
+    gave'), so the scene had no ending, no sheet and nothing to end it."""
+    if not (ending or '').strip() or not refused:
+        return ''
+    from utils import json_reply
+    reply = context.llm.ask({'ending': ending.strip(), 'refused': '\n'.join(f'- {r}' for r in refused)},
+                            [UserMessage(content=ENDING_CUT)], tag='record.ending_cut', temp=0.1, stops=['</end>'], max_tokens=200)
+    found = json_reply.parse(reply) if reply else None
+    kept = found.get('ending') if isinstance(found, dict) else None
+    return kept.strip() if isinstance(kept, str) else ''
 
 
 def strip(text, claims):
