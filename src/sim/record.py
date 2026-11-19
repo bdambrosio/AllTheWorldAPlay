@@ -151,7 +151,7 @@ def cast(context, people=None):
 def cast_note(context):
     """The cast for the head of every prompt (llm_api.set_preamble): those whose sex is known."""
     try:
-        known = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) if (getattr(c, 'gender', '') or '').strip()]
+        known = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if (getattr(c, 'gender', '') or '').strip()]
         return ('The people of this play, and whether each is he or she: ' + cast(context, known) + '.') if known else ''
     except Exception:
         return ''
@@ -180,9 +180,9 @@ def of(context, actor, people=None):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
-        'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(c.body.inventory) or 'nothing'}" for c in people
+        'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(survival.named(context, i) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
-        'Lying here, for anyone present to take or use: ' + (', '.join(p['name'] for p in survival.lying(context, at)) or 'nothing'),
+        'Lying here, for anyone present to take or use: ' + (', '.join(survival.named(context, p) for p in survival.lying(context, at)) or 'nothing'),
         *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
            + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
         'Stock: ' + (survival.stock(actor) or 'nothing has been used up'),
@@ -196,7 +196,7 @@ def situation(context, lately='', viewer=None):
     after every scene, so whatever a narrator once wrote was the situation from then on.
     viewer: a character. The situation is then as that character can know it: itself and those
     with it, and of another body only what shows (Body.visible), not its thirst or hunger."""
-    cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) if getattr(c, 'mapAgent', None) is not None]
+    cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if getattr(c, 'mapAgent', None) is not None]
     if viewer is not None:
         in_scene = getattr(context, 'current_scene', None) is not None
         with_it = viewer.bystanders() if in_scene else [c for c in cast if c is not viewer]
@@ -311,8 +311,8 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     for claim in held:
         words = claim[1].lower()
         said = set(re.findall(r"[a-z0-9']+", words))
-        thing = next((p['name'] for p in survival.lying(context, stage.here(actor)) if p['name'].lower() in words
-                      or p['name'].lower().split()[-1] in said), None)
+        thing = next((p['name'] for p in survival.lying(context, stage.here(actor)) if not p.get('fixed')   # a mark is not carried off
+                      and (p['name'].lower() in words or p['name'].lower().split()[-1] in said)), None)
         fact = survival._prop_do(context, actor, 'take', thing, None) if thing else None
         if fact:
             facts.append(fact)
@@ -373,9 +373,12 @@ def admit(context, actor, claims, text, source, people=None, at=None):
                 # the world has it, somewhere else: not a new one (a set-up put the planted key in
                 # the mud at Spring2 while it lay at Spring3)
                 why = f"The {name} is {elsewhere}, not here."
-            elif source == 'director' or usual:
+            elif source == 'director':
                 fact = survival.add_thing(context, name, holder=holder, at=at)
             else:
+                # Once a scene is set, nothing new comes onto the stage because a narration says
+                # so, however ordinary: what a deed needs that the stage lacks goes to the keeper
+                # before the deed is played (sim/keeper.py), and is there or is not.
                 why = f"There is no {name} here to be had."
         elif form == 'place' and len(fields) >= 2 and source == 'director':
             fact = survival.add_place(context, next((k for k in places if k.lower() == fields[0].lower()), ''), fields[1], at)[1]

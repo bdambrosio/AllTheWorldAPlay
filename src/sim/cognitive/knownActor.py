@@ -461,7 +461,7 @@ class KnownActorManager:
 
     def update_all_relationships(self, all_texts, char_names=None):
         if char_names is None:
-            valid_chars = [a.name for a in self.context.actors if a.name != self.owner.name] + [a.name for a in self.context.npcs]
+            valid_chars = [a.name for a in self.context.everyone() if a.name != self.owner.name]
             char_names = set(valid_chars) & set(self.names())
         for actor in self.known_actors.values():
             if actor.canonical_name in char_names:
@@ -470,7 +470,7 @@ class KnownActorManager:
 
     def get_known_relationships(self, include_transcript=False):
         relationships = {}
-        cast = self.context.actors + self.context.extras if self.context is not None else []
+        cast = self.context.everyone() if self.context is not None else []
         for actor in self.known_actors.values():
             # the people of the play and anyone spoken with. Not the owner's model of itself
             # (it held Joe's own lines back to him as thoughts), nor someone only inferred

@@ -13,8 +13,8 @@ and the models made so far. The keeper answers with
   what the deed does, in those terms
   or that it cannot happen in this world, and why, or what is lacking
 
-The model is kept (context.models, and from night to night in the world's own file under
-~/.local/share/alltheworldaplay/worlds/). From then on code applies it: the changes a thing
+The model is kept for the performance (context.models) and no longer: nothing is remembered
+from one performance to another. From then on code applies it: the changes a thing
 allows in the state it is in are offered beside the world's actions (offers), done without a
 model call (perform), and the thing moves on in time by itself (age). A later deed that goes
 beyond a model extends it.
@@ -36,6 +36,7 @@ KEPT = 'kept'   # the part a deed is made of when the keeper placed it (record.j
 
 LAWS = """Laws of every world you keep:
 - It is the world the setting describes. What an ordinary person could do there with their body and what is at hand can be done; what they could not, cannot, however the deed is worded.
+- Where the stage already offers an action that is what the deed does (listed under 'This place offers'), the deed is that action: it needs no model. Say so in "does", with the action exactly as listed.
 - Nothing comes from nothing. A thing that is made is made from things that are on the stage, or is something the record below already speaks of as there, or is something a place of that kind plainly has lying about (a stone on a hillside, a chair in a cafe). A thing nobody would expect there, and that nothing has mentioned, is not there.
 - Everything takes time, and only what an ordinary person often fails at may fail: give a chance below 1 for that alone.
 - What is settled stays settled. You may add a state, a way of changing or a need to a model; you do not take back what a model already says.
@@ -80,36 +81,19 @@ Answer in JSON only:
               "changes": [{{"by": "<two to four words, a verb first>", "from": "<state>", "to": "<state, or gone>", "uses_up": [], "needs": [], "minutes": 0, "chance": 1.0}}],
               "in_time": [{{"from": "<state>", "to": "<state, or gone>", "after_minutes": 0}}],
               "effects": [{{"while": "<state>", "on": "<a thing this world tracks, as listed>", "does": "keeps off | eases | worsens"}}]}}],
-  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here (it was there already), or one of that model's changes>"}}]}}
+  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here (it was there already), or one of that model's changes>"}},
+           {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}
 Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most.
 </end>"""
 
 
 # ------------------------------------------------------------------ the models, kept
-def _path(context):
-    module = getattr(getattr(context, 'map', None), 'scenario_module', None)
-    name = (getattr(module, '__name__', '') or 'world').split('.')[-1]
-    return os.path.join(os.path.expanduser(os.environ.get('ATWAP_WORLDS_DIR', '~/.local/share/alltheworldaplay/worlds')), f'{name}.models.json')
-
-
 def models(context):
-    """{kind: model}: what this world has been found to hold, tonight and on earlier nights."""
+    """{kind: model}: what this world has been found to hold in this performance. Nothing is
+    carried from one performance to another: each night the world is found out afresh."""
     if getattr(context, 'models', None) is None:
         context.models = {}
-        if not os.environ.get('ATWAP_WORLD_FRESH'):
-            try:
-                context.models = json.load(open(_path(context)))
-            except (OSError, ValueError):
-                pass
     return context.models
-
-
-def _save(context):
-    try:
-        os.makedirs(os.path.dirname(_path(context)), exist_ok=True)
-        json.dump(context.models, open(_path(context), 'w'), indent=1)
-    except OSError:
-        pass
 
 
 def _words(value):
@@ -162,63 +146,48 @@ def keep(context, found):
                 model['effects'].append({'while': str(e['while']).strip().lower(), 'on': str(e['on']).strip().lower(), 'does': str(e.get('does') or '').strip().lower()})
         touched.append(kind)
         trace.event('model_kept', name=kind, new=new, model=model)
-    if touched:
-        _save(context)
     return touched
 
 
 # ------------------------------------------------------------------ things that have a model
-def _things(context):
-    return context.__dict__.setdefault('things', {})   # {name: {'kind', 'state', 'since'}}
-
-
+# A thing in the ledger (sim/ledger.py) that the world has a model for carries 'kind' (the
+# model's), 'state' and 'since' (when it came to that state).
 def _here(character):
     return (character.mapAgent.x, character.mapAgent.y)
 
 
+def _distance(a, b):
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
 def _on_stage(context, character):
-    """{name: 'held' | 'here'}: the things this character holds and those lying where it is."""
-    from sim import survival
-    out = {p['name'].lower(): 'here' for p in survival.lying(context, _here(character))}
-    out.update({i.lower(): 'held' for i in getattr(getattr(character, 'body', None), 'inventory', [])})
+    """{name: thing}: what this character holds, and what lies where it stands."""
+    from sim import survival, ledger
+    out = {t['name'].lower(): t for t in survival.lying(context, _here(character))}
+    out.update({t['name'].lower(): t for t in ledger.of(context).held(character.name)})
     return out
+
+
+def _find(context, character, wanted):
+    """The thing on the stage a model's words mean ('branch' for 'a dry branch'), or None."""
+    things, low = _on_stage(context, character), wanted.lower()
+    return things.get(low) or next((t for n, t in things.items() if low in n or n in low), None)
 
 
 def age(context):
     """Move each modelled thing on in time: a fire burns down whether or not anyone looks."""
-    from sim import survival
-    for name, thing in list(_things(context).items()):
+    from sim import ledger
+    stage_ledger = ledger.of(context)
+    for thing in [t for t in stage_ledger.things if t.get('kind')]:
         model = models(context).get(thing['kind'])
         while model:
-            step = next((t for t in model['in_time'] if t['from'] == thing['state']), None)
+            step = next((t for t in model['in_time'] if t['from'] == thing.get('state')), None)
             if not step or context.simulation_time < thing['since'] + timedelta(minutes=step['after_minutes']):
                 break
-            thing['since'] += timedelta(minutes=step['after_minutes'])
             if step['to'] == 'gone':
-                _remove(context, name)
+                stage_ledger.remove(thing)
                 break
-            thing['state'] = step['to']
-            survival.set_state(context, name, step['to'])
-
-
-def _remove(context, name, holder=None):
-    """A thing leaves the world: used up, burned, gone."""
-    _things(context).pop(name.lower(), None)
-    getattr(context, 'thing_states', {}).pop(name.lower(), None)
-    body = getattr(holder, 'body', None)
-    held = next((i for i in (body.inventory if body is not None else []) if i.lower() == name.lower()), None)
-    if held:
-        body.inventory.remove(held)
-        return True
-    prop = next((p for p in getattr(context, 'props', []) if p['name'].lower() == name.lower()
-                 and (holder is None or survival_distance(p['at'], _here(holder)) <= 2)), None)
-    if prop:
-        context.props.remove(prop)
-    return bool(prop)
-
-
-def survival_distance(a, b):
-    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+            thing['state'], thing['since'] = step['to'], thing['since'] + timedelta(minutes=step['after_minutes'])
 
 
 def offers(character):
@@ -227,32 +196,46 @@ def offers(character):
     context = character.context
     age(context)
     out = {}
-    for name in _on_stage(context, character):
-        thing = _things(context).get(name)
-        model = models(context).get(thing['kind']) if thing else None
+    for name, thing in _on_stage(context, character).items():
+        model = models(context).get(thing.get('kind'))
         for change in (model or {}).get('changes', []):
-            if change['from'] in ('', thing['state']):
-                out[f"{change['by']} {name}"] = (name, change)
+            if change['from'] in ('', thing.get('state')):
+                out[f"{change['by']} {name}"] = (thing, change)
     return out
 
 
 def offer_lines(character):
-    return [f"{label} (the {name} is {_things(character.context)[name]['state']}; then {c['to']}"
+    return [f"{label} (the {thing['name']} is {thing.get('state')}; then {c['to']}"
             + (f"; uses up {', '.join(c['uses_up'])}" if c['uses_up'] else '') + (f"; {c['minutes']} minutes" if c['minutes'] else '') + ')'
-            for label, (name, c) in offers(character).items()]
+            for label, (thing, c) in offers(character).items()]
 
 
 def keeps_off(context, character, hazard_name):
     """Is there a thing near this character whose model keeps this danger off in its present state?"""
+    from sim import ledger
     age(context)
-    for prop in getattr(context, 'props', []):
-        thing = _things(context).get(prop['name'].lower())
-        model = models(context).get(thing['kind']) if thing else None
-        if model and survival_distance(prop['at'], _here(character)) <= 2 and any(
-                e['while'] == thing['state'] and KEEPS_OFF in e['does'] and (hazard_name.lower() in e['on'] or e['on'] in hazard_name.lower())
+    for thing in ledger.of(context).loose():
+        model = models(context).get(thing.get('kind'))
+        if model and _distance(thing['at'], _here(character)) <= 2 and any(
+                e['while'] == thing.get('state') and KEEPS_OFF in e['does'] and (hazard_name.lower() in e['on'] or e['on'] in hazard_name.lower())
                 for e in model['effects']):
             return True
     return False
+
+
+DRIFT = 0.05   # what a thing near a body adds to or takes from a need in an hour, where its model says it eases or worsens it
+
+
+def drift(context, character, need):
+    from sim import ledger
+    total = 0.0
+    for thing in ledger.of(context).loose() + ledger.of(context).held(character.name):
+        model = models(context).get(thing.get('kind'))
+        if model and (thing.get('holder') or _distance(thing['at'], _here(character)) <= 2):
+            for e in model['effects']:
+                if e['while'] == thing.get('state') and need.lower() in e['on']:
+                    total += -DRIFT if 'ease' in e['does'] else DRIFT if 'worsen' in e['does'] else 0.0
+    return total
 
 
 # ------------------------------------------------------------------ asking the keeper
@@ -298,116 +281,127 @@ def consider(context, character, deed):
         out = {'can': False, 'why': why + (f" (lacking: {', '.join(lacking)})" if lacking and not any(l.lower() in why.lower() for l in lacking) else ''), 'does': []}
     else:
         keep(context, found.get('models'))
-        does = [{'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()), 'by': ' '.join(str(d.get('by') or '').lower().split())}
-                for d in found.get('does') or [] if isinstance(d, dict) and d.get('thing')][:3]
-        does = [d for d in does if d['kind'] in models(context)]
+        does = [({'action': ' '.join(str(d['action']).split())} if d.get('action') else
+                 {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()), 'by': ' '.join(str(d.get('by') or '').lower().split())})
+                for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or d.get('action'))][:3]
+        does = [d for d in does if d.get('action') or d['kind'] in models(context)]
         out = {'can': bool(does), 'why': '' if does else 'no action here covers it', 'does': does}
     trace.event('keeper', character=character.name, deed=deed[:200], can=out['can'], why=out['why'], does=out['does'])
     return asked.setdefault(key, out)
 
 
 # ------------------------------------------------------------------ doing what a model says
-def _take(context, character, wanted):
-    """Use up one thing of this name from the doer's hands or from where it stands; False when there is none."""
-    stage_things = _on_stage(context, character)
-    name = next((n for n in stage_things if n == wanted.lower()), None) or next((n for n in stage_things if wanted.lower() in n or n in wanted.lower()), None)
-    return bool(name) and _remove(context, name, holder=character)
-
-
-def _has(context, character, wanted):
-    stage_things = _on_stage(context, character)
-    return any(n == wanted.lower() or wanted.lower() in n or n in wanted.lower() for n in stage_things)
-
-
 def _real(context, wanted):
     """Is this a thing the world keeps count of (so that its absence is a lack), or only a manner or
     a part of the place ('both hands', 'dry earth') that the keeper judged to be there?"""
-    from sim import survival
-    known = {k.lower() for k in survival.item_kinds(context)} | set(models(context)) | set(_things(context)) \
-        | {p['name'].lower() for p in getattr(context, 'props', [])}
+    from sim import survival, ledger
+    known = {k.lower() for k in survival.item_kinds(context)} | set(models(context)) | {t['name'].lower() for t in ledger.of(context).things}
     return any(k == wanted.lower() or k in wanted.lower() for k in known)
 
 
-def _spend(context, character, thing, change, verb):
+def _place_gives(context, character, wanted):
+    """Is this something the place the character stands at is, or is a kind of ('fallen branch' at
+    Fallen_Branch5)? Then it is at hand, and making from it does not use the place up."""
+    low = wanted.lower()
+    for res in context.map.resource_registry.values():
+        if _distance(res['location'], _here(character)) <= 2:
+            for word in (str(res.get('type', '')), str(res.get('name', ''))):
+                word = re.sub(r'\d+$', '', word.split('.')[-1]).replace('_', ' ').strip().lower()
+                if word and (word in low or low in word):
+                    return True
+    return False
+
+
+def _spend(context, character, name, change, verb):
     """What a change or a making costs, as its model has it: what must be at hand, what is used up,
     the time, the chance. Returns '' when it comes off, else the fact of why it did not (time is
     spent on a try that fails; nothing is used up)."""
+    from sim import ledger
     for need in change['needs']:
-        if _real(context, need) and not _has(context, character, need):
-            return f"{character.name} cannot {verb} the {thing}: there is no {need} at hand."
+        if _real(context, need) and _find(context, character, need) is None and not _place_gives(context, character, need):
+            return f"{character.name} cannot {verb} the {name}: there is no {need} at hand."
     for item in change['uses_up']:
-        if _real(context, item) and not _has(context, character, item):
-            return f"{character.name} cannot {verb} the {thing}: there is no {item} to use."
+        if _real(context, item) and _find(context, character, item) is None and not _place_gives(context, character, item):
+            return f"{character.name} cannot {verb} the {name}: there is no {item} to use."
     context.simulation_time += timedelta(minutes=change['minutes'])
     if _rng.random() >= change['chance']:
-        return f"{character.name} tries to {verb} the {thing}, and it does not come off."
+        return f"{character.name} tries to {verb} the {name}, and it does not come off."
     for item in change['uses_up']:
-        _take(context, character, item)
+        used = _find(context, character, item)
+        if used is not None:
+            ledger.of(context).remove(used)
     return ''
 
 
 def _apply(context, character, thing, change):
     """One change to one thing that has a model: (fact, done)."""
-    from sim import survival
-    failed = _spend(context, character, thing, change, change['by'])
+    from sim import ledger
+    failed = _spend(context, character, thing['name'], change, change['by'])
     if failed:
         return failed, False
     if change['to'] == 'gone':
-        _remove(context, thing, holder=character)
-        return f"The {thing} is gone.", True
-    _things(context)[thing].update(state=change['to'], since=context.simulation_time)
-    survival.set_state(context, thing, change['to'])
-    return f"The {thing} is now {change['to']}.", True
+        ledger.of(context).remove(thing)
+        return f"The {thing['name']} is gone.", True
+    thing['state'], thing['since'] = change['to'], context.simulation_time
+    return f"The {thing['name']} is now {change['to']}.", True
 
 
 def perform(context, character, deed):
     """Play a deed the keeper placed: make, find or change each thing as the models say. Returns
-    the fact for the narration."""
+    (the fact, whether it came off): what did not come off is the doer's to know, not an event."""
     from sim import survival
-    facts = []
+    facts, came_off = [], True
     for d in (context.__dict__.get('_kept_deeds', {}).get((character.name, deed)) or {}).get('does', []):
+        if d.get('action'):   # an action the stage already had: done as that action
+            fact = survival._do_one(context, character, d['action'], deed.lower(), deed, 'model')[1]
+            if fact:
+                facts.append(fact)
+            continue
         model, name = models(context).get(d['kind']), d['thing']
         if model is None:
             continue
-        if d['by'] in ('make', 'here') and name not in _on_stage(context, character):
+        thing = _on_stage(context, character).get(name)
+        if d['by'] in ('make', 'here') and thing is None:
             if d['by'] == 'make':
                 failed = _spend(context, character, name, {'needs': model['needs'], 'uses_up': model['made_from'], 'minutes': model.get('minutes', 0),
                                                            'chance': model.get('chance', 1.0)}, 'make')
                 if failed:
-                    facts.append(failed)
+                    facts, came_off = [failed], False
                     trace.event('thing_modelled', character=character.name, thing=name, model=d['kind'], by='make', done=False, why=failed)
                     break
             if model['portable'] and d['by'] == 'make':
                 survival.add_thing(context, name, holder=character)
             else:
                 survival.add_thing(context, name, at=_here(character), fixed=not model['portable'])
-            _things(context)[name] = {'kind': d['kind'], 'state': model['starts'], 'since': context.simulation_time}
-            survival.set_state(context, name, model['starts'])
+            thing = _on_stage(context, character).get(name)
+            if thing is None:
+                continue
+            thing.update(kind=d['kind'], state=model['starts'], since=context.simulation_time)
             facts.append(f"{character.name} makes a {name}: it is {model['starts']}." if d['by'] == 'make' else f"There is a {name} here: it is {model['starts']}.")
             trace.event('thing_modelled', character=character.name, thing=name, model=d['kind'], by=d['by'], done=True, state=model['starts'])
             continue
-        if name not in _things(context):   # a thing already on the stage, now known for what it is
-            if name not in _on_stage(context, character):
-                continue
-            _things(context)[name] = {'kind': d['kind'], 'state': model['starts'], 'since': context.simulation_time}
-            survival.set_state(context, name, model['starts'])
-        change = next((c for c in model['changes'] if c['by'] == d['by'] and c['from'] in ('', _things(context)[name]['state'])), None)
+        if thing is None:
+            continue
+        if not thing.get('kind'):   # a thing already on the stage, now known for what it is
+            thing.update(kind=d['kind'], state=thing.get('state') if thing.get('state') in model['states'] else model['starts'], since=context.simulation_time)
+        change = next((c for c in model['changes'] if c['by'] == d['by'] and c['from'] in ('', thing.get('state'))), None)
         if change is None:
             continue
-        fact, done = _apply(context, character, name, change)
-        facts.append(fact)
-        trace.event('thing_changed', character=character.name, thing=name, by=d['by'], done=done, state=_things(context).get(name, {}).get('state'))
+        fact, done = _apply(context, character, thing, change)
+        trace.event('thing_changed', character=character.name, thing=name, by=d['by'], done=done, state=thing.get('state'))
         if not done:
+            facts, came_off = [fact], False
             break
-    return ' '.join(facts)
+        facts.append(fact)
+    return ' '.join(facts), came_off
 
 
 def do_offer(context, character, label):
     """A change the judge placed from offers(): done by code, no keeper call."""
     found = next((v for k, v in offers(character).items() if k.lower() == label.lower()), None)
     if not found:
-        return None
-    name, change = found
-    fact, done = _apply(context, character, name, change)
-    trace.event('thing_changed', character=character.name, thing=name, by=change['by'], done=done, state=_things(context).get(name, {}).get('state'))
-    return fact
+        return None, False
+    thing, change = found
+    fact, done = _apply(context, character, thing, change)
+    trace.event('thing_changed', character=character.name, thing=thing['name'], by=change['by'], done=done, state=thing.get('state'))
+    return fact, done

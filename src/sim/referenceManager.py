@@ -67,7 +67,7 @@ class ReferenceManager:
         ]
         
         characters_text = "\n".join([f"{character.name}:\n{character.character}\n" 
-                                    for character in self.context.actors+self.context.npcs])
+                                    for character in self.context.everyone()])
         
         response = self.llm.ask({
             "current_state": self.context.current_state,
@@ -106,7 +106,7 @@ class ReferenceManager:
         """
         # Build character context
         char_context = []
-        for char in self.context.actors+self.context.npcs:  # Assumes method to get both actors/npcs
+        for char in self.context.everyone():  # Assumes method to get both actors/npcs
             if hasattr(char, 'reference_dscp'):
                 char_context.append(f"{char.name} - {char.reference_dscp}")
         

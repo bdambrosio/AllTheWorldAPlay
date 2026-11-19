@@ -324,13 +324,14 @@ a form code can apply; one extension landed on the wrong thing.
 **Cost.** The keeper is called only when code cannot place a deed. In the recorded run that
 judge was called 92 times; that run used about ten kinds of thing.
 
-**Decided (Bruce, 2026-11-19):** a world keeps what it has learned from one night to the next.
+**Decided (Bruce, 2026-11-19, corrected the same day):** nothing is remembered across performances. A model
+lasts for the performance it was made in and no longer; each night the world is found out afresh.
+(He first agreed to keeping models between nights, and that was built and then removed.)
 
 ## 8. What is built (uncommitted, not played)
 
 - `src/sim/keeper.py`: the keeper as in section 7. A deed the judge cannot place goes to it
-  (`record.judge`); its models are kept in `context.models` and in
-  `~/.local/share/alltheworldaplay/worlds/<world>.models.json`; a deed it places is played by
+  (`record.judge`); its models are kept in `context.models` for the performance; a deed it places is played by
   code (`perform`); what a modelled thing allows in its present state is offered to the judge and
   the actor (`offers`), and done with no keeper call; things move on in time (`age`); a thing
   whose model keeps a danger off blocks that danger (`keeps_off`). Ablation switch `keeper`.
@@ -340,11 +341,42 @@ judge was called 92 times; that run used about ten kinds of thing.
 Checked on the built lost world (`keeper_check.py`, five keeper calls): a fire made from a branch
 (20 minutes, chance 0.3), a thing at the place that keeps the wolf off; fed by a second branch,
 which is used up; banked to smouldering; gone nine hours on; flying and an unmentioned rope
-refused for the world's reasons; the model written to the world's file. `lead` on the recorded
+refused for the world's reasons. `lead` on the recorded
 deeds that moved a person: 16 placed as lead, none wrongly (`lead_ab.py`).
 
-Not built yet, from sections 3 and 7: the single ledger with things as separate objects (states
-are still kept by name); code checking the actor's own label before any model call; putting
-planned business, endings and deed-outcomes to the keeper when they are written; giving the
-keeper's effects on needs to the body; the side doors of 1.3.6; showing kept models in the
-Plan tab.
+## 9. Built after section 8 (2026-11-19, later)
+
+- **The ledger** (`src/sim/ledger.py`): each thing an object of its own, held or lying at a spot,
+  with its state, since when, and its model's kind. `body.inventory` and `context.props` are
+  views of it, as are `held_out`, `shared`, `poses`, `between`, `writings` and `readers`. A
+  thing keeps what is known of it as it changes hands. The fire flag is gone. The record the
+  narration and line checks read shows states and fixedness.
+- **No new thing after a scene's set-up from a narration.** `record.admit` makes a thing real
+  only for the director; what a deed needs goes to the keeper before it is played.
+- **Planned endings go to the keeper.** A part of an ending that the stage has no action for is
+  put to the keeper while the scene is being fitted; only what it says cannot happen is written
+  out.
+- **The keeper may name an action the stage already has**, and a place counts as a source for
+  what is made from it (found in the first live scene: a branch "made from the fallen branch"
+  at Fallen_Branch5 failed for lack of a thing called fallen branch).
+- **A kept deed that does not come off** is the doer's to know, as any refusal is, not an event.
+- **Effects on needs**: a thing near a body eases or worsens a need a little each hour where its
+  model says so.
+- **Side doors**: a Move that names nowhere is a passing act; a stage direction inside a Say is
+  judged like any deed; a fixed thing cannot be picked up by a narration.
+- **Plan tab**: "What this world has come to hold" lists the kept models.
+- **Supporting actors**: twenty places that left people cast during the play out of what the
+  cast is told, shown or checked against now include them.
+
+Dropped: code accepting the actor's own label without a model call. A valid label does not show
+that the deed's words do no more than the label says, and checking that is the judge's job;
+skipping it would let a line show more than the world did.
+
+Not done: names are still capitalised by `Character`; things with the same name held by one
+person are still looked up first-match in a few places; outcomes on a scene's sheet are not put
+to the keeper (only endings are); the keeper has no say yet over what a place gives beyond the
+world's own actions.
+
+Crash checks, two scenes of lost each, read for errors only: the code of `eff887e` (662 s, no
+error) and the code of this section (602 s, no error; no deed was refused and the keeper was
+not needed).

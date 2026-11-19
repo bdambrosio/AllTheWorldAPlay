@@ -34,7 +34,7 @@ import sim.stage as stage
 import sim.director as director
 import sim.record as record
 from sim.screenplay import Screenplay
-from sim import ablation
+from sim import ablation, ledger, keeper
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -303,6 +303,14 @@ class Context():
         (Screenplay.view), with where the play now stands: the scene being played, its sheet
         and its beats. Places are given in the world's own words, as the audience reads them."""
         view = self.screenplay.view()
+        # what this world has come to hold in this performance: the keeper's models (sim/keeper.py)
+        view['world'] = [{'kind': m['kind'], 'states': m['states'], 'made_from': m['made_from'], 'needs': m['needs'],
+                          'changes': [f"{c['by']}: {c['from'] or 'any'} to {c['to']}" + (f", uses up {', '.join(c['uses_up'])}" if c['uses_up'] else '')
+                                      + (f", {c['minutes']} min" if c['minutes'] else '') + (f", chance {c['chance']:g}" if c['chance'] < 1 else '') for c in m['changes']],
+                          'in_time': [f"{t['from']} to {t['to']} after {t['after_minutes']} min" for t in m['in_time']],
+                          'effects': [f"while {e['while']}: {e['does']} {e['on']}" for e in m['effects']],
+                          'making': (f"{m.get('minutes', 0)} min" + (f", chance {m.get('chance', 1.0):g}" if m.get('chance', 1.0) < 1 else ''))}
+                         for m in keeper.models(self).values()]
         scene = self.current_scene
         if scene:
             owner = self.owner
@@ -390,14 +398,14 @@ class Context():
         hours = gap.total_seconds() / 3600
         if hours <= 0:
             return 0.0
-        for character in self.actors + self.extras:   # time already played on stage counts before the jump
+        for character in self.everyone():   # time already played on stage counts before the jump
             survival.tick(character)
         met = survival.pass_offstage(self, gap)
         self.simulation_time = target
         if hours >= survival.REAL_JUMP_HOURS:
             told = (f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
                     + (" In that time you ate, drank and rested as you could." if met else ''))
-            for character in self.actors + self.extras:
+            for character in self.everyone():
                 character.add_perceptual_input(told, percept=False, mode='internal')
             self.add_event(f'About {round(hours)} hours pass')
             trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
@@ -494,7 +502,7 @@ class Context():
 
         bindings = {"central_narrative":self.central_narrative,
                     "situation":self.current_state,
-                    "actors":'\n'.join([self.format_character_for_context_ask(a) for a in self.actors+self.extras]),}
+                    "actors":'\n'.join([self.format_character_for_context_ask(a) for a in self.everyone()]),}
         for key, value in addl_bindings.items():
             bindings[key]=value
         
@@ -1343,7 +1351,7 @@ End your response with:
         updates = self.world_updates_from_act_consequences(new_situation)
         # self.current_state += '\n'+updates
         print(f'World updates:\n{updates}')
-        for actor in self.actors+self.extras:
+        for actor in self.everyone():
             actor.add_to_history(f"you notice {updates}\n")
             actor.update()  # update history, etc
             
@@ -1757,6 +1765,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 # that needs more can never be played ('strips off his shirt and hands it over')
                 ending_asked = True
                 beyond = record.ending_beyond(self, scene.get('post_narrative', ''), cast)
+                # What the stage has no action for is put to the keeper now, while the scene can
+                # still be written round it: it is modelled and so can be played, or it cannot
+                # happen in this world and the ending is written again (sim/keeper.py).
+                if beyond and ablation.enabled('keeper'):
+                    doer = lambda part: next((c for c in cast if c.name.lower() in part.lower()), cast[0])
+                    beyond = [part for part in beyond if not keeper.consider(self, doer(part), part)['can']]
                 if beyond:
                     trace.event('ending_beyond', scene=scene.get('scene_title'), ending=scene.get('post_narrative', ''), beyond=beyond)
                     note = ("\nYour ending has someone do what nobody can do in this world: " + '; '.join(beyond)
@@ -2848,8 +2862,8 @@ End your response with: </end>"""
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                     + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
-                    + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else '')
-                    + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.actors + self.extras)) else ''))
+                    + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.everyone())) else '')
+                    + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.everyone())) else ''))
         if closing:
             return (f"This is the last act of the episode. It closes what the episode set out to settle: {frame['settles']} "
                     f"Show it settled in what the characters do; nobody says it. "
@@ -2859,8 +2873,8 @@ End your response with: </end>"""
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
                 + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                 + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
-                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.actors + self.extras)) else '')
-                + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.actors + self.extras)) else ''))
+                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.everyone())) else '')
+                + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.everyone())) else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
@@ -2979,7 +2993,7 @@ End your response with: </end>""")]
         else:
             post_state = act.get('act_post_state', '')
             start = getattr(self, '_act_transcript_start', 0)
-        cast = [c for c in self.actors + self.extras if getattr(c, 'body', None) is not None]
+        cast = [c for c in self.everyone() if getattr(c, 'body', None) is not None]
         exits = getattr(self, 'scene_exits' if scene else 'act_exits', [])
         placed = [f"{c.name}: {stage.where(self, stage.here(c))}" for c in cast if getattr(c, 'mapAgent', None) is not None]
         who_is_where = '\n'.join([f"{e['time']} {e['who']} left" + (f" together with {', '.join(e['with'])}" if e['with'] else '')
@@ -4138,3 +4152,5 @@ Scene format is as follows:
             updated_scene = scene
         self.current_scene = updated_scene
         return updated_scene    
+
+ledger.install(Context)   # props, held_out, shared, poses, between, writings, readers: views of the stage's ledger

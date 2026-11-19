@@ -88,7 +88,7 @@ class NarrativeStalnessDetector:
         
     def _initialize_baseline_counts(self):
         """Initialize baseline counts for character knowledge"""
-        for char in self.context.actors + self.context.npcs:
+        for char in self.context.everyone():
             if hasattr(char, 'resource_models') and char.resource_models:
                 self.last_character_resource_counts[char.name] = len(char.resource_models.known_resources)
             else:

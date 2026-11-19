@@ -68,7 +68,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sim.trace import trace
-from sim import keeper
+from sim import keeper, ledger
 
 DEFAULT_HARM = {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')}
 CO_PRESENT_TILES = 2       # a target character must be this close for a social action
@@ -128,7 +128,7 @@ def _word(cfg, need, value):
 @dataclass
 class Body:
     levels: dict = field(default_factory=dict)      # need -> 0..1, including the harm need
-    inventory: list = field(default_factory=list)
+    held: list = field(default_factory=list, repr=False)   # what it holds before it is bound to the stage's ledger (bind)
     money: float = 0
     flags: set = field(default_factory=set)         # 'dressed', 'suited', ... set by actions
     sheltered: bool = False
@@ -136,6 +136,31 @@ class Body:
     warned: set = field(default_factory=set)
     cfg: dict = field(default_factory=dict, repr=False)
     bearing: list = field(default_factory=list)     # 'sitting', 'holding the arm of Joe': this scene's (shared actions)
+
+    def bind(self, context, holder):
+        """From now on what this body holds is kept in the stage's ledger (sim/ledger.py)."""
+        held, self.held = list(self.held), []
+        self._inventory = ledger.Inventory(ledger.of(context), holder)
+        for name in held:
+            self._inventory.append(name)
+
+    @property
+    def inventory(self):
+        mine = getattr(self, '_inventory', None)
+        return mine if mine is not None else self.held
+
+    @inventory.setter
+    def inventory(self, names):
+        mine = getattr(self, '_inventory', None)
+        if names is mine or names is self.held:   # 'body.inventory += [...]' hands the same view back
+            return
+        if mine is None:
+            self.held = list(names)
+            return
+        for name in list(mine):
+            mine.remove(name)
+        for name in names:
+            mine.append(name)
 
     def level(self, need):
         return self.levels.get(need, 0.0)
@@ -195,7 +220,7 @@ def attach(context):
                                           ', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '']))
     if brief.strip() and brief not in context.current_state:
         context.current_state += brief
-    for character in context.actors + context.extras:
+    for character in context.everyone():
         give_body(context, character)
 
 
@@ -206,8 +231,9 @@ def give_body(context, character):
     if cfg and getattr(character, 'body', None) is None and getattr(character, 'mapAgent', None) is not None:
         levels = {n: d.get('initial', 0.2) for n, d in _need_defs(cfg).items()}
         levels[_harm(cfg)['name']] = 0.0
-        character.body = Body(levels=levels, inventory=list(cfg.get('initial_inventory', [])),
+        character.body = Body(levels=levels, held=list(cfg.get('initial_inventory', [])),
                               money=cfg.get('initial_money', 0), last_tick=context.simulation_time, cfg=cfg)
+        character.body.bind(context, character.name)
 
 
 def _embodied(context):
@@ -299,9 +325,6 @@ def pass_offstage(context, gap):
     threat = getattr(context, 'active_threat', None)
     if threat and (jump or now >= threat['deadline']):   # it does not strike, or wait hours for, a cast that is not on stage
         _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."), tell=False)
-    fire = getattr(context, 'survival_fire', None)
-    if fire and fire['until'] <= now:
-        context.survival_fire = None
     return met
 
 
@@ -319,7 +342,8 @@ def tick(character):
     body.last_tick = now
     for need, spec in _need_defs(cfg).items():
         rate = spec.get('per_hour', 0.0) * (spec.get('shelter_factor', 1.0) if body.sheltered else 1.0)
-        body.adjust(need, rate * hours)
+        # ... and as the things near it ease or worsen it, by what the world has come to know of them
+        body.adjust(need, (rate + keeper.drift(character.context, character, need)) * hours)
         crossed = [(level, text) for level, text in (spec.get('percepts') or {}).items()
                    if body.level(need) >= level and (need, level) not in body.warned]
         if crossed:   # several thresholds in one tick: one percept, the most severe
@@ -752,7 +776,7 @@ def whereabouts_of(context, name):
     the world does not hold it. Matched as record.admit matches a thing ('watch', 'wristwatch')."""
     name = re.sub(r'^(a|an|the|some)\s+', '', (name or '').strip().lower())[:40]   # as add_thing names it
     same = lambda held: held.lower() == name or held.lower().endswith(' ' + name) or name.endswith(' ' + held.lower())
-    for person in list(context.actors) + list(getattr(context, 'extras', [])):
+    for person in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])):
         body = getattr(person, 'body', None)
         if body is not None and any(same(i) for i in body.inventory):
             return f'held by {person.name}'
@@ -774,7 +798,7 @@ def write(context, name, text):
     """Settle what a written thing says."""
     name = re.sub(r'^(a|an|the|some)\s+', '', (name or '').strip().lower())[:40]
     if name and (text or '').strip():
-        context.__dict__.setdefault('writings', {})[name] = text.strip()
+        context.writings[name] = text.strip()
         trace.event('writing', name=name, says=text.strip()[:300])
 
 
@@ -852,28 +876,50 @@ def searchable(context, res):
 # thing was refused unless the world had an action for it: in one play twenty deeds, among them
 # lifting the edge of a canvas, snapping a branch and breaking an apple in two.) A thing may
 # also be fixed where it is, a mark or a part of the place: looked at and handled, never taken.
-def state_of(context, name):
-    return getattr(context, 'thing_states', {}).get(str(name).lower(), '')
+def _thing(context, thing, character=None):
+    """The thing meant: itself, the one a held name names (ledger.Name), or by a bare name the one
+    this character holds, else one lying where it is, else any of that name."""
+    if isinstance(thing, ledger.Thing):
+        return thing
+    if getattr(thing, 'thing', None) is not None:
+        return thing.thing
+    name = str(thing).lower()
+    things = ledger.of(context).things
+    if character is not None:
+        here = _here(character)
+        found = next((t for t in things if t['name'].lower() == name and t.get('holder') == character.name), None) \
+            or next((t for t in things if t['name'].lower() == name and t.get('at') is not None and _distance(t['at'], here) <= CO_PRESENT_TILES), None)
+        if found is not None:
+            return found
+    return next((t for t in things if t['name'].lower() == name), None)
 
 
-def set_state(context, name, state):
+def state_of(context, thing, character=None):
+    found = _thing(context, thing, character)
+    return (found or {}).get('state', '')
+
+
+def set_state(context, thing, state, character=None):
     """How a thing now is, by whatever left it so (handling, or a change its model has: sim/keeper.py)."""
-    context.__dict__.setdefault('thing_states', {})[str(name).lower()] = state
+    found = _thing(context, thing, character)
+    if found is not None:
+        found['state'], found['since'] = state, context.simulation_time
+    return found
 
 
-def named(context, thing):
+def named(context, thing, character=None):
     """A thing as it is listed for whoever acts, judges or tells: its name, where in the place it
-    is, and how it has been left. thing: a name, or a prop lying somewhere."""
-    name = thing['name'] if isinstance(thing, dict) else str(thing)
-    notes = [n for n in ((thing.get('spot') if isinstance(thing, dict) else ''),
-                         ('part of the place' if isinstance(thing, dict) and thing.get('fixed') else ''), state_of(context, name)) if n]
+    is, and how it has been left. thing: a thing, a held name, or a bare name."""
+    found = _thing(context, thing, character) or {}
+    name = found.get('name') or str(thing)
+    notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'part of the place' if found.get('fixed') else '', found.get('state')) if n]
     return name + (f" ({'; '.join(notes)})" if notes else '')
 
 
 def _handle(context, character, thing, state):
     """Ordinary handling of a thing held or lying here: the thing is left as `state`."""
     state = ' '.join(str(state).split()).strip(' .')[:60]
-    context.__dict__.setdefault('thing_states', {})[thing.lower()] = state
+    set_state(context, thing, state, character)
     fact = f"The {thing} is now {state}."
     _record(character, {'name': 'handle', 'category': 'survival'}, fact, 'model', applied=True)
     trace.event('thing_handled', character=character.name, thing=thing, state=state)
@@ -894,7 +940,6 @@ def add_thing(context, name, holder=None, at=None, hidden=False, says=None, fixe
             holder.body.inventory.append(name)
         fact = f"{holder.name} has {_a(name)}."
     else:
-        context.props = getattr(context, 'props', [])
         if not any(p['name'] == name for p in lying(context, at)):
             context.props.append({'name': name, 'at': tuple(at), **({'hidden': True} if hidden else {}), **({'fixed': True} if fixed else {})})
         fact = f"There is {_a(name)} here."
@@ -988,11 +1033,10 @@ def _prop_do(context, character, kind, item, other):
     them only when they have held it out to the taker (context.held_out, kept for the scene);
     otherwise the reach is an attempt, and the holder is told what is wanted."""
     body = character.body
-    held_out = context.__dict__.setdefault('held_out', [])
+    held_out = context.held_out
     forget = lambda holder: held_out.__setitem__(slice(None), [h for h in held_out if not (h[0] == item and h[1] == holder.name)])
     if kind == 'give' and item in body.inventory:
-        body.inventory.remove(item)
-        other.body.inventory.append(item)
+        other.body.inventory.append(body.inventory.remove(item))   # the same thing, in other hands
         forget(character)
         fact = f"{character.name} hands {other.name} the {item}."
         _record(character, {'name': 'hand over', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
@@ -1002,7 +1046,7 @@ def _prop_do(context, character, kind, item, other):
         # holdings are tied (context.shared): used up by one, it is used up for both, and does
         # both the good it does (shared_out). Given away or put down, only that one's goes.
         other.body.inventory.append(item)
-        ties = context.__dict__.setdefault('shared', [])
+        ties = context.shared
         tie = next((t for t in ties if t[0] == item and character.name in t[1]), None)
         if tie is None:
             ties.append((item, {character.name, other.name}))
@@ -1018,28 +1062,25 @@ def _prop_do(context, character, kind, item, other):
     elif kind == 'read' and writing_of(context, item):
         # the reader knows it from now on (read_by); the words are the reader's own, not the room's:
         # they go to its memory, and the record says only that it read
-        context.__dict__.setdefault('readers', {}).setdefault(item, set()).add(character.name)
+        context.readers.setdefault(item, set()).add(character.name)
         character.add_perceptual_input(f"You read the {item}. It says: {writing_of(context, item)}", percept=False, mode='internal')
         fact = f"{character.name} reads the {item}."
         _record(character, {'name': 'read', 'category': 'explore'}, fact, 'model', applied=True)
     elif kind == 'put down' and item in body.inventory:
-        body.inventory.remove(item)
+        ledger.of(context).put(body.inventory.remove(item).thing, at=_here(character))   # the same thing, lying here now
         forget(character)
-        context.props = getattr(context, 'props', []) + [{'name': item, 'at': _here(character)}]
         fact = f"{character.name} puts down the {item}."
         _record(character, {'name': 'put down', 'category': 'survival'}, fact, 'model', applied=True)
     elif kind == 'take':
         prop = next((p for p in lying(context, _here(character)) if p['name'] == item), None)
         if prop is None:
             return None
-        context.props.remove(prop)
-        body.inventory.append(item)
+        body.inventory.append(prop)   # the same thing, in hand now
         fact = f"{character.name} takes the {item}."
         _record(character, {'name': 'pick up', 'category': 'survival'}, fact, 'model', applied=True)
     elif kind == 'take from' and item in other.body.inventory:
         if (item, other.name, character.name) in held_out:
-            other.body.inventory.remove(item)
-            body.inventory.append(item)
+            body.inventory.append(other.body.inventory.remove(item))
             forget(other)
             fact = f"{character.name} takes the {item} that {other.name} holds out."
             _record(character, {'name': 'take', 'category': 'social'}, fact, 'model', applied=True, target=other.name)
@@ -1073,7 +1114,7 @@ def shared_actions(context):
 
 
 def _arrangement(context):
-    return context.__dict__.setdefault('poses', {}), context.__dict__.setdefault('between', [])
+    return context.poses, context.between
 
 
 def _bear(context):
@@ -1292,6 +1333,8 @@ def classify_deed(context, character, act_text, label=None):
                 return [], 'it handles a thing that is not here'
             parts[n] = f'handle {thing}: {handled.group(2).strip()}'
             continue
+        if part.lower() not in names and part.split('@')[0].lower() in names:
+            parts[n] = part = part.split('@')[0]   # 'examine@Spring1': an act that takes no target, given one
         if part.lower() != PASSING and part.lower() not in names and part.split('@')[0].lower() not in responses:
             trace.event('check_unreadable', of='deed_action', reply=f'not offered: {part}')
             return [], 'no action here covers it'
@@ -1340,10 +1383,12 @@ def _do_one(context, character, label, text, act_text, via):
     handled = re.match(r'handle\s+(.+?)\s*:\s*(.+)$', label, re.I)
     if handled:
         return 'thing', _handle(context, character, handled.group(1), handled.group(2))
-    if label == keeper.KEPT:   # a deed the keeper placed: its models say what it makes and changes
-        return 'world', keeper.perform(context, character, act_text)
-    if label.lower() in {k.lower() for k in keeper.offers(character)}:
-        return 'world', keeper.do_offer(context, character, label)
+    if label == keeper.KEPT or label.lower() in {k.lower() for k in keeper.offers(character)}:
+        # a deed the keeper placed, or a change a modelled thing offers: the models say what it makes and
+        # changes. What does not come off (a lack, a try that fails) is the doer's to know, like any refusal.
+        fact, done = keeper.perform(context, character, act_text) if label == keeper.KEPT else keeper.do_offer(context, character, label)
+        _record(character, {'name': 'kept deed' if label == keeper.KEPT else label, 'category': 'survival'}, fact, via, applied=done)
+        return 'world', fact
     prop = next((v for k, v in prop_offers(character).items() if k.lower() == label.lower()), None)
     if prop:   # a thing handed over, held out, taken or put down
         return 'thing', _prop_do(context, character, *prop)
@@ -1450,8 +1495,7 @@ def _apply(context, character, action, near, target, via, act_text=''):
         body.adjust(need, delta)
     item = _held(body, action.get('transfer'))
     if item and other is not None:
-        body.inventory.remove(item)
-        other.body.inventory.append(item)
+        other.body.inventory.append(body.inventory.remove(item))
         conveyed = context.map.resource_registry.get(item.removesuffix(action['conveys'])) if action.get('conveys') else None
         if conveyed is not None:
             conveyed.setdefault('properties', {})['owner'] = other.mapAgent
@@ -1505,8 +1549,6 @@ def _apply(context, character, action, near, target, via, act_text=''):
     flag = action.get('sets')
     if flag == 'sheltered':
         body.sheltered = True
-    elif flag == 'fire':
-        context.survival_fire = {'at': _here(character), 'until': context.simulation_time + timedelta(hours=3)}
     elif flag:
         body.flags.add(flag)
     # a deed that may not come off (a weld with a torch, where a kit's seal is sure): the try
@@ -1623,10 +1665,9 @@ def _is_night(t):
 def _blocked(context, character, hazard):
     blocks = hazard.get('blocked_by', [])
     body = character.body
-    fire = getattr(context, 'survival_fire', None)
-    near_fire = bool(fire and fire['until'] > context.simulation_time and _distance(fire['at'], _here(character)) <= 2)
-    return (('sheltered' in blocks and body.sheltered) or ('fire' in blocks and near_fire)
-            or any(b in body.flags for b in blocks) or keeper.keeps_off(context, character, hazard['name']))
+    # ... or by a thing here that the world has come to know keeps this danger off (a fire, sim/keeper.py)
+    return (('sheltered' in blocks and body.sheltered) or any(b in body.flags for b in blocks)
+            or keeper.keeps_off(context, character, hazard['name']))
 
 
 def _hazard_source(context, character, hazard):
@@ -1885,7 +1926,7 @@ def _respond_to_threat(context, character, threat, text, chosen=None):
             continue
         p = response.get('success', 0.5)
         for item, bonus in response.get('bonus', {}).items():
-            if item == 'fire' and (getattr(context, 'survival_fire', None) or keeper.keeps_off(context, character, threat['hazard']['name'])):
+            if item == 'fire' and keeper.keeps_off(context, character, threat['hazard']['name']):
                 p += bonus
             elif item in character.body.inventory or item in character.body.flags:
                 p += bonus

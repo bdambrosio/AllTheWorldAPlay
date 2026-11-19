@@ -190,7 +190,7 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
         else:
             lastActResult = ''
     actor_genders = ''
-    for actor in character.context.actors+character.context.extras:
+    for actor in character.context.everyone():
         actor_genders += f'\t{actor.name}: {actor.gender}\n'
 
     # goal and task planning see what can physically be done here; the act prompt has it in

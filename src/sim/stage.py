@@ -619,7 +619,7 @@ def _place_name(context, place, res):
     if not re.fullmatch(r'[A-Z][A-Za-z]*', place or ''):
         return plain(context, place)
     words = re.findall(r'[A-Z][a-z]*', place)
-    cast = {c.name for c in list(context.actors) + list(getattr(context, 'extras', []))}
+    cast = {c.name for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))}
     owners = []
     while words and words[0] in cast:
         owners.append(words.pop(0))

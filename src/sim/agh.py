@@ -1221,6 +1221,7 @@ End response with:
                 # in the actor's own words ('move to ' was put in front of them: 'move to Start
                 # walking Northwest towards the spring' was a line of the play)
                 act_mode = 'Do'
+                act.resolved = survival.PASSING   # moving about where one is: seen, and nothing in the world changes (it went to the narrator unjudged)
                 # a deed, not a label: 'Trail toward the hut.' was a line of the play
                 # (only act.action was changed, and the line shown is built from act_arg: 'Samantha:
                 # Trail.' was still played four times)
@@ -1350,10 +1351,15 @@ End response with:
             if staged:
                 business = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', staged.group(1).strip()).rstrip('.,;')
                 act_arg = staged.group(2)
-                self.context.add_event(f'{self.name} {business}')
-                self.context.message_queue.put({'name': self.name, 'text': business, 'line_kind': 'action'})
-                self.context.transcript.append(f'{self.name} {business}')
-                trace.event('say_staged', character=self.name, business=business)
+                # what the speaker does while speaking is a deed like any other: judged, and done
+                # in the world or not shown (it was shown and recorded unjudged)
+                parts = survival.classify_deed(self.context, self, f'{self.name} {business}')[0] if getattr(self, 'body', None) is not None and survival.config(self.context) else [survival.PASSING]
+                if parts:
+                    survival.resolve_do(self.context, self, f'{self.name} {business}', resolved=' + '.join(parts))
+                    self.context.add_event(f'{self.name} {business}')
+                    self.context.message_queue.put({'name': self.name, 'text': business, 'line_kind': 'action'})
+                    self.context.transcript.append(f'{self.name} {business}')
+                trace.event('say_staged', character=self.name, business=business, done=bool(parts))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             # A line is held to what its speaker cannot be mistaken about (its hands, its body,
             # what it is doing, where it is, the hour) before anyone hears it, unless the
@@ -1464,7 +1470,7 @@ End response with:
                 if isinstance(aimed_at, Character) and aimed_at is not self and aimed_at not in watchers and not stage.off_stage(aimed_at):
                     watchers.append(aimed_at)
             else:
-                watchers = [a for a in self.context.actors + self.context.extras
+                watchers = [a for a in self.context.everyone()
                             if a is not self and getattr(self.actor_models.get_actor_model(a.name), 'visible', False)]
             # what they saw is in the record (add_event above, witnessed); here each reads the doer's aim
             for actor in watchers:

@@ -146,6 +146,22 @@ function Plan({ plan }) {
           </ul>
         </div>
       )}
+      {(plan.world || []).length > 0 && (
+        <div className="plan-section">
+          <h4>What this world has come to hold</h4>
+          <ul className="plan-list">
+            {plan.world.map((m, i) => (
+              <li key={i}>
+                <strong>{m.kind}</strong>: {(m.states || []).join(', ')}
+                {(m.made_from || []).length > 0 ? <em> (made from {m.made_from.join(', ')}; {m.making})</em> : null}
+                {[...(m.changes || []), ...(m.in_time || []).map(t => `in time, ${t}`), ...(m.effects || [])].map((line, j) => (
+                  <div key={j} className="plan-quote">{line}</div>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="plan-section">
         <h4>Acts</h4>
         {acts.map(act => <Act key={act.number} act={act} now={plan.now} />)}

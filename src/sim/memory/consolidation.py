@@ -412,7 +412,7 @@ End with:
                 narrative.recent_events = new_events.strip()
         
         # Update key relationships
-        valid_chars = [a.name for a in self.context.actors + self.context.npcs
+        valid_chars = [a.name for a in self.context.everyone()
                       if a.name != self.owner.name]
         
         # Extract character names from memory text
