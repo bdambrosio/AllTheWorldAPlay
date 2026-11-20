@@ -1953,7 +1953,17 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         if len(named) == 1 and characters_in_scene and getattr(characters_in_scene[0], 'mapAgent', None) is not None:
             rid = next(iter(named))
             if stage._distance(stage.here(characters_in_scene[0]), self.map.resource_registry[rid]['location']) <= stage.AT_PLACE_TILES:
+                # and the cast stands there, as it would had the plan named the place: what lies at
+                # it is then at hand. (A scene headed 'Fallen_Branch15' was played two steps off at
+                # Fallen_Branch4: the strip its beats were about lay at the one and could not be
+                # taken from the other.)
+                spot = tuple(self.map.resource_registry[rid]['location'])
                 scene['place'] = rid
+                for c in characters_in_scene:
+                    if getattr(c, 'mapAgent', None) is not None and not stage.remote(c) and stage._distance(stage.here(c), spot) <= stage.AT_PLACE_TILES:
+                        c.mapAgent.x, c.mapAgent.y = spot
+                if isinstance(getattr(self, 'previous_scene', None), dict):
+                    self.previous_scene['xy'] = spot
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
         self._state_notes = ''   # the situation's notes are those of the scene in progress
         if hours_between >= 2:   # the day went from half past eight to seven in the evening without a word

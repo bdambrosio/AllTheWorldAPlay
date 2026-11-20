@@ -1298,7 +1298,10 @@ End response with:
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
             if leaving and not self.attempt_only:
-                stage.leave(self, told=True, to=getattr(act, 'leaves_to', None))   # the deed has told it (its event follows)
+                # the deed has told it (its event follows); those it leaves with go too, as with a
+                # walk or a parting line (a deed marked 'leaves with Joe' took its doer out alone,
+                # and the next scene had to bring her back to him)
+                self._leave_with(act, told=True)
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             aimed_at = self._first_character(target, act)
