@@ -871,8 +871,7 @@ If absolutely no information is available for any field, use "unknown" for that 
         if create_if_missing: #and self.plausible_npc(name):
             from sim.agh import Character
             npc = NarrativeCharacter(name.capitalize(), character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
-            npc.set_context(self)
-            npc.llm = self.llm
+            npc.set_context(self)   # it keeps the model client it was made with, so its calls are traced as its own
             map_agent = self.map.get_agent(name)
             if map_agent is not None:
                 npc.mapAgent = map_agent
@@ -1391,6 +1390,22 @@ End your response with:
                                  intervention_description, people=cast) or []
             claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and (newcomers or (
                 any(h in w.lower() for h in hazards) and not self._hazard_claim_stands(w))))]
+            # The director's own people are the director's to move: a supporting actor it has come
+            # to the leads is walked there, and how such a person is said to be is theirs to play.
+            # (Mara, sent from her hut to cross the leads' path, was refused as someone 'not
+            # present', and the play sat at her door for five scenes: lost-20261119-160400.)
+            moved = []
+            for kind, words in list(claims):
+                who = next((c for c in self.supporting() if re.search(r'\b' + re.escape(c.name.lower()) + r'\b', words.lower())), None)
+                if who is None or kind not in ('presence', 'condition', 'body'):
+                    continue
+                claims.remove((kind, words))
+                if kind == 'presence' and who not in moved and stage.here(who) != stage.here(cast[0]):
+                    who.mapAgent.x, who.mapAgent.y = stage.here(cast[0])
+                    who.look()
+                    moved.append(who)
+            if moved:
+                trace.event('director_moves', who=[c.name for c in moved], to=list(stage.here(cast[0])))
             made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
             trace.event('intervention_check', made=made, refused=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
             if remaining:
@@ -1721,7 +1736,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     changed['when'] = scene['when'] = stage.part_of(self.simulation_time)
                     inputs.update(clock=stage.clock(self), moving='It must be "same": the play has just moved on to this time.',
                                   bodies='; '.join(f'{c.name}: {c.body.summary()}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked')
-            for key, value in (('location', '' if opens_act else find('location')), ('pre_narrative', find('setup')),
+            # An act's first scene keeps its planned place, unless the cast walked out of the last
+            # act for somewhere: then the stage manager's place stands, as for any scene. (Act 2 was
+            # planned at the apple tree after they had left it for the berries; the set-up was
+            # written at the berry bush, the scene was staged at the tree, and the snares at the
+            # berries were spoken of for the rest of the play without ever being seen.)
+            keep_place = opens_act and not self._exit_parties()
+            for key, value in (('location', '' if keep_place else find('location')), ('pre_narrative', find('setup')),
                                ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
                 if value and value != scene.get(key):
                     changed[key] = scene[key] = value
@@ -1803,13 +1824,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                       if kind != 'place' and not (kind == 'presence' and not self._hazard_claim_stands(words, scene))]
             if not claims:
                 break
-            # a plan may bring new things into the world: what can be put in the world's terms is
-            # made real where the scene is set (the injury is then in the body, the pool on the map)
+            # a set-up may bring in what such a place or person would have without remark, and a
+            # place of one of the world's kinds; anything else it names is written out (record.admit)
             target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
             made, refused = [], []
             if not admitted:   # once: the rewrite that follows is only to take out what was refused
                 admitted = True
-                made, refused, claims = record.admit(self, cast[0], claims, told, 'director', people=cast,
+                made, refused, claims = record.admit(self, cast[0], claims, told, 'plan', people=cast,
                                                      at=target[0] if target else None)
             brought += made
             if not claims:

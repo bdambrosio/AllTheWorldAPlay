@@ -524,6 +524,15 @@ class KnownActorManager:
         
         character, canonical_name = self.resolve_character(reference_text)
         if not character:
+            # A reference to people already in the play is never a new person: 'Samantha, Joe',
+            # 'Samantha and Joe', 'both of them, Joe' were each cast as one stranger, who then
+            # spoke and was handed things (lost-20261119-160400). The first of them named is meant.
+            low = reference_text.lower()
+            found = [(re.search(r'\b' + re.escape(c.name.lower()) + r'\b', low), c) for c in self.context.everyone()]
+            named = [c for m, c in sorted(((m, c) for m, c in found if m), key=lambda mc: mc[0].start())]
+            if named:
+                trace.event('reference_split', owner=self.owner.name, reference=reference_text, taken=named[0].name)
+                return named[0], named[0].name
             # Use owner's current location for the new character
             character, canonical_name = self.create_character(reference_text)
         

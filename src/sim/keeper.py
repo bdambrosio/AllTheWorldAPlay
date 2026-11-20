@@ -81,9 +81,9 @@ Answer in JSON only:
               "changes": [{{"by": "<two to four words, a verb first>", "from": "<state>", "to": "<state, or gone>", "uses_up": [], "needs": [], "minutes": 0, "chance": 1.0}}],
               "in_time": [{{"from": "<state>", "to": "<state, or gone>", "after_minutes": 0}}],
               "effects": [{{"while": "<state>", "on": "<a thing this world tracks, as listed>", "does": "keeps off | eases | worsens"}}]}}],
-  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here (it was there already), or one of that model's changes>"}},
+  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here, or one of that model's changes>", "ends": "<in hand, or here>"}},
            {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}
-Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most.
+Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most. "by" is the one word make when the deed makes the thing; the one word here when the thing was there already and the deed only comes upon it or takes it up; otherwise a change, in that model's own words for it. "ends" is where the thing is when the deed is done: in hand when {name} is left holding or carrying it, here when it is left where {name} stands.
 </end>"""
 
 
@@ -255,6 +255,13 @@ def _stage(context, character):
                                    survival.holdings(character), 'This place offers: ' + (survival.available_actions(character, part='known') or 'nothing listed')]))
 
 
+def _by(value):
+    """How a deed comes by a thing, as the keeper gave it: 'make', 'here', or a change's name. (The
+    form once read 'here (it was there already)', the keeper copied it whole, and nothing matched.)"""
+    by = ' '.join(re.sub(r'\(.*?\)', ' ', str(value or '').lower()).split())
+    return 'here' if by.startswith('here') else by
+
+
 def consider(context, character, deed):
     """Put a deed the stage could not place to the keeper. Returns {'can', 'why', 'does'}: 'does'
     is what code is to do when the deed is played (perform). Models it writes are kept at once:
@@ -282,7 +289,8 @@ def consider(context, character, deed):
     else:
         keep(context, found.get('models'))
         does = [({'action': ' '.join(str(d['action']).split())} if d.get('action') else
-                 {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()), 'by': ' '.join(str(d.get('by') or '').lower().split())})
+                 {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()),
+                  'by': _by(d.get('by')), 'ends': 'in hand' if 'hand' in str(d.get('ends') or '').lower() else 'here'})
                 for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or d.get('action'))][:3]
         does = [d for d in does if d.get('action') or d['kind'] in models(context)]
         out = {'can': bool(does), 'why': '' if does else 'no action here covers it', 'does': does}
@@ -347,21 +355,27 @@ def _apply(context, character, thing, change):
 
 
 def perform(context, character, deed):
-    """Play a deed the keeper placed: make, find or change each thing as the models say. Returns
-    (the fact, whether it came off): what did not come off is the doer's to know, not an event."""
-    from sim import survival
-    facts, came_off = [], True
+    """Play a deed the keeper placed: make, find or change each thing as the models say, and leave
+    it in the doer's hand or where they stand, as the keeper said. Returns (the fact, whether it
+    came off): what did not come off is the doer's to know, not an event. A deed that leaves the
+    world as it was did not come off: the narrator is not left to say that it did."""
+    from sim import survival, ledger
+    facts, came_off, did = [], True, False
     for d in (context.__dict__.get('_kept_deeds', {}).get((character.name, deed)) or {}).get('does', []):
         if d.get('action'):   # an action the stage already had: done as that action
             fact = survival._do_one(context, character, d['action'], deed.lower(), deed, 'model')[1]
             if fact:
                 facts.append(fact)
+                did = True
             continue
         model, name = models(context).get(d['kind']), d['thing']
         if model is None:
             continue
         thing = _on_stage(context, character).get(name)
-        if d['by'] in ('make', 'here') and thing is None:
+        change = next((c for c in model['changes'] if c['by'] == d['by']), None)
+        if thing is None:
+            # not on the stage yet: made now, or found to have been here (a deed that changes a
+            # thing nobody has yet taken up, 'picks mushrooms', comes upon it first)
             if d['by'] == 'make':
                 failed = _spend(context, character, name, {'needs': model['needs'], 'uses_up': model['made_from'], 'minutes': model.get('minutes', 0),
                                                            'chance': model.get('chance', 1.0)}, 'make')
@@ -369,30 +383,37 @@ def perform(context, character, deed):
                     facts, came_off = [failed], False
                     trace.event('thing_modelled', character=character.name, thing=name, model=d['kind'], by='make', done=False, why=failed)
                     break
-            if model['portable'] and d['by'] == 'make':
-                survival.add_thing(context, name, holder=character)
-            else:
-                survival.add_thing(context, name, at=_here(character), fixed=not model['portable'])
+            elif d['by'] != 'here' and change is None:
+                continue
+            survival.add_thing(context, name, at=_here(character), fixed=not model['portable'])
             thing = _on_stage(context, character).get(name)
             if thing is None:
                 continue
-            thing.update(kind=d['kind'], state=model['starts'], since=context.simulation_time)
-            facts.append(f"{character.name} makes a {name}: it is {model['starts']}." if d['by'] == 'make' else f"There is a {name} here: it is {model['starts']}.")
-            trace.event('thing_modelled', character=character.name, thing=name, model=d['kind'], by=d['by'], done=True, state=model['starts'])
-            continue
-        if thing is None:
-            continue
-        if not thing.get('kind'):   # a thing already on the stage, now known for what it is
+            starts = change['from'] if change and change['from'] in model['states'] else model['starts']
+            thing.update(kind=d['kind'], state=starts, since=context.simulation_time)
+            did = True
+            facts.append(f"{character.name} makes a {name}: it is {starts}." if d['by'] == 'make' else f"There is a {name} here: it is {starts}.")
+            trace.event('thing_modelled', character=character.name, thing=name, model=d['kind'], by=d['by'] if d['by'] in ('make', 'here') else 'here', done=True, state=starts)
+        elif not thing.get('kind'):   # a thing already on the stage, now known for what it is
             thing.update(kind=d['kind'], state=thing.get('state') if thing.get('state') in model['states'] else model['starts'], since=context.simulation_time)
-        change = next((c for c in model['changes'] if c['by'] == d['by'] and c['from'] in ('', thing.get('state'))), None)
-        if change is None:
-            continue
-        fact, done = _apply(context, character, thing, change)
-        trace.event('thing_changed', character=character.name, thing=name, by=d['by'], done=done, state=thing.get('state'))
-        if not done:
-            facts, came_off = [fact], False
-            break
-        facts.append(fact)
+        if change is not None and d['by'] not in ('make', 'here'):
+            change = next((c for c in model['changes'] if c['by'] == d['by'] and c['from'] in ('', thing.get('state'))), None)
+            if change is not None:
+                fact, done = _apply(context, character, thing, change)
+                trace.event('thing_changed', character=character.name, thing=name, by=d['by'], done=done, state=thing.get('state'))
+                if not done:
+                    facts, came_off = [fact], False
+                    break
+                facts.append(fact)
+                did = True
+        # where the deed leaves it
+        still = any(t is thing for t in ledger.of(context).things)
+        if still and d.get('ends') == 'in hand' and model['portable'] and thing.get('holder') != character.name:
+            ledger.of(context).put(thing, holder=character.name)
+            facts.append(f"{character.name} has the {name}.")
+            did = True
+    if came_off and not did:
+        return f"{character.name} tries it, and nothing comes of it: things are as they were.", False
     return ' '.join(facts), came_off
 
 

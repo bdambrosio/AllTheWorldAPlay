@@ -494,8 +494,11 @@ def pending_business(character):
     cfg = survival.config(character.context) or {}
     real = {a['name'].lower() for a in cfg.get('actions', [])} | {a['name'].lower() for a in survival.shared_actions(character.context)}
     unreal = [str(b) for b in mine if str(b).split('@')[0].strip().lower() not in real]
-    if unreal and scene.get('_business_dropped') != unreal:
-        scene['_business_dropped'] = unreal
+    told = scene.setdefault('_business_dropped', {})
+    if not isinstance(told, dict):
+        told = scene['_business_dropped'] = {}
+    if unreal and told.get(character.name) != unreal:   # once for each of the cast, not once a turn
+        told[character.name] = unreal
         trace.event('business_dropped', character=character.name, business=unreal, why='no such action in this world')
     return [str(b) for b in mine if str(b) not in unreal and str(b).split('@')[0].strip().lower() not in done]
 

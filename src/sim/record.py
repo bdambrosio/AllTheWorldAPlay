@@ -298,7 +298,8 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     """Sort what a check found. A new thing is put in the world's terms and, if its source may
     bring it in, made real. Returns (facts, refused, remaining): the facts now true, the facts
     of what was refused, and the claims still to be written out of the text.
-    source: 'director' (a plan or an intervention) or 'deed' (a character's act, the narrator)."""
+    source: 'director' (the director's own: an intervention), 'plan' (a scene's set-up: only what
+    is ordinary there comes in) or 'deed' (a character's act, the narrator: nothing new comes in)."""
     people = [c for c in (people or [actor] + actor.bystanders()) if getattr(c, 'body', None) is not None]
     facts, refused = [], []
     # a thing lying within reach that the narration has the actor take: the world takes it too
@@ -373,14 +374,20 @@ def admit(context, actor, claims, text, source, people=None, at=None):
                 # the world has it, somewhere else: not a new one (a set-up put the planted key in
                 # the mud at Spring2 while it lay at Spring3)
                 why = f"The {name} is {elsewhere}, not here."
-            elif source == 'director':
+            elif source == 'director' or (source == 'plan' and (usual or form == 'item')):
                 fact = survival.add_thing(context, name, holder=holder, at=at)
+            elif source == 'plan':
+                # A scene's set-up is the planner's, and the planner is not the director: it may
+                # set out what such a place or person would have without remark, and no more. (A
+                # set-up put the rain gauge of Joe's childhood in his hands in the forest, and
+                # made 'the dry strip' a thing Mara held: lost-20261119-160400.)
+                why = f"There is no {name} here: nothing has brought one onto the stage."
             else:
                 # Once a scene is set, nothing new comes onto the stage because a narration says
                 # so, however ordinary: what a deed needs that the stage lacks goes to the keeper
                 # before the deed is played (sim/keeper.py), and is there or is not.
                 why = f"There is no {name} here to be had."
-        elif form == 'place' and len(fields) >= 2 and source == 'director':
+        elif form == 'place' and len(fields) >= 2 and source in ('director', 'plan'):
             fact = survival.add_place(context, next((k for k in places if k.lower() == fields[0].lower()), ''), fields[1], at)[1]
         elif form == 'place' and len(fields) >= 2:
             why = f"There is no {fields[1].lower()} here."
@@ -733,10 +740,18 @@ def speech(context, speaker, line, listener=None):
     if not isinstance(found, dict):
         trace.event('check_unreadable', of='speech', reply=(reply or '')[:300])
         return line, None   # unreadable: the line stands as written
-    # a name told in a line is known from then on to everyone who heard it
+    # A name told in a line is known from then on to everyone who heard it: one the speaker itself
+    # knows, and that is in the line as it is finally said. (Joe gave his name, the check missed
+    # it, and Samantha 'did not know' the name she used all night, until one use of it was cut to
+    # 'You.'; and Joe's use of a name he had not heard, cut from his line, still taught it to
+    # Samantha: lost-20261119-160400.)
     said = {str(n).strip().lower() for n in (found.get('names') or []) if isinstance(n, str)}
-    told = {c.name for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if c.name.lower() in said}
-    if told:
+
+    def heard_names(final):
+        words = set(re.findall(r"[a-z][a-z'-]*", re.sub(r"['’]s\b", '', (final or '').lower())))
+        roster = list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
+        told = {c.name for c in roster if c.name.lower() in words or (c.name.lower() in said and final == line)}
+        told -= set(getattr(speaker, 'unknown_names', None) or ())
         for hearer in people:
             if hearer is not speaker and getattr(hearer, 'unknown_names', None):
                 learned = hearer.unknown_names & told
@@ -753,6 +768,7 @@ def speech(context, speaker, line, listener=None):
         person = next((c for c in people if c is not speaker and c.name.lower() == str(handed.get('to') or '').strip().lower()), None)
         give = (thing, person) if thing and person is not None else None
     if not claims:
+        heard_names(line)
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
         return line, give
     again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context), 'unknown': unknown,
@@ -767,6 +783,7 @@ def speech(context, speaker, line, listener=None):
         result, outcome = (kept, 'cut') if kept else (again or line, 'unfixed')
     trace.event('speech_check', character=speaker.name, outcome=outcome, claims=[f'{k}: {w}' for k, w in claims],
                 before=line, after=result)
+    heard_names(result)
     return result, None
 
 

@@ -1192,7 +1192,7 @@ def _shared_do(context, character, action, other, item):
     if kind == 'posture':
         if action.get('clears'):
             poses.pop(me, None)
-            fact = f'{me} is on their feet.'
+            fact = f'{me} stands up.'
         else:
             poses[me] = action['sets']
             fact = f"{me} is {action['sets']}."
