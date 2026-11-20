@@ -108,10 +108,15 @@ def find(context, character, name):
     for prop in survival.lying(context, stage.here(character)):
         if _low(prop['name']) == low:
             return 'here', prop['name'], None
-    for other in people(context, character)[1:]:
-        for item in (other.body.inventory if getattr(other, 'body', None) is not None else []):
-            if _low(item) == low:
-                return 'theirs', str(item), other
+    # in another's hands: the one who has held it out to this character before any other who holds
+    # a thing of the same name (two people carried berries, one held his out, and the taking was
+    # refused because the other had not)
+    theirs = [(str(item), other) for other in people(context, character)[1:]
+              for item in (other.body.inventory if getattr(other, 'body', None) is not None else []) if _low(item) == low]
+    offered = [(item, other) for item, other in theirs if (item, other.name, character.name) in context.held_out]
+    if offered or theirs:
+        item, other = (offered or theirs)[0]
+        return 'theirs', item, other
     return None
 
 
@@ -123,13 +128,14 @@ def _person(context, character, name):
 def faults(context, character, found):
     """Why these effects cannot be applied to the stage as it stands: [] when they can. Nothing
     here reads the deed: it is whether the things, people and actions named are there."""
-    out, made = [], set()
+    out, made, gained = [], set(), set()   # made: new in this deed; gained: come into the doer's hands earlier in this deed
     for e in found.get('effects') or []:
         if not isinstance(e, dict):
             out.append('an effect is not one of the forms')
             continue
         if e.get('new'):
             made.add(_low(e['new']))
+            gained.add(_low(e['new']))
         elif e.get('world'):
             chosen = survival._chosen(context, character, str(e['world']))
             if chosen is None:
@@ -137,6 +143,11 @@ def faults(context, character, found):
             elif chosen[0] == 'action':
                 _, action, near, target = chosen
                 lack = survival._missing(action, character.body)
+                # what the action needs may be what an earlier part of this deed puts in the doer's hands
+                # ('takes a few berries and eats them')
+                needs = [str(action.get(k) or '').lstrip('*').lower() for k in ('requires', 'transfer')]
+                if lack and lack.startswith('has no') and any(n and any(g == n or g.endswith(n) for g in gained) for n in needs):
+                    lack = ''
                 if lack:
                     out.append(f"'{e['world']}' cannot be done: {character.name} {lack}")
                 elif action.get('resource_types') and (near is None or not survival._can_approach(context, character, near[2])):
@@ -154,6 +165,8 @@ def faults(context, character, found):
             if where and where[0] == 'theirs' and e.get('to') and _low(e['to']) != where[2].name.lower() \
                     and (where[1], where[2].name, character.name) not in context.held_out:
                 out.append(f"{where[2].name} holds the {where[1]} and has not held it out to {character.name}")
+            if e.get('to') and _low(e['to']) == character.name.lower():
+                gained.add(_low(e['thing']))
             if e.get('read_by') and where and not survival.writing_of(context, where[1]):
                 out.append(f"the {where[1]} has nothing written on it")
         elif e.get('touches'):
