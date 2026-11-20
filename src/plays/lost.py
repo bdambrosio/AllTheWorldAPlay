@@ -59,7 +59,6 @@ W = context.Context([S, J],
 W.strangers()   # neither knows the other's name until it is said
 # This play has a director (sim/director.py): each performance it writes the question the play
 # stands on from this sketch and settles what is so behind it; what these two do about it is theirs.
-W.directed = True
 # how this play's pictures are made (sim/stage.py picture and portrait); the default is photographic
 W.image_style = 'Watercolor painting, sunlit, soft pastel tones, loose washes, dappled light, thin mist among the far trees, a quiet air of mystery'
 

@@ -32,7 +32,7 @@ if os.environ.get('ATWAP_LLM'):
 # set-up) is written by this server whatever plays the parts: a small local model, given the
 # same characters and drives, planned berries, boar, wolf and left out the play's mystery.
 # The calls are named in utils/llm_api.py PLAN_TAGS. None, or ATWAP_PLAN_LLM=same: no planner.
-plan_server_name = 'fireworks'
+plan_server_name = 'sol'   # GPT-6.2 Sol plans (blind test 2026-11-17); needs OPENAI_API_KEY
 plan_model_name = None
 if os.environ.get('ATWAP_PLAN_LLM'):
     plan_server_name = os.environ['ATWAP_PLAN_LLM']

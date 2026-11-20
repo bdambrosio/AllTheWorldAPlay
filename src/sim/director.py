@@ -1,5 +1,5 @@
-"""The director of a play that stands on a question (docs/director-design.md 1.6 and 1.7). A play
-file asks for one with `W.directed = True`; it holds no question of its own.
+"""The director of a play that stands on a question (docs/director-design.md 1.6 and 1.7). Every
+play has one unless its file sets `W.directed = False`; it holds no question of its own.
 
 The question is written here for each performance, from the sketch (Context.standing_question is
 tonight's). Part of it asks what is so: that part is settled here, afresh for each performance,
@@ -229,7 +229,7 @@ def _backends(context):
     write the candidates so that no one model's favourite reading is every night's play."""
     from utils import llm_api
     out = [('planner', context.llm, 'director.answers')]
-    for name in [n.strip() for n in os.environ.get('ATWAP_DIRECTOR_LLMS', '').split(',') if n.strip()]:
+    for name in [n.strip() for n in os.environ.get('ATWAP_DIRECTOR_LLMS', 'fireworks,haiku').split(',') if n.strip()]:
         try:
             if name not in _pool:
                 _pool[name] = llm_api.LLM(name)

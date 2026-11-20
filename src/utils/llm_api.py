@@ -285,8 +285,8 @@ PLAN_TAGS = frozenset((
     'check_post_state_ambiguity',
     'director.answers', 'director.behind', 'director.read'))   # what lies behind a play that stands on a question (sim/director.py)   # what a scene or act came to: the acting model passed an ending that was not played
 # More of the play's calls can go to the planner, by group, so that the acting model writes the
-# lines and nothing else (ATWAP_PLAN_GROUPS, default 'world,character' whenever there is a
-# planner; 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it
+# lines and nothing else (ATWAP_PLAN_GROUPS, e.g. 'world,character';
+# the default 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it
 # had planted: the narration of deeds, the checks against the world and the characters' own
 # scene goals and task plans were Qwen's, though the plan of the play was GLM's.
 PLAN_GROUPS = {
@@ -308,7 +308,7 @@ def plan_tags():
     only = [t.strip() for t in os.environ.get('ATWAP_PLAN_ONLY', '').split(',') if t.strip()]
     if only:   # the planner writes these calls and no others (e.g. 'scene.outcomes': one call a scene)
         return frozenset(only)
-    spec = os.environ.get('ATWAP_PLAN_GROUPS', 'world,character').strip().lower()
+    spec = os.environ.get('ATWAP_PLAN_GROUPS', 'none').strip().lower()
     groups = [] if spec in ('', 'none') else [g.strip() for g in spec.split(',') if g.strip()]
     unknown = [g for g in groups if g not in PLAN_GROUPS]
     if unknown:

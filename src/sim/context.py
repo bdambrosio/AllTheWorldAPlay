@@ -144,7 +144,7 @@ class Context():
         # A play file may ask for a director (sim/director.py). Each performance it writes the question
         # the play stands on from the sketch and settles what is so behind it; what the characters do
         # about it is theirs.
-        self.directed = False            # the play file asks for a director (sim/director.py)
+        self.directed = True             # every play has the light director (sim/director.py); a play file may set False
         self.standing_question = ''      # the question the play stands on tonight, written by the director
         self.narrative_level= False
         self.scene_integrated_task_plan: List[Dict[str, NarrativeCharacter, Task]] = []
