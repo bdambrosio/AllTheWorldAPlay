@@ -10,8 +10,9 @@ a pattern.
 
 Here one call is given the stage as it stands (record.of), the scene so far and the deed, and says
 what the deed does as effects in the ledger's own terms, with the line the audience sees. Code
-does not read the deed's words. It checks that the effects can be applied (the thing is there, the
-person is there, the world's action is one listed and lacks nothing) and applies them; what
+does not read the deed's words, and does not judge the deed a second time. It checks only that each
+name in the effects is the name of something (a thing on the stage, a person in the scene, one of
+the world's actions) and applies them; what
 changes a body's needs or finds what a place holds is still the world's own action, applied by
 survival._apply. The page is written from what was done, so the two cannot differ.
 
@@ -62,7 +63,7 @@ Answer in JSON only:
 {{"can": true or false,
   "why": "<if it cannot: the world's reason, ten words at most; else empty>",
   "effects": [<one entry for each lasting thing the deed does, in order; empty if it changes nothing that lasts>
-     {{"thing": "<a thing, by its exact name on the stage>", "to": "<the person who now holds it, by name, or the word here for lying here>"}},
+     {{"thing": "<a thing, by its exact name on the stage>", "from": "<who holds it now, by name, or the word here if it lies here>", "to": "<the person who now holds it, by name, or the word here for lying here>"}},
      {{"thing": "<exact name>", "state": "<how the thing itself is left, two to five words>"}},
      {{"thing": "<exact name>", "held_out_to": "<the person it is held out or shown to>"}},
      {{"thing": "<exact name of a written thing>", "read_by": "{name}"}},
@@ -99,20 +100,28 @@ def people(context, character):
     return [character] + [c for c in cast if c is not character]
 
 
-def find(context, character, name):
-    """Where a thing named on the stage is: ('mine' | 'here' | 'theirs', the thing's own name, its holder) or None."""
-    low = _low(name)
-    for item in character.body.inventory:
-        if _low(item) == low:
-            return 'mine', str(item), character
-    for prop in survival.lying(context, stage.here(character)):
-        if _low(prop['name']) == low:
-            return 'here', prop['name'], None
-    # in another's hands: the one who has held it out to this character before any other who holds
-    # a thing of the same name (two people carried berries, one held his out, and the taking was
-    # refused because the other had not)
+def find(context, character, name, frm=None):
+    """Where a thing named on the stage is: ('mine' | 'here' | 'theirs', the thing's own name, its
+    holder) or None. frm: whose it is as the resolver gave it (a person's name, or 'here'): two
+    people carried berries, one held his out, and code that guessed which was meant guessed the
+    other. With no holder given: the doer's own, then what lies here, then another's (one held
+    out to the doer first)."""
+    low, frm = _low(name), _low(frm)
+    mine = next((str(i) for i in character.body.inventory if _low(i) == low), None)
+    here = next((p['name'] for p in survival.lying(context, stage.here(character)) if _low(p['name']) == low), None)
     theirs = [(str(item), other) for other in people(context, character)[1:]
               for item in (other.body.inventory if getattr(other, 'body', None) is not None else []) if _low(item) == low]
+    if frm == 'here' and here is not None:
+        return 'here', here, None
+    if frm == character.name.lower() and mine is not None:
+        return 'mine', mine, character
+    named = [(item, other) for item, other in theirs if other.name.lower() == frm]
+    if named:
+        return 'theirs', named[0][0], named[0][1]
+    if mine is not None:
+        return 'mine', mine, character
+    if here is not None:
+        return 'here', here, None
     offered = [(item, other) for item, other in theirs if (item, other.name, character.name) in context.held_out]
     if offered or theirs:
         item, other = (offered or theirs)[0]
@@ -126,62 +135,35 @@ def _person(context, character, name):
 
 
 def faults(context, character, found):
-    """Why these effects cannot be applied to the stage as it stands: [] when they can. Nothing
-    here reads the deed: it is whether the things, people and actions named are there."""
-    out, made, gained = [], set(), set()   # made: new in this deed; gained: come into the doer's hands earlier in this deed
+    """Why these effects cannot be applied: [] when they can. Only whether each name is the name
+    of something: a thing on the stage (or made earlier in the deed), a person in the scene, one
+    of the world's actions. Whether the deed is allowed (was the thing held out, does the action
+    lack something, is the place too far) is the resolver's judgement, made with the whole stage
+    before it, and is not judged again here: a second, cruder reading of the same rules refused
+    a woman berries held out to her, twice, because another person carried berries too."""
+    out, made = [], set()
     for e in found.get('effects') or []:
         if not isinstance(e, dict):
             out.append('an effect is not one of the forms')
-            continue
-        if e.get('new'):
+        elif e.get('new'):
             made.add(_low(e['new']))
-            gained.add(_low(e['new']))
         elif e.get('world'):
-            chosen = survival._chosen(context, character, str(e['world']))
-            if chosen is None:
+            if survival._chosen(context, character, str(e['world'])) is None:
                 out.append(f"'{e['world']}' is not one of the world's actions listed")
-            elif chosen[0] == 'action':
-                _, action, near, target = chosen
-                lack = survival._missing(action, character.body)
-                # what the action needs may be what an earlier part of this deed puts in the doer's hands
-                # ('takes a few berries and eats them')
-                needs = [str(action.get(k) or '').lstrip('*').lower() for k in ('requires', 'transfer')]
-                if lack and lack.startswith('has no') and any(n and any(g == n or g.endswith(n) for g in gained) for n in needs):
-                    lack = ''
-                if lack:
-                    out.append(f"'{e['world']}' cannot be done: {character.name} {lack}")
-                elif action.get('resource_types') and (near is None or not survival._can_approach(context, character, near[2])):
-                    out.append(f"'{e['world']}' is at a place too far to do from here")
-                elif action.get('target') == 'character' and target is None:
-                    out.append(f"'{e['world']}' names nobody who is here")
         elif e.get('thing'):
-            where = find(context, character, e['thing'])
-            if where is None and _low(e['thing']) not in made:
+            if find(context, character, e['thing'], e.get('from')) is None and _low(e['thing']) not in made:
                 out.append(f"there is no '{e['thing']}' held by anyone here or lying here")
-                continue
             for key in ('to', 'held_out_to'):
                 if e.get(key) and _low(e[key]) != 'here' and _person(context, character, e[key]) is None:
                     out.append(f"nobody called '{e[key]}' is here")
-            if where and where[0] == 'theirs' and e.get('to') and _low(e['to']) != where[2].name.lower() \
-                    and (where[1], where[2].name, character.name) not in context.held_out:
-                out.append(f"{where[2].name} holds the {where[1]} and has not held it out to {character.name}")
-            if e.get('to') and _low(e['to']) == character.name.lower():
-                gained.add(_low(e['thing']))
-            if e.get('read_by') and where and not survival.writing_of(context, where[1]):
-                out.append(f"the {where[1]} has nothing written on it")
         elif e.get('touches'):
             if _person(context, character, e['touches']) is None:
                 out.append(f"nobody called '{e['touches']}' is here")
         elif e.get('goes'):
-            if _low(e.get('who')) not in ('', character.name.lower()):
-                out.append(f"only {character.name} goes anywhere by {character.name}'s deed")
             for name in e.get('with') or []:
                 if _person(context, character, name) is None:
                     out.append(f"nobody called '{name}' is here")
-        elif e.get('posture'):
-            if _low(e.get('who')) not in ('', character.name.lower()):
-                out.append(f"only {character.name}'s posture changes by {character.name}'s deed")
-        elif not e.get('mark'):
+        elif not (e.get('posture') or e.get('mark')):
             out.append('an effect is not one of the forms')
     return out
 
@@ -263,8 +245,11 @@ def apply(context, character, act):
             worlded = True
             if fact:
                 facts.append(fact)
+            if (character.last_affordance or {}).get('applied') is False:
+                # the world's own rules would not have it (its sentence says why, after the page line)
+                trace.event('effect_refused', character=me, world=str(e['world']), fact=fact)
         elif e.get('thing'):
-            where = find(context, character, e['thing'])
+            where = find(context, character, e['thing'], e.get('from'))
             if where is None:
                 continue   # made earlier in this deed and not come by: nothing to move
             kind, name, holder = where
@@ -275,7 +260,10 @@ def apply(context, character, act):
                     survival._prop_do(context, character, 'take', name, None)
                     kind = 'mine'
                 if kind == 'theirs' and to == me.lower():
-                    survival._prop_do(context, character, 'take from', name, holder)
+                    # as the resolver found it: whether it was given or held out was its to judge
+                    character.body.inventory.append(holder.body.inventory.remove(name))
+                    context.held_out[:] = [h for h in context.held_out if not (h[0] == name and h[1] == holder.name)]
+                    trace.event('prop_deed', character=me, deed='take from', item=name, other=holder.name)
                 elif kind == 'mine' and to == 'here':
                     survival._prop_do(context, character, 'put down', name, None)
                 elif kind == 'mine' and other is not None and other is not character:
@@ -287,8 +275,9 @@ def apply(context, character, act):
                 if kind == 'mine':
                     survival._prop_do(context, character, 'offer', name, other)
             elif e.get('read_by'):
-                survival._prop_do(context, character, 'read', name, None)
-                facts.append(f"The {name} says: {survival.writing_of(context, name)}")
+                if survival.writing_of(context, name):
+                    survival._prop_do(context, character, 'read', name, None)
+                    facts.append(f"The {name} says: {survival.writing_of(context, name)}")
             elif e.get('state') and kind in ('mine', 'here'):
                 survival._handle(context, character, name, e['state'])
         elif e.get('posture'):
