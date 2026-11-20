@@ -42,7 +42,8 @@ FIREWORKS_HEADROOM = 512
 # (8 recorded turns, 2026-11-15). Key: TOGETHER_API_KEY.
 TOGETHER_URL = 'https://api.together.xyz/v1'
 TOGETHER_MODEL = 'thinkingmachines/Inkling-2-Small'
-# GPT-6.2 Sol on the OpenAI API (server_name 'sol'), as a planner: ATWAP_PLAN_LLM=sol. It takes
+# GPT-6.2 Sol on the OpenAI API (server_name 'sol'), as a planner: ATWAP_PLAN_LLM=sol (the planner
+# was Sol until 2026-11-20; it is now Claude Opus 5.5, plays/config.py). It takes
 # reasoning_effort low, medium, high or xhigh and nothing less; no temperature, top_p or stop.
 # On twelve recorded planner prompts (2026-11-17, logs/review-20261117/sol.json) a blind reader
 # ranked its scene endings above Sonnet 5.5's at every effort and found low, medium and high
@@ -283,7 +284,10 @@ PLAN_TAGS = frozenset((
     'scene.beats',      # the actors' proposals arranged into the scene's beats (sim/scene.py)
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
     'check_post_state_ambiguity',
-    'director.answers', 'director.behind', 'director.read'))   # what lies behind a play that stands on a question (sim/director.py)   # what a scene or act came to: the acting model passed an ending that was not played
+    'director.answers', 'director.behind', 'director.read',   # what lies behind a play that stands on a question (sim/director.py)
+    'stage.resolve_deed', 'stage.resolve_say'))   # what a deed or a line does in the world as it stands (sim/resolver.py)
+# How hard a call thinks where nothing else says (set_reasoning): the resolver was tested at low.
+TAG_EFFORT = {'stage.resolve_deed': 'low', 'stage.resolve_say': 'low'}
 # More of the play's calls can go to the planner, by group, so that the acting model writes the
 # lines and nothing else (ATWAP_PLAN_GROUPS, e.g. 'world,character';
 # the default 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it
@@ -619,7 +623,7 @@ class LLM():
         start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
-        options.reasoning = _reasoning.get(tag) or (THINK_EFFORT.get(self.server_name)
+        options.reasoning = _reasoning.get(tag) or TAG_EFFORT.get(tag) or (THINK_EFFORT.get(self.server_name)
                                                     if getattr(self, 'auto_reasoning', True) and tag not in MECHANICAL_TAGS else None)
         if tag in _routed() and (plan := planner()) is not None and plan is not self and (plan.server_name, plan.model) != (self.server_name, self.model):
             plan.owner = self.owner

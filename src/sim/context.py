@@ -1185,6 +1185,18 @@ End your response with:
 """)]
         # survival mechanics (sim/survival.py) settle eating, drinking, shelter, threats ...;
         # the narration describes them rather than inventing other outcomes
+        if getattr(act, 'found', None):
+            # the deed was resolved before it was chosen (sim/resolver.py): its effects are applied and
+            # its page line is what is shown (Character.acts). No narrator, and nothing to check a
+            # narration against: what is told is what was done.
+            from sim import resolver
+            facts = resolver.apply(self, actor, act)
+            self.deed_kind, self.deed_passing = 'resolved', not act.found['effects']
+            actor.settled_notes, actor.deed_refused = [], False
+            self.last_consequences, self.last_updates = facts or '', ''
+            self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, facts or '')})
+            await asyncio.sleep(0.1)
+            return facts or '', facts or '', ''
         facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
                                     targets=act.target if isinstance(act.target, list) else None,
                                     resolved=getattr(act, 'resolved', None) or None)

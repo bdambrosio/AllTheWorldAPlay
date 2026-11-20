@@ -157,9 +157,11 @@ def cast_note(context):
         return ''
 
 
-def of(context, actor, people=None):
+def of(context, actor, people=None, full=False):
     """The record as it bears on what may be said of `actor` and those with it (or of `people`,
-    a scene's cast)."""
+    a scene's cast). full: with how everyone is placed, what is held out, who has gone, what the
+    stage has refused `actor` in this scene and what the world offers here: the whole stage, for
+    the call that says what a deed does (sim/resolver.py)."""
     people = [c for c in (people or [actor] + actor.bystanders()) if getattr(c, 'mapAgent', None) is not None]
     # those in the scene by radio are heard, not there: listed apart, so that no narration puts
     # them on the spot (Novak, the Earthside flight director, swung a camera on the gantry)
@@ -187,7 +189,25 @@ def of(context, actor, people=None):
            + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
         'Stock: ' + (survival.stock(actor) or 'nothing has been used up'),
         'Danger: ' + (danger(actor) or 'none'),
+        *(_acts(context, actor, people) if full else []),
     ])
+
+
+def _acts(context, actor, people):
+    """The rest of the stage (of, full): placing, things held out, exits, refusals, the world's actions."""
+    placed = [f"{c.name}: {', '.join(c.body.bearing)}" for c in people if getattr(c, 'body', None) is not None and c.body.bearing]
+    held = [f'{holder} holds the {item} out to {to}' for item, holder, to in context.held_out]
+    gone = [f"{e['who']}{' with ' + ', '.join(e['with']) if e.get('with') else ''}{' for ' + e['to'] if e.get('to') else ''}"
+            for e in getattr(context, 'scene_exits', None) or []]
+    refused = [f"{r['deed']} ({'; '.join(r['why']) if isinstance(r['why'], (list, tuple)) else r['why']})"
+               for r in getattr(context, 'scene_refusals', None) or [] if r.get('who') == actor.name][-4:]
+    offered = [o.strip() for o in survival.offered_actions(actor, cut=None) if o.strip()]
+    return ['How they are placed: ' + ('; '.join(placed) or 'all on their feet, nobody touching'),
+            'Held out, for the one named to take: ' + ('; '.join(held) or 'nothing'),
+            'Gone out of this scene: ' + ('; '.join(gone) or 'nobody'),
+            *([f'Tried by {actor.name} in this scene and not possible here: ' + ' | '.join(refused)] if refused else []),
+            f"The world's actions for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
+            *([f'- {o}' for o in offered] or ['- none here'])]
 
 
 def situation(context, lately='', viewer=None):
@@ -816,6 +836,17 @@ def judge(context, character, act):
         return
     if not survival.config(context) or getattr(character, 'body', None) is None:
         return
+    if ablation.enabled('resolver'):
+        # one call, shown the whole stage, says what the deed does (sim/resolver.py); it is played
+        # as found (Context.do), and whoever it takes out of the scene is the resolver's to say
+        from sim import resolver
+        act.found = resolver.resolve(context, character, act)
+        act.resolved, act.refusal = ('resolved', '') if act.found['can'] else ('', act.found['why'] or 'it cannot be done here')
+        if act.found['can']:
+            act.leaves, act.leaves_to = resolver.leaving(context, character, act.found)
+        else:
+            act.found = None
+        return
     parts, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
     if not parts and not survival.active_threat_for(character) and ablation.enabled('keeper'):
         # not among what the world and the stage already have: the keeper says how the world works
@@ -917,10 +948,12 @@ def mend_deed(context, character, act):
         # speech nobody heard (..."Aight, I'm down"...)
         act.mode, act.target, act.unshown = 'Think', [], True
         return True
-    offered = survival.deed_offers(character)
+    offered = [] if ablation.enabled('resolver') else survival.deed_offers(character)
     trace.event('deed_refused', character=character.name, deed=act.action[:300], why=lacks, label=getattr(act, 'affordance', None), again=False)
     refused(context, character, act.action, lacks, chosen=True)
-    again = context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
+    # under the resolver the actor is told why and goes another way with its next act: the rewrite was
+    # made from the lists of labels, which the resolver does not read
+    again = '' if ablation.enabled('resolver') else context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
                              'holding': ', '.join(survival.named(context, i) for i in character.body.inventory) or 'nothing',
                              'lying': ', '.join(survival.named(context, p) for p in survival.lying(context, stage.here(character))) or 'nothing',
                              'offered': '\n'.join(f'- {o}' for o in offered) or '- nothing physical; only words'},

@@ -32,8 +32,12 @@ if os.environ.get('ATWAP_LLM'):
 # set-up) is written by this server whatever plays the parts: a small local model, given the
 # same characters and drives, planned berries, boar, wolf and left out the play's mystery.
 # The calls are named in utils/llm_api.py PLAN_TAGS. None, or ATWAP_PLAN_LLM=same: no planner.
-plan_server_name = 'sol'   # GPT-6.2 Sol plans (blind test 2026-11-17); needs OPENAI_API_KEY
-plan_model_name = None
+# Claude Opus 5.5 plans and resolves what deeds and lines do (the 'haiku' server is the Anthropic
+# path; needs CLAUDE_API_KEY or ANTHROPIC_API_KEY). On 225 recorded deeds (2026-11-20,
+# logs/review-20261120/resolver) it was the cleanest of Opus, GPT-6.2 Sol and Sonnet 5.5.
+# ATWAP_PLAN_LLM=sol puts Sol back.
+plan_server_name = 'haiku'
+plan_model_name = 'claude-opus-5-5'
 if os.environ.get('ATWAP_PLAN_LLM'):
     plan_server_name = os.environ['ATWAP_PLAN_LLM']
     plan_model_name = os.environ.get('ATWAP_PLAN_MODEL') or None

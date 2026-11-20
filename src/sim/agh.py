@@ -1241,7 +1241,10 @@ End response with:
             passing = bool(getattr(self.context, 'deed_passing', False))
             if character_updates and len(character_updates) > 0:
                 self.add_perceptual_input(f'{character_updates}', mode='internal')  
-            notices = '' if passing and not (consequences or '').strip() else self.process_consequences(act_arg, reason, consequences)
+            found = getattr(act, 'found', None)
+            if found:
+                act_arg = found['page']   # what is shown and recorded is what was done, as the resolver told it
+            notices = '' if found or (passing and not (consequences or '').strip()) else self.process_consequences(act_arg, reason, consequences)
             await asyncio.sleep(0)
             # the act text often starts with the character's own name ('Xue pulls a tablet ...')
             deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg)

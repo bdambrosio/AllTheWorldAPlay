@@ -225,7 +225,7 @@ _pool = {}
 
 def _backends(context):
     """[(name, llm, tag)]: the play's own planner, and any others named in ATWAP_DIRECTOR_LLMS
-    (server names as utils/llm_api.LLM takes them, e.g. 'sol,fireworks,haiku'). Several models
+    (server names as utils/llm_api.LLM takes them, e.g. 'fireworks,haiku,sol'). Several models
     write the candidates so that no one model's favourite reading is every night's play."""
     from utils import llm_api
     out = [('planner', context.llm, 'director.answers')]
