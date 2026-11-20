@@ -1666,7 +1666,7 @@ Rules:
 - The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
 - The world, not you, decides what happens to bodies and how a danger ends, and it decides when the scene is played. The set-up may bring a danger on; neither set-up, ending nor goals say that it strikes, whom it hurts, that it is driven off, or that anyone is wounded, healed or fed. Where the plan says so, keep what the scene is for and leave that out.
 - If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall), the set-up puts that thing in the scene and says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
-- The ending is the turn the scene should reach between the characters: something chosen, refused, admitted or found out, or how they now stand with each other, shown in what they do. Nobody announces a feeling or a choice: 'he says aloud that he stays' is not an ending; his staying is. It is not an event of the body or of the danger.
+- The ending is what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, each written as 'whether ...' or as the thing to come out ('Whether Mara lets them shelter at the hut, and on what terms'; 'What the two make of the cut in the bark, and whether they follow it'). Write it so that either answer could be seen or heard on stage, and give neither. A matter is something they are at odds over or do not yet know, not a detail of how the plan had it done (which words, which hand, which joke). Which way it falls, who gives way, who speaks first, who takes whose hand, who stays and who goes are the actors' to play: they are not in the ending. Where the plan's ending says what someone does, says, decides or keeps back, keep the matter that would settle and leave the deed out. It is not an event of the body or of the danger.
 - If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
@@ -1678,8 +1678,8 @@ Respond with these lines only:
 #location same, or the exact name of a place listed above
 #title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
 #setup how the scene opens, one or two sentences, true to where things stand: where the cast is, what is there, what presses on them. It is the opening only: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it; that is played
-#ending what the scene should arrive at, one sentence
-#goal <character name>: that character's goal in the scene (one line for each character)
+#ending what the scene is to settle, one sentence beginning 'Whether' or 'What': the matter, not its answer
+#goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's
 #unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
 #keeps <character name>: a thing that character knows and does NOT say, show or let slip in this scene (one line for each such thing; none for a character who keeps nothing back)
 #thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
@@ -2464,7 +2464,7 @@ Return exactly one JSON object with these keys:
 - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
 - "act_pre_state": (string, description of the situation / goals / tensions before the act starts. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
-- "act_post_state": (string, description of the situation / goals / tensions after the act ends)
+- "act_post_state": (string, what the act is to settle, never how it is settled: one or two matters open as the act begins, written as 'Whether ...' or 'What ...', which its scenes bring to a head. Give no answer; the acts after it are written from how it fell)
 - "tension_points": [
     {"characters": ["<Name>", ...], "issue": (string, concise description of the issue), "resolution_requirement": (string, "partial" / "complete")}
     ...
@@ -2477,10 +2477,10 @@ Each **scene** object must have:
  {{$location_field}}
  "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
  "duration": mm, // the duration of the scene, in minutes
- "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
+ "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
- "post_narrative": "Short prose (≤20 words): what is said or done on stage that ends the scene, as one or two things a watcher could point at: a thing told, refused, agreed, handed over or put away, or a deed the place offers. It may add one thing that is still not said or done when the scene ends. What a character is hiding is told only where the act's plan calls for it; elsewhere the scene ends on the refusal, the dodge or the thing put away, which can be pointed at as well. Not how anyone feels or what they notice or decide; not what the weather, an animal or a danger does; and nobody goes off alone unless that going is the ending. Nobody announces a feeling or a choice ('says aloud that he trusts her' is not an ending; handing her the key is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
+ "post_narrative": "Short prose (≤20 words): what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, written as 'Whether ...' or 'What ...' ('Whether Mara lets them shelter at the hut, and on what terms'), so that either answer could be seen or heard on stage. Give neither answer: which way it falls, who gives way, who speaks or acts first, who stays and who goes are the actors' to play, and the scenes after it are fitted to how it fell. A matter is something they are at odds over or do not yet know, not a detail of how it might be done. Not how anyone feels; not what the weather, an animal or a danger does. Where the act's framework names a change in a person, the matter of one scene is the test of it: whether that person does what they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 3 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the action_order to avoid rambling or repetition. 
  }
@@ -2503,9 +2503,9 @@ In performing this integration:
     2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}
-    4. Act post-state must specify: what the characters now know, what they've agreed to do together, and what specific tension remains unresolved.
-    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
-    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+    4. Act post-state names what the act is to settle, never how: what these people must find out about each other, or agree on or refuse, before they can go on.
+    5. The final scene's post-narrative is the matter of what they do about their shared challenge: whether they commit to it together, and to what.
+    6. The act's matters are concrete (a thing known, agreed, refused, taken or left), not moods; settled either way, things stand differently than at the act pre-state.
  """
         elif kind == 'middle':
             act_directives = f""" 
@@ -2517,21 +2517,21 @@ In performing this integration:
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
     7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
-    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+    9. Act post-state names what the act is to settle, never how: which obstacle is met or not, what is found out or stays hidden, what they are driven to consider.
+    10. Each scene's matter is harder than the one before it: a new problem or a thing newly at stake, not the same matter put again.
 """
         elif kind == 'resolving':
             act_directives = f""" 
 In performing this integration:
-    1. Directly answer the central dramatic question: {central_dramatic_question}. Decide how the central dramatic question will be answered now, before generating the act, and stick to it.
+    1. Directly answer the central dramatic question: {central_dramatic_question}. The answer is not yours to choose: it is what the characters do when the act's matters are put to them, so write the scenes to bring the question to a head, and no further.
     2. No scene should avoid engaging with the question's resolution you have chosen. Your target is 3 scenes maximum.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     4. Sequence scenes for maximum tension (alternate tension/relief beats)
     5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
     6. Add bridging scenes where character proposals create gaps, but only when essential.
-    7. Act post-state must explicitly state: whether the central dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
-    8. Final scene post-narrative must show the concrete resolution to the primary tensions in the scene- not "they find peace" but "they escape the forest together" or "they remain trapped but united."
-    9. No scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+    7. Act post-state is the central dramatic question itself, put as the matter this act settles. Do not state YES or NO or what the outcome is: that is what the act is played to find out.
+    8. The final scene's post-narrative is the matter whose settling answers the question, and it is concrete: whether they leave the forest together, not whether they find peace.
+    9. Every scene's matter bears on the central question: whichever way it falls, the question is nearer its answer.
 
 """
         else:   # the closing act
@@ -2543,8 +2543,8 @@ In performing this integration:
     4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
     5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
     6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
-    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
-    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
+    7. Act post-state names what is still to be settled between these people now that the question is answered: how they stand with each other, what each keeps or gives up.
+    8. The final scene's matter is small and closing: what each takes away from this, or leaves behind.
     9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution..
 """
 
@@ -2993,7 +2993,7 @@ End your response with: </end>"""
 </who_left_and_where_they_are>
 
 Rules:
-- Take the planned ending apart into its separate claims, and for each say whether the record shows it happened. A plan is not evidence: what was planned, intended, feared or only spoken of as a possibility did not happen.
+- Take the planned ending apart. Where it is a matter the scene was to settle ('Whether ...', 'What ...'), state how the record shows it fell ("Mara lets them shelter under the eaves"), with happened true; or, where the record leaves it open, state that ("Mara does not say whether she has walked out"), with happened true. Where it is a claim of what was to be done or said, say whether the record shows it happened. A plan is not evidence: what was planned, intended, feared or only spoken of as a possibility did not happen.
 - An animal, a person or a danger did not appear unless the record shows it appearing. Nobody is hurt, healed, fed, armed or dead unless what happened or the bodies say so.
 - Then add what the record shows that matters and the plan did not foresee: a choice made, a thing handed over or refused, a parting, an injury, something admitted.
 - A line written between dots (...like this...) is a private thought: it shows what someone thinks, not that anything happened.
@@ -3177,7 +3177,7 @@ End your response with </end>
             outcomes = await self.check_post_state_ambiguity(act)
             assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
             summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
-        post_state = summary.strip() + (f'\n(The act was planned to end with: {planned})' if planned else '')
+        post_state = summary.strip() + (f'\n(The act was to settle: {planned})' if planned else '')
         self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
         if self.screenplay.act:
             self.screenplay.act.summary, self.screenplay.act.post_state = summary.strip(), post_state
@@ -3768,7 +3768,7 @@ End your response with </end>
         one of its two lists: fetching water came back SIGNIFICANT.)"""
         scene = self.current_scene or {}
         scene_text = '\n'.join(x for x in (scene.get('scene_title', ''), f"Set-up: {scene.get('pre_narrative', '')}" if scene.get('pre_narrative') else '',
-                                           f"Where it is heading: {scene.get('post_narrative', '')}" if scene.get('post_narrative') else '') if x) or 'no scene'
+                                           f"What it is to settle: {scene.get('post_narrative', '')}" if scene.get('post_narrative') else '') if x) or 'no scene'
         response = self.llm.ask({"name": character.name,
                                "target_name": other_character.name,
                                "commitment_task": commitment_task.to_string(),
@@ -4078,9 +4078,9 @@ Again, the current act number is {{$act_number}} and the scene number is {{$scen
     1. This act should be short and to the point..
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {{$central_narrative}}
-    4. Act post-state must specify: what the characters now know, what they've agreed together, and what specific tension remains unresolved.
-    5. Final scene post-narrative must show characters making a concrete commitment or decision about their shared challenge.
-    6. Ensure act post-state represents measurable progress from act pre-state, not just mood shifts.
+    4. Act post-state names what the act is to settle, never how: what these people must find out about each other, or agree on or refuse, before they can go on.
+    5. The final scene's post-narrative is the matter of what they do about their shared challenge: whether they commit to it together, and to what.
+    6. The act's matters are concrete (a thing known, agreed, refused, taken or left), not moods; settled either way, things stand differently than at the act pre-state.
  
 ** For act 2 (midpoint act):
     1. Each scene must advance the central dramatic question: {{$central_narrative}}
@@ -4089,18 +4089,18 @@ Again, the current act number is {{$act_number}} and the scene number is {{$scen
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
     7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    8. Midpoint scene post-narrative must specify: what discovery/setback fundamentally changes the characters' approach to the central question.
-    9. Act post-state must show: what new obstacles emerged, what the characters now understand differently, and what desperate action they're forced to consider.
-    10. Each scene post-narrative must demonstrate measurable escalation from the previous scene - not just "tension increases" but specific new problems or revelations.
+    8. The midpoint scene's matter is one whose answer, either way, changes how the central question can be met.
+    9. Act post-state names what the act is to settle, never how: which obstacle is met or not, what is found out or stays hidden, what they are driven to consider.
+    10. Each scene's matter is harder than the one before it: a new problem or a thing newly at stake, not the same matter put again.
 
 ** For act 3 (final act):
     1. Directly answer the central dramatic question: {{$central_narrative}}
     2. No scene should avoid engaging with the question's resolution.
     3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)
     4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  
-    5. Act post-state must explicitly state: whether the General dramatic question was answered YES or NO, what specific outcome was achieved, and what the characters' final status is.
-    6. Final scene post-narrative must show the concrete resolution - not "they find peace" but "they escape the forest together" or "they remain trapped but united."
-    7. No Scene may end with ambiguous outcomes - each must show clear progress toward or away from resolving the central question.
+    5. Act post-state is the central dramatic question itself, put as the matter this act settles. Do not state YES or NO or what the outcome is: that is what the act is played to find out.
+    6. The final scene's post-narrative is the matter whose settling answers the question, and it is concrete: whether they leave the forest together, not whether they find peace.
+    7. Every scene's matter bears on the central question: whichever way it falls, the question is nearer its answer.
 
 ** For act 4 (coda):
     1. Show the immediate aftermath and consequences of Act 3's resolution of: {{$central_narrative}}
@@ -4109,8 +4109,8 @@ Again, the current act number is {{$act_number}} and the scene number is {{$scen
     4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
     5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
     6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
-    7. Act post-state must specify: the characters' new equilibrium, what they've learned or become, and their final emotional state.
-    8. Final scene post-narrative must provide definitive closure - show the "new normal" that results from their journey.
+    7. Act post-state names what is still to be settled between these people now that the question is answered: how they stand with each other, what each keeps or gives up.
+    8. The final scene's matter is small and closing: what each takes away from this, or leaves behind.
     9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution, not reopens questions.
 
 
@@ -4130,10 +4130,10 @@ Scene format is as follows:
  "scene_title": string, // concise descriptor 
  {{$location_field}}
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
- "characters": { "<Name>": { "goal": "<one-line playable goal>" }, … }, 
+ "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
- "post_narrative": "Short prose (≤20 words): what is said or done on stage that ends the scene, as one or two things a watcher could point at: a thing told, refused, agreed, handed over or put away, or a deed the place offers. It may add one thing that is still not said or done when the scene ends. What a character is hiding is told only where the act's plan calls for it; elsewhere the scene ends on the refusal, the dodge or the thing put away, which can be pointed at as well. Not how anyone feels or what they notice or decide; not what the weather, an animal or a danger does; and nobody goes off alone unless that going is the ending. Nobody announces a feeling or a choice ('says aloud that he trusts her' is not an ending; handing her the key is). Where the act's framework names a change in a person, the ending of one scene is a step of it: something that person does which they would not have done as the act opened." 
+ "post_narrative": "Short prose (≤20 words): what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, written as 'Whether ...' or 'What ...' ('Whether Mara lets them shelter at the hut, and on what terms'), so that either answer could be seen or heard on stage. Give neither answer: which way it falls, who gives way, who speaks or acts first, who stays and who goes are the actors' to play, and the scenes after it are fitted to how it fell. A matter is something they are at odds over or do not yet know, not a detail of how it might be done. Not how anyone feels; not what the weather, an animal or a danger does. Where the act's framework names a change in a person, the matter of one scene is the test of it: whether that person does what they would not have done as the act opened." 
  // OPTIONAL: 
  "task_budget": 4 (integer) – the total number of tasks (aka beats) for this scene. set this to the number of characters in the scene to avoid rambling or repetition, or to 1.67*len(characters) for scenes with complex goals or interactions.
  }

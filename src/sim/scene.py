@@ -9,8 +9,8 @@ and one that had not could empty on a spoken line.
 
 The owner holds the scene's sheet and is asked, as the scene is played, where it stands:
 
-  sheet      the planned ending as two to four outcomes, written before the first line
-             ('happens': a thing said or done at one moment; 'holds': a thing that must not
+  sheet      what the scene is to settle, as one to four outcomes, written before the first line
+             ('happens': a matter settled at one moment, whichever way it falls; 'holds': a thing that must not
              happen, or a state that must not change, before the scene ends)
   arrange()  the scene's beats: what each character's actor proposed (its task plan), read
              together beside the sheet, with repeats dropped, a beat added for an outcome nobody
@@ -77,32 +77,33 @@ from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
 
-OUTCOMES = """A scene of an improvised play is about to be played. Someone will watch it turn by turn and must be able to tell, from what is said and done on stage, when the scene has arrived where it was meant to. Turn the planned ending into what that watcher looks for.
+OUTCOMES = """A scene of an improvised play is about to be played. Someone will watch it turn by turn and must be able to tell, from what is said and done on stage, when the scene has arrived where it was meant to. The plan says what the scene is to settle, not how: turn that into what the watcher looks for.
 
 Scene: '{{$title}}', at {{$place}}
 How it opens: {{$setup}}
-Planned ending: {{$ending}}
+What the scene is to settle: {{$ending}}
 What each is after: {{$goals}}
 
-Write two to four outcomes. Each is one thing the planned ending needs, small enough to be seen in a single line or deed.
-- "kind": "happens" for something that is said or done on stage at one moment (a thing told, admitted, refused, handed over, a deed done). Write it so that one could point at the line or deed that does it.
-- "kind": "holds" for something that is so only if it lasts until the scene ends: a thing that must NOT happen before then (a secret not told, a question not asked, a thing not opened), or a state that must not change (nobody leaves, it stays shut). Write what would break it. Only where the planned ending's own words say a thing is not done, not said, kept back or stays as it is; most endings have none.
-- Only what the planned ending says. Nothing from how it opens, and nothing the ending does not ask for.
+Write one to four outcomes. Each is one matter the scene is to settle, small enough that the line or deed that settles it can be pointed at.
+- "kind": "happens" for a matter that is settled on stage at one moment. Write it as the matter and both ways it can fall: "It is settled whether Mara lets them shelter at the hut: she grants it, or she refuses and they give up asking." It has happened whichever way it falls. Never write which way, nor who brings it about. Each way is something said or done on stage: "or the scene ends without it" is not a way, and neither way is copied from what a character is after.
+- Where the plan's words still say what someone does or says ("she hands him the key"), write the matter that deed would settle ("It is settled whether he gets the key: it is handed over, or refused and he lets it go").
+- Every outcome is "happens". A thing the plan says is not done, not said or kept back is not an outcome: whether it is done, said or told is the matter, and it may fall either way.
+- Only the matters the plan names. Nothing from how it opens, and nothing it does not ask for.
 - One outcome is one thing. Leave out what merely goes with it (the light, what is on someone's hands, where they stand), unless the ending turns on that.
 - What someone feels, notices, decides or understands is not an outcome unless the ending has it said or shown; then write the saying or the showing.
-- If the ending has two things happen, they are two outcomes. At least one outcome is "happens".
+- If the plan names two matters, they are two outcomes.
 
 Answer with JSON only:
-{"outcomes": [{"kind": "happens" or "holds", "text": "..."}]}
+{"outcomes": [{"kind": "happens", "text": "..."}]}
 End your response with: </end>"""
 
 TRACK = """You are keeping track of one scene of an improvised play while it is being played. You do not write it and you do not judge whether it is good. Every few turns you say where it stands.
 
 Scene: '{{$title}}', at {{$place}}
 How it opened: {{$setup}}
-Planned ending: {{$ending}}
+What the scene is to settle: {{$ending}}
 
-What the planned ending needs:
+The matters, as outcomes:
 {{$outcomes}}
 
 The beat being played now: {{$beat}}
@@ -116,7 +117,8 @@ Answer four things.
 - Judge only from what the turns show said or done. A thing offered, promised, proposed, intended, asked for, talked about or about to happen has not happened.
 - A deed happened only as far as its line says. If it says the thing stayed where it was, or that nothing passed, it did not happen, whatever is said afterwards.
 - An outcome in several parts has happened only when every part has.
-- For a 'happens' outcome that has not happened, say also whether it still can. It is "gone" when the turns show it no longer can in this scene: the one who was to do it refused and the other gave way; or what it was for has come about another way (she was to be asked her name, and gave it unasked); or it was tried, it failed, and the two have since gone on to other things. Not yet tried, put off, or refused and still being pressed is not gone.
+- An outcome that begins 'It is settled whether' has happened when the turns show the matter settled, either way: granted or refused and the refusal let stand, told or plainly kept back and the asker lets it go, done or given up. Say in "by" which way it fell. Asked and not yet answered, put off ("ask me in the morning" while they still press), or refused and still being pressed, is not settled.
+- For a 'happens' outcome that has not happened, say also whether it still can. It is "gone" when the turns show it no longer can in this scene: the one who was to do it refused and the other gave way; or what it was for has come about another way (she was to be asked her name, and gave it unasked); or it was tried, it failed, and the two have since gone on to other things. Not yet tried, put off, or refused and still being pressed is not gone. (For an outcome that begins 'It is settled whether', a refusal that is let stand is the matter settled, and is reached, not gone.)
 - A 'holds' outcome stays open until the turns show the very thing it forbids; then it is broken.
 - Give the turn number and quote the words that show it.
 
@@ -134,15 +136,15 @@ Answer four things.
 
 JSON only:
 {"happens": [{"n": 1, "reached": true or false, "gone": true or false, "turn": 0, "by": "the words that show it"}], "holds": [{"n": 4, "broken": true or false, "turn": 0, "by": "the words that break it"}], "beat": "going" or "done" or "stalled", "awaiting": true or false, "why": "12 words at most", "next": "continue" or "next_beat" or "close"}
-List only outcomes not yet REACHED or BROKEN, each under its own kind. "broken" and "gone": true only when you can quote the turn that shows it; if you cannot, it is false.
+Give a row for every outcome marked 'still open' or GONE, each under its own kind, whether or not anything has changed for it; none for one already REACHED or BROKEN. "broken" and "gone": true only when you can quote the turn that shows it; if you cannot, it is false.
 End your response with: </end>"""
 
 BEATS = """A scene of an improvised play is about to be played. The actor of each character has proposed, without seeing the others', what that character does in it. Arrange the proposals into the scene's beats.
 
 Scene: '{{$title}}', at {{$place}}{{$kind}}
 How it opens: {{$setup}}
-Planned ending: {{$ending}}
-What the planned ending needs:
+What the scene is to settle: {{$ending}}
+The matters, as outcomes:
 {{$outcomes}}
 What each is after: {{$goals}}
 {{$keeps}}
@@ -152,7 +154,7 @@ The proposals:
 Write three to six beats, in the order they are to be played. A beat is one thing one character sets out to do; whoever it is put to answers it as they will.
 - Take a proposal as it stands wherever you can: give its number as "from" and leave "name", "what" and "done_when" empty.
 - Two beats never go after the same thing. Where two proposals ask for, offer or do the same thing (in the same words or in others, by the same character or by both), keep one and drop the other. A proposal that is a later stage of the same demand ("ask", then "press", then "hold to it") is the same thing.
-- Each 'happens' outcome needs a beat that can bring it about. If no proposal can, write a new beat for the character who would do it: "from" is null, and it is written from what that character wants and knows, never from what another keeps back.
+- Each 'happens' outcome is a matter to be settled, and needs a beat that brings it to a head: someone asks for it, offers it, presses it or does the thing that forces an answer. If no proposal does, write a new beat for the character who most wants it settled: "from" is null, and it is written from what that character wants and knows, never from what another keeps back. No beat says which way the matter falls, or what the one it is put to answers or does.
 - Keep the beats that are a character's own business and ask nothing of anyone else (work in hand, a joke, something offered, shown or told): the people are seen in those. A scene is not only its ending.
 - Order: what a later beat needs comes before it; the beats that bring about the ending come late; a beat that takes anyone away from this place is the last of all. Every character who proposed has a beat, and none has more than two running.
 - "done_when": something the character can bring about alone, or that either answer from the one it is put to satisfies (told, or refused). Never one that waits for someone else to give in.
