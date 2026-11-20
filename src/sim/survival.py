@@ -822,7 +822,7 @@ def writings_note(context, xy=None, people=()):
     # at a place: only what is in sight there (a narrator told what a still-hidden paper says would read it out);
     # with no place (the planners): all of them
     names = [p['name'] for p in getattr(context, 'props', [])
-             if xy is None or (_distance(p['at'], xy) <= CO_PRESENT_TILES and not p.get('hidden'))]
+             if xy is None or (at_hand(context, p['at'], xy) and not p.get('hidden'))]
     names += [i for c in people if getattr(c, 'body', None) is not None for i in c.body.inventory]
     seen, lines = set(), []
     for name in names:
@@ -839,7 +839,7 @@ def things_note(context, xy=None, people=()):
     xy: only those lying at or near that spot. (A set-up put the scarf on a peg, a search found it
     swept under the floor, and the next set-up laid it on the floor again while the actors took it
     to be in Samantha's hands: nobody writing of it was told where the world had it.)"""
-    props = [p for p in getattr(context, 'props', []) if xy is None or _distance(p['at'], xy) <= CO_PRESENT_TILES]
+    props = [p for p in getattr(context, 'props', []) if xy is None or at_hand(context, p['at'], xy)]
     lines = [f"{p['name']}: {whereabouts_of(context, p['name'])}" for p in props]
     for person in people:
         body = getattr(person, 'body', None)
@@ -856,11 +856,19 @@ def _nearest_resource_id(context, xy):
     return best[1] if best else ''
 
 
+def at_hand(context, at, xy):
+    """Whether a thing lying at `at` is at the spot `xy`: beside it, or within reach and at the
+    same place. (A clue laid at a bench two tiles from the cafe was listed as lying in the cafe
+    and picked up there, an act before the scene written for it.)"""
+    d = _distance(at, xy)
+    return d <= 1 or (d <= CO_PRESENT_TILES and _nearest_resource_id(context, at) == _nearest_resource_id(context, xy))
+
+
 def lying(context, xy, hidden=False):
     """The things lying at or near a spot, in plain sight; hidden=True for those that are found
     only by searching (a clue the director placed, see searchable)."""
     return [p for p in getattr(context, 'props', [])
-            if _distance(p['at'], xy) <= CO_PRESENT_TILES and bool(p.get('hidden')) == hidden]
+            if at_hand(context, p['at'], xy) and bool(p.get('hidden')) == hidden]
 
 
 def searchable(context, res):
@@ -888,7 +896,7 @@ def _thing(context, thing, character=None):
     if character is not None:
         here = _here(character)
         found = next((t for t in things if t['name'].lower() == name and t.get('holder') == character.name), None) \
-            or next((t for t in things if t['name'].lower() == name and t.get('at') is not None and _distance(t['at'], here) <= CO_PRESENT_TILES), None)
+            or next((t for t in things if t['name'].lower() == name and t.get('at') is not None and at_hand(context, t['at'], here)), None)
         if found is not None:
             return found
     return next((t for t in things if t['name'].lower() == name), None)

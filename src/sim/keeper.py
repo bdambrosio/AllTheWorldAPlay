@@ -266,6 +266,7 @@ def consider(context, character, deed):
     """Put a deed the stage could not place to the keeper. Returns {'can', 'why', 'does'}: 'does'
     is what code is to do when the deed is played (perform). Models it writes are kept at once:
     how the world works does not depend on whether this deed is the one chosen."""
+    from sim import survival
     from utils import json_reply
     from utils.Messages import UserMessage
     asked = context.__dict__.setdefault('_kept_deeds', {})
@@ -292,6 +293,12 @@ def consider(context, character, deed):
                  {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()),
                   'by': _by(d.get('by')), 'ends': 'in hand' if 'hand' in str(d.get('ends') or '').lower() else 'here'})
                 for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or d.get('action'))][:3]
+        # Taking up a thing that lies here is the stage's own 'take' and needs no model. (The keeper
+        # is not shown the offers for things, said 'creased notebook leaf: here, in hand' of a kind
+        # it gave no model for, and the deed was refused: 'no action here covers it'.)
+        takes = {k.lower(): k for k in survival.prop_offers(character)}
+        does = [{'action': takes[f"take {d['thing']}"]} if not d.get('action') and d['kind'] not in models(context) and d['by'] == 'here'
+                and d['ends'] == 'in hand' and f"take {d['thing']}" in takes else d for d in does]
         does = [d for d in does if d.get('action') or d['kind'] in models(context)]
         out = {'can': bool(does), 'why': '' if does else 'no action here covers it', 'does': does}
     trace.event('keeper', character=character.name, deed=deed[:200], can=out['can'], why=out['why'], does=out['does'])

@@ -3729,7 +3729,7 @@ After the framework, repeat four of its elements on lines of their own, exactly 
         return '\n'.join(formatted_task_plan)
     
 
-    SIGNIFICANCE = """Someone in a scene of an improvised play has just said they will do something. Decide whether the play gives it a beat.
+    SIGNIFICANCE = """Someone in a scene of an improvised play has just said they will do something. Decide whether the play gives it a beat: one thing the character sets out to do now, in this scene, that can be seen done.
 
 <the_scene>
 {{$current_scene}}
@@ -3754,9 +3754,10 @@ After the framework, repeat four of its elements on lines of their own, exactly 
 Answer with the first of these that fits:
 1. NOISE: not a real commitment to act now (a hypothetical, an opinion, a plan already settled said again, chatter), or nothing to do with this scene.
 2. REDUNDANT: a planned beat already does it, or it has already been done.
-3. CRUCIAL: the scene cannot reach where it is heading without it.
-4. SIGNIFICANT: it changes what happens between the characters, or moves the play's question.
-5. RELEVANT: anything else that fits the scene, such as a small errand or chore, to be played if there is room.
+3. STANDING: there is nothing to set out on now. It is only something to keep up or to hold back from for as long as it lasts (stay here, wait, keep watch, keep hold of a thing, keep to someone's side, say no more of it), or something for later or for if a thing happens (tomorrow, after they have eaten, if it comes closer). However much it matters, it is kept as a promise and is not a beat. Something they set out on now (a walk, a search, a meal, a rest, a telling) is not this, however long it takes and whoever goes along.
+4. CRUCIAL: the scene cannot reach where it is heading without it.
+5. SIGNIFICANT: it changes what happens between the characters, or moves the play's question.
+6. RELEVANT: anything else that fits the scene, such as a small errand or chore, to be played if there is room.
 Respond with the one word.
 End your response with </end>
 """
@@ -3765,7 +3766,9 @@ End your response with </end>
         """How much a commitment made in a dialog matters to the scene (place_commitment). (The
         prompt was 13k characters for a one-word answer, the scene given as its whole JSON; the
         levels overlapped, RELEVANT and SIGNIFICANT both 'relevant and unique', and CRUCIAL was in
-        one of its two lists: fetching water came back SIGNIFICANT.)"""
+        one of its two lists: fetching water came back SIGNIFICANT. And a promise to keep or to hold
+        back from, 'stay put tonight', came back SIGNIFICANT and was made a beat that nobody could
+        play: STANDING is what matters and is not a beat.)"""
         scene = self.current_scene or {}
         scene_text = '\n'.join(x for x in (scene.get('scene_title', ''), f"Set-up: {scene.get('pre_narrative', '')}" if scene.get('pre_narrative') else '',
                                            f"What it is to settle: {scene.get('post_narrative', '')}" if scene.get('post_narrative') else '') if x) or 'no scene'
@@ -3779,7 +3782,7 @@ End your response with </end>
                                 [UserMessage(content=self.SIGNIFICANCE)], max_tokens=100, stops=['</end>'], tag='evaluate_commitment_significance')
         return self.parse_significance(response)
 
-    SIGNIFICANCE_LEVELS = ('NOISE', 'REDUNDANT', 'RELEVANT', 'SIGNIFICANT', 'CRUCIAL')
+    SIGNIFICANCE_LEVELS = ('NOISE', 'REDUNDANT', 'STANDING', 'RELEVANT', 'SIGNIFICANT', 'CRUCIAL')
 
     @staticmethod
     def parse_significance(response):
@@ -3911,6 +3914,11 @@ End your response with </end>
           RELEVANT     up to 1.25x, as an optional entry that run_scene skips if the scene is
                        over budget by the time it comes up
           REDUNDANT / NOISE  dropped
+          STANDING     no beat: a promise to keep up, to hold back from or for later is nothing to
+                       play now (those who made and heard it keep it as what is owed between them)
+        A beat made here is the deed that was promised, with a few lines to get to it and no
+        talk of its own (task.from_talk; Character.natural_dialog_end): 'search the back room',
+        played as any beat, opened fourteen lines before anyone went.
         (The cap used to count only the tasks still to run, so a scene that kept completing
         tasks kept accepting new ones: a 3-beat scene ran 18 tasks.)
         Several commitments from one dialog run in the order given (each was inserted at
@@ -3922,7 +3930,7 @@ End your response with </end>
             why = 'no running scene'
         elif goal is None:
             why = 'no goal to attach it to'
-        elif significance in ('NOISE', 'REDUNDANT'):
+        elif significance in ('NOISE', 'REDUNDANT', 'STANDING'):
             why = significance
         if why is None:
             budget = max(1, self.scene_task_budget or len(plan))
@@ -3939,6 +3947,7 @@ End your response with </end>
         pos = index + 1
         while pos < len(plan) and plan[pos].get('inserted_at') == index:
             pos += 1
+        task.from_talk, task.talk_turns = True, 0
         entry = {'actor': character, 'goal': goal, 'task': task, 'inserted_at': index}
         if significance == 'RELEVANT':
             entry['optional'] = True

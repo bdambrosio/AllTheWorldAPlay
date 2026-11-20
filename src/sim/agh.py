@@ -2331,6 +2331,8 @@ End your response with:
                         significance=significance, in_scene=bool(in_scene), owner_tasks=owner_tasks)
         return added
 
+    TALK_FOR_A_DEED = 3   # the lines a beat made in talk may have, all told
+
     def natural_dialog_end(self, from_actor):
         """ called from acts when a character says something to this character """
         #if self.actor_models.get_actor_model(from_actor.name).dialog.turn_count > 10):
@@ -2339,10 +2341,18 @@ End your response with:
             return False
         dialog = from_actor.actor_models.get_actor_model(self.name).dialog
         transcript = dialog.get_current_dialog() # this is dialog from the perspective of self.
+        plan, at = self.context.scene_integrated_task_plan or [], self.context.scene_integrated_task_plan_index
+        beat = plan[at]['task'] if self.context.current_scene and at is not None and at < len(plan) else None
+        if getattr(beat, 'from_talk', False):
+            beat.talk_turns += 1   # every line said under a beat that was made in talk, whichever talk it is in
         if f'{self.name} says: ' not in transcript:
             # whoever is spoken to answers at least once: ending here left the speaker to repeat
             # the same proposal three times to someone who never replied
             return False
+        if getattr(beat, 'from_talk', False) and beat.talk_turns >= self.TALK_FOR_A_DEED:
+            # a beat made in talk is the deed that was promised: a few lines to get to it, no more
+            trace.event('talk_check', listener=self.name, lines=dialog.turn_count, beat='made in talk', awaiting=False, over=True)
+            return True
         if stage.tempo(self) == 'urgent':
             return True   # one exchange, then back to what is happening
         owner = scene_owner.owner_of(self.context)
