@@ -140,7 +140,6 @@ class Context():
         self.scene_pre_narrative = '' # setting up the scene
         self.scene_post_narrative = '' # dominant theme of the scene, concluding note
         self.play_file = None
-        self.map_file = None
         # A play file may ask for a director (sim/director.py). Each performance it writes the question
         # the play stands on from the sketch and settles what is so behind it; what the characters do
         # about it is theirs.
@@ -2188,7 +2187,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.current_act = None
         #await self.update()
                 
-    async def introduce_characters(self, play_file, map_file=None):
+    async def introduce_characters(self, play_file):
         """called from the simulation server to create narratives for all characters"""
 
         """Create narratives for all characters,
@@ -2211,7 +2210,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} characters introduced -----'})
         await asyncio.sleep(0.1)
 
-    async def create_character_narratives(self, play_file, map_file=None):
+    async def create_character_narratives(self, play_file):
         """called from the simulation server to create narratives for all characters"""
 
         """Create narratives for all characters,

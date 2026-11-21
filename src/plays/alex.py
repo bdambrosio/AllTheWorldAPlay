@@ -5,6 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -17,7 +18,6 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(suburban)
 
-map_file_name = 'suburban.py' # needed to trigger narrative creation
 narrative=True
 # Main character - person with morning routine and job
 Alex = NarrativeCharacter("Alex", """Alex, an unemployed 34-year-old man, a software developer.
@@ -55,10 +55,9 @@ Alex is in bed, having just woken up to the alarm. The automatic coffee maker ha
 Alex.add_perceptual_input("Your alarm just went off. It's 6:45 AM.", mode='internal')
 Alex.add_perceptual_input("Your job interview is at 10:00 AM downtown, at the Office. It's about 30 minutes away by car.", mode='internal')
 Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell coffee brewing - your automatic coffee maker started on schedule.", mode='internal')
-Receptionist.mapAgent.move_to_resource('Office1')
-Interviewer.mapAgent.move_to_resource('Office1')
-Susan.mapAgent.x = Alex.mapAgent.x
-Susan.mapAgent.y = Alex.mapAgent.y
+world.put_at(Receptionist, 'Office1')
+world.put_at(Interviewer, 'Office1')
+world.beside(Susan, Alex)
 W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Susan', 'partner of', 'Alex', 'partner of')

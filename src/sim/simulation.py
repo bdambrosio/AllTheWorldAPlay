@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from sim.mapview import MapVisualizer
+import sim.world as world
 from sim.character_dataclasses import Act, Goal, Task
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -322,18 +322,15 @@ class SimulationServer:
                 os.makedirs(self.known_actors_dir)
             logger.info(f"SimulationServer: Play '{play_name}' loaded and fully initialized with {len(self.sim_context.actors)+len(self.sim_context.extras)} actors")
             self.sim_context.message_queue.put({'name':self.sim_context.name, 'text':f'----- {play_name} loaded-----'})
-            map_file_name = None
-            if hasattr(module, 'map_file_name'):
-                map_file_name = module.map_file_name
             if hasattr(module, 'narrative') and module.narrative:
-                await self.sim_context.create_character_narratives(play_name, map_file_name)
+                await self.sim_context.create_character_narratives(play_name)
                 self.narrative_play = True
                 #await self.sim_context.run_character_narratives()
                 self.narrative_task = asyncio.create_task(self.sim_context.run_integrated_narrative())
                 self.narrative_task.add_done_callback(self._on_narrative_done)
             else:
-                print(f'narrative=False or map file name not found for {play_name}, running unplanned')
-                await self.sim_context.introduce_characters(play_name, map_file_name)
+                print(f'narrative=False for {play_name}, running unplanned')
+                await self.sim_context.introduce_characters(play_name)
         except Exception as e:
             traceback.print_exc()
             # don't leave a half-built play looking loaded
@@ -507,8 +504,7 @@ class SimulationServer:
     async def _show_map(self):
         """Show the map in a matplotlib window, pumping its GUI events cooperatively."""
         try:
-            viz = MapVisualizer(self.sim_context.map)
-            viz.draw_terrain_and_infrastructure()
+            viz = world.picture(self.sim_context)
             plt.ion()
             plt.show(block=False)
             while plt.get_fignums():

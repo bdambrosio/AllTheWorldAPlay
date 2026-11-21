@@ -19,7 +19,6 @@ class KnownActor:
         self.name: str = other_agh.name
         self.visible: bool = False
         self.goal: str = ''
-        self.distance: int = 0
         self.dialog: Dialog = Dialog(self.owner, self.actor_agh)
         if owner is other_agh or owner.name == other_agh.name:
             # self-model: the "no interactions yet" seed below made no sense for oneself
@@ -42,7 +41,6 @@ class KnownActor:
             'name': self.name,
             'visible': self.visible,
             'goal': self.goal,
-            'distance': self.distance,
             'relationship': self.relationship,
             'dialog': self.dialog.to_json() if self.dialog else None,
             'tensions': self.tensions,
@@ -65,7 +63,6 @@ class KnownActor:
         known_actor.name = data['name']
         known_actor.visible = data['visible']
         known_actor.goal = data['goal']
-        known_actor.distance = data['distance']
         known_actor._relationship_base = data['relationship']
         known_actor._relationship_notes = []
         known_actor.relationship = data['relationship']

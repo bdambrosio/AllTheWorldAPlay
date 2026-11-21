@@ -676,9 +676,6 @@ def affordance_prompt_line(character):
             f"joined by ' + ' (e.g. {example}; kneel + gesture to@Name), or the word passing for a small act that changes nothing. Omit for any other mode.")
 
 
-_CLAIM = re.compile(r"\bI(?:'m|’m| am)\s+(?:\w+ly\s+)?(\w+ing)\b", re.I)
-
-
 
 def do_business(context, character, label):
     """Carry out a planned scene action ('drink@Spring1') for a character who has not done it.
@@ -1033,18 +1030,6 @@ def add_place(context, kind, description, xy):
     rid = world.add_place(context, kind, description or f'a {kind.lower()}', xy).id
     trace.event('place_added', id=rid, type=kind, description=description)
     return rid, f"There is {description or _a(kind.lower())} here ({rid}): one can {', '.join(place_kinds(context)[kind])} there."
-
-
-def change_body(character, need, worse, size):
-    """A body changes as a plan says (a twisted ankle is an injury the body then has). Returns the fact."""
-    body = getattr(character, 'body', None)
-    cfg = config(character.context) or {}
-    need = _harm(cfg)['name'] if need in ('injury', 'harm', 'hurt', 'wound') else need
-    if body is None or need not in body.levels:
-        return ''
-    body.adjust(need, (1 if worse else -1) * {'slightly': 0.2, 'clearly': 0.4, 'badly': 0.6}.get(size, 0.3))
-    trace.event('body_changed', character=character.name, need=need, level=round(body.levels[need], 2))
-    return f"{character.name} is now {body.summary(public=True)}."
 
 
 # Things that no action of this world covers (a shoe found in a hut, a tally stick, a page) are

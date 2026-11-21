@@ -12,9 +12,7 @@ import plays.scenarios.forest as forest
 
 importlib.reload(forest)    
 narrative=True
-map_file_name='forest.py' # needed to trigger narrative creation
 
-#print(f'DEBUG: map_file_name: {map_file_name}')
 # Character definitions
 S = NarrativeCharacter("Samantha", """Samantha, a healthy, dark-haired young woman in grey hiking pants and a blue pendleton shirt. 
 You love the outdoors and hiking.

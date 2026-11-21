@@ -4,13 +4,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
 from plays.scenarios import apocalypse
 
 importlib.reload(configuration)# force reload in case cached version
-map_file_name = 'apocalypse.py' # needed to trigger narrative creation
 narrative=True
 server_name = configuration.server_name
 
@@ -55,8 +55,8 @@ The sun hangs low in the hazy sky, casting an eerie light over the buildings and
 
 # they meet in the park, by its fountain
 try:
-    K.mapAgent.move_to_resource('Park1')
-    L.mapAgent.move_to_resource('Park1')
+    world.put_at(K, 'Park1')
+    world.put_at(L, 'Park1')
     # the play turns on his notebook: it is the play's to give, not left to equip_cast (as the lunar torch)
     K.body.inventory += ['notebook', 'pen']
     L.body.inventory += ['harmonica']   # hers as the notebook is his: something to hold on with

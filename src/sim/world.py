@@ -296,3 +296,27 @@ def listed(context):
 def built(context):
     """Has this performance a world laid out (a play with no map has not)?"""
     return _grid(context) is not None
+
+
+def put_at(who, rid):
+    """Stand a person at a named place (a play file, before the play begins). False when this
+    world has no such place: the person stays where it was."""
+    p = place(who.context, rid)
+    if p is None:
+        logger.warning(f"{who.name} was to stand at '{rid}', which is no place in this world")
+        return False
+    put(who, p.xy)
+    return True
+
+
+def beside(who, other):
+    """Stand a person where another stands."""
+    put(who, at(other))
+
+
+def picture(context):
+    """The world drawn for whoever is running the play (the server's own window)."""
+    from sim.mapview import MapVisualizer
+    viz = MapVisualizer(_grid(context))
+    viz.draw_terrain_and_infrastructure()
+    return viz
