@@ -57,6 +57,7 @@ How this world works:
 - Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.
 - A look, a gesture, a step or two, a change of posture changes nothing that lasts, except the posture.
 - A deed is about the things it names: where the thing it means is not here, that part is not done, and no other thing is used in its place.
+- A deed meets this place as the stage has it. A thing, or a state or trace of a thing (a clean-cut limb, a fresh footprint), that the stage does not hold and a place of this kind would not ordinarily have is not there: the page does not show it, and what of the deed needs it is left out.
 - Where one part of the deed cannot be done and the rest still makes sense without it, the rest is done and that part is left out. Where nothing of it can be done, it cannot be done.
 
 Answer in JSON only:
@@ -270,8 +271,8 @@ How this world works:""" + _rules + """
 The words:
 - The words are what {name} says aloud, and only that. Anything else written into them, what is done or how it is said ('She snorts.', '*pats her pocket*', '(whispered)'), is a finding (aloud). The mark (lie) is not one: it stays.
 - Words do nothing physical, with one exception: words that hand a thing the speaker holds to someone present, in so many words ("here, take half"), are that hand-over. Give it among the effects, and say in "page" what is seen.
-- A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known (knows); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms).
-- These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
+- A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); a thing at this place, or a state or trace of one, that the stage does not hold and a place of this kind would not ordinarily have (here: 'a clean-cut limb' where the stage has only torn bark); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known (knows); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms). <lived> holds only the latest of the play: what is not in it may have been said or done before it, and is no finding.
+- These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, what someone makes of what is here (who did it, what it means: 'somebody pruned this tree'), a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
 - What {name} tells of its own life before the play is new to the world unless it is in <told>: list each new fact plainly, in the third person. If the words tell {listener} as news something already in <told>, give those words under "retold".
 - A promise is something the speaker says it will do, or agrees that they will do. Its kind: now, when it is to be done here in this scene (eat this, go in, set off); standing, when it is a rule or a condition to keep with nothing to do now ("no mushrooms", "wake me for my watch"); later, when it is for another time or place. A question, a proposal not yet agreed, or a demand on someone else is not a promise.
 
@@ -280,7 +281,7 @@ Answer in JSON only:
   "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
 """ + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
   "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
-  "findings": [{{"kind": "<aloud, holds, body, where, time, done, whose, writing, gender, knows or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
+  "findings": [{{"kind": "<aloud, holds, body, where, here, time, done, whose, writing, gender, knows or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
   "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
   "tells": ["<each new fact {name} tells of its own life before the play>"],
   "retold": "<the words that tell again as news what is already in told; else empty>",
@@ -386,7 +387,9 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
 # such a place would have, what it says that is not so, and the set-up as it may stand; what it
 # brings is then in the world, by one event. It takes the place of the check of the set-up's
 # claims, the admitting of them one by one, the reading of the set-up for deeds already played,
-# and the matching of place names in its text. (Untested for quality when written: 2026-11-20.)
+# and the matching of place names in its text. It also puts the title and the cast's goals right, says
+# which danger the set-up brings on, and is shown what has been promised (paired replay:
+# logs/review-20261121/setup).
 SETUP = """You keep the world of an improvised play. A scene is about to open with the set-up below, written by the planner. Say how it stands against the world as it is, before the audience is shown it.
 
 <world>
@@ -418,34 +421,49 @@ It is to end:
 <ending>
 {ending}
 </ending>
+What each of the cast is to go after in it:
+<goals>
+{goals}
+</goals>
 
 How a set-up stands:
-- It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed.
+- It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed: it is then on them from the scene's first moment.
 - It may not move a thing the world has elsewhere, put in anyone's hands what they do not hold, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
+- The title, the ending and each goal are held to the same: one that rests on something not so is put toward the same end with what is so. A person may still want, fear or suspect what is not so; a goal that is to show, find or use it may not.
+- Not_so is for what the world shows otherwise. What it does not show either way (who once lived here, what is past the trees) is not for you to settle.
 - Change as little as you can: keep the planner's words wherever they are true.
 
 Answer in JSON only:
 {{"place": "<the one listed place this scene is set at, by its exact name; or the word same when it is where the cast now stands>",
   "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place would ordinarily have, two to five words>", "fixed": true or false}}],
-  "not_so": [{{"words": "<the words of the set-up or ending that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
+  "danger": "<one of the dangers listed, by its name, when the set-up as it may stand has it here and on the cast now; else empty>",
+  "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
+  "title": "<the title as it may stand>",
   "setup": "<the set-up as it may stand: the same words if nothing is wrong; else the same with each of not_so put right or left out>",
-  "ending": "<the ending as it may stand: the same words unless it needs what nobody could do in this world>"}}
+  "ending": "<the ending as it may stand; it may not need what nobody could do in this world>",
+  "goals": {{"<a name from goals>": "<that goal as it may stand>"}}}}
 </end>"""
 
 
-def resolve_setup(context, scene, cast, hazards='none'):
-    """How a scene's set-up stands against the world: {'place', 'brings', 'not_so', 'setup',
-    'ending'}, or None when the answer could not be read (the set-up then stands as written)."""
+def resolve_setup(context, scene, cast, hazards=()):
+    """How a scene's set-up stands against the world: {'place', 'brings', 'danger', 'not_so',
+    'title', 'setup', 'ending', 'goals'}, or None when the answer could not be read (the set-up then
+    stands as written). hazards: the names of the dangers the scene may bring on. The goals are
+    the planner's for each of the cast (scene['characters']), put right as the set-up is: Samantha
+    was to 'show Joe clean tool cuts on the torn limbs' after the cuts were struck from the set-up,
+    and showed them."""
     from sim import keeper, record
     first = cast[0]
+    planned = {name: str((entry or {}).get('goal') or '').strip() for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict)}
     prompt = SETUP.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                           stage=record.account(context, 'stage', about=first, people=cast),
                           things=record.account(context, 'planner', people=cast) or 'nothing yet',
-                          places=stage.gazetteer(context) or 'none listed', hazards=hazards or 'none',
+                          places=stage.gazetteer(context) or 'none listed', hazards=', '.join(hazards) or 'none',
                           title=scene.get('scene_title', ''), location=scene.get('location') or 'same',
-                          setup=scene.get('pre_narrative', ''), ending=scene.get('post_narrative', ''))
+                          setup=scene.get('pre_narrative', ''), ending=scene.get('post_narrative', ''),
+                          goals='\n'.join(f'{n}: {g}' for n, g in planned.items() if g) or 'none given')
     reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_setup', temp=0.2, stops=['</end>'], max_tokens=900)
     found = json_reply.parse(reply) if reply else None
     if not isinstance(found, dict) or not str(found.get('setup') or '').strip():
@@ -456,8 +474,14 @@ def resolve_setup(context, scene, cast, hazards='none'):
     found['brings'] = [b for b in found.get('brings') or [] if isinstance(b, dict) and str(b.get('thing') or '').strip()][:4]
     found['not_so'] = [n for n in found.get('not_so') or [] if isinstance(n, dict) and str(n.get('words') or '').strip()]
     found['setup'], found['ending'] = ' '.join(str(found['setup']).split()), ' '.join(str(found.get('ending') or '').split())
-    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], brings=found['brings'], not_so=found['not_so'],
-                setup=found['setup'][:600], ending=found['ending'][:300])
+    found['title'] = ' '.join(str(found.get('title') or '').split()).strip('"\'')
+    danger = _low(found.get('danger'))
+    found['danger'] = next((h for h in hazards if h.lower() == danger), '')
+    goals = found.get('goals') if isinstance(found.get('goals'), dict) else {}
+    found['goals'] = {name: ' '.join(str(g).split()) for name in planned for k, g in goals.items()
+                      if _low(k) == name.lower() and str(g or '').strip() and ' '.join(str(g).split()) != planned[name]}
+    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], brings=found['brings'], danger=found['danger'],
+                not_so=found['not_so'], title=found['title'], setup=found['setup'][:600], ending=found['ending'][:300], goals=found['goals'])
     return found
 
 

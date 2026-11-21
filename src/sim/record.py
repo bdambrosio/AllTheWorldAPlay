@@ -210,8 +210,10 @@ def account(context, reader, about=None, people=None, full=False):
     if reader == 'planner':
         cast = list(people) if people is not None else context.everyone()
         told = [f"{t['who']} has told {', '.join(t['to']) or 'nobody yet'}: {t['fact']}" for t in ledger.of(context).told][-24:]
+        promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
         parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
-                 ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '']
+                 ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
+                 ("What has been promised or agreed, to keep or for later, oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)
     if reader == 'stage':
         return of(context, about, people, full)
@@ -650,7 +652,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
+SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
 
 
 def speech_claims(context, speaker, found):

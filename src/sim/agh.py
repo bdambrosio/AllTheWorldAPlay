@@ -1188,7 +1188,9 @@ End response with:
         """What a line promised (sim/resolver.py resolve_words). A thing its speaker is to do now,
         in this scene, is put to the scene as a commitment was at a talk's end: rated once
         (Context.evaluate_commitment_significance, which passes over what a planned beat already
-        does) and placed if it earns a beat. What is to be kept, or is for later, is only kept."""
+        does) and placed if it earns a beat. What is to be kept, or is for later, is kept in the
+        ledger, for whoever is shown the play's things (record.account 'planner')."""
+        from sim import ledger
         for p in promises:
             kind, who, what = str(p.get('kind') or '').strip().lower(), str(p.get('who') or ''), ' '.join(str(p.get('what') or '').split())
             mine = self.name.lower() in who.lower() or who.strip().lower() in ('both', 'they', 'we', 'the two')
@@ -1199,6 +1201,10 @@ End response with:
                             start_time=self.context.simulation_time, duration=1)
                 significance = self.context.evaluate_commitment_significance(self, other, task)
                 placed = bool(self.context.place_commitment(self, task, significance))
+                kind = 'standing' if significance == 'STANDING' else kind   # 'stay here', rated a rule to keep
+            if kind in ('standing', 'later') and what:
+                ledger.of(self.context).promised.append({'who': who or self.name, 'to': [h.name for h in self.hearers() if h is not self],
+                                                         'what': what, 'kind': kind, 'event': (ledger.of(self.context).open or [None])[-1]})
             trace.event('promise', character=self.name, who=who, what=what, when=kind, placed=placed)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
@@ -1467,7 +1473,7 @@ End response with:
                 given = Act(mode='Do', action=deed or act_arg, actors=[self], reason='', duration=1, source=None, target=[])
                 given.found = said
                 resolver.apply(self.context, self, given)
-                seen = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', said['page'])
+                seen = re.sub(rf'^\s*{re.escape(self.name)}[\s,]+', '', said['page'])   # 'Samantha, sitting...' was put down 'Samantha Samantha, sitting'
                 if seen:
                     self.context.add_event(f'{self.name} {seen}', doer=self)
                     self.context.to_page(self.name, seen)

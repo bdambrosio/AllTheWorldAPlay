@@ -1836,8 +1836,15 @@ def stage_hazard(context, scene, cast):
     """When a scene's set-up brings on one of the world's hazards ('The boar bursts from the
     undergrowth'), it is a real one: it threatens the cast, they must answer it, and it strikes
     or is driven off by the world's rules. (The planned boar was only words: it never acted,
-    and the scene was about a branch.)"""
-    hazard = brought_on(context, scene)
+    and the scene was about a branch.) Where the set-up was resolved against the world
+    (resolver.resolve_setup) that call says which danger it brings on: 'a gaunt grey wolf slinks
+    out' matched none of the verbs `arrives` knows, and the wolf was words again."""
+    if 'danger' in scene:
+        named = scene['danger']
+        hazard = None if (not named or getattr(context, 'active_threat', None) or hazard_spent(context)) else \
+            next((h for h in (config(context) or {}).get('hazards', []) if h['name'].lower() == named.lower()), None)
+    else:
+        hazard = brought_on(context, scene)
     exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
     if hazard is None or not exposed:
         return

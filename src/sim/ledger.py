@@ -160,6 +160,10 @@ class Ledger:
         # what each person has told of their own life before the play: {'who', 'to' [names], 'fact',
         # 'event'}. A thing said of oneself is kept as told, and is the same for every later reader
         self.told = Kept(self, 'told')
+        # what has been promised or agreed in a line, to keep or for later: {'who', 'to' [names],
+        # 'what', 'kind' ('standing' | 'later'), 'event'}. (Kept only in the trace, an agreement
+        # made in one scene was struck from the next one's set-up as never made.)
+        self.promised = Kept(self, 'promised')
         self.open = []          # the events being committed, the innermost last (Context.committing)
         self.begun = False      # the play has begun: from now on every change belongs to an event
         self.loose_writes = {}  # where in the code a change was made outside any event -> how often

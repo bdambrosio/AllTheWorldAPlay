@@ -1793,14 +1793,23 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 # resolve_setup): where the scene is, what the set-up brings that such a place
                 # would have, and the set-up and ending as they may stand. What it brings is in the
                 # world from the scene's opening, by one event.
-                found = resolver.resolve_setup(self, scene, cast, hazards=', '.join(hazards) or 'none')
+                # a danger may come on only while the play has not had its one, and none is on the cast
+                may_bring = [] if (threat or survival.hazard_spent(self)) else hazards
+                found = resolver.resolve_setup(self, scene, cast, hazards=may_bring)
                 if found is not None:
                     with self.committing('set'):
                         brought += resolver.apply_setup(self, scene, cast, found)
                     keep = opens_act and not self._exit_parties()   # an act's first scene keeps its planned place (above)
-                    for key, value in (('location', '' if keep else found['place']), ('pre_narrative', found['setup']), ('post_narrative', found['ending'])):
+                    for key, value in (('location', '' if keep else found['place']), ('pre_narrative', found['setup']),
+                                       ('post_narrative', found['ending']), ('scene_title', found['title'])):
                         if value and value != scene.get(key):
                             changed[key] = scene[key] = value
+                    for name, goal in found['goals'].items():
+                        entry = (scene.get('characters') or {}).get(name)
+                        if isinstance(entry, dict):
+                            entry['goal'] = changed[f'goal {name}'] = goal
+                    # the danger the set-up has on the cast is started with the scene (survival.stage_hazard)
+                    scene['danger'] = found['danger']
                     note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in found['not_so'])
                 break
             if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
