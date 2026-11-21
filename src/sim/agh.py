@@ -1423,7 +1423,7 @@ End response with:
             staged = re.match(r'^\s*([^"“”]{6,}?):\s*["“](.+?)["”]?\s*$', act_arg or '', re.S)
             # what the speaker does as it speaks (the actor's #do beside its #say, a reply's <does>):
             # one act with the line, resolved with it in one call and shown before the words
-            resolving = ablation.enabled('resolver') and getattr(self, 'body', None) is not None and bool(survival.config(self.context))
+            resolving = getattr(self, 'body', None) is not None and bool(survival.config(self.context))
             deed = ' '.join((getattr(act, 'deed', '') or '').split()) if resolving else ''
             if staged:
                 business = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', staged.group(1).strip()).rstrip('.,;')
@@ -1433,12 +1433,10 @@ End response with:
                 if resolving:
                     # the deed said beside the line: resolved with it, below (sim/resolver.py)
                     deed, parts = deed or f'{self.name} {business}', True
-                else:
-                    parts = survival.classify_deed(self.context, self, f'{self.name} {business}')[0] if getattr(self, 'body', None) is not None and survival.config(self.context) else [survival.PASSING]
-                    if parts:
-                        survival.resolve_do(self.context, self, f'{self.name} {business}', resolved=' + '.join(parts))
-                        self.context.add_event(f'{self.name} {business}')
-                        self.context.to_page(self.name, business)
+                else:   # a world with no mechanics: shown as written
+                    parts = True
+                    self.context.add_event(f'{self.name} {business}')
+                    self.context.to_page(self.name, business)
                 trace.event('say_staged', character=self.name, business=business, done=bool(parts))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             # A line is held to what its speaker cannot be mistaken about (its hands, its body,
@@ -1480,7 +1478,6 @@ End response with:
             self.context.to_page(self.name, f"'{act_arg}'", kind='speech', transcript=False, elevenlabs_params=json.dumps(elevenlabs_params))
             self.context.say(self, act_arg, self.hearers())
             await asyncio.sleep(0)
-            done = None
             if said is not None:
                 # what the line was found to tell and promise (record.speech, sim/resolver.py):
                 # part of the line's own event
@@ -1489,16 +1486,6 @@ End response with:
                 if said['retold']:
                     trace.event('retold', character=self.name, words=said['retold'][:200])
                 self._promised(said['promises'], self._first_character(target, act))
-            else:
-                done = survival.spoken_deed(self.context, self, act_arg)
-            if not done and handed:   # 'Here, take the branch': the words hand it over
-                done = survival.resolve_do(self.context, self, f'hands {handed[1].name} the {handed[0]}', targets=[handed[1]])
-                if not (getattr(self, 'last_affordance', None) or {}).get('applied'):
-                    done = None   # out of reach, or not the speaker's to give: it was only said
-                self.last_affordance = None
-            if done:
-                self.context.add_event(f'{self.name} -> {done}', doer=self)
-                self.context.to_page(self.name, re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), transcript=False)
             self.context.close_event(line_event)
             self._walk_after(act, reason, alone=leaving and act.leaves == 'alone')
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
@@ -2339,148 +2326,6 @@ Respond only with the one act.
                 names += [f'{c.name}: {t.name}' for t in c.focus_goal.task_plan]
         return '\n'.join(names)
 
-    async def extract_commitments_following_conversation(self, other:Character, transcript:str):
-        """One pass over a finished dialog for new commitments by either party, individual or joint.
-        Replaces a joint pass plus up to two individual passes (3 LLM calls, joint tasks recorded
-        for one party only). Each commitment is rated once (Context.evaluate_commitment_significance)
-        and, in a scene, placed for each committing character (Context.place_commitment); outside
-        a scene it is added to that character's goal plan. Returns the tasks added."""
-        if self.check_if_in_dialog_subtask():
-            return []
-        prompt=[UserMessage(content="""Your task is to analyze the following transcript of a conversation between {{$name}} and {{$other_name}},
-and identify any new commitments to act now made in it, by {{$name}}, by {{$other_name}}, or by both together. Otherwise respond None.
-Any commitment reported must be definite, immediate, non-hypothetical, and remain unfulfilled at the end of the transcript.
-A commitment must come from a clear, firm statement of intent to act, not from a question, an opinion, a statement of fact, or other conversational noise.
-Be careful to distinguish between hypotheticals and actual commitments. Respond only with actual commitments.
-A promise for later is not a commitment to act now. What is put off to another time or place ("tomorrow at the fountain", "after we eat", "on the road", "once it is dark", "next time") is not reported: only what is to be done at once, here, before this scene ends.
-
-<hypothetical commitments example>
-Interviewer says: Alex, suppose you're thrown into a high-stakes project using unfamiliar tech,
-     and the timeline's slashed in half - how would you keep things from unraveling without your usual backup?
-Alex says: If that happened, I'd quickly get up to speed on the essentials and trim the project down.
-    I'd be clear about the risks from the start, tackle key features first, and adjust as needed.
-</hypothetical commitments example>
-
-Any new commitment should be consistent with the scene being played, as given below.
-
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
-<scene>
-{{$scene}}
-</scene>
-
-<transcript>
-{{$transcript}}
-</transcript>
-
-Tasks already planned (a commitment that repeats one of these is not new):
-<pending_tasks>
-{{$pending_tasks}}
-</pending_tasks>
-
-An action can be physical or verbal. Thought, e.g. 'reflect on my situation', is NOT a commitment to act.
-For each commitment, #actors names who committed to act: one name for an individual commitment, both names for a joint one.
-Report at most 3 commitments, most concrete and immediate first, in the temporal order implied by the transcript.
-
-Respond using the following hash-formatted text, where each tag is preceded by a # and followed by a single space, followed by its content.
-Close each commitment with ## on a separate line. Be careful to insert line breaks only where shown, separating a value from the next tag:
-
-#name brief (4 words max) task name
-#description terse (6 words max) statement of the action to be taken
-#actors names of the committing character(s), comma separated
-#reason (4 words max) on why this action is important now
-#duration (2 words) expected duration of the action in minutes
-#termination (5 words max) easily satisfied termination test to quickly end this task
-##
-
-Always refer to characters by name, never by pronoun or label ('he', 'she', 'other', 'Agent').
-
-===Example===
-
-<transcript>
-Jean says: Hey Francoise, what needs doin' on the farm today?
-Francoise says: Waterin' the south field's a priority, Jean. Crops are gettin' parched.
-Jean says: Aye, let's get the waterin' done first. I'll grab the buckets and meet you by the well.
-Francoise says: I'll meet you by the well then, Jean.
-Jean says: See you by the well, Francoise. I'll bring the ropes too, just in case.
-</transcript>
-
-Response:
-
-#name water south field
-#description Meet by the well, water field
-#actors Jean, Francoise
-#reason crops are parched
-#duration 30 minutes
-#termination south field watered
-##
-#name bring ropes
-#description bring ropes to the well
-#actors Jean
-#reason in case a handle breaks
-#duration 10 minutes
-#termination ropes at the well
-##
-
-===End Example===
-
-Do NOT include any introductory, explanatory, or discursive text.
-End your response with:
-</end>
-""")]
-        response = self.llm.ask({"transcript": transcript,
-                                 "pending_tasks": self._pending_task_names(other),
-                                 "name": self.name,
-                                 "other_name": other.name,
-                                 "central_narrative": self.story_note(),
-                                 "act_specific_narrative": self.act_direction(),
-                                 "scene": self.director_notes(story=False)},
-                                prompt, tag='extract_commitments_following_conversation', temp=0.1, stops=['</end>'], max_tokens=300)
-        added = []
-        hashes = hash_utils.findall_forms(response) if response else []
-        if not hashes:
-            print(f'no new commitments in conversation {self.name} / {other.name}')
-            return added
-        in_scene = self.__class__.__name__ == 'NarrativeCharacter' and self.context.current_scene
-        for task_hash in hashes:
-            task = self.validate_and_create_task(task_hash, include_self=False)
-            if not task:
-                continue
-            owners = [c for c in (self, other) if c in (task.actors or [])] or [self]
-            significance = None
-            if in_scene:
-                significance = self.context.evaluate_commitment_significance(owners[0], other if owners[0] is self else self, task)
-            if in_scene and scene_owner.owner_of(self.context) is not None:
-                # where the scene has an owner a thing agreed between two is one beat, the first
-                # party's: as a beat for each it was played twice ('eat small pile', 'sit out last
-                # hour'), and ten such beats in eight scenes pushed the arranged ones off the end
-                owners = owners[:1]
-            owner_tasks = []
-            for i, owner in enumerate(owners):
-                # a joint commitment becomes a task for each party (it ran for one party only)
-                owner_task = task if i == 0 else Task(task.name, task.description, task.reason, task.actors, None,
-                                                      termination=task.termination,
-                                                      start_time=self.context.simulation_time, duration=task.duration)
-                owner_tasks.append((owner.name, owner_task.id))
-                if in_scene:
-                    if self.context.place_commitment(owner, owner_task, significance):
-                        added.append(owner_task)
-                elif owner.focus_goal:
-                    await owner.generate_task_plan(owner.focus_goal, new_task=owner_task, replan=True)
-                    added.append(owner_task)
-                else:
-                    print(f'{owner.name}: no focus goal, commitment {owner_task.name} dropped')
-            trace.event('commitment_extracted', task=task.name, description=task.description,
-                        speaker=other.name, listener=self.name, joint=len(owners) > 1,
-                        significance=significance, in_scene=bool(in_scene), owner_tasks=owner_tasks)
-        return added
-
     TALK_FOR_A_DEED = 3   # the lines a beat made in talk may have, all told
 
     def natural_dialog_end(self, from_actor):
@@ -2645,11 +2490,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor._pop_dialog_task(self)
 
-            # (under the resolver each line's promises are read as it is said: Character._promised)
-            if self.name != 'Viewer' and from_actor.name != 'Viewer' and ablation.enabled('commitments') and not ablation.enabled('resolver'):
-                # once both dialog tasks are off the stacks: one pass for both parties' commitments
-                await self.extract_commitments_following_conversation(from_actor, dialog)
-                await asyncio.sleep(0)
+            # (each line's promises are read as it is said: Character._promised)
             return
 
         cut_in = self.bystander_cuts_in(from_actor, message)
@@ -3758,7 +3599,7 @@ End your response with:
             await self.request_action_choice(action_alternatives, first_choice=not task.acts) # sets self.focus_action
             trace.event('act_choice', character=self.name, task_id=task.id, offered=len(offered),
                         played=next((i for i, a in enumerate(offered) if a is self.focus_action), None), first_of_task=not task.acts)
-            if ablation.enabled('resolver') and record._is_do(self.focus_action):
+            if record._is_do(self.focus_action):
                 # the deed chosen is resolved now; one that cannot be done here gives way to the
                 # other act its actor offered, when that one can
                 record.judge(self.context, self, self.focus_action)

@@ -380,3 +380,53 @@ world's own actions.
 Crash checks, two scenes of lost each, read for errors only: the code of `eff887e` (662 s, no
 error) and the code of this section (602 s, no error; no deed was refused and the keeper was
 not needed).
+
+## 10. One way in, one way out (2026-11-20)
+
+What stands after the overhaul of 2026-11-20. Written the evening the code went in; none of
+sections D to F below had been played when this was written.
+
+**Why.** The physical faults of November all sat where prose became state: an act existed twice,
+as the text shown and as the labels applied, written by different calls. Fixing that seam with
+one resolver call left a second fault visible: the store kept what was true now and nothing of
+how it came to be, and some twenty code paths wrote to it while sixteen described it. A woman's
+own fingermarks in the mud were listed as a thing lying at a spring, and the cast spent an act
+tracking a stranger.
+
+**One way in.** Whatever changes the stage is one event (`Context.committing`): a deed, a line,
+a walk, a leaving, a scene being set, time passing, the director's placing, a hazard. The event
+keeps what it changed, the line shown for it and its entry in the record together. A thing knows
+the event that made it and the one that last changed it (`ledger.Thing.made`, `.last`,
+`.state_by`). A change or a shown deed outside any event is traced (`uncommitted_write`,
+`unrecorded_line`).
+
+**One way out.** `record.account(context, reader)` describes the stage for a character, for the
+stage's own calls, or for the planner, from the same things, traces and told facts by the same
+wording. What a deed made or left is told as whose doing it is, as the reader may know it
+(`survival.whose`): by you, by the one named, or not seen by whom. A trace of a deed is never a
+thing lying there (`ledger.marks`).
+
+**One act, resolved once** (`sim/resolver.py`). The actor writes one act: words, a deed, or both,
+and a walk after them. One call, shown the stage, what the doer has lived, what it has told and
+what it does not know, says what the deed does (effects in the ledger's terms and the line for
+the page), what the words hand over, what they state that is not so and how the line can truly
+be said, what they tell of the speaker's life, and what they promise. What a person tells of
+itself is kept (`ledger.told`) and shown to both. A deed is resolved when chosen, not before.
+
+**Scenes and time.** A set-up is resolved against the world in one call (`resolve_setup`) and
+what it brings is in the world by one event. A scene is where its cast stands and walks on with
+it. Nothing is met off the page between scenes.
+
+**Needs and the catalogue.** In a world without money (`survival.free`) a body's needs are facts
+about the person, eased or worsened by what an act is found to do, and what a kind of place gives
+is taken from it without a list of actions. Worlds with money (rural, coastal, suburban, city)
+keep their catalogue: paying and owning have not been worked out without it.
+
+**Still standing from before, on purpose.** `survival._apply`, `_chosen`, `classify_deed`,
+`resolve_do` and the narrator path of `Context.do` remain for the money worlds and for worlds
+with no mechanics. Hazards and their listed answers are unchanged. `record.situation` and
+`keeper._stage` are not yet routed through `record.account`.
+
+**Evidence** (in `logs/review-20261120/`): `resolver/` (225 recorded deeds), `render/` (whose
+doing, replayed), `act/` (209 recorded lines; the one-act form), `engine/smoke.py` (one small
+check per stage).

@@ -16,7 +16,7 @@ and lasts until the next load. Everything is enabled by default.
   resolver         what a deed does is said by one call shown the whole stage, and the page is written from it
                    (sim/resolver.py); off, a deed is judged against labels and narrated as it was before
 """
-FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate', 'scene_owner', 'owner_beats', 'keeper', 'resolver')
+FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate', 'scene_owner', 'owner_beats', 'keeper')
 _disabled: set = set()
 
 

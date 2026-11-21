@@ -563,73 +563,6 @@ def setup_deeds(context, setup, purpose):
     return [d.strip() for d in deeds if isinstance(d, str) and d.strip()] if isinstance(deeds, list) else []
 
 
-ENDING = """A scene of an improvised play is planned to end as below. The actors can make their characters' bodies do only what is listed under What bodies can do; whatever else the ending needs done with hands or bodies cannot be played.
-
-<ending>
-{{$ending}}
-</ending>
-
-What bodies can do:
-{{$can}}
-Things held, and lying where the scene is set:
-{{$things}}
-
-Which words of the ending have someone do a physical thing that is none of these? Opening, shutting, barring or wedging a door; putting on or taking off a garment; tearing, breaking, lighting, building or making a thing; moving, pulling, holding or striking another person; using or handing over a thing that is not listed as held or lying there.
-These are never findings: what is said, told, sung, asked, admitted, chosen or refused; where people stand, sit or go; a look, a nod, a hand held out; eating, drinking, resting or sleeping where a place offers it; a thing listed above given, held out, taken, put down, shown, put away, or sounded if it is an instrument; what a danger of this world does.
-When you are not sure, it is no finding.
-
-Answer in JSON only: {"beyond": ["<the ending's own words for each such act, exactly as written>"]}, or {"beyond": []} if there are none.
-</end>
-"""
-
-
-def ending_beyond(context, ending, cast):
-    """The words of a scene's planned ending that have a body do what no body can do in this
-    world, [str]; [] for none or when the check could not be read. (The actors are held to the
-    actions on offer; a plan that ended on 'he strips off his shirt and hands it over' gave them
-    a scene that could not reach its end.)"""
-    if not (ending or '').strip() or not cast:
-        return []
-    from utils import json_reply
-    reply = context.llm.ask({'ending': ending, 'can': stage.gazetteer(context) or 'nothing listed',
-                             'things': account(context, 'planner', people=cast) or 'nothing'},
-                            [UserMessage(content=ENDING)], tag='record.ending_beyond', temp=0.1, stops=['</end>'], max_tokens=200)
-    found = json_reply.parse(reply) if reply else None
-    beyond = found.get('beyond') if isinstance(found, dict) else None
-    return [b.strip() for b in beyond if isinstance(b, str) and b.strip()] if isinstance(beyond, list) else []
-
-
-ENDING_CUT = """A scene of an improvised play was planned to end as below. Part of that ending cannot be played on this stage and has to go.
-
-<ending>
-{{$ending}}
-</ending>
-
-What cannot be played:
-{{$refused}}
-
-Write the ending again with every part listed there taken out. Everything else that is said or done in it stays, in its own words and in the same order. What is left has to read as whole sentences: a clause that only leaned on a part taken out goes with it, and so does a name left with nothing said or done. Put nothing in the place of what went and add nothing new.
-
-Answer in JSON only: {"ending": "<the ending without that part>"}
-</end>
-"""
-
-
-def ending_without(context, ending, refused):
-    """`ending` with the parts in `refused` ([str]) taken out and the rest left as it was, or ''
-    when it could not be read. For an ending that the cut by sentences (strip) would leave empty:
-    it is one sentence, and the whole of it went for one clause ('they split what the shelves
-    gave'), so the scene had no ending, no sheet and nothing to end it."""
-    if not (ending or '').strip() or not refused:
-        return ''
-    from utils import json_reply
-    reply = context.llm.ask({'ending': ending.strip(), 'refused': '\n'.join(f'- {r}' for r in refused)},
-                            [UserMessage(content=ENDING_CUT)], tag='record.ending_cut', temp=0.1, stops=['</end>'], max_tokens=200)
-    found = json_reply.parse(reply) if reply else None
-    kept = found.get('ending') if isinstance(found, dict) else None
-    return kept.strip() if isinstance(kept, str) else ''
-
-
 def strip(text, claims):
     """`text` without the sentences that carry one of `claims` (a claim found in no sentence is
     let go: this is for a plan's fields, each checked against claims found in all of them)."""
@@ -688,47 +621,6 @@ def settle(context, actor, action, facts, narration, rewrite, kind='do', source=
 # not meant as a lie, is an error of the engine ("Here. Clean water." with empty hands, which
 # the listener then took as given), and is said again without it before anyone hears it.
 # Everything else a character says is its own: opinions, guesses, plans, fears, figures of speech.
-SPEECH = """A character in a play is about to speak. Check the line against what the speaker cannot be mistaken about: itself, at this moment.
-
-Speaker: {{$name}}
-<about {{$name}}, now>
-{{$record}}
-</about>
-
-What {{$name}} has lately lived and heard:
-<heard>
-{{$heard}}
-</heard>
-
-What {{$name}} does not know (the director's list; the actor was told, the character was not):
-<does_not_know>
-{{$unknown}}
-</does_not_know>
-
-<line>
-{{$line}}
-</line>
-
-Find only statements of these kinds. The first five are said of now:
-- holds: {{$name}} says it has, holds, offers or hands over a thing that Holdings does not give it ("Here, clean water" with no water in hand; "take one" when it holds none of the thing meant). A thing Holdings does give it is no finding, whatever it is called ("this", "it", "one"). Fetching or finding a thing later is not holding it.
-- body: {{$name}} says its own body is in a state that Bodies does not show (hurt, bleeding, fed, parched, rested). Saying what Bodies does show, in any words ("my throat's dry" when thirsty), is no finding; fear, relief and other states of mind are not the body.
-- where: {{$name}} says it, or someone present, is now at a place other than where Present puts them. Naming a place, pointing at it, heading for it or talking about going there is not being there.
-- time: {{$name}} speaks of the hour, the light or the part of the day as it is now, against Time: a greeting counts ("Morning" said at night). Speaking of a time to come ("before dark", "tonight", "tomorrow") is no finding, nor is a colour or a thing ("the dark fruit").
-- done: {{$name}} says that a physical act has just been done here, or is being done as it speaks, by itself or by someone present, when what {{$name}} has lived and heard does not show it done: a thing written, eaten, opened, pocketed, handed over, a door shut ("There, written, fresh as the ink"; "Pocketed already"; "Plate's clean" when nobody has eaten). Words do nothing physical. What the record shows was done, said in any words, is no finding; nor is a plan, an order, an offer, or a thing done before the play or in an earlier scene.
-And three that may be about anyone in the play, present or not:
-- gender: {{$name}} speaks of or to someone as he or she, him or her, sir or madam, a man or a woman, against what Cast says that person is ("Try asking him" of a woman).
-- knows: the line states, uses or takes for granted something listed under does_not_know (a name not yet heard, another's condition or purpose not yet shown). Asking about it, guessing at it and saying so, or suspecting it aloud is not knowing it. Nor is it a finding once the thing has been shown or said in {{$name}}'s presence (see what {{$name}} has heard, and the record): it is known from then on, and a name is known in whatever form it was given.
-- writing: {{$name}} says what a written thing says (read it out, quotes it, tells its terms) other than what Writings records. Guessing at what it says, or saying it has not read it, is no finding; nor is a deliberate lie marked as one.
-Nothing else is to be found. These are the speaker's own and are never findings: what it plans, wants, fears, guesses or remembers; anything in the future or the past; orders, questions and offers of help; what it says about another person's mind; exaggeration, sarcasm and figures of speech ("we're just meat waiting to cool"); things it speaks of without claiming to hold them ("we need water"). When you are not sure, it is no finding.
-
-Also say whether the line hands a thing the speaker really has (in Holdings) to someone present, in so many words ("Here, take the branch"), and whether it tells its hearers what someone is called (the speaker's own name or another's; a short form such as 'Sam' counts).
-
-Respond ONLY with JSON, no prose, no markdown, in this shape:
-{"findings": [{"kind": "holds", "words": "<the words of the line that say it, exactly>"}], "give": {"thing": "<the thing, as Holdings names it>", "to": "<the person>"}, "names": ["<each person named, exactly as Cast names them>"]}
-with "findings": [] when there is none, "give": null when nothing is handed over, and "names": [] when nobody is named.
-</end>
-"""
-
 RESAY = """A character in a play was about to say the line below, but part of it is untrue of the speaker at this moment, and the character did not mean to lie.
 
 Speaker: {{$name}}
@@ -769,24 +661,6 @@ def speech_claims(context, speaker, found):
     return [(f['kind'], f['words'].strip(' "\'')) for f in json_reply.items(found, 'findings', SPEECH_KINDS)]
 
 
-def _heard(speaker, listener):
-    """What the speaker has lately lived and been told: its recent memories and the talk so far
-    with the listener. The check on what a speaker 'does not know' needs it: a thing said to her
-    a line ago is known (Joe: 'software type'; her 'software guy, huh?' was sent back)."""
-    parts = []
-    try:
-        # what it saw and heard (the play's record: talk with the listener and anything overheard),
-        # then its own memories (what it was told, what it made of things)
-        context = getattr(speaker, 'context', None)
-        seen = context.witnessed(speaker, n=16) if context is not None and hasattr(context, 'witnessed') else []
-        if seen:
-            parts.append('What the speaker has seen and heard lately:\n' + '\n'.join(seen))
-        parts.append('\n'.join(m.to_string() for m in speaker.structured_memory.get_recent(6)))
-    except Exception:
-        pass
-    return '\n'.join(p for p in parts if p) or 'nothing yet'
-
-
 def speech(context, speaker, line, listener=None, deed=''):
     """A spoken line as its speaker can truly say it: (line, give). `give` is (thing, person)
     when the line itself hands over something the speaker holds, else None. One check; one
@@ -801,30 +675,21 @@ def speech(context, speaker, line, listener=None, deed=''):
     about = of(context, speaker, people)
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
     unknown = '\n'.join(f'- {m}' for m in missing) or 'nothing listed'
-    heard = _heard(speaker, listener)
     read = survival.read_by(context, speaker)
     if read and 'Writings' not in about:
         about += '\nWritings (what the written things the speaker has read say): ' + read.replace('\n', '; ')
     speaker.said = None
-    if ablation.enabled('resolver'):
-        # the line is resolved as a deed is (sim/resolver.py resolve_words): what it hands over,
-        # what it states that is not so, what it tells of the speaker's life and what it promises
-        from sim import resolver
-        found = resolver.resolve_words(context, speaker, line, listener, deed=deed, about=of(context, speaker, people, full=True)
-                                       + (f"\nWritings {speaker.name} has read: " + read.replace('\n', '; ') if read else ''))
-        if found is None:
-            trace.event('check_unreadable', of='speech', reply='')
-            return line, None
-        handed = next((e for e in found['effects'] if e.get('thing') and e.get('to')), None)
-        found['give'] = {'thing': handed['thing'], 'to': handed['to']} if handed else None
-        speaker.said = found   # Character.acts applies it once the line stands
-    else:
-        reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
-                                tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=200)
-        found = json_reply.parse(reply)
-    if not isinstance(found, dict):
-        trace.event('check_unreadable', of='speech', reply=(reply or '')[:300])
+    # the line is resolved as a deed is (sim/resolver.py resolve_words): what it hands over,
+    # what it states that is not so, what it tells of the speaker's life and what it promises
+    from sim import resolver
+    found = resolver.resolve_words(context, speaker, line, listener, deed=deed, about=of(context, speaker, people, full=True)
+                                   + (f"\nWritings {speaker.name} has read: " + read.replace('\n', '; ') if read else ''))
+    if found is None:
+        trace.event('check_unreadable', of='speech', reply='')
         return line, None   # unreadable: the line stands as written
+    handed = next((e for e in found['effects'] if e.get('thing') and e.get('to')), None)
+    found['give'] = {'thing': handed['thing'], 'to': handed['to']} if handed else None
+    speaker.said = found   # Character.acts applies it once the line stands
     # A name told in a line is known from then on to everyone who heard it: one the speaker itself
     # knows, and that is in the line as it is finally said. (Joe gave his name, the check missed
     # it, and Samantha 'did not know' the name she used all night, until one use of it was cut to
@@ -859,7 +724,7 @@ def speech(context, speaker, line, listener=None, deed=''):
     # the line will not stand as written: what was read of its words is not applied; a deed done
     # beside it is, whatever becomes of the words
     speaker.said = {**found, 'tells': [], 'promises': [], 'retold': ''} if deed and isinstance(speaker.said, dict) else None
-    put_right = str(found.get('line') or '').strip().strip('"“”').strip() if ablation.enabled('resolver') else ''
+    put_right = str(found.get('line') or '').strip().strip('"“”').strip()
     if put_right and put_right != line:
         # the call that found what is not so, with the stage before it, also says the line as it
         # can truly be said (a second, smaller call told only the words to avoid kept 'Somebody
@@ -914,24 +779,15 @@ def judge(context, character, act):
         return
     if not survival.config(context) or getattr(character, 'body', None) is None:
         return
-    if ablation.enabled('resolver'):
-        # one call, shown the whole stage, says what the deed does (sim/resolver.py); it is played
-        # as found (Context.do), and whoever it takes out of the scene is the resolver's to say
-        from sim import resolver
-        act.found = resolver.resolve(context, character, act)
-        act.resolved, act.refusal = ('resolved', '') if act.found['can'] else ('', act.found['why'] or 'it cannot be done here')
-        if act.found['can']:
-            act.leaves, act.leaves_to = resolver.leaving(context, character, act.found)
-        else:
-            act.found = None
-        return
-    parts, why = survival.classify_deed(context, character, act.action, getattr(act, 'affordance', None))
-    if not parts and not survival.active_threat_for(character) and ablation.enabled('keeper'):
-        # not among what the world and the stage already have: the keeper says how the world works
-        # for it, or that it cannot happen here and why (sim/keeper.py)
-        kept = keeper.consider(context, character, act.action)
-        parts, why = ([keeper.KEPT], '') if kept['can'] else ([], kept['why'] or why)
-    act.resolved, act.refusal = ' + '.join(parts), '' if parts else why
+    # one call, shown the whole stage, says what the deed does (sim/resolver.py); it is played
+    # as found (Context.do), and whoever it takes out of the scene is the resolver's to say
+    from sim import resolver
+    act.found = resolver.resolve(context, character, act)
+    act.resolved, act.refusal = ('resolved', '') if act.found['can'] else ('', act.found['why'] or 'it cannot be done here')
+    if act.found['can']:
+        act.leaves, act.leaves_to = resolver.leaving(context, character, act.found)
+    else:
+        act.found = None
 
 
 def _unsound(context, character, act):
@@ -949,20 +805,9 @@ def sound_deeds(context, character, acts):
     none is sound (the chosen one is then mended)."""
     if not ablation.enabled('narration_gate'):
         return acts
-    if ablation.enabled('resolver'):
-        # a deed is resolved once it is chosen, not before (Character.step_task): resolved as a
-        # candidate, eleven of nineteen answers in one act were for deeds never played
-        return [a for a in acts if not (_mode(a) in ('Do', 'Say') and gone(a))] or acts
-    sound = [a for a in acts if not _unsound(context, character, a)]
-    if sound and len(sound) < len(acts):
-        trace.event('deed_check', character=character.name, outcome='passed_over',
-                    deeds=[a.action[:160] for a in acts if a not in sound])
-        for a in acts:   # what was refused is what the plays ask of the world and do not get (tools/refusals.py)
-            if a not in sound and _is_do(a):
-                trace.event('deed_refused', character=character.name, deed=a.action[:300], why=[getattr(a, 'refusal', '') or 'not here'],
-                            label=getattr(a, 'affordance', None), again=False, passed_over=True)
-                refused(context, character, a.action, getattr(a, 'refusal', '') or 'not here')
-    return sound or acts
+    # a deed is resolved once it is chosen, not before (Character.step_task): resolved as a
+    # candidate, eleven of nineteen answers in one act were for deeds never played
+    return [a for a in acts if not (_mode(a) in ('Do', 'Say') and gone(a))] or acts
 
 
 # What the stage has refused a character in the scene being played: kept so that the actor is
@@ -994,27 +839,6 @@ def beat_refused(character, task):
                 if r['chosen'] and r['who'] == character.name and r['task'] == getattr(task, 'id', None)]) >= BEAT_REFUSALS
 
 
-REDO = """A character in a play was about to do the deed below, but in this world it cannot be done as written.
-
-{{$name}} was about to:
-<deed>
-{{$deed}}
-</deed>
-
-Why not:
-{{$lacks}}
-{{$name}} is carrying: {{$holding}}. Lying here: {{$lying}}.
-
-What {{$name}} can do here:
-{{$offered}}
-- or a small passing act that changes nothing (a touch, a closer look, a pat on the ground)
-
-Write the deed again as one of those acts, or two of them done together: what {{$name}} does instead, toward the same end and in the same manner. One sentence, in the third person and present tense, no longer than the original. Do not mention what cannot be done.
-Respond with the deed only.
-</end>
-"""
-
-
 def mend_deed(context, character, act):
     """The act about to be performed, made sound: a Do that rests on what is not so is written
     again from what is. The act is changed in place; returns True when it was."""
@@ -1030,16 +854,10 @@ def mend_deed(context, character, act):
         # speech nobody heard (..."Aight, I'm down"...)
         act.mode, act.target, act.unshown = 'Think', [], True
         return True
-    offered = [] if ablation.enabled('resolver') else survival.deed_offers(character)
     trace.event('deed_refused', character=character.name, deed=act.action[:300], why=lacks, label=getattr(act, 'affordance', None), again=False)
     refused(context, character, act.action, lacks, chosen=True)
-    # under the resolver the actor is told why and goes another way with its next act: the rewrite was
-    # made from the lists of labels, which the resolver does not read
-    again = '' if ablation.enabled('resolver') else context.llm.ask({'name': character.name, 'deed': act.action, 'lacks': '\n'.join(f'- {l}.' for l in lacks),
-                             'holding': ', '.join(survival.named(context, i) for i in character.body.inventory) or 'nothing',
-                             'lying': ', '.join(survival.named(context, p) for p in survival.lying(context, stage.here(character))) or 'nothing',
-                             'offered': '\n'.join(f'- {o}' for o in offered) or '- nothing physical; only words'},
-                            [UserMessage(content=REDO)], tag='record.redo', temp=0.5, stops=['</end>'], max_tokens=90)
+    # the actor is told why and goes another way with its next act (nothing is written again for it)
+    again = ''
     again = (again or '').strip().strip('"“”').strip()
     before = act.action
     if again and gone(act):

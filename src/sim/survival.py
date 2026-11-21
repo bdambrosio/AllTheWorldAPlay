@@ -106,7 +106,7 @@ def free(context):
     and what a kind of place gives is the model's to know. Worlds with money keep the catalogue
     for now: paying and owning have not been worked out without it."""
     cfg = config(context) or {}
-    return bool(cfg) and ablation.enabled('resolver') and not cfg.get('currency')
+    return bool(cfg) and not cfg.get('currency')
 
 
 def places_near(character, cut=14):
@@ -277,43 +277,6 @@ def _spans_night(start, end):
             return True
         t += timedelta(hours=1)
     return False
-
-
-PASSING_TILES = 8    # what meets a need this near the cast at a scene's end is used off the page
-
-
-def meet_in_passing(context, cast):
-    """A scene is over: each of `cast` meets an ordinary need off the page where something that
-    meets it is near (a spring for thirst, berries for hunger, a hut for rest), as people do
-    between the things a play shows. A need at its worst word stays for the play to deal with,
-    and so does one with nothing near. (Day 2 of a play went on spring and apple runs while the
-    lead the characters had found sat idle, and a man was 'parched' through three scenes at a
-    spring because no scene was about drinking.) Returns {name: [needs met]}."""
-    cfg = config(context) or {}
-    met = {}
-    for character in cast:
-        body = getattr(character, 'body', None)
-        if body is None or getattr(character, 'mapAgent', None) is None:
-            continue
-        for need, spec in _need_defs(cfg).items():
-            level = body.levels.get(need, 0.0)
-            if spec.get('per_hour', 0.0) <= 0 or not NEED_FELT <= level < 0.85:
-                continue
-            for action in cfg.get('actions', []):
-                eases = (action.get('effects') or {}).get(need, 0.0) < 0
-                if not eases or action.get('requires') or action.get('target') or not action.get('resource_types'):
-                    continue
-                near = _stocked(character, action['resource_types']) if action.get('deplete') else _nearest(character, action['resource_types'])
-                if near is not None and near[2] <= PASSING_TILES:
-                    body.adjust(need, (NEED_FELT - 0.05) - level)
-                    met.setdefault(character.name, []).append(need)
-                    break
-    for name, needs in met.items():
-        character = next(c for c in cast if c.name == name)
-        character.add_perceptual_input(f"Between scenes you saw to it: {', '.join(needs)} no longer pressing.", percept=False, mode='internal')
-    if met:
-        trace.event('met_in_passing', met=met)
-    return met
 
 
 def pass_offstage(context, gap):
@@ -673,27 +636,6 @@ def affordance_prompt_line(character):
 
 _CLAIM = re.compile(r"\bI(?:'m|’m| am)\s+(?:\w+ly\s+)?(\w+ing)\b", re.I)
 
-
-def spoken_deed(context, character, line):
-    """A spoken line that says the speaker is doing one of the world's actions, here and now
-    ("I'm drinking"), does it, so that what was said and the body agree. (A whole scene of
-    drinking at the spring was only talk, and left both of them thirsty.) Only a first-person
-    'I am ...ing' of an action on a resource within reach. Returns the fact line, or None."""
-    cfg = config(context)
-    if not cfg or getattr(character, 'body', None) is None:
-        return None
-    for claim in _CLAIM.finditer(line or ''):
-        word = claim.group(1).lower()
-        for action in cfg.get('actions', []):
-            types = action.get('resource_types')
-            if not types or action.get('target') or action.get('remote') or not _matches(word, action.get('verbs', [])):
-                continue
-            near = _nearest(character, types)
-            if near is not None and near[2] <= CO_PRESENT_TILES and not _missing(action, character.body):
-                character.last_affordance = None
-                fact = _apply(context, character, action, near, None, 'speech', line)
-                return fact if fact and (character.last_affordance or {}).get('applied') else None   # refused: it was only talk
-    return None
 
 
 def do_business(context, character, label):

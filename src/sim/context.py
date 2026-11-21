@@ -1788,7 +1788,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
                         entry['keeps'].append(kept.strip())
-            if checked and ablation.enabled('resolver'):
+            if checked:
                 # the set-up is resolved against the world in one call (sim/resolver.py
                 # resolve_setup): where the scene is, what the set-up brings that such a place
                 # would have, and the set-up and ending as they may stand. What it brings is in the
@@ -1815,82 +1815,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                             + ". The set-up is the opening only: where the cast is, what is there, what presses on them. "
                               "Leave those deeds for the actors to play, and write it again.\n")
                     continue
-            if checked and not ending_asked and attempt < 2:
-                # the ending is held to what bodies can do here, as the actors' deeds are: an ending
-                # that needs more can never be played ('strips off his shirt and hands it over')
-                ending_asked = True
-                beyond = record.ending_beyond(self, scene.get('post_narrative', ''), cast)
-                # What the stage has no action for is put to the keeper now, while the scene can
-                # still be written round it: it is modelled and so can be played, or it cannot
-                # happen in this world and the ending is written again (sim/keeper.py).
-                if beyond and ablation.enabled('keeper'):
-                    doer = lambda part: next((c for c in cast if c.name.lower() in part.lower()), cast[0])
-                    beyond = [part for part in beyond if not keeper.consider(self, doer(part), part)['can']]
-                if beyond:
-                    trace.event('ending_beyond', scene=scene.get('scene_title'), ending=scene.get('post_narrative', ''), beyond=beyond)
-                    note = ("\nYour ending has someone do what nobody can do in this world: " + '; '.join(beyond)
-                            + ". Bodies can do only the actions listed at the places, the acts under 'Anywhere', and give, hold out, take or put down "
-                              "a thing that is held or lying there. Write the ending again so that it turns on what is said, told, chosen or refused, "
-                              "or on one of those acts.\n")
-                    continue
-            if not checked:
-                break
-            goals = ' '.join(f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
-            told = f"{scene.get('pre_narrative', '')}\nThe scene is to end: {scene.get('post_narrative', '')}\n{goals}"
-            # what lies at the scene's place is there to be written of, though the cast has not
-            # walked there yet (the cup planted at the spring was refused from the spring scene's
-            # set-up, and Joe asked who carved a cup the audience had not been shown)
-            target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
-            there = [p['name'] for hidden in (False, True) for p in survival.lying(self, target[0], hidden=hidden)] if target else []
-            # and that nothing lies there, and where the play's own finds are: told nothing, the
-            # check let a set-up put the key in the mud at Spring2 while it lay at Spring3
-            clues = [f"{c['thing']}: {survival.whereabouts_of(self, c['thing']) or 'not in the world'}"
-                     for c in (self.screenplay.clues or [])]
-            settled = '\n'.join(([f"Lying at {target[1]}, where the scene is set: {', '.join(there) or 'nothing'}"] if target else [])
-                                + ([f"Where each of these is now: {'; '.join(clues)}"] if clues else [])) or None
-            # whoever of the supporting cast is at that place is in the scene: a set-up may have them there
-            at_place = stage.supporting_at(self, target[0], but=cast) if target else []
-            found = record.check(self, cast[0], f"A scene is set at {scene.get('location') or 'the same place'}; the cast walks there if it is elsewhere.",
-                                 settled, told, people=cast + at_place) or []
-            # where the scene is set is the plan's to say, and a danger of this world that the
-            # set-up brings on is made real (survival.stage_hazard)
-            claims = [(kind, words) for kind, words in found
-                      if kind != 'place' and not (kind == 'presence' and not self._hazard_claim_stands(words, scene))]
-            if not claims:
-                break
-            # a set-up may bring in what such a place or person would have without remark, and a
-            # place of one of the world's kinds; anything else it names is written out (record.admit)
-            target = stage.resolve(self, scene.get('location'), stage.here(cast[0]))
-            made, refused = [], []
-            if not admitted:   # once: the rewrite that follows is only to take out what was refused
-                admitted = True
-                with self.committing('set'):   # what the set-up says is there is there from the scene's opening
-                    made, refused, claims = record.admit(self, cast[0], claims, told, 'plan', people=cast,
-                                                         at=target[0] if target else None)
-            brought += made
-            if not claims:
-                break
-            note = record.rejection(claims, made, refused)
-        if claims:
-            # Still there after one rewrite: it goes from everything the scene hands on (set-up,
-            # ending and goals), not only from what the audience reads. A goal that was nothing
-            # but the refused thing becomes the scene's plain purpose.
-            for key in ('pre_narrative', 'post_narrative'):
-                kept = record.strip(scene.get(key, ''), claims)
-                if key == 'post_narrative' and not kept and scene.get(key, '').strip():
-                    # an ending of one sentence: the refused part is taken out and the rest kept
-                    kept = record.ending_without(self, scene[key], [words for _, words in claims])
-                    trace.event('ending_cut', scene=scene.get('scene_title'), was=scene[key], kept=kept, refused=[words for _, words in claims])
-                if kept != scene.get(key, ''):
-                    changed[key] = scene[key] = kept
-            for name, entry in (scene.get('characters') or {}).items():
-                if isinstance(entry, dict) and entry.get('goal'):
-                    # a goal that was nothing but the refused thing: the character's part in
-                    # this act, which is what it is there for (it used to become a line that
-                    # asked nothing of anyone: 'Meet what this scene brings as it is')
-                    role = next((r for n, r in ((self.act_frame or {}).get('roles') or {}).items() if n.lower() == str(name).lower()), '')
-                    entry['goal'] = (record.strip(entry['goal'], claims) or role
-                                     or f"Meet what this scene brings ('{scene.get('scene_title', '')}') as it is.")
+            break   # a world with no mechanics: the set-up stands as written (or as written again above)
         if checked:
             trace.event('scene_check', title=scene.get('scene_title'),
                         outcome='cut' if claims else 'rewritten' if note else 'admitted' if brought else 'ok',
@@ -1985,28 +1910,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
         with self.committing('hazard'):
             survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
-        # The heading and the set-up name the same place: when the set-up names one place and the
-        # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
-        # set-up that began 'At the spring': both were two steps away).
-        # (under the resolver the place is said by the call that resolves the set-up, and the cast
-        # is set there by stage.set_scene: no place name is looked for in the set-up's words)
-        named = set() if ablation.enabled('resolver') else set(stage.places_named(self, scene.get('pre_narrative') or ''))
-        if len(named) == 1 and characters_in_scene and getattr(characters_in_scene[0], 'mapAgent', None) is not None:
-            rid = next(iter(named))
-            if stage._distance(stage.here(characters_in_scene[0]), self.map.resource_registry[rid]['location']) <= stage.AT_PLACE_TILES:
-                # and the cast stands there, as it would had the plan named the place: what lies at
-                # it is then at hand. (A scene headed 'Fallen_Branch15' was played two steps off at
-                # Fallen_Branch4: the strip its beats were about lay at the one and could not be
-                # taken from the other.)
-                spot = tuple(self.map.resource_registry[rid]['location'])
-                scene['place'] = rid
-                for c in characters_in_scene:
-                    if getattr(c, 'mapAgent', None) is not None and not stage.remote(c) and stage._distance(stage.here(c), spot) <= stage.AT_PLACE_TILES:
-                        with self.committing('set', event=setting):
-                            c.mapAgent.x, c.mapAgent.y = spot
-                            ledger.of(self).wrote('position')
-                if isinstance(getattr(self, 'previous_scene', None), dict):
-                    self.previous_scene['xy'] = spot
+        # (the scene's place is said by the call that resolves its set-up, and the cast is set there by
+        # stage.set_scene: no place name is looked for in the set-up's words)
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
         self._state_notes = ''   # the situation's notes are those of the scene in progress
         if hours_between >= 2:   # the day went from half past eight to seven in the evening without a word
@@ -2292,11 +2197,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the planned duration is the least a scene takes; acts and travel have already moved the clock
         self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
         self.record_threads(characters_in_scene)   # what this scene planted, for the acts to come
-        if not ablation.enabled('resolver'):
-            # (under the resolver nothing is met off the page between scenes: two people said
-            # their throats were sandpaper, and the next set-up had neither of them thirsty)
-            with self.committing('offstage'):
-                survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
+        # (nothing is met off the page between scenes: two people said their throats were sandpaper,
+        # and the next set-up had neither of them thirsty)
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
