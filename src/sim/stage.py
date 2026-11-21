@@ -14,7 +14,7 @@ import logging
 import os
 import re
 
-from sim import survival
+from sim import ledger, survival
 from sim.trace import trace
 
 logger = logging.getLogger('simulation_core')
@@ -152,6 +152,7 @@ def leave(character, party=(), told=False, to=None):
                  if c is not character and getattr(c, 'current_scene', None) is scene]
     character.left_scene = scene
     character.current_scene = None   # everything that asks 'in this scene?' now answers no
+    ledger.of(context).wrote('exit')   # who is in the scene changes only as part of an event (sim/ledger.py)
     exit_ = {'time': context.simulation_time.strftime('%H:%M'), 'who': character.name,
              'with': [c.name for c in party if c is not character], 'to': to,
              'from': where(context, here(character)).removeprefix('at ')}
@@ -324,6 +325,7 @@ def set_scene(context, scene, characters, opens_act):
             continue
         if opens_act:
             character.mapAgent.x, character.mapAgent.y = xy
+            ledger.of(context).wrote('position')
             if getattr(character, 'body', None) is not None:
                 character.body.sheltered = False
         else:

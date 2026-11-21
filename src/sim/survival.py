@@ -202,6 +202,9 @@ class Body:
     def adjust(self, need, delta):
         old = self.levels.get(need, 0.0)
         self.levels[need] = min(1.0, max(0.0, old + delta))
+        book = getattr(getattr(self, '_inventory', None), '_ledger', None)
+        if book is not None and self.levels[need] != old:
+            book.wrote('needs')   # a body's needs change only as part of an event (sim/ledger.py)
         if delta < 0:   # allow a fresh warning next time the need rises past a threshold
             self.warned = {w for w in self.warned if not (w[0] == need and self.levels[need] < w[1])}
 
@@ -1655,6 +1658,8 @@ def travel(character, x, y, advance_clock=True):
         cost = 1.5
     minutes = tiles * cost * cfg.get('tile_minutes', 2)
     character.mapAgent.x, character.mapAgent.y = x, y
+    if tiles:
+        ledger.of(context).wrote('position')
     if getattr(character, 'body', None) is not None:
         character.body.sheltered = False
         if cfg.get('travel_need'):
@@ -1729,7 +1734,7 @@ def _tell(context, text):
     only: a wolf bit both of them in the last scene and the page never said so."""
     text = re.sub(BODY_NOTE, '', text).strip()
     if text:
-        context.message_queue.put({'name': '', 'text': f'    {text}'})
+        context.to_page('', f'    {text}', kind=None, transcript=False)
 
 
 def _start_threat(context, hazard, anchor, exposed):

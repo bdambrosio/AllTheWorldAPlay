@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, stage, survival
+from sim import ablation, ledger, stage, survival
 from sim.trace import trace
 from utils import json_reply
 from utils.Messages import UserMessage
@@ -232,6 +232,9 @@ def apply(context, character, act):
     already, in the resolver's line."""
     from sim import keeper
     found, facts, me = act.found, [], character.name
+    opened = ledger.of(context).open
+    if opened:   # the deed's event keeps what it was found to do, beside what that changes and the line shown
+        opened[-1]['effects'] = found['effects']
     worlded = False
     for e in found['effects']:
         if e.get('world'):

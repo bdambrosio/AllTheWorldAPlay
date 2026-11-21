@@ -1154,15 +1154,26 @@ End response with:
 
     async def approach(self, target):
         """Walk to a scene partner who is out of reach before acting on or speaking to them."""
-        line = stage.approach(self, target)
+        with self.context.committing('walk', self):
+            line = stage.approach(self, target)
+            if line:
+                self.look()
+                self.context.add_event(f'{self.name} {line}')
+                self.context.to_page(self.name, line)
         if line:
-            self.look()
-            self.context.add_event(f'{self.name} {line}')
-            self.context.message_queue.put({'name': self.name, 'text': line, 'line_kind': 'action'})
-            self.context.transcript.append(f'{self.name} {line}')
             await asyncio.sleep(0)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
+        """Play an act. Whatever it opens as an event of the play (Context.open_event) is closed
+        when it is over, however it ends: an act that fails part-way leaves no event open for
+        what comes after to be put down to."""
+        opened = self.context.events_open()
+        try:
+            return await self._acts(act, target, act_mode, act_arg, reason, source)
+        finally:
+            self.context.close_events(opened)
+
+    async def _acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Execute an action and record results"""
         # Create action record with state before action
         try:
@@ -1197,25 +1208,26 @@ End response with:
                             and not stage.off_stage(c)]
                 if all(c in act.leaves for c in on_stage):
                     leaving = False
-            try:
-                # with the others, unless the mover leaves them: then it goes alone, and is gone
-                # (this compared a bool with 'alone': nobody ever went alone, and Samantha
-                # 'left for the berries with Joe' while leaving him behind)
-                line = self.move(act_arg, reason, alone=leaving and act.leaves == 'alone')
-            except Exception as e:
-                logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
-            if leaving and line is not None:
-                line = re.sub(r'^walks to ', 'leaves for ', line) if line else 'leaves.'
-                self._leave_with(act, told=bool(line))   # the line is recorded just below
+            with self.context.committing('walk', self):   # the walk, who goes along, and the line that tells it
+                try:
+                    # with the others, unless the mover leaves them: then it goes alone, and is gone
+                    # (this compared a bool with 'alone': nobody ever went alone, and Samantha
+                    # 'left for the berries with Joe' while leaving him behind)
+                    line = self.move(act_arg, reason, alone=leaving and act.leaves == 'alone')
+                except Exception as e:
+                    logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
+                if leaving and line is not None:
+                    line = re.sub(r'^walks to ', 'leaves for ', line) if line else 'leaves.'
+                    self._leave_with(act, told=bool(line))   # the line is recorded just below
+                if line:
+                    self.look(act_mode, act_arg, reason)
+                    saw = getattr(self, 'walk_witnesses', None) or [self]
+                    self.walk_witnesses = None
+                    self.context.add_event(f'{self.name} {line}', doer=self, witnesses=saw + self.bystanders())
+                    self.context.to_page(self.name, line)
             if line == '':
                 pass   # already there: nothing to tell
             elif line:
-                self.look(act_mode, act_arg, reason)
-                saw = getattr(self, 'walk_witnesses', None) or [self]
-                self.walk_witnesses = None
-                self.context.add_event(f'{self.name} {line}', doer=self, witnesses=saw + self.bystanders())
-                self.context.message_queue.put({'name': self.name, 'text': line, 'line_kind': 'action'})
-                self.context.transcript.append(f'{self.name} {line}')
                 await asyncio.sleep(0)
             else:   # it names nowhere on the map: the narrator decides what the attempt comes to
                 # in the actor's own words ('move to ' was put in front of them: 'move to Start
@@ -1235,6 +1247,9 @@ End response with:
                 await self.approach(self._first_character(target, act))
             # Get action consequences from world
             await asyncio.sleep(0)
+            # the deed is one event: what it changes on the stage, the line shown for it and its
+            # entry in the record are committed together (Context.committing)
+            deed_event = self.context.open_event('deed', self)   # closed below, when the deed is in the record
             consequences, world_updates, character_updates = await self.context.do(self, act)
             # a passing act (or a passing part of the deed) is seen and not kept: what stays of the
             # deed after the scene is what the world settled, and nothing of the rest
@@ -1271,7 +1286,7 @@ End response with:
             told = stage.stage_line(self.name, '' if rested_on_nothing else act_arg, result)
             if rested_on_nothing:
                 told = re.sub(rf'^{re.escape(self.name)}\s+', '', told) or f"tries: {deed.rstrip('. ')}, and it comes to nothing."
-            self.context.message_queue.put({'name':self.name, 'text': told, 'line_kind':'action'})
+            self.context.to_page(self.name, told, transcript=False)   # the transcript keeps it just below, as it lasts
             self.lastActResult = notices
             if source == None:
                 source = self.focus_task.peek()
@@ -1313,6 +1328,7 @@ End response with:
                                    + (f' -> {visible_result}' if visible_result else ''),
                                    doer=self, also=[aimed_at] if isinstance(aimed_at, Character)
                                    and aimed_at is not self and not stage.off_stage(aimed_at) else [], lasting=kept)
+            self.context.close_event(deed_event)
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1322,7 +1338,7 @@ End response with:
             self.lastActResult = consequences or 'You look, and see nothing new.'
             self.show += act_arg + '.\n ' + consequences
             if consequences.strip():   # a look that finds nothing is not a line: four of them in two acts drained the dread they were meant to build
-                self.context.message_queue.put({'name':self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences)), 'line_kind':'action'})
+                self.context.to_page(self.name, re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences)), transcript=False)
             else:
                 trace.event('look_empty', character=self.name)
             await asyncio.sleep(0)
@@ -1348,6 +1364,9 @@ End response with:
 
         elif act_mode == 'Say':# must be a say
             await self.approach(self._first_character(target, act))
+            # the line is one event: the words, what the speaker does while saying them, and
+            # anything they hand over (closed below, before anyone answers)
+            line_event = self.context.open_event('line', self)
             # A line that carries its own stage direction before a colon and the words in quotes
             # ('Sliding down against the barred door, laughing hoarsely: "It was real..."'): the
             # direction is shown as what the speaker does, and only the quoted words are said.
@@ -1363,8 +1382,7 @@ End response with:
                 if parts:
                     survival.resolve_do(self.context, self, f'{self.name} {business}', resolved=' + '.join(parts))
                     self.context.add_event(f'{self.name} {business}')
-                    self.context.message_queue.put({'name': self.name, 'text': business, 'line_kind': 'action'})
-                    self.context.transcript.append(f'{self.name} {business}')
+                    self.context.to_page(self.name, business)
                 trace.event('say_staged', character=self.name, business=business, done=bool(parts))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             # A line is held to what its speaker cannot be mistaken about (its hands, its body,
@@ -1382,7 +1400,8 @@ End response with:
             self.show += f"{act_arg}'"
             elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
-            self.context.message_queue.put({'name':self.name, 'text':f"'{act_arg}'", 'elevenlabs_params': json.dumps(elevenlabs_params)})
+            # (Context.say keeps the line in the transcript and the record)
+            self.context.to_page(self.name, f"'{act_arg}'", kind='speech', transcript=False, elevenlabs_params=json.dumps(elevenlabs_params))
             self.context.say(self, act_arg, self.hearers())
             await asyncio.sleep(0)
             done = survival.spoken_deed(self.context, self, act_arg)
@@ -1393,7 +1412,8 @@ End response with:
                 self.last_affordance = None
             if done:
                 self.context.add_event(f'{self.name} -> {done}', doer=self)
-                self.context.message_queue.put({'name': self.name, 'text': re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), 'line_kind': 'action'})
+                self.context.to_page(self.name, re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), transcript=False)
+            self.context.close_event(line_event)
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]
@@ -1411,9 +1431,10 @@ End response with:
                 party = act.leaves if isinstance(act.leaves, list) else []
                 to = getattr(act, 'leaves_to', None)
                 gone = ('leaves' if not party else f"leaves with {', '.join(c.name for c in party)}") + (f', for {to}.' if to else '.')
-                self.context.message_queue.put({'name': self.name, 'text': gone, 'line_kind': 'action'})
-                self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
-                self._leave_with(act, told=True)
+                with self.context.committing('leave', self):
+                    self.context.to_page(self.name, gone, transcript=False)
+                    self.context.add_event(f'{self.name} {gone}')   # for the next scene's set-up: who went, and with whom
+                    self._leave_with(act, told=True)
                 target = None
             elif target is not None and isinstance(target, Character) and (stage.off_stage(target) or stage.not_in_scene(target)):
                 target = None   # said to someone who has gone, or who is not in this scene: nobody hears it
@@ -2641,9 +2662,10 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         to = from_actor if (hash_utils.find('to', reply) or '').strip().lower().startswith(from_actor.name.lower()) else self
         line = record.speech(self.context, speaker, line, to)[0] or line
         speaker._cut_ins = (scene, (getattr(speaker, '_cut_ins', (None, 0, 0))[1] if getattr(speaker, '_cut_ins', (None,))[0] is scene else 0) + 1, now)
-        self.context.message_queue.put({'name': speaker.name, 'text': f"'{line}'",
-                                        'elevenlabs_params': json.dumps(speaker.speech_stylizer.voice_params(to))})
-        self.context.say(speaker, line, speaker.hearers())   # heard by all within earshot (the record)
+        with self.context.committing('line', speaker):
+            self.context.to_page(speaker.name, f"'{line}'", kind='speech', transcript=False,
+                              elevenlabs_params=json.dumps(speaker.speech_stylizer.voice_params(to)))
+            self.context.say(speaker, line, speaker.hearers())   # heard by all within earshot (the record)
         trace.event('dialog_turn', speaker=speaker.name, listener=to.name, text=line[:1000], cut_in=True)
         dialog.add_turn(speaker, line)
         self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(speaker, line)
@@ -3559,7 +3581,8 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
 
-        survival.tick(self)   # needs rise with elapsed simulation time (survival scenarios only)
+        with self.context.committing('time', self):
+            survival.tick(self)   # needs rise with elapsed simulation time (survival scenarios only)
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
@@ -3620,7 +3643,8 @@ End your response with:
             # a danger strikes when its time comes, between one act and the next: it was applied
             # only after the whole task, so acts written before it (sniffing a cup) were played
             # after the gang had hit
-            survival.hazard_tick(self.context)
+            with self.context.committing('hazard'):
+                survival.hazard_tick(self.context)
  
                
             # Did we push opportunistic subtasks? This should be obv

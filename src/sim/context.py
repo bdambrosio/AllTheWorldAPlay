@@ -1,5 +1,6 @@
 from __future__ import annotations
 import collections
+from contextlib import contextmanager
 import copy
 import json
 import os
@@ -398,18 +399,19 @@ class Context():
         hours = gap.total_seconds() / 3600
         if hours <= 0:
             return 0.0
-        for character in self.everyone():   # time already played on stage counts before the jump
-            survival.tick(character)
-        met = survival.pass_offstage(self, gap)
-        self.simulation_time = target
-        if hours >= survival.REAL_JUMP_HOURS:
-            told = (f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
-                    + (" In that time you ate, drank and rested as you could." if met else ''))
-            for character in self.everyone():
-                character.add_perceptual_input(told, percept=False, mode='internal')
-            self.add_event(f'About {round(hours)} hours pass')
-            trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
-            self._hours_moved = getattr(self, '_hours_moved', 0.0) + hours
+        with self.committing('offstage'):   # the hours that pass, and what they do to bodies, are one event
+            for character in self.everyone():   # time already played on stage counts before the jump
+                survival.tick(character)
+            met = survival.pass_offstage(self, gap)
+            self.simulation_time = target
+            if hours >= survival.REAL_JUMP_HOURS:
+                told = (f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
+                        + (" In that time you ate, drank and rested as you could." if met else ''))
+                for character in self.everyone():
+                    character.add_perceptual_input(told, percept=False, mode='internal')
+                self.add_event(f'About {round(hours)} hours pass')
+                trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
+                self._hours_moved = getattr(self, '_hours_moved', 0.0) + hours
         return hours
 
     def _may_move_on(self, opens_act):
@@ -1413,12 +1415,15 @@ End your response with:
                     continue
                 claims.remove((kind, words))
                 if kind == 'presence' and who not in moved and stage.here(who) != stage.here(cast[0]):
-                    who.mapAgent.x, who.mapAgent.y = stage.here(cast[0])
+                    with self.committing('director', who):
+                        who.mapAgent.x, who.mapAgent.y = stage.here(cast[0])
+                        ledger.of(self).wrote('position')
                     who.look()
                     moved.append(who)
             if moved:
                 trace.event('director_moves', who=[c.name for c in moved], to=list(stage.here(cast[0])))
-            made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
+            with self.committing('director'):
+                made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
             trace.event('intervention_check', made=made, refused=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
             if remaining:
                 # an intervention is one event: with a part of it refused (the wounded dog), what is
@@ -1768,7 +1773,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
                              or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
                 if prop is not None and not prop.get('spot'):
-                    prop['spot'] = spot.strip().rstrip('.')[:80]
+                    with self.committing('set'):
+                        prop['spot'] = spot.strip().rstrip('.')[:80]
             # what each character has still to find out: a note for its actor (Character.director_notes)
             for entry in (scene.get('characters') or {}).values():
                 if isinstance(entry, dict):
@@ -1842,8 +1848,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             made, refused = [], []
             if not admitted:   # once: the rewrite that follows is only to take out what was refused
                 admitted = True
-                made, refused, claims = record.admit(self, cast[0], claims, told, 'plan', people=cast,
-                                                     at=target[0] if target else None)
+                with self.committing('set'):   # what the set-up says is there is there from the scene's opening
+                    made, refused, claims = record.admit(self, cast[0], claims, told, 'plan', people=cast,
+                                                         at=target[0] if target else None)
             brought += made
             if not claims:
                 break
@@ -1902,7 +1909,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 # played (a scene moved the clock seven hours, was skipped as already done, and
                 # the next act opened at dusk without a word)
                 scene['when'] = stage.part_of(planned) + (' next day' if planned.date() > self.simulation_time.date() else '')
-        survival.pass_offstage(self, timedelta(0))
+        with self.committing('offstage'):
+            survival.pass_offstage(self, timedelta(0))
         self.current_scene = scene
         self.scene_integrated_task_plan, self.scene_integrated_task_plan_index = [], 0   # the last scene's schedule is not this one's
         self.scene_events = []
@@ -1941,7 +1949,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the heading names the place the scene is actually played ('same' said nothing)
         scene_start = scene["time"] = self.simulation_time   # as established: where the last scene left the clock, or moved on
         hours_between = self._hours_moved
-        arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
+        # the scene being set is one event: who is brought where, and (below) the line that says so
+        with self.committing('set') as setting:
+            arrival = stage.set_scene(self, scene, characters_in_scene, opens_act)
         self.last_scene_exits = []   # used: the scene is set
         # A supporting actor who is at the scene's place is in the scene, whether or not the plan
         # named them: on stage, with an objective of their own from what they want. (A woman the
@@ -1957,7 +1967,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             scene['action_order'] = list(scene.get('action_order') or []) + [person.name]
         # what each carries as the scene opens: what it carries at the end and did not is a find
         self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
-        survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
+        with self.committing('hazard'):
+            survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         # The heading and the set-up name the same place: when the set-up names one place and the
         # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
         # set-up that began 'At the spring': both were two steps away).
@@ -1973,7 +1984,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 scene['place'] = rid
                 for c in characters_in_scene:
                     if getattr(c, 'mapAgent', None) is not None and not stage.remote(c) and stage._distance(stage.here(c), spot) <= stage.AT_PLACE_TILES:
-                        c.mapAgent.x, c.mapAgent.y = spot
+                        with self.committing('set', event=setting):
+                            c.mapAgent.x, c.mapAgent.y = spot
+                            ledger.of(self).wrote('position')
                 if isinstance(getattr(self, 'previous_scene', None), dict):
                     self.previous_scene['xy'] = spot
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
@@ -2000,9 +2013,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.message_queue.put({'name':self.name, 'text':'world_update', 'data':await self.world_image_json(setup=True)})
             await asyncio.sleep(0)
         if arrival:
-            self.add_event(arrival, witnesses=[c for c in characters_in_scene if not stage.remote(c)])
-            self.current_state += '\n' + arrival
-            self.message_queue.put({'name': self.name, 'text': f'    {arrival}'})
+            with self.committing('set', event=setting):
+                self.add_event(arrival, witnesses=[c for c in characters_in_scene if not stage.remote(c)])
+                self.current_state += '\n' + arrival
+                self.to_page(self.name, f'    {arrival}', kind=None, transcript=False)
 
         if scene.get('post_narrative'):
             self.scene_post_narrative = scene['post_narrative']
@@ -2011,9 +2025,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         for character in characters_in_scene:
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
-        self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
         self.scene_refusals = []   # what the stage has refused in this scene (record.refused)
-        survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
+        with self.committing('set', event=setting):
+            self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
+            survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
         self.pass_scene()       # nor is anything kept of the last scene's passing acts
 
         # A choice the scene turns on is made before the scene is played and shapes that
@@ -2165,7 +2180,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             await character.step_task()
-            survival.hazard_tick(self)
+            with self.committing('hazard'):
+                survival.hazard_tick(self)
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.step = False
 
@@ -2191,13 +2207,15 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.simulation_time = closing
             # the body first catches up with the clock: needs rise only when a character steps a
             # task, and Joe, answering in dialog through a night, was 'rested' after standing watch
-            survival.tick(character)
+            with self.committing('time', character):
+                survival.tick(character)
             for label in stage.pending_business(character):
-                fact = survival.do_business(self, character, label)
-                if fact:
-                    self.add_event(f'{character.name} -> {fact}', doer=character)
-                    told = re.sub(rf'^{re.escape(character.name)}\s+', '', stage.stage_line(character.name, '', fact).lstrip('. '))
-                    self.message_queue.put({'name': character.name, 'text': told, 'line_kind': 'action'})
+                with self.committing('deed', character):
+                    fact = survival.do_business(self, character, label)
+                    if fact:
+                        self.add_event(f'{character.name} -> {fact}', doer=character)
+                        told = re.sub(rf'^{re.escape(character.name)}\s+', '', stage.stage_line(character.name, '', fact).lstrip('. '))
+                        self.to_page(character.name, told, transcript=False)
             latest = max(latest, self.simulation_time)
         self.simulation_time = latest
         # each character's goal in the scene is judged and put away (Character.close_scene_goal)
@@ -2256,7 +2274,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the planned duration is the least a scene takes; acts and travel have already moved the clock
         self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
         self.record_threads(characters_in_scene)   # what this scene planted, for the acts to come
-        survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
+        with self.committing('offstage'):
+            survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None
@@ -2391,8 +2410,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the first act: a plan resolved the mystery the frame then said must stay open, and
         # promised a find in a hut that held nothing.)
         self.frame_episode()
-        self.place_clues()
-        self.equip_cast()
+        ledger.of(self).begun = True   # from here on, whatever changes the stage is an event of the play
+        with self.committing('director'):   # what the director puts in the world before the first scene
+            self.place_clues()
+            self.equip_cast()
 
         await asyncio.sleep(0.4)
 
@@ -3866,8 +3887,98 @@ End your response with </end>
 
     def _enter(self, kind, text, doer, witnesses):
         names = frozenset(getattr(c, 'name', c) for c in witnesses if c is not None)
-        self.record_entries.append({'time': self.simulation_time, 'kind': kind, 'text': text,
-                                    'doer': getattr(doer, 'name', doer), 'witnesses': names})
+        entry = {'time': self.simulation_time, 'kind': kind, 'text': text,
+                 'doer': getattr(doer, 'name', doer), 'witnesses': names, 'n': len(self.record_entries)}
+        opened = ledger.of(self).open
+        if opened:   # what is told belongs to the event being committed, with what that changed
+            event = opened[-1]
+            entry.update(cause=event['cause'], event=event)
+            event['entries'].append(entry)
+        else:
+            entry['cause'] = 'line' if kind == 'speech' else 'told'
+        self.record_entries.append(entry)
+        return entry
+
+    @contextmanager
+    def committing(self, cause, doer=None, event=None):
+        """One event of the play: what changes on the stage inside this block, and what is told of
+        it (add_event, say, show), is one thing that happened, kept together (sim/ledger.py).
+        cause: 'deed', 'line', 'walk', 'leave', 'set' (a scene being set), 'time' (bodies catching
+        up with the clock), 'offstage' (what is seen to between scenes), 'director', 'hazard'.
+        event: one opened before, to add to it (a scene's cast is placed, and told of later).
+        Yields the event: cause, doer, time, scene, effects (what a resolved deed was found to do),
+        things (the ledger's things it touched), changed (what else: 'poses', 'needs',
+        'position'), entries (its lines in the record), lines (as shown to the audience).
+        A change with nothing told of it is still kept, as an entry with no words that nobody
+        witnessed; one inside another event that tells of it is part of that event."""
+        event = self.open_event(cause, doer, event)
+        try:
+            yield event
+        finally:
+            self.close_event(event)
+
+    def open_event(self, cause, doer=None, event=None):
+        """Open an event of the play (see committing, which is this with its close)."""
+        if event is None:
+            scene = getattr(self, 'current_scene', None)
+            event = {'cause': cause, 'doer': getattr(doer, 'name', doer), 'time': self.simulation_time,
+                     'scene': scene.get('scene_number') if isinstance(scene, dict) else None,
+                     'effects': None, 'things': [], 'changed': [], 'entries': [], 'lines': []}
+        ledger.of(self).open.append(event)
+        return event
+
+    def close_event(self, event):
+        book = ledger.of(self)
+        for i in range(len(book.open) - 1, -1, -1):   # this one, wherever it now is
+            if book.open[i] is event:
+                del book.open[i]
+                break
+        else:
+            return   # closed already
+        if any(e is event for e in book.open):
+            return   # opened again inside itself: it closes with the outer one
+        if not event['entries'] and (event['things'] or (event['changed'] and event['cause'] != 'time')):
+            outer = book.open[-1] if book.open else None
+            if outer is not None:
+                for thing in event['things']:
+                    if not any(t is thing for t in outer['things']):
+                        outer['things'].append(thing)
+                    thing.last = outer
+                    if thing.made is event:
+                        thing.made = outer
+                outer['changed'] += [c for c in event['changed'] if c not in outer['changed']]
+                outer['lines'] += event['lines']
+            else:
+                book.open.append(event)
+                self._enter('event', '', event['doer'], [])
+                book.open.pop()
+
+    def events_open(self):
+        return len(ledger.of(self).open)
+
+    def close_events(self, down_to):
+        """Close whatever events are open beyond the first `down_to` (an act that failed part-way)."""
+        book = ledger.of(self)
+        while len(book.open) > down_to:
+            self.close_event(book.open[-1])
+
+    def to_page(self, name, text, kind='action', transcript=None, **more):
+        """A line of the play goes to the audience: the one way onto the page. kind: 'action' (what
+        someone does), 'speech', 'thought', or None for the play's own lines (a heading, a set-up).
+        transcript: the line as the play's transcript keeps it (by default `name text`); False
+        when the caller keeps it there itself. What is shown of what people do belongs to an
+        event: a line shown outside one is a path not yet brought in ('unrecorded_line')."""
+        self.message_queue.put({'name': name, 'text': text, **({'line_kind': kind} if kind == 'action' else {}), **more})
+        if transcript is not False:
+            self.transcript.append(transcript if transcript is not None else f'{name} {text}')
+        book = ledger.of(self)
+        if book.open:
+            book.open[-1]['lines'].append(text)
+        elif book.begun and kind == 'action':
+            site = ledger._site()
+            book.loose_writes[site] = book.loose_writes.get(site, 0) + 1
+            if book.loose_writes[site] == 1:
+                trace.event('unrecorded_line', site=site, text=text[:80])
 
     def _cast(self):
         return [c for c in self.actors + self.extras + self.npcs if getattr(c, 'name', '') != 'Viewer']

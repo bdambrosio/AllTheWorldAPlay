@@ -175,7 +175,13 @@ def _find(context, character, wanted):
 
 
 def age(context):
-    """Move each modelled thing on in time: a fire burns down whether or not anyone looks."""
+    """Move each modelled thing on in time: a fire burns down whether or not anyone looks.
+    What time does to things is an event of the play like any other (Context.committing)."""
+    with context.committing('time'):
+        _age(context)
+
+
+def _age(context):
     from sim import ledger
     stage_ledger = ledger.of(context)
     for thing in [t for t in stage_ledger.things if t.get('kind')]:
