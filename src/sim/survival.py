@@ -145,6 +145,19 @@ def _word(cfg, need, value):
     return words[0] if value < 0.3 else words[1] if value < 0.6 else words[2] if value < 0.85 else words[3]
 
 
+def need_called(body, said):
+    """The need of `body` that `said` names: by the need's own name, or by one of the words the
+    world tells it by (_word). Bodies are shown as 'hungry; thirsty', so a resolver naming a
+    need as it was shown ('hungry') named 'hunger', and was refused it as no need at all."""
+    said = ' '.join(str(said or '').lower().split())
+    harm = _harm(body.cfg)
+    for need in body.levels:
+        words = harm['words'] if need == harm['name'] else (_need_defs(body.cfg).get(need) or {}).get('words') or ()
+        if said == need.lower() or said in {w.lower() for w in words}:
+            return need
+    return None
+
+
 @dataclass
 class Body:
     levels: dict = field(default_factory=dict)      # need -> 0..1, including the harm need

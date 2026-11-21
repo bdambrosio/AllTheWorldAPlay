@@ -153,7 +153,7 @@ def faults(context, character, found):
                 out.append(f"'{e['world']}' is not one of the answers listed" if survival.free(context) else f"'{e['world']}' is not one of the world's actions listed")
         elif e.get('need'):
             who = _person(context, character, e.get('who') or character.name)
-            if who is None or getattr(who, 'body', None) is None or _low(e['need']) not in {n.lower() for n in who.body.levels}:
+            if who is None or getattr(who, 'body', None) is None or survival.need_called(who.body, e['need']) is None:
                 out.append(f"'{e['need']}' is not one of the needs the stage shows for {e.get('who') or character.name}")
         elif e.get('found'):
             if not any(_low(p['name']) == _low(e['found']) for p in survival.lying(context, stage.here(character), hidden=True)):
@@ -268,6 +268,7 @@ What {name} does not know:
 {leaves}
 How this world works:""" + _rules + """
 The words:
+- The words are what {name} says aloud, and only that. Anything else written into them, what is done or how it is said ('She snorts.', '*pats her pocket*', '(whispered)'), is a finding (aloud). The mark (lie) is not one: it stays.
 - Words do nothing physical, with one exception: words that hand a thing the speaker holds to someone present, in so many words ("here, take half"), are that hand-over. Give it among the effects, and say in "page" what is seen.
 - A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known (knows); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms).
 - These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
@@ -279,7 +280,7 @@ Answer in JSON only:
   "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
 """ + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
   "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
-  "findings": [{{"kind": "<holds, body, where, time, done, whose, writing, gender, knows or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
+  "findings": [{{"kind": "<aloud, holds, body, where, time, done, whose, writing, gender, knows or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
   "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
   "tells": ["<each new fact {name} tells of its own life before the play>"],
   "retold": "<the words that tell again as news what is already in told; else empty>",
@@ -300,7 +301,7 @@ _SWAPS = (
     ("- Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.",
      "- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here."),
     ("""     {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},""",
-     """     {{"who": "<the person whose need it is>", "need": "<one of the needs Bodies shows, by its name there>", "change": "<eased or worsened>"}},
+     """     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>"}},
      {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
      {{"world": "<only with a danger on the stage: one of the answers listed for it, exactly as listed>"}},"""),
     ("""{{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}""",
@@ -545,7 +546,7 @@ def apply(context, character, act):
             # a need eased or made worse, as the resolver found it: a fact about the person, in
             # the body's own terms (eased: no longer felt; worsened: a step harder)
             who = _person(context, character, e.get('who') or me) or character
-            need = next((n for n in who.body.levels if n.lower() == _low(e['need'])), None)
+            need = survival.need_called(who.body, e['need'])
             if need is not None:
                 level = who.body.level(need)
                 worse = _low(e.get('change')).startswith('wors')

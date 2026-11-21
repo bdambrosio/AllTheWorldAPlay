@@ -1199,7 +1199,7 @@ End response with:
                             start_time=self.context.simulation_time, duration=1)
                 significance = self.context.evaluate_commitment_significance(self, other, task)
                 placed = bool(self.context.place_commitment(self, task, significance))
-            trace.event('promise', character=self.name, who=who, what=what, kind=kind, placed=placed)
+            trace.event('promise', character=self.name, who=who, what=what, when=kind, placed=placed)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Play an act. Whatever it opens as an event of the play (Context.open_event) is closed

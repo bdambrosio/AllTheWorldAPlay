@@ -650,7 +650,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
+SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
 
 
 def speech_claims(context, speaker, found):
@@ -722,8 +722,10 @@ def speech(context, speaker, line, listener=None, deed=''):
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
         return line, give
     # the line will not stand as written: what was read of its words is not applied; a deed done
-    # beside it is, whatever becomes of the words
-    speaker.said = {**found, 'tells': [], 'promises': [], 'retold': ''} if deed and isinstance(speaker.said, dict) else None
+    # beside it is, whatever becomes of the words. A line that was only written with what is not
+    # spoken in it ('She snorts.') says what it said: what it told and promised stands.
+    if any(kind != 'aloud' for kind, _ in claims):
+        speaker.said = {**found, 'tells': [], 'promises': [], 'retold': ''} if deed and isinstance(speaker.said, dict) else None
     put_right = str(found.get('line') or '').strip().strip('"“”').strip()
     if put_right and put_right != line:
         # the call that found what is not so, with the stage before it, also says the line as it
