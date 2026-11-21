@@ -271,3 +271,13 @@ def find(context, text):
     """The place a reference gives ('#Spring3', 'spring3'), or None."""
     rid = str(text or '').strip().replace('#', '')
     return place(context, rid) or called(context, rid)
+
+
+def listed(context):
+    """(id, place) for every place, in the order the world came to have them."""
+    return [(p.id, p) for p in places(context)]
+
+
+def built(context):
+    """Has this performance a world laid out (a play with no map has not)?"""
+    return _grid(context) is not None

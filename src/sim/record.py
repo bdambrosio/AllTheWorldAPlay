@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, keeper, ledger, stage, survival
+from sim import ablation, keeper, ledger, stage, survival, world
 from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
@@ -162,7 +162,7 @@ def of(context, actor, people=None, full=False):
     a scene's cast). full: with how everyone is placed, what is held out, who has gone, what the
     stage has refused `actor` in this scene and what the world offers here: the whole stage, for
     the call that says what a deed does (sim/resolver.py)."""
-    people = [c for c in (people or [actor] + actor.bystanders()) if getattr(c, 'mapAgent', None) is not None]
+    people = [c for c in (people or [actor] + actor.bystanders()) if world.on(c)]
     # those in the scene by radio are heard, not there: listed apart, so that no narration puts
     # them on the spot (Novak, the Earthside flight director, swung a camera on the gantry)
     radio = [c for c in people if c is not actor and stage.remote(c)]
@@ -170,8 +170,8 @@ def of(context, actor, people=None, full=False):
     radio += [c for c in heard if c not in people and (stage.remote(c) or stage.remote(actor))]
     people = [c for c in people if c not in radio]
     at = stage.here(actor)
-    near = sorted((stage._distance(at, res['location']), rid, res) for rid, res in context.map.resource_registry.items())
-    places = [f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else stage._direction(at, res['location']).lower()})"
+    near = sorted((stage._distance(at, res.xy), rid, res) for rid, res in world.listed(context))
+    places = [f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else stage._direction(at, res.xy).lower()})"
               for d, rid, res in near if d <= NEARBY_TILES]
     return '\n'.join([
         f'Cast: {cast(context)}',
@@ -269,12 +269,12 @@ def situation(context, lately='', viewer=None):
     after every scene, so whatever a narrator once wrote was the situation from then on.
     viewer: a character. The situation is then as that character can know it: itself and those
     with it, and of another body only what shows (Body.visible), not its thirst or hunger."""
-    cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if getattr(c, 'mapAgent', None) is not None]
+    cast = [c for c in list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', [])) if world.on(c)]
     if viewer is not None:
         in_scene = getattr(context, 'current_scene', None) is not None
         with_it = viewer.bystanders() if in_scene else [c for c in cast if c is not viewer]
         radio = [c for c in viewer.hearers() if c not in with_it] if in_scene and hasattr(viewer, 'hearers') else []
-        cast = [viewer] + [c for c in with_it if getattr(c, 'mapAgent', None) is not None]
+        cast = [viewer] + [c for c in with_it if world.on(c)]
     else:
         radio = []
     lines = [f'It is now {stage.clock(context, date=True)}.',
@@ -289,7 +289,7 @@ def situation(context, lately='', viewer=None):
     threat = getattr(context, 'active_threat', None)
     if viewer is None or threat is None or viewer.name in threat['targets']:
         lines.append('Danger: ' + (f"{threat['hazard']['description']}, threatening {', '.join(threat['targets'])}" if threat else 'none at present') + '.')
-    used = '; '.join(f'{rid}: {survival._left(res)}' for rid, res in context.map.resource_registry.items() if survival._left(res))
+    used = '; '.join(f'{rid}: {survival._left(res)}' for rid, res in world.listed(context) if survival._left(res))
     if used:
         lines.append(f'Drawn on so far: {used}.')
     if lately:
@@ -669,10 +669,10 @@ def speech(context, speaker, line, listener=None, deed=''):
     rewrite when it finds something; a line the rewrite leaves no better is cut to its sound
     sentences. Traced as 'speech_check'."""
     if (not line or not survival.config(context) or getattr(speaker, 'body', None) is None
-            or getattr(speaker, 'mapAgent', None) is None or not ablation.enabled('speech_gate')):
+            or not world.on(speaker) or not ablation.enabled('speech_gate')):
         return line, None
     people = [speaker] + [c for c in speaker.bystanders() if c is not speaker]
-    if listener is not None and listener not in people and getattr(listener, 'mapAgent', None) is not None:
+    if listener is not None and listener not in people and world.on(listener):
         people.append(listener)
     about = of(context, speaker, people)
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []

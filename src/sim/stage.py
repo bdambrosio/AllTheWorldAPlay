@@ -14,7 +14,7 @@ import logging
 import os
 import re
 
-from sim import ledger, survival
+from sim import ledger, survival, world
 from sim.trace import trace
 
 logger = logging.getLogger('simulation_core')
@@ -31,12 +31,12 @@ class Part:
 
 def uncast_parts(context):
     """[(place id, Part)] for the owned places nobody has been cast at."""
-    return [(rid, res['properties']['owner']) for rid, res in context.map.resource_registry.items()
-            if isinstance(res.get('properties', {}).get('owner'), Part)]
+    return [(rid, res.props['owner']) for rid, res in world.listed(context)
+            if isinstance(res.props.get('owner'), Part)]
 
 
-SAME_PLACE = ('', 'same', 'same place', 'same location', 'same as before', 'here', 'unchanged')
-AT_PLACE_TILES = 2        # this close to a place is 'at' it
+SAME_PLACE = world.SAME_PLACE
+AT_PLACE_TILES = world.AT_PLACE_TILES   # this close to a place is 'at' it
 GAZETTEER_PLACES = 14     # places listed for the playwright, nearest first
 
 # One wording of the scene 'location' field and of the continuity rule, for every prompt that
@@ -67,7 +67,7 @@ A confrontation ends, in that scene, with something given, taken, found out or r
 
 
 def here(character):
-    return (character.mapAgent.x, character.mapAgent.y)
+    return world.at(character)
 
 
 # --------------------------------------------------------------------------- presence
@@ -88,14 +88,14 @@ def remote(character):
     character.remote_from: the place they speak from, when it is on the map (the airlock); away
     from it they are wherever they have walked to, in person."""
     words = (getattr(character, 'remote', None) or '').strip()
-    if not words or getattr(character, 'mapAgent', None) is None:
+    if not words or not world.on(character):
         return words
     context = getattr(character, 'context', None)
     xy = (getattr(context, 'previous_scene', None) or {}).get('xy')
     if xy is not None and _distance(here(character), xy) <= AT_PLACE_TILES:
         return ''
-    home = (context.map.resource_registry.get(getattr(character, 'remote_from', None) or '') or {}).get('location') if context is not None else None
-    if home is not None and _distance(here(character), tuple(home)) > AT_PLACE_TILES:
+    home = world.place(context, getattr(character, 'remote_from', None) or '') if context is not None else None
+    if home is not None and _distance(here(character), home.xy) > AT_PLACE_TILES:
         return ''
     return words
 
@@ -104,7 +104,7 @@ def supporting_note(context):
     """For the prompts that plan and fit scenes (not the leads' own drafts): the supporting actors,
     what each wants and where each is, and that a scene set there has them in it. '' when the
     play has none in person on the map."""
-    people = [c for c in context.supporting() if getattr(c, 'mapAgent', None) is not None and not remote(c)]
+    people = [c for c in context.supporting() if world.on(c) and not remote(c)]
     if not people:
         return ''
     def line(c):
@@ -119,7 +119,7 @@ def supporting_note(context):
 
 def supporting_at(context, xy, but=()):
     """The supporting actors who are at a place in person: they are in any scene set there."""
-    return [c for c in context.supporting() if c not in but and getattr(c, 'mapAgent', None) is not None
+    return [c for c in context.supporting() if c not in but and world.on(c)
             and not remote(c) and _distance(here(c), xy) <= AT_PLACE_TILES]
 
 
@@ -215,71 +215,11 @@ def next_time(now, when):
     return then
 
 
-def _distance(a, b):
-    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
-
-
-def _direction(frm, to):
-    from sim.map import get_direction_name
-    return get_direction_name(to[0] - frm[0], to[1] - frm[1]).name
-
-
-def _nearest_resource(world, xy, of_type=None):
-    """(distance, id, resource) of the resource nearest to xy, optionally of one type; or None."""
-    found = [(_distance(xy, res['location']), rid, res) for rid, res in world.resource_registry.items()
-             if of_type is None or res.get('type') == of_type]
-    return min(found, key=lambda f: f[:2]) if found else None
-
-
-def resolve(context, location, anchor):
-    """(xy, name) of the place a scene location names, seen from `anchor` (where the cast is):
-    a resource, the nearest resource of a kind, or the nearest tile of a terrain (the anchor
-    itself when it already stands on that terrain). None when the scene stays where the cast
-    is: 'same', or a name that is no place on this map."""
-    world = context.map
-    name = str(location or '').strip().strip('#"\'.')
-    for suffix in (' terrain', ' resource', ' area'):
-        if name.lower().endswith(suffix):
-            name = name[:-len(suffix)].strip()
-    if name.lower() in SAME_PLACE:
-        return None
-    for rid, res in world.resource_registry.items():
-        if rid.lower() == name.lower():
-            return tuple(res['location']), rid
-    kind = world.get_resource_type(name)
-    if kind is not None:
-        nearest = _nearest_resource(world, anchor, kind)
-        if nearest:
-            return tuple(nearest[2]['location']), nearest[1]
-    terrain = world.get_terrain_type(name)
-    if terrain is not None:
-        if world.patches[anchor[0]][anchor[1]].terrain_type == terrain:
-            return anchor, terrain.name   # already there: the scene is played where the cast stands
-        tiles = [(x, y) for x in range(world.width) for y in range(world.height)
-                 if world.patches[x][y].terrain_type == terrain]
-        if tiles:
-            return min(tiles, key=lambda t: _distance(anchor, t)), terrain.name
-    logger.warning(f"scene location '{location}' is not a place on this map; the scene stays where the cast is")
-    return None
-
-
-def places_named(context, text):
-    """The places on the map that a text names, longest name first. A place was looked for as a
-    word ending in digits ('Spring3'), which the places an author names ('HuOffice', 'Cafe') are
-    not: 'Walk to HuOffice to draft the papers breaking Hu's contract' walked Xue to Hu."""
-    low = (text or '').lower()
-    return [rid for rid in sorted(context.map.resource_registry, key=len, reverse=True)
-            if re.search(rf'(?<![a-z0-9_]){re.escape(rid.lower())}(?![a-z0-9_])', low)]
-
-
-def where(context, xy):
-    """A position in words: 'at Well5', or '6 tiles North of Well5'."""
-    nearest = _nearest_resource(context.map, xy)
-    terrain = context.map.patches[xy[0]][xy[1]].terrain_type
-    if nearest is None:
-        return f'in {terrain.name} terrain'
-    d, rid, res = nearest
-    return f'at {rid}' if d <= AT_PLACE_TILES else f"{d} tiles {_direction(res['location'], xy)} of {rid}"
+_distance = world.tiles
+_direction = world.bearing
+resolve = world.resolve          # (position, name) of the place a scene location names, or None
+places_named = world.named_in    # the ids of the places a text names
+where = world.where              # a position in words: 'at Well5', '6 tiles North of Well5'
 
 
 def set_scene(context, scene, characters, opens_act):
@@ -321,15 +261,15 @@ def set_scene(context, scene, characters, opens_act):
         tiles = _distance(here(character), xy)
         if tiles <= AT_PLACE_TILES:   # already there: a step or two needs no telling
             if place:
-                character.mapAgent.x, character.mapAgent.y = xy
+                world.put(character, xy)
             continue
         if opens_act:
-            character.mapAgent.x, character.mapAgent.y = xy
+            world.put(character, xy)
             ledger.of(context).wrote('position')
             if getattr(character, 'body', None) is not None:
                 character.body.sheltered = False
         else:
-            longest = max(longest, survival.travel(character, *xy, advance_clock=False))
+            longest = max(longest, survival.travel(character, xy, advance_clock=False))
         movers.append((character.name, tiles))
     if not movers:
         return ''
@@ -349,30 +289,29 @@ def gazetteer(context):
     nearest the cast with what each offers (and to whom, when a place is someone's own) and
     how far it is. Every kind of place that offers an action is listed at least once, however
     far, so the plan knows it exists."""
-    world = context.map
-    cast = [c for c in context.actors if getattr(c, 'mapAgent', None) is not None]
-    if not cast or not world.resource_registry:
+    cast = [c for c in context.actors if world.on(c)]
+    if not cast or not world.places(context):
         return ''
     minutes_per_tile = (survival.config(context) or {}).get('tile_minutes', 2) * 1.5
     lines = ['Where the cast is: ' + '; '.join(f'{c.name} {remote(c) or where(context, here(c))}' for c in cast) + '.']
     cast = [c for c in cast if not remote(c)] or cast   # places are reckoned from those who can walk to them
-    places = sorted(((min(_distance(here(c), res['location']) for c in cast), rid, res)
-                     for rid, res in world.resource_registry.items()), key=lambda p: p[:2])
+    places = sorted(((min(_distance(here(c), res.xy) for c in cast), rid, res)
+                     for rid, res in world.listed(context)), key=lambda p: p[:2])
     listed, kinds = [], set()
     free = survival.free(context)   # no list of what can be done at each place: what a kind of place gives is known
     for d, rid, res in places:
         offers = [] if free else survival.offers(context, res, cast)
-        if len(listed) < GAZETTEER_PLACES or ((offers or free) and res.get('type') not in kinds):
+        if len(listed) < GAZETTEER_PLACES or ((offers or free) and res.kind not in kinds):
             listed.append((d, rid, res, offers))
-            kinds.add(res.get('type'))
+            kinds.add(res.kind)
     for d, rid, res, offers in listed:
-        nearest = min(cast, key=lambda c: _distance(here(c), res['location']))
+        nearest = min(cast, key=lambda c: _distance(here(c), res.xy))
         reach = 'here' if d <= AT_PLACE_TILES else f'{d} tiles from {nearest.name}, about {round(d * minutes_per_tile)} min walk'
-        owner = res.get('properties', {}).get('owner')
+        owner = res.owner
         # an uncast owner is said only where what can be done there depends on whose it is
-        owned = ((', has an owner' if survival.ownership_used(context, res.get('type')) else '') if isinstance(owner, Part)
-                 else f", owned by {getattr(owner, 'name', owner)}" if owner else '')
-        lines.append(f"- {rid}: {res.get('description') or res.get('type')}"
+        owned = ((', has an owner' if survival.ownership_used(context, res.kind) else '') if isinstance(owner, Part)
+                 else f", owned by {owner}" if owner else '')
+        lines.append(f"- {rid}: {res.description or res.kind}"
                      + owned + f' ({reach})'
                      + (f"; can be done there: {', '.join(offers)}" if offers else ''))
     shared = [] if free else survival.shared_actions(context)
@@ -384,7 +323,7 @@ def gazetteer(context):
 
 def company(character):
     """The scene partners standing with a character: those who come along when it walks."""
-    return [c for c in character.bystanders() if getattr(c, 'mapAgent', None) is not None]
+    return [c for c in character.bystanders() if world.on(c)]
 
 
 def walk(character, xy, place, alone=False, to=True):
@@ -403,7 +342,7 @@ def walk(character, xy, place, alone=False, to=True):
     # place takes the party, however short (Joe walked three tiles to the spring alone, then
     # walked back to say it was 'right there, past the ferns')
     party = [] if alone or (tiles <= character.EARSHOT_TILES and where(context, xy) == left) else was_with
-    minutes = max(survival.travel(c, *xy, advance_clock=False) for c in [character] + party)
+    minutes = max(survival.travel(c, xy, advance_clock=False) for c in [character] + party)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)
     # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing. A
@@ -437,8 +376,8 @@ def approach(character, target):
     """Before a character acts on or speaks to a scene partner who is out of reach, it walks to
     them (Joe thrust a branch at Samantha from three tiles off, and waved at her from five).
     Returns the words for the audience, or ''."""
-    if (target is None or target is character or getattr(target, 'mapAgent', None) is None
-            or getattr(character, 'mapAgent', None) is None
+    if (target is None or target is character or not world.on(target)
+            or not world.on(character)
             or getattr(target, 'current_scene', None) is not character.context.current_scene
             or character.context.current_scene is None):
         return ''
@@ -521,11 +460,11 @@ def whereabouts(character):
     """Where the others in the scene are, seen from a character: 'Samantha is 5 tiles East of
     you, out of reach'. The act prompt named who was visible but not how far."""
     scene = character.context.current_scene
-    if scene is None or getattr(character, 'mapAgent', None) is None:
+    if scene is None or not world.on(character):
         return ''
     out = []
     for other in character.context.actors + character.context.extras + character.context.npcs:
-        if other is character or getattr(other, 'current_scene', None) is not scene or getattr(other, 'mapAgent', None) is None:
+        if other is character or getattr(other, 'current_scene', None) is not scene or not world.on(other):
             continue
         d = _distance(here(character), here(other))
         minutes = survival.walk_minutes(character.context, d)
@@ -576,12 +515,11 @@ def plain(context, text):
     ones ('Fallen_Branch9' -> 'the fallen branch', 'Berries15' -> 'the berries') and tile counts
     go ('walks 4 tiles Southwest to' -> 'walks Southwest to'). Places an author named ('HotelBar')
     are left as they are."""
-    world = getattr(context, 'map', None)
-    if not text or world is None:
+    if not text or not world.built(context):
         return text
     def ordinary(match):
         rid = match.group(0)
-        if rid not in world.resource_registry:
+        if world.place(context, rid) is None:
             return rid
         return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
@@ -610,12 +548,12 @@ def light(context):
     scenario's image_light: the Moon has a black sky at every hour, and 'clear morning light'
     drew an Earth desert)."""
     part = part_of(context.simulation_time)
-    own = getattr(getattr(getattr(context, 'map', None), 'scenario_module', None), 'image_light', None) or {}
+    own = getattr(world.scenario(context), 'image_light', None) or {}
     return own.get(part) or LIGHT[part]
 
 
 def style(context):
-    return (getattr(context, 'image_style', None) or getattr(getattr(context, 'map', None) and context.map.scenario_module, 'image_style', None)
+    return (getattr(context, 'image_style', None) or getattr(world.scenario(context), 'image_style', None)
             or DEFAULT_STYLE)
 
 
@@ -656,13 +594,10 @@ def _place_words(context, cast):
     """(words for the place, whether it is a room)."""
     scene = context.current_scene or {}
     place = scene.get('place') or scene.get('location') or where(context, here(cast[0])).removeprefix('at ')
-    res = context.map.resource_registry.get(place)
+    res = world.place(context, place)
     words = _place_name(context, place, res) if res else plain(context, place)
-    told = (res or {}).get('description')
-    indoor = False
-    if res and res.get('location'):
-        x, y = res['location']
-        indoor = context.map.patches[x][y].terrain_type.name in INDOOR_TERRAIN
+    told = res.description if res else None
+    indoor = bool(res) and world.region(context, res.xy) in INDOOR_TERRAIN
     return (f"{words} ({told[0].lower() + told[1:]})" if told and told.lower() not in words.lower() else words), indoor
 
 
@@ -671,7 +606,7 @@ def _on_stage(context):
     never in a picture of his own office), else those marked as in it, else the main cast. The
     scene picture is taken before the cast is marked, and showed the whole main cast. Those in
     the scene by radio are not in its picture."""
-    everyone = [c for c in context.everyone() if getattr(c, 'mapAgent', None) is not None and not remote(c)]
+    everyone = [c for c in context.everyone() if world.on(c) and not remote(c)]
     scene = context.current_scene
     named = []
     if isinstance(scene, dict):
@@ -691,8 +626,7 @@ def picture(context, doing=''):
     first, and a room is shown from inside: the play's opening sentence ('a modern chinese
     urban setting with a mix of buildings, roads ...') led every picture, after 'Wide view',
     and a meeting in an office was drawn round a desk in the street."""
-    world = getattr(context, 'map', None)
-    if world is None or not context.actors:
+    if not world.built(context) or not context.actors:
         return None
     on_stage = _on_stage(context)
     if not on_stage:
@@ -718,7 +652,7 @@ def picture(context, doing=''):
 
 def portrait(context, character, mood=''):
     """The prompt for a character's portrait: how it looks, how it feels, where it is."""
-    cast = [character] if getattr(character, 'mapAgent', None) is not None else []
+    cast = [character] if world.on(character) else []
     where_ = f"{_place_words(context, cast)[0]}, {light(context)}" if cast and getattr(context, 'map', None) else ''
     parts = [style(context), f"Head and shoulders portrait of {_looks(context, character)}",
              f"Expression: {mood.strip().rstrip('.')}" if mood and mood.strip() else '',
@@ -817,8 +751,7 @@ def picture_facts(context, deed='', actor=None, setup=False):
     there is no map or nobody on stage. deed: what `actor` is doing in front, as the actor wrote
     it. setup: the scene has just been set, and its set-up sentence is the moment. People are
     named in the prompt, so that a deed ('Joe holds the watch out to Samantha') says who is who."""
-    world = getattr(context, 'map', None)
-    if world is None or not context.actors:
+    if not world.built(context) or not context.actors:
         return None
     on_stage = _on_stage(context)
     if not on_stage:
@@ -845,7 +778,7 @@ def picture_facts(context, deed='', actor=None, setup=False):
 
 
 def portrait_facts(context, character, mood=''):
-    cast = [character] if getattr(character, 'mapAgent', None) is not None and getattr(context, 'map', None) else []
+    cast = [character] if world.on(character) and world.built(context) else []
     place = _place_words(context, cast)[0] if cast else ''
     by = remote(character)
     if by:
