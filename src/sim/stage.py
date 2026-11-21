@@ -280,7 +280,7 @@ def set_scene(context, scene, characters, opens_act):
         context.simulation_time += survival.timedelta(minutes=longest)
         line = f"{names} walk{'s' if len(movers) == 1 else ''} to {scene['place']} ({round(longest)} min)."
     trace.event('scene_place', place=scene['place'], movers=[n for n, _ in movers], walked=not opens_act,
-                minutes=round(longest, 1))
+                minutes=round(longest, 1), at=list(xy))
     return line
 
 

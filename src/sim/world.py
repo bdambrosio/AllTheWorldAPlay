@@ -61,7 +61,10 @@ def _grid(context):
 def build(context, scenario_module):
     """Lay out the world of a performance from its world file."""
     from sim import map as grid_map
+    from sim.trace import trace
     context.map = grid_map.WorldMap(60, 60, scenario_module)
+    # the places as laid out, so that what a prompt was shown of them can be made again from a trace
+    trace.event('world_built', places=[{'id': p.id, 'kind': p.kind, 'at': list(p.xy), 'description': p.description} for p in places(context)])
 
 
 def scenario(context):

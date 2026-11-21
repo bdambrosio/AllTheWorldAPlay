@@ -1695,7 +1695,7 @@ def travel(character, to, advance_clock=True):
             character.body.adjust(cfg['travel_need'], 0.01 * tiles)
     if advance_clock:
         context.simulation_time += timedelta(minutes=minutes)
-    trace.event('travel', character=character.name, tiles=tiles, minutes=round(minutes, 1))
+    trace.event('travel', character=character.name, tiles=tiles, minutes=round(minutes, 1), to=list(to))
     return minutes
 
 

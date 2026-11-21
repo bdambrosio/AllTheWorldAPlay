@@ -445,3 +445,9 @@ without its catalogue `keeper._stage` is.
 **Evidence** (in `logs/review-20261120/`): `resolver/` (225 recorded deeds), `render/` (whose
 doing, replayed), `act/` (209 recorded lines; the one-act form), `engine/smoke.py` (one small
 check per stage).
+
+## Space (sim/world.py)
+
+One module answers every question of space: what places there are (`places`, `place`, `called`, `nearest`), where a person stands (`at`, `put`, `enter`), how far and which way (`tiles`, `bearing`), what ground a position is on (`region`, `pace`), a position in words (`where`), a name into a place (`resolve`, `find`), and what is in view (`surroundings`, `view_report`). A place is a `world.Place`: id, kind, description, position, and props (its owner, by name or as a part nobody is cast in; what is left of what it gives; whatever a rule sets). Nothing outside this module reads a person's tile, the table of places or the ground; a position is handed back to it and not looked into.
+
+As it stands the module is the one way in to the old grid (sim/map.py), unchanged underneath: distances are still tiles and each threshold is where its caller kept it. The grid is to give way to places that hold other places, with positions in metres, behind the same calls (plan of 2026-11-21: nested places; new places made by the set-up check and the resolver; the worlds' action lists moved to the resolver and keeper). Checked by logs/review-20261121/world/compare.sh: the text every prompt is shown, and the trace, over a fixed script on three plays and ten seeds, the same before and after.
