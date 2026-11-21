@@ -81,9 +81,9 @@ Answer in JSON only:
               "changes": [{{"by": "<two to four words, a verb first>", "from": "<state>", "to": "<state, or gone>", "uses_up": [], "needs": [], "minutes": 0, "chance": 1.0}}],
               "in_time": [{{"from": "<state>", "to": "<state, or gone>", "after_minutes": 0}}],
               "effects": [{{"while": "<state>", "on": "<a thing this world tracks, as listed>", "does": "keeps off | eases | worsens"}}]}}],
-  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here, or one of that model's changes>", "ends": "<in hand, or here>"}},
+  "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here, or one of that model's changes>", "ends": "<in hand, on and a person's name, or here>"}},
            {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}
-Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most. "by" is the one word make when the deed makes the thing; the one word here when the thing was there already and the deed only comes upon it or takes it up; otherwise a change, in that model's own words for it. "ends" is where the thing is when the deed is done: in hand when {name} is left holding or carrying it, here when it is left where {name} stands.
+Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most. "by" is the one word make when the deed makes the thing; the one word here when the thing was there already and the deed only comes upon it or takes it up; otherwise a change, in that model's own words for it. "ends" is where the thing is when the deed is done: in hand when {name} is left holding or carrying it; on and a name when it is left on that person, worn or bound on (a bandage tied round a wound, a coat put round them); here when it is left where {name} stands.
 </end>"""
 
 
@@ -274,6 +274,15 @@ FREE = (("- Where the stage already offers an action that is what the deed does 
            {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}""", ']}}'))
 
 
+def _ends(value):
+    """Where a deed leaves a thing, as the keeper gave it: {'ends': 'in hand' | 'here'} or
+    {'ends': 'on', 'on': a person's name}."""
+    words = ' '.join(str(value or '').split())
+    if words.lower().startswith('on '):
+        return {'ends': 'on', 'on': words[3:].strip(' .')}
+    return {'ends': 'in hand' if 'hand' in words.lower() else 'here'}
+
+
 def _by(value):
     """How a deed comes by a thing, as the keeper gave it: 'make', 'here', or a change's name. (The
     form once read 'here (it was there already)', the keeper copied it whole, and nothing matched.)"""
@@ -315,7 +324,7 @@ def consider(context, character, deed):
         keep(context, found.get('models'))
         does = [({'action': ' '.join(str(d['action']).split())} if d.get('action') else
                  {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()),
-                  'by': _by(d.get('by')), 'ends': 'in hand' if 'hand' in str(d.get('ends') or '').lower() else 'here'})
+                  'by': _by(d.get('by')), **_ends(d.get('ends'))})
                 for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or (d.get('action') and not free))][:3]
         # Taking up a thing that lies here is the stage's own 'take' and needs no model. (The keeper
         # is not shown the offers for things, said 'creased notebook leaf: here, in hand' of a kind
@@ -443,6 +452,11 @@ def perform(context, character, deed):
             ledger.of(context).put(thing, holder=character.name)
             facts.append(f"{character.name} has the {name}.")
             did = True
+        elif still and d.get('ends') == 'on' and model['portable']:
+            wearer = next((c for c in [character] + list(character.bystanders()) if c.name.lower() == str(d.get('on') or '').lower()), None)
+            if wearer is not None and survival.wear(context, thing, wearer):
+                facts.append(f"The {name} is on {wearer.name}.")
+                did = True
     if came_off and not did:
         return f"{character.name} tries it, and nothing comes of it: things are as they were.", False
     return ' '.join(facts), came_off

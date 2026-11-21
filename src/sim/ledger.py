@@ -42,8 +42,9 @@ def _site():
 
 
 class Thing(dict):
-    """One thing. 'name'; then 'holder' (a name) or 'at' ((x, y)); and as they apply: 'hidden',
-    'fixed', 'spot', 'state', 'since', 'kind'. Two things of one name are two things."""
+    """One thing. 'name'; then 'holder' (a name) or 'at' ((x, y)); and as they apply: 'worn' (on its
+    holder's body, not in a hand: a bandage tied on, a coat), 'hidden', 'fixed', 'spot', 'state',
+    'since', 'kind'. Two things of one name are two things."""
     __hash__ = object.__hash__
     ledger = None   # the ledger it is kept in
     made = None     # the event that brought it into the play (None: there before the play)
@@ -164,6 +165,10 @@ class Ledger:
         # 'what', 'kind' ('standing' | 'later'), 'event'}. (Kept only in the trace, an agreement
         # made in one scene was struck from the next one's set-up as never made.)
         self.promised = Kept(self, 'promised')
+        # the danger on the cast, or None: {'hazard', 'targets', 'location', 'source', 'deadline'}
+        # (sim/survival.py). Kept here so that its coming on, an answer to it and its end belong
+        # to an event like any other change to the stage.
+        self.danger = None
         self.open = []          # the events being committed, the innermost last (Context.committing)
         self.begun = False      # the play has begun: from now on every change belongs to an event
         self.loose_writes = {}  # where in the code a change was made outside any event -> how often
@@ -204,9 +209,11 @@ class Ledger:
         return thing
 
     def place(self, thing, holder=None, at=None):
-        """Put a thing in someone's hands or down at a spot; it is in one place only."""
+        """Put a thing in someone's hands or down at a spot; it is in one place only (and moved, it is
+        no longer worn: survival.wear puts it on)."""
         thing.pop('holder', None)
         thing.pop('at', None)
+        thing.pop('worn', None)
         if holder is not None:
             thing['holder'] = holder
             thing.pop('hidden', None)
@@ -341,7 +348,8 @@ def set_props(context, things):
 
 
 def install(cls):
-    """Give a context class the older attributes as views of its ledger."""
+    """Give a context class the older attributes as views of its ledger (and the danger on the
+    cast as `active_threat`)."""
     cls.props = property(props, set_props)
     for attr in ('held_out', 'shared', 'poses', 'between', 'writings', 'readers'):
         def get(self, attr=attr):
@@ -358,4 +366,14 @@ def install(cls):
             else:
                 kept[:] = list(value)
         setattr(cls, attr, property(get, put))
+
+    def get_danger(self):
+        return of(self).danger
+
+    def set_danger(self, value):
+        book = of(self)
+        if value is not book.danger:
+            book.danger = value
+            book.wrote('danger')
+    cls.active_threat = property(get_danger, set_danger)
     return cls

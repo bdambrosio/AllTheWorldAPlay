@@ -422,10 +422,25 @@ about the person, eased or worsened by what an act is found to do, and what a ki
 is taken from it without a list of actions. Worlds with money (rural, coastal, suburban, city)
 keep their catalogue: paying and owning have not been worked out without it.
 
+**Dangers** (`survival`, the hazards section). A danger comes on in one of three ways: a scene's
+set-up has it upon the cast (`resolve_setup` names it, `stage_hazard` starts it), the director
+brings it on (`director_hazard`), or the hours bring it (`hazard_tick`); at most one in a play
+(`may_come_on`). It is answered only by one of its own answers, as the resolver found the deed to
+be (`answer_danger`); no answer is read from a deed's words, and no danger from a text's verbs.
+It is kept in the ledger (`Context.active_threat`), so each change to it is part of an event.
+What it does is told once (`_told`): to those present, and on the page after the act it belongs
+to. A line that says the danger on the stage is gone, or one is upon them that the stage does not
+show, is a finding (`danger`). The world's listed answers and their chances are unchanged.
+
+**Things on a person, and easing.** A thing can be worn or bound on its holder (`Thing['worn']`,
+`survival.wear`; the resolver's `on` effect, the keeper's `ends: on <name>`); moved again, it is
+no longer worn. An eased need goes one step down in its words (`survival.eased`); a state that is
+or is not (`body.flags`) is cleared.
+
 **Still standing from before, on purpose.** `survival._apply`, `_chosen`, `classify_deed`,
 `resolve_do` and the narrator path of `Context.do` remain for the money worlds and for worlds
-with no mechanics. Hazards and their listed answers are unchanged. `record.situation` and
-`keeper._stage` are not yet routed through `record.account`.
+with no mechanics. `record.situation` is not yet routed through `record.account`; in a world
+without its catalogue `keeper._stage` is.
 
 **Evidence** (in `logs/review-20261120/`): `resolver/` (225 recorded deeds), `render/` (whose
 doing, replayed), `act/` (209 recorded lines; the one-act form), `engine/smoke.py` (one small

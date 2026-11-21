@@ -1188,8 +1188,8 @@ End response with:
         """What a line promised (sim/resolver.py resolve_words). A thing its speaker is to do now,
         in this scene, is put to the scene as a commitment was at a talk's end: rated once
         (Context.evaluate_commitment_significance, which passes over what a planned beat already
-        does) and placed if it earns a beat. What is to be kept, or is for later, is kept in the
-        ledger, for whoever is shown the play's things (record.account 'planner')."""
+        does) and placed if it earns a beat. Each is kept in the ledger, once, for whoever is shown
+        the play's things (record.account 'planner')."""
         from sim import ledger
         for p in promises:
             kind, who, what = str(p.get('kind') or '').strip().lower(), str(p.get('who') or ''), ' '.join(str(p.get('what') or '').split())
@@ -1202,9 +1202,13 @@ End response with:
                 significance = self.context.evaluate_commitment_significance(self, other, task)
                 placed = bool(self.context.place_commitment(self, task, significance))
                 kind = 'standing' if significance == 'STANDING' else kind   # 'stay here', rated a rule to keep
-            if kind in ('standing', 'later') and what:
-                ledger.of(self.context).promised.append({'who': who or self.name, 'to': [h.name for h in self.hearers() if h is not self],
-                                                         'what': what, 'kind': kind, 'event': (ledger.of(self.context).open or [None])[-1]})
+            # kept, of every kind, once: a promise to do a thing now that the scene did not take up as a
+            # beat is still an agreement ('a page in his best hand' was struck from the next set-up
+            # as never promised), and one said again is the same promise (one was kept three times)
+            book = ledger.of(self.context)
+            if what and not any(k['who'].lower() == (who or self.name).lower() and k['what'].lower() == what.lower() for k in book.promised):
+                book.promised.append({'who': who or self.name, 'to': [h.name for h in self.hearers() if h is not self],
+                                      'what': what, 'kind': kind or 'later', 'event': (book.open or [None])[-1]})
             trace.event('promise', character=self.name, who=who, what=what, when=kind, placed=placed)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
@@ -1472,7 +1476,9 @@ End response with:
                 # hand over), shown before them
                 given = Act(mode='Do', action=deed or act_arg, actors=[self], reason='', duration=1, source=None, target=[])
                 given.found = said
-                resolver.apply(self.context, self, given)
+                settled = resolver.apply(self.context, self, given)
+                if settled:   # the world's own sentences (what a written thing says, what a world action gave): the doer's to know
+                    self.add_perceptual_input(re.sub(survival.BODY_NOTE, '', settled).strip(), percept=False, mode='internal')
                 seen = re.sub(rf'^\s*{re.escape(self.name)}[\s,]+', '', said['page'])   # 'Samantha, sitting...' was put down 'Samantha Samantha, sitting'
                 if seen:
                     self.context.add_event(f'{self.name} {seen}', doer=self)
@@ -3366,9 +3372,8 @@ End your response with:
             near = survival.places_near(self)
             if near:
                 parts.append('Places you know of (a move goes to one by its name): ' + near)
-            threat = [o for o in survival.offered_actions(self, part='known', cut=None) if o.strip().startswith('THREAT')]
-            if threat:
-                parts.append('Against the danger you could: ' + '; '.join(threat))
+            if survival.danger_line(self):
+                parts.append('The danger on you: ' + survival.danger_line(self))
             actions = ''
         else:
             actions = survival.available_actions(self, part='known')

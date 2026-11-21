@@ -145,6 +145,39 @@ def _word(cfg, need, value):
     return words[0] if value < 0.3 else words[1] if value < 0.6 else words[2] if value < 0.85 else words[3]
 
 
+BANDS = (0.3, 0.6, 0.85)   # where a need's words change (_word): unfelt, felt, strong, worst
+
+
+def eased(body, need):
+    """A need eased by what was done for it: one step down in its words ('badly hurt' to
+    'injured'; 'very thirsty' to 'thirsty'), to the middle of that step. (Eased was 'no longer
+    felt' for every need, and a strip of sleeve tied round a gash left Kidd unhurt.) A need not
+    felt is left as it is."""
+    level = body.level(need)
+    step = sum(level >= b for b in BANDS)   # 0 .. 3
+    if step == 0:
+        return
+    edges = (0.0,) + BANDS + (1.0,)
+    body.adjust(need, (edges[step - 1] + edges[step]) / 2 - level)
+
+
+def flag_called(body, said):
+    """The binary state of `body` (body.flags: 'dressed', 'wet') that `said` names, or None."""
+    said = ' '.join(str(said or '').lower().split())
+    return next((f for f in body.flags if f.lower() == said), None)
+
+
+def wear(context, thing, wearer):
+    """Put a thing on a person, worn or bound on (a coat round them, a bandage tied on): it is then
+    theirs, on the body rather than in a hand, until it is taken off or handed on."""
+    found = _thing(context, thing, wearer)
+    if found is None:
+        return False
+    ledger.of(context).put(found, holder=wearer.name)
+    found['worn'] = True
+    return True
+
+
 def need_called(body, said):
     """The need of `body` that `said` names: by the need's own name, or by one of the words the
     world tells it by (_word). Bodies are shown as 'hungry; thirsty', so a resolver naming a
@@ -203,15 +236,20 @@ class Body:
         keeps private ('private_items' prefixes: the messages on a phone)."""
         parts = [_word(self.cfg, n, v) for n, v in self.levels.items()]
         hidden = tuple(self.cfg.get('private_items', ())) if public else ()
-        carried = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
-        if carried:
-            parts.append('carrying ' + ', '.join(carried))
+        parts += self._held_words(hidden)
         if self.cfg.get('currency'):
             parts.append(f"{self.money:g} {self.cfg['currency']}")
         if self.sheltered:
             parts.append('in shelter')
         parts += sorted(self.flags) + list(self.bearing)
         return '; '.join(parts)
+
+    def _held_words(self, hidden=()):
+        """['carrying a, b', 'wearing c']: what is in hand or carried, and what is on the body."""
+        held = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
+        worn = [i for i in held if (getattr(i, 'thing', None) or {}).get('worn')]
+        carried = [i for i in held if i not in worn]
+        return ([('carrying ' + ', '.join(carried))] if carried else []) + ([('wearing ' + ', '.join(worn))] if worn else [])
 
     def condition(self):
         """How the body is, in words, without what it carries: 'very thirsty; tired; in shelter'."""
@@ -223,10 +261,8 @@ class Body:
         Thirst, hunger and tiredness are the body's own to know."""
         harm = _harm(self.cfg)['name']
         hidden = tuple(self.cfg.get('private_items', ()))
-        carried = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
         parts = [_word(self.cfg, harm, self.levels.get(harm, 0.0))] if harm in self.levels else []
-        if carried:
-            parts.append('carrying ' + ', '.join(carried))
+        parts += self._held_words(hidden)
         if self.sheltered:
             parts.append('in shelter')
         parts += list(self.bearing)
@@ -629,11 +665,8 @@ def offered_actions(character, part='all', cut=14):
     if part == 'unseen':
         return [text for _, text, unseen in out if unseen]
     out = [text for _, text, unseen in out if part == 'all' or not unseen]
-    threat = active_threat_for(character)
-    if threat:
-        h = threat['hazard']
-        out.insert(0, f"THREAT: {h['description']} is {threat_position(character, threat)}; "
-                      f"you could {', '.join(h.get('responses', {}).keys())}")
+    if danger_line(character):
+        out.insert(0, 'THREAT: ' + danger_line(character))
     return out
 
 
@@ -931,7 +964,8 @@ def named(context, thing, character=None, reader=False):
         got = any(isinstance(e, dict) and e.get('world') for e in (found.made or {}).get('effects') or [])
         by = '' if got or (found.made or {}).get('effects') is None else whose(found.made, reader)
         made = f'made {by}' if by.startswith('by') else by
-    notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'part of the place' if found.get('fixed') else '', made, state) if n]
+    notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'worn' if found.get('worn') else '',
+                         'part of the place' if found.get('fixed') else '', made, state) if n]
     return name + (f" ({'; '.join(notes)})" if notes else '')
 
 
@@ -1400,12 +1434,6 @@ def resolve_do(context, character, act_text, affordance=None, targets=None, reso
     text = (act_text or '').lower().replace('’', "'").replace('‘', "'")
     parts = [p.strip() for p in resolved.split(' + ') if p.strip()] if resolved else classify_deed(context, character, act_text, affordance)[0]
     kinds, facts = set(), []
-    threat = active_threat_for(character)
-    if not parts and threat:   # with a danger on it, a deed nobody could place is still its answer to the danger
-        fact = _respond_to_threat(context, character, threat, text, chosen=None)
-        if fact:
-            context.deed_kind = 'world'
-            return fact
     for label in parts:
         if label.lower() == PASSING:
             kinds.add(PASSING)
@@ -1439,11 +1467,9 @@ def _do_one(context, character, label, text, act_text, via):
     if shared:
         return 'shared', _shared_do(context, character, *shared)
     chosen = _chosen(context, character, label)
-    threat = active_threat_for(character)
-    if threat and not (chosen and chosen[0] == 'action'):
-        fact = _respond_to_threat(context, character, threat, text, chosen=chosen[1] if chosen else None)
-        if fact:
-            return 'world', fact
+    if chosen and chosen[0] == 'threat':
+        # an answer to the danger, by its label: what came of it is told by the danger (_told), after the deed
+        return ('world', '') if answer_danger(context, character, active_threat_for(character), chosen[1]) else (None, None)
     if chosen and chosen[0] == 'action':
         _, action, near, target = chosen
         return 'world', _apply(context, character, action, near, target, via, act_text)
@@ -1761,12 +1787,37 @@ def _where(anchor, threat):
 BODY_NOTE = r'\s*\([^()]*\bis now\b[^()]*\)'   # '(Joe is now thirsty; ...)': for characters and the narrator
 
 
-def _tell(context, text):
-    """A line for the audience about a hazard. Onsets, strikes and retreats went to the characters
-    only: a wolf bit both of them in the last scene and the page never said so."""
-    text = re.sub(BODY_NOTE, '', text).strip()
-    if text:
+# A danger, in one place. It comes on in one of three ways: a scene's set-up has it upon the cast
+# (sim/resolver.py resolve_setup names it; stage_hazard starts it), the director brings it on
+# (director_hazard), or the hours bring it (hazard_tick). It is answered only by one of its own
+# answers, as the resolver found a deed to be (answer_danger); it ends when answered, when those it
+# threatens are out of its reach or kept from it, when what it came from is gone, or when it
+# strikes. It is kept in the ledger (Context.active_threat): each of these is a change to the stage
+# inside an event. What happens is told once, by `_told`: to those present (the record), and to
+# the audience after the act it belongs to, so the page has the deed and then what came of it.
+# (Kidd's 'settles against the back wall' was found to be hiding from the gang and failed, and
+# nobody heard of it: the line it came with put nothing of the world's on the page. The two went
+# on saying the chains were drifting off, and the gang struck. Words naming a danger were also
+# read by a list of verbs, 'a gaunt grey wolf slinks out' among those it did not know.)
+
+
+def _told(context, text):
+    """What a danger does, told: to those present now (the record, Context.add_event) and to the
+    audience once the act it belongs to is on the page (the outermost open event: Context.close_event
+    puts it after that event's own lines). Outside any event it goes to the page at once."""
+    text = ' '.join(str(text or '').split())
+    if not text:
+        return
+    context.add_event(text)
+    book = ledger.of(context)
+    if book.open:
+        book.open[0].setdefault('after', []).append(text)
+    else:
         context.to_page('', f'    {text}', kind=None, transcript=False)
+
+
+def _described(hazard):
+    return hazard['description'][0].upper() + hazard['description'][1:]
 
 
 def _start_threat(context, hazard, anchor, exposed):
@@ -1780,14 +1831,12 @@ def _start_threat(context, hazard, anchor, exposed):
     else:
         loc = (anchor.mapAgent.x + _rng.choice([-3, 3]), anchor.mapAgent.y + _rng.choice([-2, 2]))
     targets = [c.name for c in exposed if _distance(_here(c), _here(anchor)) <= 4]
+    for c in exposed:
+        if c.name in targets:
+            c.body.sheltered = False   # it comes on them where they are
     context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
                              'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
-    text = f"{hazard['description'][0].upper() + hazard['description'][1:]} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}."
-    context.add_event(text)   # seen by those in the scene (the record)
-    context.current_state += '\n' + text
-    described = hazard['description'][0].upper() + hazard['description'][1:]
-    _tell(context, f"{described} appears at {source_id}." if source_id else
-          f"{described} appears to the {_direction(_here(anchor), loc).lower()}.")
+    _told(context, f"{_described(hazard)} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}.")
     trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
 
 
@@ -1800,56 +1849,21 @@ def hazard_spent(context):
     return getattr(context, '_hazards_started', 0) >= MAX_HAZARDS_PER_PLAY
 
 
-def _present_forms(verb):
-    stem = verb[:-1] if verb.endswith('e') else verb
-    doubled = verb + verb[-1] if re.fullmatch(r'.*[^aeiou][aeiou][bdgmnprt]', verb) and len(verb) <= 5 else stem
-    return rf"{verb}e?s|{stem}ing|{doubled}ing"
-
-
-ARRIVING = '|'.join(_present_forms(v) for v in (
-    'appear', 'emerge', 'burst', 'charge', 'attack', 'lunge', 'approach', 'circle', 'stalk', 'prowl', 'howl', 'snarl', 'growl',
-    'leap', 'rush', 'close', 'bear', 'break', 'strike', 'arrive', 'come', 'step', 'crouch', 'creep', 'roll', 'race', 'sweep',
-    'hit', 'begin', 'start', 'pelt', 'ping', 'rain', 'hammer', 'vent', 'bound', 'jump', 'crash', 'descend', 'spread', 'loom')) + r"|is upon|are upon|is here|are here"
-
-
-def arrives(hazard, text):
-    """Does this text have the hazard arriving now: named as the one doing it, in the present?
-    ('A wolf emerges from the dark'; not 'safety against the wolves and boars', not 'the bruise
-    from the boar's charge', not 'before the boar returns'.) The earlier test staged a hazard
-    unless the sentence said it was gone, and failed three times on three phrasings."""
-    name = re.escape(hazard['name'].lower())
-    return bool(re.search(rf"\b{name}s?\b(?!['’])(?:\s+(?!not\b|never\b)[\w-]+){{0,3}}?\s+(?:{ARRIVING})\b", (text or '').lower()))
-
-
-def brought_on(context, scene):
-    """The hazard this scene's set-up brings on, if it may: a real one is then started
-    (stage_hazard). None when the set-up brings none on, a threat is already active, or the
-    play has had its danger."""
-    cfg = config(context)
-    if not cfg or getattr(context, 'active_threat', None) or hazard_spent(context):
-        return None
-    told = f"{scene.get('scene_title', '')}. {scene.get('pre_narrative', '')}"
-    return next((h for h in cfg.get('hazards', []) if arrives(h, told)), None)
+def may_come_on(context):
+    """Whether a danger may come on now: none is on the cast, and the play has not had its one."""
+    return bool(config(context)) and not getattr(context, 'active_threat', None) and not hazard_spent(context)
 
 
 def stage_hazard(context, scene, cast):
-    """When a scene's set-up brings on one of the world's hazards ('The boar bursts from the
-    undergrowth'), it is a real one: it threatens the cast, they must answer it, and it strikes
-    or is driven off by the world's rules. (The planned boar was only words: it never acted,
-    and the scene was about a branch.) Where the set-up was resolved against the world
-    (resolver.resolve_setup) that call says which danger it brings on: 'a gaunt grey wolf slinks
-    out' matched none of the verbs `arrives` knows, and the wolf was words again."""
-    if 'danger' in scene:
-        named = scene['danger']
-        hazard = None if (not named or getattr(context, 'active_threat', None) or hazard_spent(context)) else \
-            next((h for h in (config(context) or {}).get('hazards', []) if h['name'].lower() == named.lower()), None)
-    else:
-        hazard = brought_on(context, scene)
+    """The danger a scene's set-up has upon the cast (scene['danger'], from resolver.resolve_setup),
+    started with the scene: it threatens the cast, they must answer it, and it strikes or is driven
+    off by the world's rules. (A planned boar was only words: it never acted, and the scene was
+    about a branch.)"""
+    named = str(scene.get('danger') or '').strip().lower()
+    hazard = next((h for h in (config(context) or {}).get('hazards', []) if h['name'].lower() == named), None) if named else None
     exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
-    if hazard is None or not exposed:
+    if hazard is None or not exposed or not may_come_on(context):
         return
-    for c in exposed:
-        c.body.sheltered = False   # the scene has it upon them
     context._hazard_last = context.simulation_time
     _start_threat(context, hazard, exposed[0], exposed)
 
@@ -1857,6 +1871,11 @@ def stage_hazard(context, scene, cast):
 # per scene from the second act on: about one play in two has one, none has two
 # (ATWAP_DIRECTOR_HAZARD overrides it, for testing)
 DIRECTOR_HAZARD_CHANCE = float(os.environ.get('ATWAP_DIRECTOR_HAZARD', 0.08))
+
+
+def _fits_now(hazard, now):
+    when = hazard.get('when', 'any')
+    return not ((when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)))
 
 
 def director_hazard(context, cast, act_number):
@@ -1869,24 +1888,15 @@ def director_hazard(context, cast, act_number):
         act_number = int(act_number)
     except (TypeError, ValueError):
         return None
-    if (not cfg or act_number < 2 or hazard_spent(context)
-            or getattr(context, 'active_threat', None) or _rng.random() >= DIRECTOR_HAZARD_CHANCE):
+    if act_number < 2 or not may_come_on(context) or _rng.random() >= DIRECTOR_HAZARD_CHANCE:
         return None
     now = context.simulation_time
     exposed = [c for c in cast if getattr(c, 'body', None) is not None and getattr(c, 'mapAgent', None) is not None]
-    fitting = []
-    for hazard in cfg.get('hazards', []):
-        when = hazard.get('when', 'any')
-        if (when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)):
-            continue
-        if hazard.get('source') and not any(_hazard_source(context, c, hazard) for c in exposed):
-            continue
-        fitting.append(hazard)
+    fitting = [h for h in cfg.get('hazards', []) if _fits_now(h, now)
+               and not (h.get('source') and not any(_hazard_source(context, c, h) for c in exposed))]
     if not exposed or not fitting:
         return None
     hazard = _rng.choice(fitting)
-    for c in exposed:
-        c.body.sheltered = False   # it comes on them where they are
     context._director_hazard = hazard['name']
     context._hazard_last = now
     trace.event('director_hazard', hazard=hazard['name'], act=act_number)
@@ -1895,7 +1905,7 @@ def director_hazard(context, cast, act_number):
 
 
 def hazard_tick(context):
-    """Roll hazard onsets and strikes for the elapsed simulation time (run_scene calls this)."""
+    """Roll hazard onsets and strikes for the elapsed simulation time (between one act and the next)."""
     cfg = config(context)
     if not cfg:
         return
@@ -1910,33 +1920,31 @@ def hazard_tick(context):
 
     threat = getattr(context, 'active_threat', None)
     if threat:
+        hazard = threat['hazard']
         targets = [c for c in cast if c.name in threat['targets']]
         if _source_gone(context, threat):
-            _end_threat(context, threat, threat['hazard'].get('resolved_text') or threat['hazard'].get(
-                'retreat_text', f"The {threat['hazard']['name']} is over."))
-        elif all(_blocked(context, c, threat['hazard']) for c in targets):
-            _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."))
+            _end_threat(context, threat, hazard.get('resolved_text') or hazard.get('retreat_text', f"The {hazard['name']} is over."))
+        elif all(_blocked(context, c, hazard) for c in targets):
+            _end_threat(context, threat, hazard.get('retreat_text', f"The {hazard['name']} passes."))
         else:
-            clear = threat['hazard'].get('escape_tiles', 8)
+            clear = hazard.get('escape_tiles', 8)
             caught = [c for c in targets if _distance(_here(c), threat['location']) < clear]
             if not caught:
                 _end_threat(context, threat, f"{' and '.join(c.name for c in targets)} "
-                                             f"{'is' if len(targets) == 1 else 'are'} clear of the {threat['hazard']['name']}.")
+                                             f"{'is' if len(targets) == 1 else 'are'} clear of the {hazard['name']}.")
             elif now >= threat['deadline']:
                 # it falls on one of them, the nearest, and the page says who ('its tusks catching
                 # a leg' was nobody's leg, and both bodies were hurt)
-                harm = threat['hazard'].get('harm', 0.3)
                 victim = min(caught, key=lambda c: _distance(_here(c), threat['location']))
-                victim.body.adjust(harm_need, harm)
-                _end_threat(context, threat, threat['hazard'].get('strike_text', f"The {threat['hazard']['name']} strikes.")
-                            + f" It is {victim.name} who is hurt. ({victim.name} is now {victim.body.summary()})", struck=True)
+                victim.body.adjust(harm_need, hazard.get('harm', 0.3))
+                _end_threat(context, threat, hazard.get('strike_text', f"The {hazard['name']} strikes.")
+                            + f" It is {victim.name} who is hurt: {victim.name} is {_word(cfg, harm_need, victim.body.levels[harm_need])}.", struck=True)
         return
 
-    if hazard_spent(context):
+    if not may_come_on(context):
         return
     for hazard in cfg.get('hazards', []):
-        when = hazard.get('when', 'any')
-        if (when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)):
+        if not _fits_now(hazard, now):
             continue
         exposed = []
         for c in cast:
@@ -1960,47 +1968,66 @@ def hazard_tick(context):
 
 
 def _end_threat(context, threat, text, struck=False, tell=True):
+    """The danger is over. tell=False: it ended off stage, and nobody saw it go."""
     context.active_threat = None
-    context.add_event(text)
-    context.current_state += '\n' + text
-    if tell:   # not when a character's own act ended it: that act's line says so
-        _tell(context, text)
+    if tell:
+        _told(context, text)
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
 
 
-def _respond_to_threat(context, character, threat, text, chosen=None):
+def danger_answers(character):
+    """The names of the answers the danger on `character` has (its 'responses'), or []: what may be
+    done about it, as the stage lists it for the actor and the resolver."""
+    threat = active_threat_for(character)
+    return list(threat['hazard'].get('responses', {}).keys()) if threat else []
+
+
+def danger_line(character):
+    """The danger on `character` with its answers, in one line, or ''."""
+    threat = active_threat_for(character)
+    if not threat:
+        return ''
+    return (f"{threat['hazard']['description']} is {threat_position(character, threat)}; "
+            f"you could {', '.join(danger_answers(character))}")
+
+
+def answer_danger(context, character, threat, name):
+    """`character` answers the danger with its answer `name`, as the resolver found its deed to be
+    (an answer is never read from the deed's words). Whether it works is the world's chance, with
+    what helps it; either way it is told (_told). Returns what happened, or None when `name` is not
+    one of the danger's answers."""
+    if not threat:
+        return None
     hazard = threat['hazard']
+    name = str(name or '').strip().lower()
+    response = next((r for n, r in hazard.get('responses', {}).items() if n.lower() == name), None)
+    if response is None:
+        return None
     cfg = config(context)
-    for name, response in hazard.get('responses', {}).items():
-        if chosen is not None and name != chosen:
-            continue
-        if chosen is None and not _matches(text, response.get('verbs', [])):
-            continue
-        p = response.get('success', 0.5)
-        for item, bonus in response.get('bonus', {}).items():
-            if item == 'fire' and keeper.keeps_off(context, character, threat['hazard']['name']):
-                p += bonus
-            elif item in character.body.inventory or item in character.body.flags:
-                p += bonus
-        context.simulation_time += timedelta(minutes=5)
-        if _rng.random() < min(0.95, p):
-            source = context.map.resource_registry.get(threat.get('source')) if threat.get('source') else None
-            for key, value in (response.get('sets_property') or {}).items():
-                if source is not None:
-                    source.setdefault('properties', {})[key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
-            fact = f"{character.name} tries to {name}, and it works. " + hazard.get('retreat_text', f"The {hazard['name']} passes.")
-            _end_threat(context, threat, fact, tell=False)
-        else:
-            # A stand that fails costs something the body shows and the page says. (Half a strike
-            # left Joe 'unhurt' after the boar ran through him; two scenes later the plan had him
-            # clutching his side, and the wound the last act turned on had happened off stage.)
-            harm_need = _harm(cfg)['name']
-            level = character.body.levels.get(harm_need, 0.0)
-            character.body.adjust(harm_need, max(hazard.get('harm', 0.3) / 2, NEED_FELT + 0.02 - level))
-            fail = _fmt(hazard.get('fail_text', f"the {hazard['name']} is not deterred"), actor=character.name)
-            fact = (f"{character.name} tries to {name}, but {fail}. {character.name} takes the force of it and is "
-                    f"{_word(cfg, harm_need, character.body.levels[harm_need])}. ({character.name} is now {character.body.summary()}.)")
-            context.add_event(fact)
-        trace.event('hazard', phase='response', hazard=hazard['name'], character=character.name, response=name, fact=fact)
-        return fact
-    return None
+    p = response.get('success', 0.5)
+    for item, bonus in response.get('bonus', {}).items():
+        if item == 'fire' and keeper.keeps_off(context, character, hazard['name']):
+            p += bonus
+        elif item in character.body.inventory or item in character.body.flags:
+            p += bonus
+    context.simulation_time += timedelta(minutes=5)
+    if _rng.random() < min(0.95, p):
+        source = context.map.resource_registry.get(threat.get('source')) if threat.get('source') else None
+        for key, value in (response.get('sets_property') or {}).items():
+            if source is not None:
+                source.setdefault('properties', {})[key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
+        fact = f"{character.name} tries to {name}, and it works. " + hazard.get('retreat_text', f"The {hazard['name']} passes.")
+        _end_threat(context, threat, fact)
+    else:
+        # A stand that fails costs something the body shows and the page says. (Half a strike
+        # left Joe 'unhurt' after the boar ran through him; two scenes later the plan had him
+        # clutching his side, and the wound the last act turned on had happened off stage.)
+        harm_need = _harm(cfg)['name']
+        level = character.body.levels.get(harm_need, 0.0)
+        character.body.adjust(harm_need, max(hazard.get('harm', 0.3) / 2, NEED_FELT + 0.02 - level))
+        fail = _fmt(hazard.get('fail_text', f"the {hazard['name']} is not deterred"), actor=character.name)
+        fact = (f"{character.name} tries to {name}, but {fail}. {character.name} takes the force of it and is "
+                f"{_word(cfg, harm_need, character.body.levels[harm_need])}; {_described(hazard).lower()} is still there.")
+        _told(context, fact)
+    trace.event('hazard', phase='response', hazard=hazard['name'], character=character.name, response=name, fact=fact)
+    return fact

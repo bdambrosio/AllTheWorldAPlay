@@ -442,20 +442,6 @@ class Context():
                          f"them looking for water or shelter; it does not have them know where an unseen place lies.")
         return ('These people met as strangers. ' + ' '.join(lines)) if lines else ''
 
-    def _hazard_claim_stands(self, words, scene=None):
-        """Is a 'presence' finding that names one of this world's dangers a real one? Speaking of
-        a danger (feared, or past) claims nothing. Having it arrive does, unless it is the danger
-        already on the cast or one this scene may bring on (survival.brought_on): a play has
-        one danger, and a second that a plan writes in is written out again."""
-        named = [h for h in (survival.config(self) or {}).get('hazards', []) if h['name'].lower() in words.lower()]
-        if not named:
-            return True   # not one of the world's dangers: an ordinary finding
-        active = (getattr(self, 'active_threat', None) or {}).get('hazard')
-        bringing = survival.brought_on(self, scene) if scene is not None else None
-        if active in named or bringing in named:
-            return False
-        return any(survival.arrives(h, words) for h in named) and (survival.hazard_spent(self) or scene is not None)
-
     async def start(self):
         voices = self.voice_service.get_voices()
         message = {'name':'', 'text':"play context initialized, creating characters..."}
@@ -1399,12 +1385,14 @@ End your response with:
         # the next scene was rewritten around it).
         cast = [c for c in self.actors if getattr(c, 'body', None) is not None]
         if survival.config(self) and cast and ablation.enabled('narration_gate'):
-            hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
             newcomers = bool(analysis.get('entities', {}).get('new_character'))
             found = record.check(self, cast[0], 'The director brings an event into the play.', None,
                                  intervention_description, people=cast) or []
-            claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and (newcomers or (
-                any(h in w.lower() for h in hazards) and not self._hazard_claim_stands(w))))]
+            # A danger the intervention has coming is a 'presence' like any other, and is refused: the
+            # director's own danger is a real one (survival.director_hazard), never words. (The names of
+            # the world's dangers were looked for in the claims, and a list of verbs said whether one
+            # was arriving; one that was became words that nothing answered.)
+            claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and newcomers)]
             # The director's own people are the director's to move: a supporting actor it has come
             # to the leads is walked there, and how such a person is said to be is theirs to play.
             # (Mara, sent from her hut to cross the leads' path, was refused as someone 'not
@@ -1889,7 +1877,8 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 characters_in_scene.append(character)
 
         # rarely, the director brings on one of the world's dangers; the scene is then fitted to it
-        survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'))
+        with self.committing('hazard'):
+            survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'))
         if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
@@ -3869,6 +3858,11 @@ End your response with </end>
             return   # closed already
         if any(e is event for e in book.open):
             return   # opened again inside itself: it closes with the outer one
+        if not book.open and event.get('after'):
+            # what came of the act, as the world settled it (a danger answered, or striking), after the
+            # act's own lines (survival._told)
+            for text in event.pop('after'):
+                self.to_page('', f'    {text}', kind=None, transcript=False)
         if not event['entries'] and (event['things'] or (event['changed'] and event['cause'] != 'time')):
             outer = book.open[-1] if book.open else None
             if outer is not None:

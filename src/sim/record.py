@@ -213,7 +213,7 @@ def account(context, reader, about=None, people=None, full=False):
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
         parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
-                 ("What has been promised or agreed, to keep or for later, oldest first:\n" + '\n'.join(promised)) if promised else '']
+                 ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)
     if reader == 'stage':
         return of(context, about, people, full)
@@ -256,9 +256,9 @@ def _acts(context, actor, people):
         # no catalogue of actions: what is hidden here for a search to find, and, with a danger
         # on the stage, the answers this world has to it
         hidden = [p['name'] for p in survival.lying(context, stage.here(actor), hidden=True)]
-        answers = [o for o in offered if o.startswith('THREAT')]
+        answers = survival.danger_answers(actor)
         return head + ['Hidden here, to be found only by someone who searches this place: ' + (', '.join(hidden) or 'nothing'),
-                       *([f'Answers to the danger for {actor.name}:', *[f'- {o}' for o in answers]] if answers else [])]
+                       *([f"Answers to the danger for {actor.name} ({survival.danger_line(actor).split(';')[0]}):", *[f'- {a}' for a in answers]] if answers else [])]
     return head + [f"The world's actions for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
                    *([f'- {o}' for o in offered] or ['- none here'])]
 
@@ -652,7 +652,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
+SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'danger', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
 
 
 def speech_claims(context, speaker, found):
