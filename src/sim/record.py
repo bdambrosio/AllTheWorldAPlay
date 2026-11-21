@@ -711,7 +711,7 @@ Respond with the spoken words only.
 # 'doing' is asked for but not acted on: the world does not keep what a character is doing with
 # itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
 # deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing')
+SPEECH_KINDS = ('holds', 'body', 'where', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
 
 
 def speech_claims(context, speaker, found):
@@ -740,7 +740,7 @@ def _heard(speaker, listener):
     return '\n'.join(p for p in parts if p) or 'nothing yet'
 
 
-def speech(context, speaker, line, listener=None):
+def speech(context, speaker, line, listener=None, deed=''):
     """A spoken line as its speaker can truly say it: (line, give). `give` is (thing, person)
     when the line itself hands over something the speaker holds, else None. One check; one
     rewrite when it finds something; a line the rewrite leaves no better is cut to its sound
@@ -758,9 +758,23 @@ def speech(context, speaker, line, listener=None):
     read = survival.read_by(context, speaker)
     if read and 'Writings' not in about:
         about += '\nWritings (what the written things the speaker has read say): ' + read.replace('\n', '; ')
-    reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
-                            tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=200)
-    found = json_reply.parse(reply)
+    speaker.said = None
+    if ablation.enabled('resolver'):
+        # the line is resolved as a deed is (sim/resolver.py resolve_words): what it hands over,
+        # what it states that is not so, what it tells of the speaker's life and what it promises
+        from sim import resolver
+        found = resolver.resolve_words(context, speaker, line, listener, deed=deed, about=of(context, speaker, people, full=True)
+                                       + (f"\nWritings {speaker.name} has read: " + read.replace('\n', '; ') if read else ''))
+        if found is None:
+            trace.event('check_unreadable', of='speech', reply='')
+            return line, None
+        handed = next((e for e in found['effects'] if e.get('thing') and e.get('to')), None)
+        found['give'] = {'thing': handed['thing'], 'to': handed['to']} if handed else None
+        speaker.said = found   # Character.acts applies it once the line stands
+    else:
+        reply = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'unknown': unknown, 'heard': heard}, [UserMessage(content=SPEECH)],
+                                tag='record.speech', temp=0.1, stops=['</end>'], max_tokens=200)
+        found = json_reply.parse(reply)
     if not isinstance(found, dict):
         trace.event('check_unreadable', of='speech', reply=(reply or '')[:300])
         return line, None   # unreadable: the line stands as written
@@ -795,8 +809,21 @@ def speech(context, speaker, line, listener=None):
         heard_names(line)
         trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
         return line, give
+    # the line will not stand as written: what was read of its words is not applied; a deed done
+    # beside it is, whatever becomes of the words
+    speaker.said = {**found, 'tells': [], 'promises': [], 'retold': ''} if deed and isinstance(speaker.said, dict) else None
+    put_right = str(found.get('line') or '').strip().strip('"“”').strip() if ablation.enabled('resolver') else ''
+    if put_right and put_right != line:
+        # the call that found what is not so, with the stage before it, also says the line as it
+        # can truly be said (a second, smaller call told only the words to avoid kept 'Somebody
+        # knelt here before us' two times in three, having dropped 'a stranger')
+        trace.event('speech_check', character=speaker.name, outcome='resaid', claims=[f'{k}: {w}' for k, w in claims], before=line, after=put_right)
+        heard_names(put_right)
+        return put_right, None
+    # with what the stage shows instead, where the finding gave it ('Samantha left the fingermarks at 08:01')
+    whys = {str(f.get('words') or '').strip(' "\''): str(f.get('why') or '').strip() for f in found.get('findings') or [] if isinstance(f, dict)}
     again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context), 'unknown': unknown,
-                             'claims': '\n'.join(f'- {w}' for _, w in claims)}, [UserMessage(content=RESAY)],
+                             'claims': '\n'.join(f'- {w}' + (f' (in fact: {whys[w]})' if whys.get(w) else '') for _, w in claims)}, [UserMessage(content=RESAY)],
                             tag='record.resay', temp=0.6, stops=['</end>'], max_tokens=120)
     again = (again or '').strip().strip('"“”\'').strip()
     carried = lambda text: [c for c in claims if ' '.join(c[1].lower().split()).rstrip('.') in ' '.join(text.lower().split())]
@@ -875,6 +902,10 @@ def sound_deeds(context, character, acts):
     none is sound (the chosen one is then mended)."""
     if not ablation.enabled('narration_gate'):
         return acts
+    if ablation.enabled('resolver'):
+        # a deed is resolved once it is chosen, not before (Character.step_task): resolved as a
+        # candidate, eleven of nineteen answers in one act were for deeds never played
+        return [a for a in acts if not (_mode(a) in ('Do', 'Say') and gone(a))] or acts
     sound = [a for a in acts if not _unsound(context, character, a)]
     if sound and len(sound) < len(acts):
         trace.event('deed_check', character=character.name, outcome='passed_over',

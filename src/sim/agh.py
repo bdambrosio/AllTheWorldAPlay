@@ -10,6 +10,7 @@ import sim.survival as survival
 import sim.stage as stage
 import sim.ablation as ablation
 import sim.record as record
+import sim.resolver as resolver
 import sim.keeper as keeper
 import sim.scene as scene_owner
 
@@ -1163,6 +1164,43 @@ End response with:
         if line:
             await asyncio.sleep(0)
 
+    def _walk_after(self, act, reason, alone=False):
+        """The walk an act ends in, when its actor gave one after the line or the deed ('Come on,
+        water runs downhill', and goes): its own event, told as any walk is."""
+        place = (getattr(act, 'then_move', '') or '').strip()
+        if not place:
+            return
+        act.then_move = ''
+        with self.context.committing('walk', self):
+            try:
+                line = self.move(place, reason, alone=alone)
+            except Exception as e:
+                logger.error(f'{self.name} move failure: {e}\n{traceback.format_exc()}')
+                line = None
+            if line:
+                self.look('Move', place, reason)
+                saw = getattr(self, 'walk_witnesses', None) or [self]
+                self.walk_witnesses = None
+                self.context.add_event(f'{self.name} {line}', doer=self, witnesses=saw + self.bystanders())
+                self.context.to_page(self.name, line)
+
+    def _promised(self, promises, other):
+        """What a line promised (sim/resolver.py resolve_words). A thing its speaker is to do now,
+        in this scene, is put to the scene as a commitment was at a talk's end: rated once
+        (Context.evaluate_commitment_significance, which passes over what a planned beat already
+        does) and placed if it earns a beat. What is to be kept, or is for later, is only kept."""
+        for p in promises:
+            kind, who, what = str(p.get('kind') or '').strip().lower(), str(p.get('who') or ''), ' '.join(str(p.get('what') or '').split())
+            mine = self.name.lower() in who.lower() or who.strip().lower() in ('both', 'they', 'we', 'the two')
+            placed = None
+            if (kind == 'now' and mine and other is not None and ablation.enabled('commitments') and self.context.current_scene
+                    and self.__class__.__name__ == 'NarrativeCharacter'):
+                task = Task(what[:40], what, f'said so to {other.name}', [self], None, termination=f'{what}: done',
+                            start_time=self.context.simulation_time, duration=1)
+                significance = self.context.evaluate_commitment_significance(self, other, task)
+                placed = bool(self.context.place_commitment(self, task, significance))
+            trace.event('promise', character=self.name, who=who, what=what, kind=kind, placed=placed)
+
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):
         """Play an act. Whatever it opens as an event of the play (Context.open_event) is closed
         when it is over, however it ends: an act that fails part-way leaves no event open for
@@ -1198,6 +1236,14 @@ End response with:
         leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
         if leaving and not self.context.exit_allowed(self, act):
             act.leaves, leaving = None, False   # the line or deed is played; the scene goes on
+        if leaving and act_mode != 'Move' and (getattr(act, 'then_move', '') or '').strip() and isinstance(act.leaves, list):
+            # a line or deed that ends in a walk the whole cast takes together: as with a Move
+            # (below), the scene goes with them and nobody has left it
+            on_stage = [c for c in self.context.actors + self.context.extras + self.context.npcs
+                        if c is not self and getattr(c, 'current_scene', None) is self.context.current_scene
+                        and not stage.off_stage(c)]
+            if all(c in act.leaves for c in on_stage):
+                leaving = False
         if act_mode == 'Move':
             line = None
             if leaving and isinstance(act.leaves, list):
@@ -1329,6 +1375,8 @@ End response with:
                                    doer=self, also=[aimed_at] if isinstance(aimed_at, Character)
                                    and aimed_at is not self and not stage.off_stage(aimed_at) else [], lasting=kept)
             self.context.close_event(deed_event)
+            if not self.attempt_only:
+                self._walk_after(act, reason, alone=leaving and act.leaves == 'alone')
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1373,16 +1421,24 @@ End response with:
             # (Such lines went out whole, quotes and all, as speech.) The colon and the quotation
             # marks say which part is which.
             staged = re.match(r'^\s*([^"“”]{6,}?):\s*["“](.+?)["”]?\s*$', act_arg or '', re.S)
+            # what the speaker does as it speaks (the actor's #do beside its #say, a reply's <does>):
+            # one act with the line, resolved with it in one call and shown before the words
+            resolving = ablation.enabled('resolver') and getattr(self, 'body', None) is not None and bool(survival.config(self.context))
+            deed = ' '.join((getattr(act, 'deed', '') or '').split()) if resolving else ''
             if staged:
                 business = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', staged.group(1).strip()).rstrip('.,;')
                 act_arg = staged.group(2)
                 # what the speaker does while speaking is a deed like any other: judged, and done
                 # in the world or not shown (it was shown and recorded unjudged)
-                parts = survival.classify_deed(self.context, self, f'{self.name} {business}')[0] if getattr(self, 'body', None) is not None and survival.config(self.context) else [survival.PASSING]
-                if parts:
-                    survival.resolve_do(self.context, self, f'{self.name} {business}', resolved=' + '.join(parts))
-                    self.context.add_event(f'{self.name} {business}')
-                    self.context.to_page(self.name, business)
+                if resolving:
+                    # the deed said beside the line: resolved with it, below (sim/resolver.py)
+                    deed, parts = deed or f'{self.name} {business}', True
+                else:
+                    parts = survival.classify_deed(self.context, self, f'{self.name} {business}')[0] if getattr(self, 'body', None) is not None and survival.config(self.context) else [survival.PASSING]
+                    if parts:
+                        survival.resolve_do(self.context, self, f'{self.name} {business}', resolved=' + '.join(parts))
+                        self.context.add_event(f'{self.name} {business}')
+                        self.context.to_page(self.name, business)
                 trace.event('say_staged', character=self.name, business=business, done=bool(parts))
             act_arg = act_arg.strip().strip('"“”').strip()   # the words, not the words in quotes
             # A line is held to what its speaker cannot be mistaken about (its hands, its body,
@@ -1392,11 +1448,31 @@ End response with:
             meant_as_lie = bool(re.search(r'\(\s*lie\s*\)', act_arg, re.I))
             act_arg = re.sub(r'\s*\(\s*lie\s*\)\s*', ' ', act_arg, flags=re.I).strip()
             handed = None
-            if meant_as_lie:
+            self.said = None
+            if meant_as_lie and not deed:
                 trace.event('speech_check', character=self.name, outcome='lie', claims=[], before=act_arg)
             else:
-                act_arg, handed = record.speech(self.context, self, act_arg, self._first_character(target, act))
+                # (a lie told with a deed is still resolved, for the deed: its words stand as the liar wrote them)
+                checked, handed = record.speech(self.context, self, act_arg, self._first_character(target, act), deed=deed)
+                act_arg = act_arg if meant_as_lie else checked
             act.action = act_arg
+            said, self.said = getattr(self, 'said', None), None
+            if said is not None and deed and said.get('deed_refused'):
+                # the deed cannot be done here: the words are still said; the actor is told why,
+                # and it counts against the beat as any refused deed does
+                trace.event('deed_refused', character=self.name, deed=deed[:300], why=[said['deed_refused']], label=None, again=False, with_line=True)
+                record.refused(self.context, self, deed, said['deed_refused'], chosen=True)
+                self.add_perceptual_input(f"You meant to: {deed}. It cannot be done here: {said['deed_refused']}.", percept=False, mode='internal')
+            if said is not None and (said['effects'] or said['page']):
+                # what is done with the words (a deed beside them, or a thing the words themselves
+                # hand over), shown before them
+                given = Act(mode='Do', action=deed or act_arg, actors=[self], reason='', duration=1, source=None, target=[])
+                given.found = said
+                resolver.apply(self.context, self, given)
+                seen = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', said['page'])
+                if seen:
+                    self.context.add_event(f'{self.name} {seen}', doer=self)
+                    self.context.to_page(self.name, seen)
             self.show += f"{act_arg}'"
             elevenlabs_params = self.speech_stylizer.voice_params(target)   # the line is spoken as written
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
@@ -1404,7 +1480,17 @@ End response with:
             self.context.to_page(self.name, f"'{act_arg}'", kind='speech', transcript=False, elevenlabs_params=json.dumps(elevenlabs_params))
             self.context.say(self, act_arg, self.hearers())
             await asyncio.sleep(0)
-            done = survival.spoken_deed(self.context, self, act_arg)
+            done = None
+            if said is not None:
+                # what the line was found to tell and promise (record.speech, sim/resolver.py):
+                # part of the line's own event
+                handed = None
+                resolver.tell(self.context, self, self.hearers(), said['tells'])
+                if said['retold']:
+                    trace.event('retold', character=self.name, words=said['retold'][:200])
+                self._promised(said['promises'], self._first_character(target, act))
+            else:
+                done = survival.spoken_deed(self.context, self, act_arg)
             if not done and handed:   # 'Here, take the branch': the words hand it over
                 done = survival.resolve_do(self.context, self, f'hands {handed[1].name} the {handed[0]}', targets=[handed[1]])
                 if not (getattr(self, 'last_affordance', None) or {}).get('applied'):
@@ -1414,6 +1500,7 @@ End response with:
                 self.context.add_event(f'{self.name} -> {done}', doer=self)
                 self.context.to_page(self.name, re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', done).lstrip('. ')), transcript=False)
             self.context.close_event(line_event)
+            self._walk_after(act, reason, alone=leaving and act.leaves == 'alone')
             content = re.sub(r'\.\.\..*?\.\.\.', '', act_arg)
             if not target and act.target and isinstance(act.target, list):
                 target=act.target[0]
@@ -2115,41 +2202,56 @@ The question: after what is already done and said, what one act now moves {{$nam
 - Take up the latest thing said or done to {{$name}}: answer it, use it, or refuse it.
 - {{$name}}'s drives and emotional stance decide how boldly and in what way. Pressing for a thing outright is one way among several: {{$name}} may tease, confide something, do the other a good turn, give a little to get a little, change the subject or go quiet, as this person would with this listener; not the way of {{$name}}'s own last two acts.
 
-Modes:
-- Say: words {{$name}} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, giving, taking or going is a Do or a Move. Do not name what you and the other are to each other or what the moment means; ask, refuse, offer or tease, and let that show it.
-- Do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words. It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together ('kneels at the water and drinks'), in {{$name}}'s own manner; or it is a small passing act that changes nothing (traces the print with a fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force.
-- Move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
-- Look: look around, or toward one of the eight compass points.
-- Think: a private thought, in the first person; nobody hears it.
-
+{{$what_an_act_is}}
+- do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words (those go in say). It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together ('kneels at the water and drinks'), in {{$name}}'s own manner; or it is a small passing act that changes nothing (traces the print with a fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force.
+{{$both_rule}}- move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
+- look: look around, or toward one of the eight compass points.
+{{$think_rule}}
 Truth: {{$name}} speaks and acts only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
 Words belong to their speaker: a name or nickname one character uses for another is that character's own, not {{$name}}'s.
 
-Respond with two acts: first the one {{$name}} plays now, then one alternative in a different mode that goes at the task another way. Each in this form, closed by ## on a line of its own:
+Respond with one act, in this form, closed by ## on a line of its own. {{$give}}:
 
-#mode one of {{$modes}}
-#action for Say, only the words, {{$say_limit}}; for Do or Look, what {{$name}} does, in the third person, 20 words at most; for Move, the place or person; for Think, the thought
-#target the character(s) spoken to, acted on or walked to, comma separated; omit if none
+{{$say_line}}#do what {{$name}} does, in the third person, 20 words at most; omit if {{$name}} does nothing but speak
+#move the place or person walked to
+#look where
+{{$think_line}}#target the character(s) spoken to, acted on or walked to, comma separated; omit if none
 #duration minutes{{$affordance_line}}
 #leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene. When it leaves, add where to: "with Joe, to the trail northwest".
 ##
 
-An example, from another play:
-#mode Say
-#action You drank the last of it. Where's mine?
-#target Tomas
-#duration 1
-#leaves no
-##
-#mode Do
-#action Mirela holds her empty cup out to Tomas and waits.
-#target Tomas
-#duration 1
-#leaves no
-##
+{{$examples}}
 
-Respond only with the two acts.
+Respond only with the one act.
 """
+        # One act, which may be a line, a deed, or both played as one (and a walk after them). It
+        # was 'the act played now, then one alternative in a different mode': in 110 of 122
+        # recorded answers the alternative was the other half of a line and its gesture, and
+        # the engine played one half and threw the other away ('You want some?' with no hand
+        # held out). Asked for one act with room for both, the actor first put a gesture on
+        # nearly every line; the wording here is the one that did not
+        # (logs/review-20261120/act/one_act_ab.py).
+        name = self.name
+        if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
+            forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
+                     'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
+                     'give': 'Give #do; or else one of #move, #look',
+                     'examples': "An example, from another play:\n#do Mirela hands her cup to Tomas.\n#target Tomas\n#duration 1\n#leaves no\n##"}
+        else:
+            forms = {'what_an_act_is': (f"What an act is: {name} says something, or does something, or does both at once (a line, and what the hands or body do as it is said). "
+                                        f"Or, instead of either, {name} walks somewhere, looks, or thinks.\n"
+                                        f"- say: words {name} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, "
+                                        "giving, taking, sitting down or going is a deed. Do not name what you and the other are to each other or what the moment means; "
+                                        "ask, refuse, offer or tease, and let that show it."),
+                     'both_rule': (f"- Most acts are one thing: a line, or a deed. Give both only when {name} speaks while really changing something: handing a thing over, taking it, "
+                                   "eating, drinking, picking a thing up or putting it down, sitting down or getting up, going. A look, a nod, a pause, a turn of the head, a stance, "
+                                   "hands that fidget are not deeds and are not written with a line.\n"),
+                     'think_rule': '- think: a private thought, in the first person; nobody hears it.\n',
+                     'say_line': f'#say the words {name} speaks, {stage.say_limit(self)}; omit if {name} says nothing\n',
+                     'think_line': '#think the thought\n',
+                     'give': f'Give #say, or #do, or both, with #move after them when {name} then walks off; or else one of #move, #look, #think and nothing with it',
+                     'examples': ("Two examples, from another play. Words alone:\n#say You drank the last of it. Where's mine?\n#target Tomas\n#duration 1\n#leaves no\n##\n"
+                                  "A line with the deed it goes with:\n#say Then take mine. I'm not thirsty.\n#do Mirela hands her cup to Tomas.\n#target Tomas\n#duration 1\n#leaves no\n##")}
 
         if not goal:
             goal = self.focus_goal
@@ -2173,8 +2275,8 @@ Respond only with the two acts.
                                               # the scene and this actor's objective, not the play's theme: given 'is trust itself
                                               # the trap?', the actors said 'Trap—one that fed us'
                                               "director_notes": self.director_notes(story=False),
-                                              "modes": modes,
-                                              "name": self.name}, 
+                                              "modes": modes, **forms,
+                                              "name": self.name},
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
         if response is not None:
@@ -2191,12 +2293,22 @@ Respond only with the two acts.
             if not self.focus_goal:
                 print(f'{self.name} generate_act_alternatives: no focus goal either!')
             task.goal = self.focus_goal
-        if len(act_hashes) < 2:
-            print(f'{self.name} generate_act_alternatives: only {len(act_hashes)} acts found')
-        for act_hash in act_hashes:
+        for act_hash in act_hashes[:1]:   # one act was asked for
             try:
-                act = self.validate_and_create_act(act_hash, task)
+                # the form's parts, as the act the engine plays: a line (with the deed said beside
+                # it and the walk after it kept on the act), else the deed, else the walk, look or thought
+                part = {k: ' '.join((hash_utils.find(k, act_hash) or '').split()) for k in ('say', 'do', 'move', 'look', 'think')}
+                part = {k: v for k, v in part.items() if v and v.lower().strip(' .') not in ('none', 'omit', 'nothing', 'n/a', '-', 'no')}
+                if in_dialog:
+                    part.pop('say', None); part.pop('think', None)
+                mode = next((m for m in ('say', 'do', 'move', 'look', 'think') if m in part), None)
+                if mode is None:
+                    continue
+                rest = '\n'.join(l for l in act_hash.split('\n') if not re.match(r'\s*#(say|do|move|look|think|mode|action)\b', l))
+                act = self.validate_and_create_act(f"#mode {mode.capitalize()}\n#action {part[mode]}\n{rest}", task)
                 if act:
+                    act.deed = part.get('do', '') if mode == 'say' else ''
+                    act.then_move = part.get('move', '') if mode in ('say', 'do') else ''
                     act_alternatives.append(act)
             except Exception as e:
                 print(f"Error parsing Hash, Invalid Act. (act_hash: {act_hash}) {e}")
@@ -2522,7 +2634,8 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             from_actor.last_task = from_actor.focus_task.peek()
             from_actor._pop_dialog_task(self)
 
-            if self.name != 'Viewer' and from_actor.name != 'Viewer' and ablation.enabled('commitments'):
+            # (under the resolver each line's promises are read as it is said: Character._promised)
+            if self.name != 'Viewer' and from_actor.name != 'Viewer' and ablation.enabled('commitments') and not ablation.enabled('resolver'):
                 # once both dialog tasks are off the stacks: one pass for both parties' commitments
                 await self.extract_commitments_following_conversation(from_actor, dialog)
                 await asyncio.sleep(0)
@@ -2539,6 +2652,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
         action.leaves = getattr(self, '_reply_leaves', None)
         action.leaves_to = getattr(self, '_reply_leaves_to', None)
+        action.deed, self._reply_does = getattr(self, '_reply_does', '') or '', ''
         await self.act_on_action(action, response_source)
         if self.focus_action == action:
             self.focus_action = None
@@ -2754,7 +2868,7 @@ The question: what does {{$name}} say back, now?
 - Answer what was said: do not open by saying its words back as a question ("A trap?"), and do not take on its way of talking. {{$name}} speaks in {{$name}}'s own voice ('How you speak').
 - Words belong to their speaker: a name or nickname that someone else uses is theirs, not {{$name}}'s.
 - No slogans, paired contrasts or flourishes: say it the way {{$name}} would across a table. Do not name what you two are to each other or what the moment means; ask, refuse, offer or tease, and let that show it. Let the emotional state colour the line without announcing it.
-- Speech only: no actions, gestures or body language in the line (those are Do acts). Words do nothing physical, and nothing is said as done that has not been done.
+- The line is words only: no actions, gestures or body language in it. Words do nothing physical, and nothing is said as done that has not been done. A turn in a talk is nearly always words alone. Only if {{$name}}, as the words are said, really changes something (hands a thing over, takes it, eats, drinks, picks a thing up or puts it down, sits down or gets up) is that written, in <does>, and it is then really done. A look, a nod, a pause, a turn of the head, a stance, a step closer, hands that fidget are not written anywhere.
 - Truth: {{$name}} speaks only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
 - Do not reuse the phrases, images or sentence shapes of the talk so far.
 - What {{$name}} has already asked and been answered is not asked again in other words: {{$name}} acts on the answer, doubts it aloud once, raises the price, concedes, or lets it go for now.
@@ -2762,6 +2876,7 @@ The question: what does {{$name}} say back, now?
 
 Respond with this XML only:
 <response>the words {{$name}} says, and nothing else</response>
+<does>leave empty, unless {{$name}} really changes something as the words are said: then what, in the third person, 12 words at most</does>
 <reason>4-6 words: why {{$name}} says it</reason>
 <leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise. When it leaves, add where to: "with Joe, to the trail northwest"</leaves>
 End your response with:
@@ -2805,7 +2920,10 @@ End your response with:
         # response with the reason's tag, and 'Polite deferral, no commitment yet' was spoken
         # aloud three times in a scene.)
         if response:
-            response = re.split(r'</?\s*(?:reason|response|leaves)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
+            response = re.split(r'</?\s*(?:reason|response|leaves|does)\s*>', response, maxsplit=1, flags=re.I)[0].strip()
+        # what the speaker does as it speaks, played with the line as one act (Character.acts)
+        does = ' '.join((xml.find('<does>', answer_xml) or '').split()).strip(' .')
+        self._reply_does = '' if does.lower() in ('', 'empty', 'leave empty', 'none', 'nothing', 'no') else does
         self._reply_leaves = self.leaving_party(xml.find('<leaves>', answer_xml))
         self._reply_leaves_to = self._leave_to
         if response is None:
@@ -3382,6 +3500,14 @@ End your response with:
         traces = survival.marks_note(self.context, stage.here(self), reader=self)
         if traces:   # told as whose doing each is: listed bare, her own fingermarks were a stranger's to him
             parts.append('Traces left here by what has been done: ' + '; '.join(traces))
+        for other in self.bystanders():
+            # what has been told between them of their lives is known to both from then on (a woman
+            # told the theft of her pack in one scene and told it again as news three scenes later)
+            mine, theirs = resolver.told_to(self.context, self, other)[-12:], resolver.told_to(self.context, other, self)[-12:]
+            if mine:
+                parts.append(f"You have already told {other.name} this of your life, and {other.name} knows it (it is not news to tell again): " + '; '.join(mine))
+            if theirs:
+                parts.append(f"{other.name} has told you this of their life: " + '; '.join(theirs))
         left = [survival.named(self.context, i, reader=self) for i in (body.inventory if body is not None else []) if survival.state_of(self.context, i)]
         if left:   # how what it carries has been left by handling
             parts.append('Of what you carry: ' + ', '.join(left))
@@ -3622,6 +3748,19 @@ End your response with:
             await self.request_action_choice(action_alternatives, first_choice=not task.acts) # sets self.focus_action
             trace.event('act_choice', character=self.name, task_id=task.id, offered=len(offered),
                         played=next((i for i, a in enumerate(offered) if a is self.focus_action), None), first_of_task=not task.acts)
+            if ablation.enabled('resolver') and record._is_do(self.focus_action):
+                # the deed chosen is resolved now; one that cannot be done here gives way to the
+                # other act its actor offered, when that one can
+                record.judge(self.context, self, self.focus_action)
+                other = next((a for a in offered if a is not self.focus_action), None)
+                if getattr(self.focus_action, 'resolved', None) == '' and other is not None:
+                    record.judge(self.context, self, other)
+                    if getattr(other, 'resolved', None) != '':
+                        refused = self.focus_action
+                        trace.event('deed_refused', character=self.name, deed=refused.action[:300], why=[refused.refusal or 'not here'],
+                                    label=None, again=False, passed_over=True)
+                        record.refused(self.context, self, refused.action, refused.refusal or 'not here')
+                        self.focus_action = other
             record.mend_deed(self.context, self, self.focus_action)
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')

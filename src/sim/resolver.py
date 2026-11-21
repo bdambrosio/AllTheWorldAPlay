@@ -214,6 +214,135 @@ def resolve(context, character, act):
     return found
 
 
+# ---------------------------------------------------------------------------- words
+# A line is resolved as a deed is: one call, shown the whole stage, what its speaker has lived,
+# what it has already told its hearer of its own life, and what it does not know, says what the
+# words do (a thing handed over in so many words), what they state that is not so, what they
+# newly tell of the speaker's life, and what they promise. It takes the place of the speech
+# check, the guess that words hand a thing over, the reading of commitments at a talk's end, and
+# the planner's reading of what was told. (Tested on 209 recorded lines: logs/review-20261120/act.)
+_head, _rest = RESOLVE.split('How this world works:')
+_rules, _answer = _rest.split('Answer in JSON only:')
+_effects = _answer[_answer.index('  "effects"'):_answer.index('  "left_out"')]
+ACT = """You keep the world of an improvised play. A character is about to act: to say something, to do something, or both at once. Say what the act does in this world as it now stands, and what of its words may stand.
+
+<world>
+{world}
+</world>
+
+The stage is the whole truth of now: who is here, how each body is, who holds what, what lies here, and whose doing each trace and each state of a thing is.
+<stage>
+{stage}
+</stage>
+
+What {name} has seen, done and heard, oldest first:
+<lived>
+{lived}
+</lived>
+
+What {name} has already told {listener} of {name}'s own life before the play:
+<told>
+{told}
+</told>
+
+What {name} does not know:
+<does_not_know>
+{unknown}
+</does_not_know>
+
+{name} is about to:
+<words>
+{words}
+</words>
+<deed>
+{deed}
+</deed>
+{leaves}
+How this world works:""" + _rules + """
+The words:
+- Words do nothing physical, with one exception: words that hand a thing the speaker holds to someone present, in so many words ("here, take half"), are that hand-over. Give it among the effects, and say in "page" what is seen.
+- A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known (knows); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms).
+- These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
+- What {name} tells of its own life before the play is new to the world unless it is in <told>: list each new fact plainly, in the third person. If the words tell {listener} as news something already in <told>, give those words under "retold".
+- A promise is something the speaker says it will do, or agrees that they will do. Its kind: now, when it is to be done here in this scene (eat this, go in, set off); standing, when it is a rule or a condition to keep with nothing to do now ("no mushrooms", "wake me for my watch"); later, when it is for another time or place. A question, a proposal not yet agreed, or a demand on someone else is not a promise.
+
+Answer in JSON only:
+{{"can": true or false,
+  "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
+""" + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
+  "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
+  "findings": [{{"kind": "<holds, body, where, time, done, whose, writing, gender, knows or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
+  "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
+  "tells": ["<each new fact {name} tells of its own life before the play>"],
+  "retold": "<the words that tell again as news what is already in told; else empty>",
+  "promises": [{{"who": "<who is to do it>", "what": "<what, in a few words>", "kind": "<now, standing or later>"}}],
+  "names": ["<each person the words tell the hearers the name of, as the cast names them>"]}}
+</end>"""
+
+
+def told_to(context, speaker, listener=None):
+    """What `speaker` has told of its own life before the play (to `listener`, or to anyone): the
+    facts, oldest first. Kept as told, with the line that told each (ledger.told): what a person
+    has said of itself is the same for every later reader, and is not told again as news."""
+    name, to = speaker.name, getattr(listener, 'name', None)
+    return [t['fact'] for t in ledger.of(context).told if t['who'] == name and (to is None or to in t['to'])]
+
+
+def tell(context, speaker, hearers, facts):
+    book = ledger.of(context)
+    event = book.open[-1] if book.open else None
+    for fact in facts:
+        fact = ' '.join(str(fact).split())
+        if fact and not any(t['who'] == speaker.name and t['fact'].lower() == fact.lower() for t in book.told):
+            book.told.append({'who': speaker.name, 'to': [h.name for h in hearers if h is not speaker], 'fact': fact, 'event': event})
+
+
+def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
+    """What a spoken line does and states: {'effects', 'page', 'findings', 'line', 'tells',
+    'retold', 'promises', 'names', 'deed_refused'}, or None when the answer could not be read (the
+    line then stands as written). about: the stage as already rendered for the speaker
+    (record.speech). deed: what the speaker does as it speaks, resolved with the words as one
+    act; 'deed_refused' is then why it cannot be done, or ''."""
+    from sim import keeper, record
+    others = people(context, speaker)
+    listener = listener if listener is not None else next((c for c in others if c is not speaker), None)
+    direction = getattr(speaker, 'direction', None) or {}
+    lived = '\n'.join(filter(None, [f"It opened: {direction['setup']}" if direction.get('setup') else '', *context.witnessed(speaker, n=16)])) or 'Nothing yet.'
+    missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
+    prompt = ACT.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+                        stage=about or record.of(context, speaker, others, full=True), name=speaker.name,
+                        listener=getattr(listener, 'name', 'the others'), lived=lived,
+                        told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
+                        unknown='\n'.join(f'- {m}' for m in missing) or 'Nothing listed.', words=words, deed=deed or '(does nothing; only speaks)', leaves='')
+    reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
+    found = json_reply.parse(reply) if reply else None
+    if not isinstance(found, dict) or 'can' not in found:
+        return None
+    found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and not e.get('goes')]   # leaving is the actor's mark
+    wrong = faults(context, speaker, found)
+    left = str(found.get('left_out') or '').strip()
+    refused = ''
+    if wrong:   # what names something that is not here does nothing
+        found['effects'], refused = [], wrong[0]
+    elif deed and not found.get('can'):
+        found['effects'], refused = [], str(found.get('why') or '').strip() or 'it cannot be done here'
+    elif deed and not found['effects'] and left:
+        refused = f'not here: {left}'
+    found['deed_refused'] = refused if deed else ''
+    # a deed done is shown though it changes nothing that lasts; words alone are shown doing
+    # something only when they hand a thing over
+    found['page'] = str(found.get('page') or '').strip() if (found['effects'] or (deed and not refused)) else ''
+    found['left_out'] = left if deed and not refused else ''
+    found['line'] = str(found.get('line') or '').strip()
+    found['findings'] = [f for f in found.get('findings') or [] if isinstance(f, dict) and str(f.get('words') or '').strip()]
+    found['tells'] = [str(t).strip() for t in found.get('tells') or [] if isinstance(t, str) and t.strip()]
+    found['retold'] = str(found.get('retold') or '').strip()
+    found['promises'] = [p for p in found.get('promises') or [] if isinstance(p, dict) and str(p.get('what') or '').strip()]
+    trace.event('resolved_words', character=speaker.name, words=words[:300], deed=deed[:300], refused=found['deed_refused'], effects=found['effects'], page=found['page'],
+                findings=found['findings'], tells=found['tells'], retold=found['retold'], promises=found['promises'])
+    return found
+
+
 def leaving(context, character, found):
     """Who goes out of the scene by this deed, and where to: (None | 'alone' | [characters], place or None).
     Going to another place is going out of the scene: a scene has one place."""

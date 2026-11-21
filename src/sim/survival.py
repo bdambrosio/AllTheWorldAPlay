@@ -951,7 +951,10 @@ def named(context, thing, character=None, reader=False):
     if reader is not False and isinstance(found, ledger.Thing):
         by = whose(found.state_by, reader) if state else ''
         state = f'{state}, {by}' if by else state
-        by = whose(found.made, reader)
+        # a thing made in the play (a fire, a marker) is told as its maker's; one only picked or
+        # taken from what the place gives is nobody's making, and where it is says enough
+        got = any(isinstance(e, dict) and e.get('world') for e in (found.made or {}).get('effects') or [])
+        by = '' if got or (found.made or {}).get('effects') is None else whose(found.made, reader)
         made = f'made {by}' if by.startswith('by') else by
     notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'part of the place' if found.get('fixed') else '', made, state) if n]
     return name + (f" ({'; '.join(notes)})" if notes else '')
