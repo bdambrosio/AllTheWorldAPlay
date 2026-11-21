@@ -2203,7 +2203,7 @@ The question: after what is already done and said, what one act now moves {{$nam
 - {{$name}}'s drives and emotional stance decide how boldly and in what way. Pressing for a thing outright is one way among several: {{$name}} may tease, confide something, do the other a good turn, give a little to get a little, change the subject or go quiet, as this person would with this listener; not the way of {{$name}}'s own last two acts.
 
 {{$what_an_act_is}}
-- do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words (those go in say). It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together ('kneels at the water and drinks'), in {{$name}}'s own manner; or it is a small passing act that changes nothing (traces the print with a fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force.
+- do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words (those go in say). {{$do_rule}}
 {{$both_rule}}- move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
 - look: look around, or toward one of the eight compass points.
 {{$think_rule}}
@@ -2232,6 +2232,17 @@ Respond only with the one act.
         # nearly every line; the wording here is the one that did not
         # (logs/review-20261120/act/one_act_ab.py).
         name = self.name
+        # what a deed may be: in a world played without its catalogue of actions (survival.free),
+        # whatever a person could do there with their body and what is at hand, and the world says
+        # what comes of it (sim/resolver.py); elsewhere, the listed actions
+        do_rule = ((f"It is whatever a person could really do here with their body and what is at hand: handle what {name} holds or what lies here, "
+                    "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
+                    "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force.")
+                   if survival.free(self.context) else
+                   ("It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together "
+                    f"('kneels at the water and drinks'), in {name}'s own manner; or it is a small passing act that changes nothing (traces the print with a "
+                    "fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, "
+                    "doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force."))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
                      'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
@@ -2275,7 +2286,7 @@ Respond only with the one act.
                                               # the scene and this actor's objective, not the play's theme: given 'is trust itself
                                               # the trap?', the actors said 'Trap—one that fed us'
                                               "director_notes": self.director_notes(story=False),
-                                              "modes": modes, **forms,
+                                              "modes": modes, **forms, "do_rule": do_rule,
                                               "name": self.name},
                                tag = 'Character.generate_acts',
                                max_tokens=200, log=True)
@@ -3502,7 +3513,18 @@ End your response with:
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         if events:   # what it saw done (what was said is in the prompt's own dialog block)
             parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))
-        actions = survival.available_actions(self, part='known')
+        if survival.free(self.context):
+            # no list of what can be done: the places this character knows of and how far they are
+            # (what a place gives, and what a body can do with what is at hand, is not a list)
+            near = survival.places_near(self)
+            if near:
+                parts.append('Places you know of (a move goes to one by its name): ' + near)
+            threat = [o for o in survival.offered_actions(self, part='known', cut=None) if o.strip().startswith('THREAT')]
+            if threat:
+                parts.append('Against the danger you could: ' + '; '.join(threat))
+            actions = ''
+        else:
+            actions = survival.available_actions(self, part='known')
         if actions:
             parts.append('You could do here: ' + actions)
         if survival.shared_line(self):

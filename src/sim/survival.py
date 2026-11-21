@@ -68,7 +68,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sim.trace import trace
-from sim import keeper, ledger
+from sim import ablation, keeper, ledger
 
 DEFAULT_HARM = {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')}
 CO_PRESENT_TILES = 2       # a target character must be this close for a social action
@@ -96,8 +96,28 @@ PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the w
              "nor that an animal is driven off or strikes. "
              "States and endings say where the characters stand with each other and with the central question: "
              "what has been chosen, said, refused, found out or lost between them. "
-             "Ordinary eating, drinking and rest happen between scenes where the means are at hand; a scene is about them "
-             "only when a need is desperate or what meets it is out of reach.")
+             "Bodies' needs rise with time and are met only by what the characters do on stage; a scene need not be about them "
+             "unless a need is desperate or what meets it is out of reach.")
+
+
+def free(context):
+    """Whether this world is played without its catalogue of named actions: a body's needs are
+    facts about the person, changed by what the resolver finds an act to do (sim/resolver.py),
+    and what a kind of place gives is the model's to know. Worlds with money keep the catalogue
+    for now: paying and owning have not been worked out without it."""
+    cfg = config(context) or {}
+    return bool(cfg) and ablation.enabled('resolver') and not cfg.get('currency')
+
+
+def places_near(character, cut=14):
+    """The places this character knows of, nearest first, with how far each is: what its actor is
+    told in a world played without a catalogue ('Spring2 (here); Thicket9 (about 9 minutes' walk west)')."""
+    context = character.context
+    here, unseen = _here(character), set(unseen_places(character))
+    near = sorted((_distance(here, res['location']), rid, res) for rid, res in context.map.resource_registry.items() if rid not in unseen)
+    from sim import stage
+    return '; '.join(f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else f'about {walk_minutes(context, d)} minutes walk ' + stage._direction(here, res['location']).lower()})"
+                     for d, rid, res in near[:cut])
 
 
 def act_note(character):
@@ -643,7 +663,7 @@ def offered_actions(character, part='all', cut=14):
 
 def affordance_prompt_line(character):
     """The optional #affordance field of the act format, for worlds with affordances only."""
-    if getattr(character, 'body', None) is None or not config(character.context):
+    if getattr(character, 'body', None) is None or not config(character.context) or free(character.context):
         return ''
     offered = available_actions(character)
     example = next((p.split(' (')[0] for p in offered.split('; ') if p and not p.startswith('THREAT')), 'rest')
@@ -1240,7 +1260,7 @@ def shared_line(character):
     """The shared actions as one standing line for an act prompt: the names once, not one entry
     for each person (the list of what can be done here is cut at fourteen)."""
     offers = shared_offers(character)
-    if not offers:
+    if not offers or free(character.context):
         return ''
     alone = list(dict.fromkeys(a['name'] + (' <a thing you hold>' if a.get('item') else '') for a, other, _ in offers.values() if other is None))
     toward = list(dict.fromkeys(a['name'] + (' <a thing you hold>' if a.get('item') else '') for a, other, _ in offers.values() if other is not None))

@@ -359,9 +359,10 @@ def gazetteer(context):
     places = sorted(((min(_distance(here(c), res['location']) for c in cast), rid, res)
                      for rid, res in world.resource_registry.items()), key=lambda p: p[:2])
     listed, kinds = [], set()
+    free = survival.free(context)   # no list of what can be done at each place: what a kind of place gives is known
     for d, rid, res in places:
-        offers = survival.offers(context, res, cast)
-        if len(listed) < GAZETTEER_PLACES or (offers and res.get('type') not in kinds):
+        offers = [] if free else survival.offers(context, res, cast)
+        if len(listed) < GAZETTEER_PLACES or ((offers or free) and res.get('type') not in kinds):
             listed.append((d, rid, res, offers))
             kinds.add(res.get('type'))
     for d, rid, res, offers in listed:
@@ -374,7 +375,7 @@ def gazetteer(context):
         lines.append(f"- {rid}: {res.get('description') or res.get('type')}"
                      + owned + f' ({reach})'
                      + (f"; can be done there: {', '.join(offers)}" if offers else ''))
-    shared = survival.shared_actions(context)
+    shared = [] if free else survival.shared_actions(context)
     if shared:   # what a body can do wherever it is: the planner is held to the same acts as the actors
         lines.append('- Anywhere, with whoever is there: ' + '; '.join(a['name'] for a in shared)
                      + '. With a thing someone holds or that lies there: give, hold out, take, put down.')
@@ -497,7 +498,7 @@ def pending_business(character):
     ('drink@Spring2'): what the scene's ending depends on (the scene 'business' field)."""
     scene = getattr(character, 'current_scene', None) or {}
     business = scene.get('business')
-    if not isinstance(business, dict):
+    if not isinstance(business, dict) or survival.free(character.context):   # labels of a catalogue this world is played without
         return []
     mine = next((v for k, v in business.items() if str(k).lower() == character.name.lower()), None) or []
     mine = [mine] if isinstance(mine, str) else mine

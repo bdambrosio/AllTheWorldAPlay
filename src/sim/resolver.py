@@ -148,8 +148,16 @@ def faults(context, character, found):
         elif e.get('new'):
             made.add(_low(e['new']))
         elif e.get('world'):
-            if survival._chosen(context, character, str(e['world'])) is None:
-                out.append(f"'{e['world']}' is not one of the world's actions listed")
+            chosen = survival._chosen(context, character, str(e['world']))
+            if chosen is None or (survival.free(context) and chosen[0] != 'threat'):
+                out.append(f"'{e['world']}' is not one of the answers listed" if survival.free(context) else f"'{e['world']}' is not one of the world's actions listed")
+        elif e.get('need'):
+            who = _person(context, character, e.get('who') or character.name)
+            if who is None or getattr(who, 'body', None) is None or _low(e['need']) not in {n.lower() for n in who.body.levels}:
+                out.append(f"'{e['need']}' is not one of the needs the stage shows for {e.get('who') or character.name}")
+        elif e.get('found'):
+            if not any(_low(p['name']) == _low(e['found']) for p in survival.lying(context, stage.here(character), hidden=True)):
+                out.append(f"there is no '{e['found']}' hidden here")
         elif e.get('mark'):
             pass   # a trace on the place: nothing it names has to be there
         elif e.get('thing'):
@@ -179,7 +187,7 @@ def _ask(context, character, act, note=''):
     to = getattr(act, 'leaves_to', None)
     leaves = '' if not getattr(act, 'leaves', None) else \
         f"\nIts actor marks it as going out of the scene{' with ' + ', '.join(c.name for c in party) if party else ' alone'}{', for ' + to if to else ''}.\n"
-    prompt = RESOLVE.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = _for(context, RESOLVE).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                             stage=record.of(context, character, people(context, character), full=True), scene=scene,
                             name=character.name, deed=act.action, leaves=leaves) + note
     reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_deed', temp=0.2, stops=['</end>'], max_tokens=700)
@@ -280,6 +288,34 @@ Answer in JSON only:
 </end>"""
 
 
+# ---------------------------------------------------------------------------- a world without its catalogue
+# In a world played without its catalogue of named actions (survival.free) a body's needs are
+# facts about the person, and what an act does to them is the resolver's to say; what a kind of
+# place gives (berries on a bush, water at a spring) is the model's to know, not a list. The
+# rules and the effect forms that spoke of 'the world's actions' are put this way instead.
+# (Untested for quality when written: 2026-11-20.)
+_SWAPS = (
+    ("- What changes a body's needs (eating, drinking, resting, tending a wound) and what finds things a place holds (searching it, picking from it) happens only by one of the world's actions listed on the stage, named exactly as listed. An action marked as lacking something cannot be done. With a danger on the stage, what is done about it is one of the answers listed for it.",
+     "- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect; it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it."),
+    ("- Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.",
+     "- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here."),
+    ("""     {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},""",
+     """     {{"who": "<the person whose need it is>", "need": "<one of the needs Bodies shows, by its name there>", "change": "<eased or worsened>"}},
+     {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
+     {{"world": "<only with a danger on the stage: one of the answers listed for it, exactly as listed>"}},"""),
+    ("""{{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}""",
+     """{{"new": "<a thing now made or picked>", "from": "<the place, or the things here, it comes from>"}}"""))
+
+
+def _for(context, prompt):
+    """A resolver prompt as this world is played: with its catalogue of actions, or without."""
+    if not survival.free(context):
+        return prompt
+    for with_catalogue, without in _SWAPS:
+        prompt = prompt.replace(with_catalogue, without)
+    return prompt
+
+
 def told_to(context, speaker, listener=None):
     """What `speaker` has told of its own life before the play (to `listener`, or to anyone): the
     facts, oldest first. Kept as told, with the line that told each (ledger.told): what a person
@@ -309,7 +345,7 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     direction = getattr(speaker, 'direction', None) or {}
     lived = '\n'.join(filter(None, [f"It opened: {direction['setup']}" if direction.get('setup') else '', *context.witnessed(speaker, n=16)])) or 'Nothing yet.'
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
-    prompt = ACT.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = _for(context, ACT).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                         stage=about or record.of(context, speaker, others, full=True), name=speaker.name,
                         listener=getattr(listener, 'name', 'the others'), lived=lived,
                         told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
@@ -505,6 +541,21 @@ def apply(context, character, act):
             if (character.last_affordance or {}).get('applied') is False:
                 # the world's own rules would not have it (its sentence says why, after the page line)
                 trace.event('effect_refused', character=me, world=str(e['world']), fact=fact)
+        elif e.get('need'):
+            # a need eased or made worse, as the resolver found it: a fact about the person, in
+            # the body's own terms (eased: no longer felt; worsened: a step harder)
+            who = _person(context, character, e.get('who') or me) or character
+            need = next((n for n in who.body.levels if n.lower() == _low(e['need'])), None)
+            if need is not None:
+                level = who.body.level(need)
+                worse = _low(e.get('change')).startswith('wors')
+                who.body.adjust(need, 0.2 if worse else min(0.0, (survival.NEED_FELT - 0.05) - level))
+                trace.event('need_changed', character=who.name, need=need, change='worsened' if worse else 'eased', by=me, was=round(level, 2))
+        elif e.get('found'):
+            thing = next((p for p in survival.lying(context, stage.here(character), hidden=True) if _low(p['name']) == _low(e['found'])), None)
+            if thing is not None:
+                thing.pop('hidden', None)   # in plain sight from now on
+                trace.event('thing_found', character=me, thing=thing['name'])
         elif e.get('mark'):
             # a trace of this deed on the place, kept as this deed's doing and never as a thing
             # lying here (survival.leave_mark)

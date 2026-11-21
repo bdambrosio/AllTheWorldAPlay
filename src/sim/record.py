@@ -246,12 +246,19 @@ def _acts(context, actor, people):
     refused = [f"{r['deed']} ({'; '.join(r['why']) if isinstance(r['why'], (list, tuple)) else r['why']})"
                for r in getattr(context, 'scene_refusals', None) or [] if r.get('who') == actor.name][-4:]
     offered = [o.strip() for o in survival.offered_actions(actor, cut=None) if o.strip()]
-    return ['How they are placed: ' + ('; '.join(placed) or 'all on their feet, nobody touching'),
+    head = ['How they are placed: ' + ('; '.join(placed) or 'all on their feet, nobody touching'),
             'Held out, for the one named to take: ' + ('; '.join(held) or 'nothing'),
             'Gone out of this scene: ' + ('; '.join(gone) or 'nobody'),
-            *([f'Tried by {actor.name} in this scene and not possible here: ' + ' | '.join(refused)] if refused else []),
-            f"The world's actions for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
-            *([f'- {o}' for o in offered] or ['- none here'])]
+            *([f'Tried by {actor.name} in this scene and not possible here: ' + ' | '.join(refused)] if refused else [])]
+    if survival.free(context):
+        # no catalogue of actions: what is hidden here for a search to find, and, with a danger
+        # on the stage, the answers this world has to it
+        hidden = [p['name'] for p in survival.lying(context, stage.here(actor), hidden=True)]
+        answers = [o for o in offered if o.startswith('THREAT')]
+        return head + ['Hidden here, to be found only by someone who searches this place: ' + (', '.join(hidden) or 'nothing'),
+                       *([f'Answers to the danger for {actor.name}:', *[f'- {o}' for o in answers]] if answers else [])]
+    return head + [f"The world's actions for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
+                   *([f'- {o}' for o in offered] or ['- none here'])]
 
 
 def situation(context, lately='', viewer=None):
