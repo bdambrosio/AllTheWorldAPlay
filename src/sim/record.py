@@ -182,9 +182,13 @@ def of(context, actor, people=None, full=False):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
-        'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(survival.named(context, i) for i in c.body.inventory) or 'nothing'}" for c in people
+        'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
-        'Lying here, for anyone present to take or use: ' + (', '.join(survival.named(context, p) for p in survival.lying(context, at)) or 'nothing'),
+        'Lying here, for anyone present to take or use: ' + (', '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
+        # what a deed left on the place is that deed's doing, told as such: it is not a thing, and
+        # nobody else was here to leave it
+        *(["Traces left here by deeds of the play (each the doing of the one named, and of nobody else): " + '; '.join(m)]
+          if (m := survival.marks_note(context, at)) else []),
         *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
            + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
         'Stock: ' + (survival.stock(actor) or 'nothing has been used up'),

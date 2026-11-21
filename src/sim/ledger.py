@@ -48,6 +48,7 @@ class Thing(dict):
     ledger = None   # the ledger it is kept in
     made = None     # the event that brought it into the play (None: there before the play)
     last = None     # the event that last moved or changed it
+    state_by = None # the event that left it in the state it is in
 
     def __eq__(self, other):
         return self is other
@@ -153,6 +154,9 @@ class Ledger:
         self.between = Kept(self, 'between')      # (a, words, b, 'position' | 'contact')
         self.writings = KeptMap(self, 'writings') # name of a written thing -> what it says
         self.readers = KeptMap(self, 'readers')   # name of a written thing -> who has read it
+        # what a deed has left on a place: {'words', 'at', 'on' (a thing's name or None), 'event'}. A
+        # trace is not a thing: it is never listed among what lies there, only as someone's doing
+        self.marks = Kept(self, 'marks')
         self.open = []          # the events being committed, the innermost last (Context.committing)
         self.begun = False      # the play has begun: from now on every change belongs to an event
         self.loose_writes = {}  # where in the code a change was made outside any event -> how often

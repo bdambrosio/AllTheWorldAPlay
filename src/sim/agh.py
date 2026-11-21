@@ -3312,7 +3312,12 @@ End your response with:
         if story:
             parts += [f"The story the company is telling:\n{self.story_note()}" if self.story_note() else '', self.act_direction()]
         if d.get('setup') or d.get('title'):
-            parts.append(f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}".rstrip(': '))
+            # where the scene is now is where its cast stands, not where it was when it opened (a
+            # scene walked from the thicket to the apple tree and the note still said 'at Thicket7')
+            now_at = stage.where(self.context, stage.here(self)).removeprefix('at ') if getattr(self, 'mapAgent', None) is not None and not stage.remote(self) else ''
+            moved = now_at and d.get('place') and now_at != d.get('place') and now_at in self.context.map.resource_registry
+            parts.append((f"This scene, '{d.get('title', '')}', opened at {d.get('place', '')} and is now at {now_at}. As it opened: {d.get('setup', '')}" if moved else
+                          f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}").rstrip(': '))
         if stage.kind_note(self):
             parts.append(stage.kind_note(self))
         if d.get('ending'):
@@ -3371,10 +3376,13 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
-        here_things = [survival.named(self.context, p) for p in survival.lying(self.context, stage.here(self))]
+        here_things = [survival.named(self.context, p, reader=self) for p in survival.lying(self.context, stage.here(self))]
         if here_things:   # the actor saw nothing of what lay at its feet but what it carried
             parts.append('Lying here: ' + ', '.join(here_things))
-        left = [survival.named(self.context, i) for i in (body.inventory if body is not None else []) if survival.state_of(self.context, i)]
+        traces = survival.marks_note(self.context, stage.here(self), reader=self)
+        if traces:   # told as whose doing each is: listed bare, her own fingermarks were a stranger's to him
+            parts.append('Traces left here by what has been done: ' + '; '.join(traces))
+        left = [survival.named(self.context, i, reader=self) for i in (body.inventory if body is not None else []) if survival.state_of(self.context, i)]
         if left:   # how what it carries has been left by handling
             parts.append('Of what you carry: ' + ', '.join(left))
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())

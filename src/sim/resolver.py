@@ -70,7 +70,7 @@ Answer in JSON only:
      {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},
      {{"who": "{name}", "posture": "<standing, sitting, kneeling, lying down>"}},
      {{"who": "{name}", "touches": "<the person touched>", "how": "<two to four words>"}},
-     {{"mark": "<a mark the deed leaves on the place or on something that is part of it, two to five words>"}},
+     {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
      {{"who": "{name}", "goes": "<a place named on the stage, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
      {{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}],
   "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
@@ -150,6 +150,8 @@ def faults(context, character, found):
         elif e.get('world'):
             if survival._chosen(context, character, str(e['world'])) is None:
                 out.append(f"'{e['world']}' is not one of the world's actions listed")
+        elif e.get('mark'):
+            pass   # a trace on the place: nothing it names has to be there
         elif e.get('thing'):
             if find(context, character, e['thing'], e.get('from')) is None and _low(e['thing']) not in made:
                 out.append(f"there is no '{e['thing']}' held by anyone here or lying here")
@@ -251,6 +253,10 @@ def apply(context, character, act):
             if (character.last_affordance or {}).get('applied') is False:
                 # the world's own rules would not have it (its sentence says why, after the page line)
                 trace.event('effect_refused', character=me, world=str(e['world']), fact=fact)
+        elif e.get('mark'):
+            # a trace of this deed on the place, kept as this deed's doing and never as a thing
+            # lying here (survival.leave_mark)
+            survival.leave_mark(context, character, e['mark'], on=e.get('thing'))
         elif e.get('thing'):
             where = find(context, character, e['thing'], e.get('from'))
             if where is None:
@@ -295,8 +301,6 @@ def apply(context, character, act):
                 # the stage keeps that they are touching ('touching Lanya'); how is on the page
                 between[:] = [b for b in between if not (b[0] == me and b[2] == other.name and b[3] == 'contact')] + [(me, 'touching', other.name, 'contact')]
                 survival._bear(context)
-        elif e.get('mark'):
-            survival.add_thing(context, ' '.join(str(e['mark']).split()), at=stage.here(character), fixed=True)
         elif e.get('new') and not worlded:
             # made from what is here, not given by a world action (whose own gain put it in hand): the
             # keeper says what kind of thing it is and how it behaves in time, where that matters

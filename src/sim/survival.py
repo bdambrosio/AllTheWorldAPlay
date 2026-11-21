@@ -844,6 +844,9 @@ def things_note(context, xy=None, people=()):
     to be in Samantha's hands: nobody writing of it was told where the world had it.)"""
     props = [p for p in getattr(context, 'props', []) if xy is None or at_hand(context, p['at'], xy)]
     lines = [f"{p['name']}: {whereabouts_of(context, p['name'])}" for p in props]
+    marks = marks_note(context, xy)
+    if marks:   # not things anyone left to be found: what the cast's own deeds did to a place
+        lines.append("traces of the cast's own deeds (nobody else made them): " + '; '.join(marks))
     for person in people:
         body = getattr(person, 'body', None)
         private = tuple((body.cfg.get('private_items', ()) if body is not None else ())) or ('\0',)
@@ -915,16 +918,67 @@ def set_state(context, thing, state, character=None):
     found = _thing(context, thing, character)
     if found is not None:
         found['state'], found['since'] = state, context.simulation_time
+        opened = ledger.of(context).open
+        found.state_by = opened[-1] if opened else None
     return found
 
 
-def named(context, thing, character=None):
+def whose(event, reader):
+    """Whose doing an event of the play was, as `reader` may know it: 'by you at 08:01', 'by
+    Samantha at 08:01', 'you did not see by whom'; '' when it was nobody's deed (time, the
+    director, how things stood before the play). reader: a character, or None for those who are
+    told everything (the stage's own calls, the planners). A fact is told with whose doing it
+    is in the same breath: listed bare, a woman's own fingermarks in the mud were read by her
+    partner, by the check on his line and by the planner as a stranger's."""
+    if not event or not event.get('doer') or event.get('cause') not in ('deed', 'line', 'walk', 'leave'):
+        return ''
+    at = event['time'].strftime('%H:%M') if hasattr(event.get('time'), 'strftime') else ''
+    if reader is None or any(reader.name in e['witnesses'] for e in event['entries']) or reader.name == event['doer']:
+        who = 'you' if reader is not None and reader.name == event['doer'] else event['doer']
+        return f'by {who}' + (f' at {at}' if at else '')
+    return 'you did not see by whom'
+
+
+def named(context, thing, character=None, reader=False):
     """A thing as it is listed for whoever acts, judges or tells: its name, where in the place it
-    is, and how it has been left. thing: a thing, a held name, or a bare name."""
+    is, and how it has been left. thing: a thing, a held name, or a bare name.
+    reader: whoever it is listed for (a character; None for those told everything): what a deed
+    of the play made, or left in the state it is in, is then listed as that person's doing
+    (whose). False: listed without."""
     found = _thing(context, thing, character) or {}
     name = found.get('name') or str(thing)
-    notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'part of the place' if found.get('fixed') else '', found.get('state')) if n]
+    state, made = found.get('state'), ''
+    if reader is not False and isinstance(found, ledger.Thing):
+        by = whose(found.state_by, reader) if state else ''
+        state = f'{state}, {by}' if by else state
+        by = whose(found.made, reader)
+        made = f'made {by}' if by.startswith('by') else by
+    notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'part of the place' if found.get('fixed') else '', made, state) if n]
     return name + (f" ({'; '.join(notes)})" if notes else '')
+
+
+def leave_mark(context, character, words, on=None):
+    """A deed leaves a trace on the place where its doer stands (or on `on`, a thing that is part
+    of it): kept as that deed's doing (ledger.marks), not as a thing lying there."""
+    words = ' '.join(str(words).split()).strip(' .')[:60]
+    book, at = ledger.of(context), _here(character)
+    if not words or any(m['words'].lower() == words.lower() and at_hand(context, m['at'], at) for m in book.marks):
+        return
+    book.marks.append({'words': words, 'at': tuple(at), 'on': on, 'event': book.open[-1] if book.open else None})
+    trace.event('mark_left', character=character.name, mark=words, on=on)
+
+
+def marks_note(context, xy=None, reader=None):
+    """The traces deeds have left at or near `xy` (everywhere, if None, each with its place),
+    each as whose doing it is for `reader` (whose): ["fingermarks in the mud (left by Samantha at 08:01)"]."""
+    out = []
+    for m in ledger.of(context).marks:
+        if xy is not None and not at_hand(context, m['at'], xy):
+            continue
+        by = whose(m['event'], reader)
+        place = f"at {_nearest_resource_id(context, m['at'])}: " if xy is None else ''
+        out.append(f"{place}{m['words']}" + (f" (left {by})" if by.startswith('by') else f' ({by})' if by else ''))
+    return out
 
 
 def _handle(context, character, thing, state):
