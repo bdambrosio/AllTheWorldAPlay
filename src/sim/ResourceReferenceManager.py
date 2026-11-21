@@ -4,6 +4,7 @@ if TYPE_CHECKING:
     from sim.agh import Act, Character, Goal, Task
     from sim.context import Context  # Only imported during type checking
 from sim.prompt import ask
+from sim import world
 
 class ResourceReferenceManager:
     """ resolves references to resources in the context of the world map """
@@ -27,11 +28,11 @@ Return the name of the resource that the character is referencing. Return None i
 The reference text for the move destination :
 {reference_text}
 
-Character current location: {self.character.x()}, {self.character.y()}
+Character current location: {', '.join(str(n) for n in world.at(self.character))}
 
 List of all map resources: 
 
-{'\n'.join(self.character.context.map.get_resource_list())}
+{'\n'.join(f'{p.id} {p.description} located at {p.xy}' for p in world.places(self.character.context))}
 
 Return the name of the resource that the character is referencing. 
 - If the reference text is a resource name, return that resource name.
@@ -44,7 +45,7 @@ End your response with:
 <end/>
 """
         response = ask(self.character, prefix=prefix, suffix=suffix, addl_bindings={}, max_tokens=15, tag = 'ResourceReferenceManager.resolve_reference_with_llm')
-        resource = self.context.map.get_resource_by_name(response.strip())
+        resource = world.place(self.context, response.strip())
         if resource:
             return resource, response.strip()
         else:

@@ -8,6 +8,7 @@ from sim.trace import trace
 import zlib
 import sim.survival as survival
 import sim.stage as stage
+import sim.world as world
 import sim.ablation as ablation
 import sim.record as record
 import sim.resolver as resolver
@@ -38,7 +39,6 @@ from utils import llm_api, json_reply
 from utils.llm_api import generate_image
 from utils.Messages import UserMessage, SystemMessage
 import utils.xml_utils as xml
-import sim.map as map
 import utils.hash_utils as hash_utils
 import utils.choice as choice   
 from sim.cognitive.DialogManager import Dialog
@@ -150,9 +150,7 @@ class Character:
         self.init_x = init_x # save these for later mapAgent initialization
         self.init_y = init_y
         if mapAgent:
-            self.mapAgent = None  # Will be set later
-            self.world = None
-            self.my_map = [[{} for i in range(100)] for i in range(100)]
+            self.mapAgent = None  # where it stands, once it is in a world (sim/world.py)
         self.perceptual_state = PerceptualState(self)
         self.last_sense_time = datetime.now()
         self.act = None
@@ -194,11 +192,6 @@ class Character:
         self.avoidance_cnt = 0 # a counter of how many times the character has avoided a decision
         #self.speech_stylizer = SpeechStylizer(self)
 
-    def x(self):
-        return self.mapAgent.x
-    
-    def y(self):
-        return self.mapAgent.y
 
     def _restamp_pre_context_entries(self, start_time):
         """Percepts and memories added before the character joined a Context (e.g. a play's
@@ -430,17 +423,8 @@ End your response with:
         except Exception as e:
             print(f"Warning: invalid actors field in {task_hash}") 
             characters = []
-        if self.mapAgent:
-            default_x = self.mapAgent.x
-            default_y = self.mapAgent.y
-        else:
-            default_x = 30
-            default_y = 30
         for character in characters:
-            if character and hasattr(character, 'mapAgent'):
-                default_x = character.mapAgent.x
-                default_y = character.mapAgent.y
-            elif character:
+            if character and not hasattr(character, 'mapAgent'):
                 print(f"Warning: {character} is not a character")
         actors = [actor for actor in characters if actor is not None]
         if (include_self or not actors) and not self in actors:
@@ -675,17 +659,9 @@ End your response with:
 
     def look(self, act_mode=None, act_arg=None, reason=None):
         """Get visual information about surroundings"""
-        if self.mapAgent is None:
-            return ''  
-        obs = self.mapAgent.look()
-        view = {}
-        for dir in ['Current','North', 'Northeast', 'East', 'Southeast', 
-                   'South', 'Southwest', 'West', 'Northwest']:
-            dir_obs = map.extract_direction_info(self.context.map, obs, dir)
-            view[dir] = dir_obs
-        self.my_map[self.mapAgent.x][self.mapAgent.y] = view
-
-        view_text, resources, characters, paths, percept_summary = map.hash_direction_info(view, world=self.context.map)
+        if not world.on(self):
+            return ''
+        view_text, resources, characters, paths, percept_summary = world.surroundings(self)
         for resource_id in resources:  # what the {{$resources}} prompt block lists (it was never filled)
             self.resource_models.add_resource_model(resource_id)
         # the raw #view dump is the current view (also kept as self.look_percept), not an event
@@ -733,16 +709,12 @@ End your response with:
     def initialize(self, ui=None):
         """Called from worldsim once everything is set up"""
         self.ui = ui
-        if hasattr(self, 'mapAgent'):
+        if world.on(self):
             self.look()
         """Initialize agent state"""
         # Initialize narrative with drives
         self.narrative.active_drives = [d.text for d in self.drives]
 
-
-    def is_visible(self, actor):
-        """Check if an actor is visible to the current actor"""
-        return actor.mapAgent.is_visible(self)
 
     def set_drives(self, drive_texts: List[str]) -> None:
         """The character's drives, most important first (sim/cognitive/drives.py)."""
@@ -1123,18 +1095,17 @@ End response with:
         (stage.walk). Returns the words for the audience, or None when `where` names nowhere."""
         where = re.sub(r'^(?:move|go|walk)s?\s+(?:to\s+)?', '', (where or '').strip(), flags=re.I)
         where = re.sub(r'^towards?\s+', '', where).strip()
-        if self.mapAgent is None or not where:
+        if not world.on(self) or not where:
             return None
-        world = self.context.map
-        # a named resource wins ('Walk west toward Spring3, scanning ...'), then a person, then a direction
+        # a named place wins ('Walk west toward Spring3, scanning ...'), then a person, then a direction
         for token in [where] + stage.places_named(self.context, where):
-            resource = world.get_resource_by_id(token.strip())
-            if isinstance(resource, dict):   # it returns the string "path" for the path type
-                return stage.walk(self, tuple(resource['location']), resource['name'], alone)
+            place = world.find(self.context, token)
+            if place is not None:
+                return stage.walk(self, place.xy, place.id, alone)
         for other in self.context.actors + self.context.extras + self.context.npcs:
-            if other is not self and other.mapAgent is not None and re.search(rf'\b{re.escape(other.name)}\b', where, re.I):
+            if other is not self and world.on(other) and re.search(rf'\b{re.escape(other.name)}\b', where, re.I):
                 return stage.walk(self, stage.here(other), other.name, alone=True)
-        if map.Direction.from_string(where):
+        if world.compass(where):
             return ''   # a bare compass direction leads nowhere: a walk goes to a place or a person
         resource, _ = self.resourceRefManager.resolve_reference_with_llm(where)
         # the way and then the place ('Trail toward the hut'): the place is where the walk goes
@@ -1142,7 +1113,7 @@ End response with:
         if not resource and tail and tail != where:
             resource, _ = self.resourceRefManager.resolve_reference_with_llm(tail)
         if resource:
-            return stage.walk(self, tuple(resource['location']), resource['name'], alone)
+            return stage.walk(self, resource.xy, resource.id, alone)
         return None
 
     def _first_character(self, target, act):
@@ -2552,13 +2523,13 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
     def bystanders(self, other=None):
         """Characters in the current scene, other than self and `other`, close enough to hear."""
         scene = self.context.current_scene
-        if scene is None or self.mapAgent is None:
+        if scene is None or not world.on(self):
             return []
-        here = (self.mapAgent.x, self.mapAgent.y)
+        here = world.at(self)
         return [c for c in self.context.actors + self.context.extras + self.context.npcs
                 if c is not self and c is not other and c.name != 'Viewer'
-                and getattr(c, 'current_scene', None) is scene and c.mapAgent is not None
-                and max(abs(c.mapAgent.x - here[0]), abs(c.mapAgent.y - here[1])) <= self.EARSHOT_TILES]
+                and getattr(c, 'current_scene', None) is scene and world.on(c)
+                and world.tiles(world.at(c), here) <= self.EARSHOT_TILES]
 
     def hearers(self, other=None):
         """Those who hear what self says, other than self and `other`: the bystanders, and those
@@ -3296,8 +3267,8 @@ End your response with:
         if d.get('setup') or d.get('title'):
             # where the scene is now is where its cast stands, not where it was when it opened (a
             # scene walked from the thicket to the apple tree and the note still said 'at Thicket7')
-            now_at = stage.where(self.context, stage.here(self)).removeprefix('at ') if getattr(self, 'mapAgent', None) is not None and not stage.remote(self) else ''
-            moved = now_at and d.get('place') and now_at != d.get('place') and now_at in self.context.map.resource_registry
+            now_at = stage.where(self.context, stage.here(self)).removeprefix('at ') if world.on(self) and not stage.remote(self) else ''
+            moved = now_at and d.get('place') and now_at != d.get('place') and world.place(self.context, now_at) is not None
             parts.append((f"This scene, '{d.get('title', '')}', opened at {d.get('place', '')} and is now at {now_at}. As it opened: {d.get('setup', '')}" if moved else
                           f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}").rstrip(': '))
         if stage.kind_note(self):
@@ -3895,8 +3866,8 @@ end your response with:
             }
 
         def location():
-            agent = getattr(self, 'mapAgent', None)
-            return {'x': agent.x, 'y': agent.y} if agent else None
+            xy = world.at(self) if world.on(self) else None
+            return {'x': xy[0], 'y': xy[1]} if xy else None
 
         def memory_stats():
             mem = self.structured_memory

@@ -58,6 +58,12 @@ def _grid(context):
     return getattr(context, 'map', None)
 
 
+def build(context, scenario_module):
+    """Lay out the world of a performance from its world file."""
+    from sim import map as grid_map
+    context.map = grid_map.WorldMap(60, 60, scenario_module)
+
+
 def scenario(context):
     """The world file this performance is played in (plays/scenarios/*.py), or None."""
     return getattr(_grid(context), 'scenario_module', None)
@@ -120,10 +126,12 @@ def add_place(context, kind, description, xy):
     return place(context, rid)
 
 
-def owned_kinds(context):
-    """The kinds of place this world says have an owner's part."""
-    grid = _grid(context)
-    return [str(a['resource_type']).split('.')[-1] for a in grid._resource_rules['allocations'] if a.get('has_npc', False)]
+def has_owner_part(context, place):
+    """Does this world say a place of this kind has an owner (a mill, a hut)?"""
+    for allocation in _grid(context)._resource_rules['allocations']:
+        if str(allocation['resource_type']).split('.')[-1] == place.kind:
+            return allocation.get('has_npc', False)
+    return False
 
 
 # ---------------------------------------------------------------------------- people
@@ -142,13 +150,20 @@ def put(who, xy):
     who.mapAgent.x, who.mapAgent.y = xy[0], xy[1]
 
 
-def enter(context, who, xy):
-    """Give a person a position in this world for the first time, or again."""
+def enter(context, who, xy, known=False):
+    """Give a person a position in this world for the first time, or again. known: one this world
+    may already have had a place for, by name."""
     from sim import map as grid_map
     grid = _grid(context)
-    if getattr(who, 'mapAgent', None) is None:
-        who.mapAgent = grid.get_agent(who.name) or grid_map.Agent(xy[0], xy[1], grid, who.name)
+    if getattr(who, 'mapAgent', None) is None or known:
+        who.mapAgent = (grid.get_agent(who.name) if known else None) or grid_map.Agent(xy[0], xy[1], grid, who.name)
     put(who, xy)
+
+
+def token(name):
+    """A name as one token ('Storm Chaser' -> 'Storm_Chaser')."""
+    from sim.map import normalize_name_for_enum_lookup
+    return normalize_name_for_enum_lookup(name)
 
 
 def start(context):

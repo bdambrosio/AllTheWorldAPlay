@@ -11,7 +11,6 @@ from utils.Messages import UserMessage, SystemMessage
 from sim.cognitive.EmotionalStance import EmotionalStance
 from utils import llm_api
 import utils.xml_utils as xml
-import sim.map as map
 import sim.survival as survival
 import sim.record as record
 from sim.cognitive import drives

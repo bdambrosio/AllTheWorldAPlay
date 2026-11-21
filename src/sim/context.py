@@ -11,7 +11,6 @@ import logging
 import re
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, cast
-import sim.map as map
 from sim.cognitive import drives as drive_model
 from sim.cognitive.drives import Drive
 from sim.referenceManager import ReferenceManager
@@ -35,7 +34,7 @@ import sim.stage as stage
 import sim.director as director
 import sim.record as record
 from sim.screenplay import Screenplay
-from sim import ablation, ledger, keeper, resolver
+from sim import ablation, ledger, keeper, resolver, world
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -82,7 +81,7 @@ class Context():
         self.actors: List[Character] = characters
         self.npcs = []
         self.extras = extras # created as needed
-        self.map = map.WorldMap(60, 60, scenario_module)
+        world.build(self, scenario_module)
         self.step = False  # Boolean step indicator from simulation server
         self.run = False # Boolean run indicator from simulation server
         self.name = ''
@@ -125,9 +124,9 @@ class Context():
         # An owned kind of place has an owner's part, and nobody in it until someone is cast
         # (cast_part). (Each had a whole character from the start, 'Cave1_owner': thirteen that
         # no scene used in one play, and two people 'seen' from an hour's walk off in another.)
-        for resource_id, resource in self.map.resource_registry.items():
-            if self.check_resource_has_npc(resource):
-                resource['properties']['owner'] = stage.Part(resource_id)
+        for place in world.places(self):
+            if world.has_owner_part(self, place):
+                place.props['owner'] = stage.Part(place.id)
 
         self.last_consequences = '' # for world updates from recent acts
         self.last_updates = '' # for world updates from recent acts
@@ -174,18 +173,13 @@ class Context():
         self.previous_interventions = []
 
         for actor in self.actors + self.extras + self.npcs:
-            #place all actors in the world. this can be overridden by "H.mapAgent.move_to_resource('Office#1')" AFTER context is created.
             print(f"Context initializing {actor.name}")
             actor.set_context(self)
             print(f"Context initialized {actor.name} speech_stylizer: {actor.speech_stylizer}")
-            # centre stage unless the character was given a position (a play may then move it:
-            # "H.mapAgent.move_to_resource('Office1')" after the context is created)
-            x = self.map.stage_centre[0] if actor.init_x is None else actor.init_x
-            y = self.map.stage_centre[1] if actor.init_y is None else actor.init_y
-            if actor.mapAgent is None:
-                actor.mapAgent = map.Agent(x, y, self.map, actor.name)
-            else:
-                actor.mapAgent.x, actor.mapAgent.y = x, y
+            # centre stage unless the character was given a position (a play may then move it
+            # after the context is created: world.put_at(H, 'Office1'))
+            start = world.start(self)
+            world.enter(self, actor, (start[0] if actor.init_x is None else actor.init_x, start[1] if actor.init_y is None else actor.init_y))
             # Initialize relationships with valid character names. This was for knownActor relationships, I think?
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors+self.extras if a != actor]
@@ -296,7 +290,7 @@ class Context():
     def summarize_map(self) -> str:
         """The physical world for the planning prompts: the kinds of terrain, and the named
         places near the cast with what each offers (sim/stage.py)."""
-        return f"Terrain: {', '.join(self.map.terrain_types.__members__)}\n{stage.gazetteer(self)}"
+        return f"Terrain: {', '.join(world.regions(self))}\n{stage.gazetteer(self)}"
 
 
     def plan_view(self):
@@ -820,20 +814,20 @@ If absolutely no information is available for any field, use "unknown" for that 
         they the leads', until it is said. Returns the character."""
         name = name.strip()
         who = next((c for c in self.everyone() if c.name.lower() == name.lower()), None)
-        resource = self.map.resource_registry.get(place) if place else None
+        resource = world.place(self, place) if place else None
         new = who is None
         if new:
-            x, y = resource['location'] if resource else xy or stage.here(self.actors[0])
+            x, y = resource.xy if resource else xy or stage.here(self.actors[0])
             who = self.get_npc_by_name(name, description=description or name, x=x, y=y, create_if_missing=True)
         if resource is not None and owns:
-            previous = getattr(resource['properties'].get('owner'), 'name', None)
+            previous = resource.owner if isinstance(resource.owner, str) else None   # a person, not a part nobody is cast in
             relations = self.reference_manager.relationships
-            if previous and previous != who.name and not isinstance(resource['properties'].get('owner'), stage.Part):
+            if previous and previous != who.name:
                 relations[place] = [r for r in relations.get(place, []) if r != ('owned by', previous)]
                 relations[previous] = [r for r in relations.get(previous, []) if r != ('owner of', place)]
             if ('owned by', who.name) not in relations.get(place, []):
                 self.reference_manager.declare_relationship(place, 'owned by', who.name, 'owner of')
-            resource['properties']['owner'] = who.mapAgent
+            resource.props['owner'] = who.name
         survival.give_body(self, who)   # can hold things and be dealt with
         if wants:
             who.set_drives(list(wants))
@@ -861,13 +855,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             from sim.agh import Character
             npc = NarrativeCharacter(name.capitalize(), character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
             npc.set_context(self)   # it keeps the model client it was made with, so its calls are traced as its own
-            map_agent = self.map.get_agent(name)
-            if map_agent is not None:
-                npc.mapAgent = map_agent
-                npc.mapAgent.x = x
-                npc.mapAgent.y = y
-            else:
-                npc.mapAgent = map.Agent(x, y, self.map, npc.name)
+            world.enter(self, npc, (x, y), known=True)
             self.npcs.append(npc)
             return npc
         return None
@@ -915,31 +903,6 @@ If absolutely no information is available for any field, use "unknown" for that 
         return (None, None)
 
     
-    def resolve_resource(self, reference_text):
-        """
-        Resolve a reference to a resource from the map
-        
-        Args:
-            speaker: Character making the reference
-            reference_text: Text to resolve into a resource reference
-            
-        Returns:
-            tuple: (resource, canonical_name) or (None, None) if unresolved
-        """
-        # Normalize reference text
-        reference_text = reference_text.strip().capitalize()
-        
-        # Check active resources first
-        for resource in self.map.resource_registry:
-            if resource.name == reference_text:
-                return (resource, reference_text)
-                    
-        canonical_name = self.reference_manager.resolve_reference_with_llm(reference_text)
-        if canonical_name:
-            return (self.get_actor_or_npc_by_name(canonical_name), reference_text)
-        
-        return (None, None)
-
     def world_updates_from_act_consequences(self, consequences):
         """ This needs overhaul to integrate and maintain consistency with world map."""
         prompt = [UserMessage(content="""Given the following immediate effects of an action on the environment, generate zero to two concise sentences to add to the following state description.
@@ -1086,7 +1049,7 @@ At most two sentences, 50 words.
 End your response with:
 </end>
 """)]
-        local_map = actor.mapAgent.get_detailed_visibility_description()
+        local_map = world.view_report(actor)
         local_map = xml.format_xml(local_map)
         aimed = target if isinstance(target, list) else [target] if target else []
         toward = ', '.join(getattr(t, 'name', str(t)) for t in aimed if t)
@@ -1200,7 +1163,7 @@ End your response with:
             return facts or '', facts or '', ''
         if facts is None and survival.config(self) and getattr(actor, 'body', None) is not None:
             trace.event('free_deed', character=actor.name, deed=str(action)[:300])   # a deed no gate judged: none should come here
-        local_map = actor.mapAgent.get_detailed_visibility_description()
+        local_map = world.view_report(actor)
         local_map = xml.format_xml(local_map)
         inputs = {"name": actor.name, "action": action, "local_map": local_map,
                   "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
@@ -1405,7 +1368,7 @@ End your response with:
                 claims.remove((kind, words))
                 if kind == 'presence' and who not in moved and stage.here(who) != stage.here(cast[0]):
                     with self.committing('director', who):
-                        who.mapAgent.x, who.mapAgent.y = stage.here(cast[0])
+                        world.put(who, stage.here(cast[0]))
                         ledger.of(self).wrote('position')
                     who.look()
                     moved.append(who)
@@ -1424,7 +1387,7 @@ End your response with:
             # description="A mysterious outsider caught in the storm, bringing urgent news." 
             # motivation="To seek shelter and reveal critical information." 
             # drives="Revelation"/>
-            character_name = map.normalize_name_for_enum_lookup(character['name'])
+            character_name = world.token(character['name'])
             character_description = character['description'] + '. '+character['motivation']
             # a supporting actor from here on, beside the leads (they were made at the map's corner and
             # listed twice, as an extra and as an npc)
@@ -1459,9 +1422,8 @@ End your response with:
         # Get current location context
         location_context = ""
         for actor in self.actors:
-            if hasattr(actor, 'mapAgent'):
-                terrain = actor.mapAgent.world.patches[actor.mapAgent.x][actor.mapAgent.y].terrain_type
-                location_context = f"Characters are in {terrain.name.lower()} terrain"
+            if world.on(actor):
+                location_context = f"Characters are in {world.region(self, world.at(actor)).lower()} terrain"
                 break
         
         environmental_events = [
@@ -1527,57 +1489,6 @@ End your response with:
         """Get widget reference for entity"""
         return self.widget_refs.get(entity)
 
-
-    def check_resource_has_npc(self, resource):
-        """Check if a resource type should have an NPC"""
-        for allocation in self.map._resource_rules['allocations']:
-            if allocation['resource_type'] == resource['type']:
-                return allocation.get('has_npc', False)
-        return False
-
-    def add_dynamic_resource(self, resource_type_name: str, description: str = "", 
-                           terrain_weights: dict = None, requires_property: bool = False,
-                           count: int = 1, auto_place: bool = True) -> list:
-        """Add a new dynamic resource type and optionally place instances.
-        
-        This is the main interface for the staleness detection system to add new resources.
-        
-        Args:
-            resource_type_name: Name of the new resource type (e.g., "ArtInstallation")
-            description: Description of the resource
-            terrain_weights: Dict mapping terrain names to placement weights (e.g., {"Plaza": 2.0})
-            requires_property: Whether the resource requires a property to be placed
-            count: Number of instances to place
-            auto_place: Whether to automatically place the resource instances
-            
-        Returns:
-            List of placed resource IDs if auto_place=True, empty list otherwise
-        """
-        # Add the resource type to the registry
-        resource_type = self.map.add_dynamic_resource_type(resource_type_name, description)
-        
-        placed_resources = []
-        if auto_place and count > 0:
-            # Place the resources on the map
-            placed_resources = self.map.place_dynamic_resource(
-                resource_type_name=resource_type_name,
-                description=description,
-                terrain_weights=terrain_weights,
-                requires_property=requires_property,
-                count=count
-            )
-            
-            # Log the placement
-            if placed_resources:
-                print(f"Dynamic resource system: Placed {len(placed_resources)} {resource_type_name}(s)")
-                for resource_id in placed_resources:
-                    resource = self.map.resource_registry[resource_id]
-                    location = resource['location']
-                    print(f"  {resource['name']} at ({location[0]}, {location[1]})")
-            else:
-                print(f"Dynamic resource system: Failed to place {resource_type_name} - no suitable locations found")
-        
-        return placed_resources
 
     def map_actor(self, actor):
         mapped_actor = f"""{actor.name}: {actor.focus_goal.to_string() if actor.focus_goal else ""}\n   {actor.focus_task.peek().to_string() if actor.focus_task.peek() else ""}\n  {actor.focus_action.to_string() if actor.focus_action else ""}"""
@@ -1869,7 +1780,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 # on, and the owner of the scene's place where that part is open
                 spot = stage.resolve(self, scene.get('location'), stage.here(self.actors[0]))
                 rid = spot[1] if spot else None
-                open_part = bool(rid) and isinstance(self.map.resource_registry.get(rid, {}).get('properties', {}).get('owner'), stage.Part)
+                open_part = bool(rid) and world.place(self, rid) is not None and isinstance(world.place(self, rid).owner, stage.Part)
                 character = self.cast_part(character_name, place=rid if open_part else None)
             else:
                 character_name = canonical_character_name
@@ -2695,13 +2606,13 @@ Respond with these lines only, one sentence each:
             return None
         anchor = stage.here(self.actors[0]) if self.actors else None
         spot = stage.resolve(self, person['place'], anchor) if anchor is not None else None
-        res = self.map.resource_registry.get(spot[1]) if spot else None
+        res = world.place(self, spot[1]) if spot else None
         if res is None:
             trace.event('director_person_dropped', **person)
             return None
         try:
             who = self.cast_part(person['name'], f"{person['name']}, {person['description']}", place=spot[1], wants=person['wants'],
-                                 owns=isinstance(res['properties'].get('owner'), stage.Part), unknown=True)
+                                 owns=isinstance(res.owner, stage.Part), unknown=True)
         except Exception as e:
             trace.event('director_person_dropped', error=f'{type(e).__name__}: {e}', **person)
             return None
@@ -2720,7 +2631,7 @@ Respond with these lines only, one sentence each:
         placed = []
         for clue in self.screenplay.clues:
             spot = stage.resolve(self, clue['place'], anchor)
-            res = self.map.resource_registry.get(spot[1]) if spot else None
+            res = world.place(self, spot[1]) if spot else None
             if spot is None or res is None:
                 trace.event('clue_dropped', **clue)
                 continue
@@ -2980,7 +2891,7 @@ End your response with: </end>""")]
             start = getattr(self, '_act_transcript_start', 0)
         cast = [c for c in self.everyone() if getattr(c, 'body', None) is not None]
         exits = getattr(self, 'scene_exits' if scene else 'act_exits', [])
-        placed = [f"{c.name}: {stage.where(self, stage.here(c))}" for c in cast if getattr(c, 'mapAgent', None) is not None]
+        placed = [f"{c.name}: {stage.where(self, stage.here(c))}" for c in cast if world.on(c)]
         who_is_where = '\n'.join([f"{e['time']} {e['who']} left" + (f" together with {', '.join(e['with'])}" if e['with'] else '')
                                   + (f", for {e['to']}" if e.get('to') else '')
                                   for e in exits] or ['Nobody left.']) + '\nWhere each is now: ' + '; '.join(placed)
