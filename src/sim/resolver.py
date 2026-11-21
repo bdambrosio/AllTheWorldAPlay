@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, ledger, stage, survival
+from sim import ablation, ledger, stage, survival, world
 from sim.trace import trace
 from utils import json_reply
 from utils.Messages import UserMessage
@@ -486,9 +486,8 @@ def resolve_setup(context, scene, cast, hazards=()):
     found = json_reply.parse(reply) if reply else None
     if not isinstance(found, dict) or not str(found.get('setup') or '').strip():
         return None
-    registry = context.map.resource_registry
-    place = str(found.get('place') or '').strip()
-    found['place'] = next((rid for rid in registry if rid.lower() == place.lower()), '')
+    place = world.called(context, str(found.get('place') or '').strip())
+    found['place'] = place.id if place is not None else ''
     found['brings'] = [b for b in found.get('brings') or [] if isinstance(b, dict) and str(b.get('thing') or '').strip()][:4]
     found['not_so'] = [n for n in found.get('not_so') or [] if isinstance(n, dict) and str(n.get('words') or '').strip()]
     found['setup'], found['ending'] = ' '.join(str(found['setup']).split()), ' '.join(str(found.get('ending') or '').split())
@@ -506,8 +505,8 @@ def resolve_setup(context, scene, cast, hazards=()):
 def apply_setup(context, scene, cast, found):
     """Put what a set-up brings into the world, at the scene's place (inside the scene's 'set'
     event). Returns the names of the things made."""
-    registry = context.map.resource_registry
-    at = tuple(registry[found['place']]['location']) if found['place'] in registry else stage.here(cast[0])
+    place = world.place(context, found['place'])
+    at = place.xy if place is not None else stage.here(cast[0])
     made = []
     for b in found['brings']:
         if survival.add_thing(context, str(b['thing']), at=at, fixed=bool(b.get('fixed'))):

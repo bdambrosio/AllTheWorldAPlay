@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from sim.cognitive.DialogManager import Dialog
 from utils import hash_utils
 from sim.trace import trace
+from sim import world
 from utils.Messages import UserMessage
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -390,7 +391,7 @@ class KnownActorManager:
         actor_name = reference_text.strip().capitalize()
         # someone spoken to or of whom nobody has cast: a supporting actor from here on, standing
         # where the one who named them is, and in the scene being played
-        actor_agh = self.context.cast_part(actor_name, description=reference_text, xy=(self.owner.mapAgent.x, self.owner.mapAgent.y))
+        actor_agh = self.context.cast_part(actor_name, description=reference_text, xy=world.at(self.owner))
         if self.context.current_scene and getattr(self.owner, 'current_scene', None) is self.context.current_scene:
             actor_agh.current_scene = self.context.current_scene
         self._store(actor_name, actor_agh)
@@ -550,7 +551,7 @@ class KnownActorManager:
         # Try to resolve first
         if not reference_text or reference_text == '' or reference_text.lower() == 'none':
             return None, None
-        resource = self.context.map.resource_registry.get(reference_text)
+        resource = world.place(self.context, reference_text)
         if resource:
             return resource, reference_text
         return None, None

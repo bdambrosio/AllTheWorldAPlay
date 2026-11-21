@@ -28,6 +28,7 @@ Not yet played: tried on recorded and invented deeds only (logs/review-20261119/
 import os, re, json, random
 from datetime import timedelta
 
+from sim import world
 from sim.trace import trace
 
 _rng = random.Random()
@@ -153,11 +154,10 @@ def keep(context, found):
 # A thing in the ledger (sim/ledger.py) that the world has a model for carries 'kind' (the
 # model's), 'state' and 'since' (when it came to that state).
 def _here(character):
-    return (character.mapAgent.x, character.mapAgent.y)
+    return world.at(character)
 
 
-def _distance(a, b):
-    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+_distance = world.tiles
 
 
 def _on_stage(context, character):
@@ -351,10 +351,10 @@ def _place_gives(context, character, wanted):
     """Is this something the place the character stands at is, or is a kind of ('fallen branch' at
     Fallen_Branch5)? Then it is at hand, and making from it does not use the place up."""
     low = wanted.lower()
-    for res in context.map.resource_registry.values():
-        if _distance(res['location'], _here(character)) <= 2:
-            for word in (str(res.get('type', '')), str(res.get('name', ''))):
-                word = re.sub(r'\d+$', '', word.split('.')[-1]).replace('_', ' ').strip().lower()
+    for place in world.places(context):
+        if _distance(place.xy, _here(character)) <= 2:
+            for word in (place.kind, place.id):
+                word = re.sub(r'\d+$', '', word).replace('_', ' ').strip().lower()
                 if word and (word in low or low in word):
                     return True
     return False

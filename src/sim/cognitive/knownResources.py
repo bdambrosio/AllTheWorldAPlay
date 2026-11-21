@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 from utils.Messages import UserMessage
+from sim import world
 
 class KnownResource:
     def __init__(self, resource, manager):
@@ -17,22 +18,19 @@ class KnownResource:
             return ''
  
     def location(self):
-        return self.resource['location']
-    
+        return self.resource.xy
+
     def description(self):
-        return self.resource['description'] if 'description' in self.resource else ''
-    
+        return self.resource.description
+
     def name(self):
-        return self.resource['name']
-    
+        return self.resource.id
+
     def properties(self):
-        return self.resource['properties']
-    
+        return self.resource.props
+
     def owner(self):
-        if 'owner' in self.resource['properties']:
-            return self.resource['properties']['owner']
-        else:
-            return None
+        return self.resource.owner
 
 class KnownResourceManager:
     def __init__(self, owner_agh, context):
@@ -61,7 +59,7 @@ class KnownResourceManager:
     
     def add_resource_model(self, resource_id):
         """Add a resource to agent's knowledge by resource_id"""
-        resource = self.context.map.get_resource_by_id(resource_id)
+        resource = world.find(self.context, resource_id)
         if resource and resource_id not in self.known_resources:
             try:
                 self.known_resources[resource_id] = KnownResource(resource, self)
@@ -102,7 +100,7 @@ class KnownResourceManager:
         # Try to resolve first
         if not reference_text or reference_text == '' or reference_text.lower() == 'none':
             return None, None
-        resource = self.context.map.resource_registry.get(reference_text)
+        resource = world.place(self.context, reference_text)
         if resource:
             return resource, reference_text
         return None, None
