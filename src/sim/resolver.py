@@ -427,7 +427,7 @@ What each of the cast is to go after in it:
 </goals>
 
 How a set-up stands:
-- It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed: it is then on them from the scene's first moment.
+- It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed, upon the cast from the scene's first moment.
 - It may not move a thing the world has elsewhere, put in anyone's hands what they do not hold, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
@@ -438,7 +438,7 @@ How a set-up stands:
 Answer in JSON only:
 {{"place": "<the one listed place this scene is set at, by its exact name; or the word same when it is where the cast now stands>",
   "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place would ordinarily have, two to five words>", "fixed": true or false}}],
-  "danger": "<one of the dangers listed, by its name, when the set-up as it may stand has it here and on the cast now; else empty>",
+  "danger": "<one of the dangers listed, by its name, when the set-up as it may stand has it upon the cast now, near enough to strike; else empty. One that is heard from afar, feared, spoken of or somewhere off is not upon them>",
   "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
   "title": "<the title as it may stand>",
   "setup": "<the set-up as it may stand: the same words if nothing is wrong; else the same with each of not_so put right or left out>",

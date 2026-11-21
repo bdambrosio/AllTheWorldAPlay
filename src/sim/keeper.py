@@ -255,10 +255,23 @@ def _tracks(context):
 
 
 def _stage(context, character):
-    from sim import survival, stage
+    """The stage as the keeper is shown it. In a world played without its catalogue
+    (survival.free) it is the stage as the actor has it (record.account), with no actions: shown
+    'This place offers: scavenge@Shop1', the keeper answered Kidd's lifting a tin from a shelf
+    with that action, which gave him batteries, then bottled water, never a tin, and half an
+    hour each time (bellona-20261121-102155)."""
+    from sim import survival, stage, record
     age(context)
-    return '\n'.join(filter(None, [f"{stage.where(context, _here(character)).capitalize()}, {stage.clock(context)}.",
-                                   survival.holdings(character), 'This place offers: ' + (survival.available_actions(character, part='known') or 'nothing listed')]))
+    head = f"{stage.where(context, _here(character)).capitalize()}, {stage.clock(context)}."
+    if survival.free(context):
+        return '\n'.join(filter(None, [head, survival.holdings(character), record.account(context, character)]))
+    return '\n'.join(filter(None, [head, survival.holdings(character), 'This place offers: ' + (survival.available_actions(character, part='known') or 'nothing listed')]))
+
+
+# In a world played without its catalogue the keeper has no actions to name: these parts of ASK go
+FREE = (("- Where the stage already offers an action that is what the deed does (listed under 'This place offers'), the deed is that action: it needs no model. Say so in \"does\", with the action exactly as listed.\n", ''),
+        (""",
+           {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}""", ']}}'))
 
 
 def _by(value):
@@ -280,7 +293,12 @@ def consider(context, character, deed):
     if key in asked:
         return asked[key]
     known = models(context)
-    reply = context.llm.ask({}, [UserMessage(content=ASK.format(
+    free = survival.free(context)
+    ask = ASK
+    for with_catalogue, without in (FREE if free else ()):
+        assert with_catalogue in ask, 'keeper: a catalogue part of ASK was not found'
+        ask = ask.replace(with_catalogue, without)
+    reply = context.llm.ask({}, [UserMessage(content=ask.format(
         world=' '.join((context.initial_state or '').split()), tracks=_tracks(context), stage=_stage(context, character),
         lately='\n'.join(context.witnessed(character, n=8)) or 'Nothing yet.',
         models='\n'.join(json.dumps(m) for m in known.values()) or 'none', name=character.name, deed=deed))],
@@ -298,7 +316,7 @@ def consider(context, character, deed):
         does = [({'action': ' '.join(str(d['action']).split())} if d.get('action') else
                  {'thing': ' '.join(str(d.get('thing') or '').lower().split())[:40], 'kind': ' '.join(str(d.get('kind') or '').lower().split()),
                   'by': _by(d.get('by')), 'ends': 'in hand' if 'hand' in str(d.get('ends') or '').lower() else 'here'})
-                for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or d.get('action'))][:3]
+                for d in found.get('does') or [] if isinstance(d, dict) and (d.get('thing') or (d.get('action') and not free))][:3]
         # Taking up a thing that lies here is the stage's own 'take' and needs no model. (The keeper
         # is not shown the offers for things, said 'creased notebook leaf: here, in hand' of a kind
         # it gave no model for, and the deed was refused: 'no action here covers it'.)
