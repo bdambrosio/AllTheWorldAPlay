@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, keeper, stage, survival
+from sim import ablation, keeper, ledger, stage, survival
 from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
@@ -195,6 +195,46 @@ def of(context, actor, people=None, full=False):
         'Danger: ' + (danger(actor) or 'none'),
         *(_acts(context, actor, people) if full else []),
     ])
+
+
+def account(context, reader, about=None, people=None, full=False):
+    """How things stand, for whoever reads it: the one way the stage is described.
+    reader: a character (what lies where it is and the traces there, each as whose doing it is
+    for this reader; what has been told between it and those with it; how what it carries has
+    been left); 'stage' (everything at the place of `about`, for the calls that say what an act
+    does or check one: of()); 'planner' (where every thing and trace of the play is, what the
+    written things say, and what each person has told of their life and to whom).
+    The same things and traces, by the same wording (survival.named, marks_note, whose), whoever
+    reads: each prompt used to put its own list together, and one of them listed a woman's
+    fingermarks as a thing lying at a spring."""
+    if reader == 'planner':
+        cast = list(people) if people is not None else context.everyone()
+        told = [f"{t['who']} has told {', '.join(t['to']) or 'nobody yet'}: {t['fact']}" for t in ledger.of(context).told][-24:]
+        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
+                 ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '']
+        return '\n'.join(p for p in parts if p)
+    if reader == 'stage':
+        return of(context, about, people, full)
+    here, body, lines = stage.here(reader), getattr(reader, 'body', None), []
+    things = [survival.named(context, p, reader=reader) for p in survival.lying(context, here)]
+    if things:   # the actor saw nothing of what lay at its feet but what it carried
+        lines.append('Lying here: ' + ', '.join(things))
+    traces = survival.marks_note(context, here, reader=reader)
+    if traces:   # told as whose doing each is: listed bare, her own fingermarks were a stranger's to him
+        lines.append('Traces left here by what has been done: ' + '; '.join(traces))
+    from sim import resolver
+    for other in (reader.bystanders() if hasattr(reader, 'bystanders') else []):
+        # what has been told between them of their lives is known to both from then on (a woman
+        # told the theft of her pack in one scene and told it again as news three scenes later)
+        mine, theirs = resolver.told_to(context, reader, other)[-12:], resolver.told_to(context, other, reader)[-12:]
+        if mine:
+            lines.append(f"You have already told {other.name} this of your life, and {other.name} knows it (it is not news to tell again): " + '; '.join(mine))
+        if theirs:
+            lines.append(f"{other.name} has told you this of their life: " + '; '.join(theirs))
+    left = [survival.named(context, i, reader=reader) for i in (body.inventory if body is not None else []) if survival.state_of(context, i)]
+    if left:   # how what it carries has been left by handling
+        lines.append('Of what you carry: ' + ', '.join(left))
+    return '\n'.join(lines)
 
 
 def _acts(context, actor, people):
@@ -545,7 +585,7 @@ def ending_beyond(context, ending, cast):
         return []
     from utils import json_reply
     reply = context.llm.ask({'ending': ending, 'can': stage.gazetteer(context) or 'nothing listed',
-                             'things': '\n'.join(x for x in (survival.things_note(context, people=cast), survival.writings_note(context, people=cast)) if x) or 'nothing'},
+                             'things': account(context, 'planner', people=cast) or 'nothing'},
                             [UserMessage(content=ENDING)], tag='record.ending_beyond', temp=0.1, stops=['</end>'], max_tokens=200)
     found = json_reply.parse(reply) if reply else None
     beyond = found.get('beyond') if isinstance(found, dict) else None

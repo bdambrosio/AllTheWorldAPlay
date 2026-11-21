@@ -3494,23 +3494,11 @@ End your response with:
         body = getattr(self, 'body', None)
         if body is not None:
             parts.append(f'Your body: {body.summary()}')
-        here_things = [survival.named(self.context, p, reader=self) for p in survival.lying(self.context, stage.here(self))]
-        if here_things:   # the actor saw nothing of what lay at its feet but what it carried
-            parts.append('Lying here: ' + ', '.join(here_things))
-        traces = survival.marks_note(self.context, stage.here(self), reader=self)
-        if traces:   # told as whose doing each is: listed bare, her own fingermarks were a stranger's to him
-            parts.append('Traces left here by what has been done: ' + '; '.join(traces))
-        for other in self.bystanders():
-            # what has been told between them of their lives is known to both from then on (a woman
-            # told the theft of her pack in one scene and told it again as news three scenes later)
-            mine, theirs = resolver.told_to(self.context, self, other)[-12:], resolver.told_to(self.context, other, self)[-12:]
-            if mine:
-                parts.append(f"You have already told {other.name} this of your life, and {other.name} knows it (it is not news to tell again): " + '; '.join(mine))
-            if theirs:
-                parts.append(f"{other.name} has told you this of their life: " + '; '.join(theirs))
-        left = [survival.named(self.context, i, reader=self) for i in (body.inventory if body is not None else []) if survival.state_of(self.context, i)]
-        if left:   # how what it carries has been left by handling
-            parts.append('Of what you carry: ' + ', '.join(left))
+        # what lies here, the traces here, what has been told, how what it carries has been left:
+        # the stage as this character may know it (record.account, the one way it is described)
+        mine = record.account(self.context, self)
+        if mine:
+            parts.append(mine)
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         if events:   # what it saw done (what was said is in the prompt's own dialog block)
             parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))

@@ -1730,7 +1730,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
-                  'things': '\n'.join(x for x in (survival.things_note(self, people=cast), survival.writings_note(self, people=cast)) if x) or 'nothing tracked',
+                  'things': record.account(self, 'planner', people=cast) or 'nothing tracked',
                   'facts': self.screenplay.facts_note(pasts=True),
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
@@ -2734,7 +2734,7 @@ Respond with these lines only, one sentence each:
                                                       for c in self.everyone()),
                               'clue_rule': clue_rule, 'clue_format': clue_format,
                               'existing': (("- The play has already put these in the world. They may serve the episode; do not name another of the same as a clue:\n"
-                                            + '\n'.join(x for x in (survival.things_note(self), survival.writings_note(self)) if x))
+                                            + record.account(self, 'planner', people=[]))
                                            if getattr(self, 'props', None) else '')},
                              prompt, tag='frame_episode', temp=0.4, stops=['</end>'], max_tokens=700) or ''
         reply = reply or ''
@@ -2926,8 +2926,8 @@ End your response with: </end>"""
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                     + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
-                    + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.everyone())) else '')
-                    + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.everyone())) else ''))
+                    + (f"\nWhere the play's things are now, and what its written things say (the characters know that only once read or told):\n{things}"
+                       if (things := record.account(self, 'planner')) else ''))
         if closing:
             return (f"This is the last act of the episode. It closes what the episode set out to settle: {frame['settles']} "
                     f"Show it settled in what the characters do; nobody says it. "
@@ -2937,8 +2937,8 @@ End your response with: </end>"""
                 f"It leaves open: {frame['open']} That may be touched on, never answered in this episode."
                 + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                 + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
-                + (f"\nWhere the play's things are now: {things}" if (things := survival.things_note(self, people=self.everyone())) else '')
-                + (f"\nWhat the written things say (the characters know it only once read or told): {w}" if (w := survival.writings_note(self, people=self.everyone())) else ''))
+                + (f"\nWhere the play's things are now, and what its written things say (the characters know that only once read or told):\n{things}"
+                   if (things := record.account(self, 'planner')) else ''))
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
