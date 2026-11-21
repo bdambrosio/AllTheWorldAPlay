@@ -245,11 +245,12 @@ class Body:
         return '; '.join(parts)
 
     def _held_words(self, hidden=()):
-        """['carrying a, b', 'wearing c']: what is in hand or carried, and what is on the body."""
+        """['carrying a and b', 'wearing c']: what is in hand or carried, and what is on the body."""
         held = [i for i in self.inventory if not (hidden and i.startswith(hidden))]
         worn = [i for i in held if (getattr(i, 'thing', None) or {}).get('worn')]
         carried = [i for i in held if i not in worn]
-        return ([('carrying ' + ', '.join(carried))] if carried else []) + ([('wearing ' + ', '.join(worn))] if worn else [])
+        # ' and ', not a comma: a body's words are joined by ';' and a thing's name may hold a comma
+        return ([('carrying ' + ' and '.join(carried))] if carried else []) + ([('wearing ' + ' and '.join(worn))] if worn else [])
 
     def condition(self):
         """How the body is, in words, without what it carries: 'very thirsty; tired; in shelter'."""
@@ -750,8 +751,8 @@ def holdings(character):
     if body is None or not config(character.context):
         return ''
     people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
-    here = ', '.join(named(character.context, p) for p in lying(character.context, _here(character)))
-    return '\n'.join([f"{p.name}: {', '.join(named(character.context, i) for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
+    here = '; '.join(named(character.context, p) for p in lying(character.context, _here(character)))
+    return '\n'.join([f"{p.name}: {'; '.join(named(character.context, i) for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
                       for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
 
 
@@ -1381,8 +1382,8 @@ def classify_deed(context, character, act_text, label=None):
     body = character.body
     reply = context.llm.ask({'name': character.name, 'deed': act_text,
                              'claimed': f"\nIts actor calls it: {label}\n" if label else '',
-                             'holding': ', '.join(named(context, i) for i in body.inventory) or 'nothing',
-                             'lying': ', '.join(named(context, p) for p in lying(context, _here(character))) or 'nothing',
+                             'holding': '; '.join(named(context, i) for i in body.inventory) or 'nothing',
+                             'lying': '; '.join(named(context, p) for p in lying(context, _here(character))) or 'nothing',
                              'offered': '\n'.join(f'- {o}' for o in offered) or '- none here'},
                             [UserMessage(content=DEED_ACTION)], tag='survival.classify_deed', temp=0.1,
                             stops=['</end>'], max_tokens=130)

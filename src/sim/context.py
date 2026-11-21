@@ -2635,7 +2635,7 @@ Respond with these lines only, one sentence each:
 <places>
 """ + places + """
 </places>""") if places else ''
-        clue_format = ("#clue <the thing, two to four plain words> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
+        clue_format = ("#clue <the thing, by a name of two to four plain words with no comma> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is a written thing (a note, a letter, a deed, a tally): what it says, in one plain sentence; else leave empty>   (one line for each clue)") if places else ''
         # A person's own past, beside the facts of the plot. (A sketch says 'an uncomfortable history
         # she would rather not talk about' and nothing settled what it was: asked, she could only
         # refuse, in every scene, and nothing of her could ever be found out or told.)
@@ -2774,7 +2774,7 @@ Respond with one line for each thing, or the single line #none:
 """)]
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'characters': '\n'.join(f"{c.name}: {' '.join(c.character.split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in people),
-                              'carrying': '\n'.join(f"{c.name}: {', '.join(c.body.inventory) or 'nothing'}" for c in people),
+                              'carrying': '\n'.join(f"{c.name}: {'; '.join(c.body.inventory) or 'nothing'}" for c in people),
                               'items': ', '.join(survival.item_kinds(self)) or 'none'},
                              prompt, tag='equip_cast', temp=0.2, stops=['</end>'], max_tokens=160) or ''
         given = {}

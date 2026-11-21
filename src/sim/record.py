@@ -182,9 +182,9 @@ def of(context, actor, people=None, full=False):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
-        'Holdings: ' + ('; '.join(f"{c.name}: {', '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
+        'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
-        'Lying here, for anyone present to take or use: ' + (', '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
+        'Lying here, for anyone present to take or use: ' + ('; '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
         # what a deed left on the place is that deed's doing, told as such: it is not a thing, and
         # nobody else was here to leave it
         *(["Traces left here by deeds of the play (each the doing of the one named, and of nobody else): " + '; '.join(m)]
@@ -220,7 +220,7 @@ def account(context, reader, about=None, people=None, full=False):
     here, body, lines = stage.here(reader), getattr(reader, 'body', None), []
     things = [survival.named(context, p, reader=reader) for p in survival.lying(context, here)]
     if things:   # the actor saw nothing of what lay at its feet but what it carried
-        lines.append('Lying here: ' + ', '.join(things))
+        lines.append('Lying here: ' + '; '.join(things))
     traces = survival.marks_note(context, here, reader=reader)
     if traces:   # told as whose doing each is: listed bare, her own fingermarks were a stranger's to him
         lines.append('Traces left here by what has been done: ' + '; '.join(traces))
@@ -235,7 +235,7 @@ def account(context, reader, about=None, people=None, full=False):
             lines.append(f"{other.name} has told you this of their life: " + '; '.join(theirs))
     left = [survival.named(context, i, reader=reader) for i in (body.inventory if body is not None else []) if survival.state_of(context, i)]
     if left:   # how what it carries has been left by handling
-        lines.append('Of what you carry: ' + ', '.join(left))
+        lines.append('Of what you carry: ' + '; '.join(left))
     return '\n'.join(lines)
 
 
@@ -826,6 +826,13 @@ def refused(context, character, deed, why, chosen=False):
     context.__dict__.setdefault('scene_refusals', []).append(
         {'who': character.name, 'deed': ' '.join(str(deed).split())[:200], 'why': '; '.join(why) if isinstance(why, (list, tuple)) else str(why),
          'task': getattr(task, 'id', None), 'chosen': chosen})
+    if chosen:
+        # a deed chosen and not done is in the record, for those present, as not done: the line
+        # said with it ('I'll drink it myself') was read as done, by what stands between two
+        # people and by memories, when the record held the line and nothing of the deed
+        bare = stage.unnamed(character.name, ' '.join(str(deed).split())).rstrip('. ')
+        if bare:
+            context.add_event(f'{character.name} meant to do this and did not; none of it happened: {bare}.', doer=character)
 
 
 def refusals_note(character):

@@ -781,6 +781,19 @@ class WorldMap:
             # (a resource whose terrain exists only far off is still placed, at the nearest of it)
             radius = self._resource_rules.get('stage_radius', 12)
             cx, cy = self.stage_centre
+            # 'beside': the kind of resource this one stands beside, already placed (the rooms of
+            # one house: a kitchen and a closet were 18 tiles apart, 27 minutes' walk, and a morning
+            # went in walks between them). Nearness is then to that one, within 'within' tiles, and
+            # on its plot of land where there is room there.
+            anchor, plot = None, None
+            if allocation.get('beside'):
+                anchor = next((r for r in self.resource_registry.values()
+                               if getattr(r['type'], 'name', r['type']) == allocation['beside']), None)
+                if anchor is None:
+                    print(f"WARNING: {allocation['beside']} not placed before {resource_type}: placed by the stage centre")
+            if anchor is not None:
+                (cx, cy), radius = anchor['location'], allocation.get('within', 2)
+                plot = self.patches[cx][cy].property_id
             candidates = []
             for x in range(self.width):
                 for y in range(self.height):
@@ -794,6 +807,8 @@ class WorldMap:
                     weight = terrain_weights.get(patch.terrain_type, 0)
                     if weight > 0:
                         nearness = math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / radius ** 2)
+                        if plot is not None and patch.property_id != plot:
+                            nearness *= 0.01
                         candidates.append((x, y, weight * max(nearness, 1e-12)))
             
             # Place resources

@@ -250,6 +250,7 @@ End with:
 </what_has_just_passed>
 
 Add what this exchange adds, and only what its lines show. Most exchanges add one or two lines; a line that would repeat the account so far is left out.
+What is said is only said: a thing someone says they will do, or are doing, is done only where the exchange shows it done, and what it says did not happen did not.
 - shown: something of {{$owner}}'s own self that {{$owner}} let {{$other}} see or hear: a fear, a memory, a liking, a weakness, a thing {{$owner}} is good at. Not a plan, a demand or a question.
 - seen: the same of {{$other}}, as {{$owner}} saw or heard it.
 - owed: a debt either way, named with who owes whom: a thing given or done for the other, a promise made, a wrong done and not put right.

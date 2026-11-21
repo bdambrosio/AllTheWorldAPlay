@@ -668,7 +668,7 @@ End your response with:
         Lanya found into a can of food.)"""
         if not (consequences or '').strip():
             return ''
-        deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg or '')
+        deed = stage.unnamed(self.name, act_arg)
         response = self.llm.ask({"name": self.name, "deed": deed, "reason": reason or 'not said', "consequences": consequences},
                                 [UserMessage(content=self.CONSEQUENCES)], tag='do_consequences', temp=0.2, stops=['</end>'], max_tokens=100)
         return '' if re.fullmatch(r'\W*none\W*', (response or '').strip(), re.I) else (response or '')
@@ -1318,7 +1318,7 @@ End response with:
             notices = '' if found or (passing and not (consequences or '').strip()) else self.process_consequences(act_arg, reason, consequences)
             await asyncio.sleep(0)
             # the act text often starts with the character's own name ('Xue pulls a tablet ...')
-            deed = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', act_arg)
+            deed = stage.unnamed(self.name, act_arg)
             if notices and len(notices) > 0:
                 self.add_perceptual_input(f'{notices}', mode='internal')
             # the audience sees the deed and what it physically did; what the character makes of
@@ -1341,7 +1341,7 @@ End response with:
                 result = result.replace(note, '').strip()
             told = stage.stage_line(self.name, '' if rested_on_nothing else act_arg, result)
             if rested_on_nothing:
-                told = re.sub(rf'^{re.escape(self.name)}\s+', '', told) or f"tries: {deed.rstrip('. ')}, and it comes to nothing."
+                told = stage.unnamed(self.name, told) or f"tries: {deed.rstrip('. ')}, and it comes to nothing."
             self.context.to_page(self.name, told, transcript=False)   # the transcript keeps it just below, as it lasts
             self.lastActResult = notices
             if source == None:
@@ -1353,7 +1353,7 @@ End response with:
             # the deed goes in the play's transcript as the audience was shown it. (self.show was
             # appended here after it had been emptied: every deed was a bare 'Joe:', and what
             # reads the transcript, the outcome check and the task review, saw speech only.)
-            shown = re.sub(rf'^{re.escape(self.name)}\s+', '', told)
+            shown = stage.unnamed(self.name, told)
             kept = re.sub(survival.BODY_NOTE, '', result).strip() if passing else None   # what outlasts the scene of a deed with a passing part
             if not passing:
                 self.context.transcript.append(f'{self.name} {shown}')
@@ -1396,7 +1396,7 @@ End response with:
             self.lastActResult = consequences or 'You look, and see nothing new.'
             self.show += act_arg + '.\n ' + consequences
             if consequences.strip():   # a look that finds nothing is not a line: four of them in two acts drained the dread they were meant to build
-                self.context.to_page(self.name, re.sub(rf'^{re.escape(self.name)}\s+', '', stage.stage_line(self.name, '', consequences)), transcript=False)
+                self.context.to_page(self.name, stage.unnamed(self.name, stage.stage_line(self.name, '', consequences)), transcript=False)
             else:
                 trace.event('look_empty', character=self.name)
             await asyncio.sleep(0)
@@ -1436,7 +1436,7 @@ End response with:
             resolving = getattr(self, 'body', None) is not None and bool(survival.config(self.context))
             deed = ' '.join((getattr(act, 'deed', '') or '').split()) if resolving else ''
             if staged:
-                business = re.sub(rf'^\s*{re.escape(self.name)}\s+', '', staged.group(1).strip()).rstrip('.,;')
+                business = stage.unnamed(self.name, staged.group(1).strip()).rstrip('.,;')
                 act_arg = staged.group(2)
                 # what the speaker does while speaking is a deed like any other: judged, and done
                 # in the world or not shown (it was shown and recorded unjudged)
@@ -1479,7 +1479,7 @@ End response with:
                 settled = resolver.apply(self.context, self, given)
                 if settled:   # the world's own sentences (what a written thing says, what a world action gave): the doer's to know
                     self.add_perceptual_input(re.sub(survival.BODY_NOTE, '', settled).strip(), percept=False, mode='internal')
-                seen = re.sub(rf'^\s*{re.escape(self.name)}[\s,]+', '', said['page'])   # 'Samantha, sitting...' was put down 'Samantha Samantha, sitting'
+                seen = stage.unnamed(self.name, said['page'])
                 if seen:
                     self.context.add_event(f'{self.name} {seen}', doer=self)
                     self.context.to_page(self.name, seen)

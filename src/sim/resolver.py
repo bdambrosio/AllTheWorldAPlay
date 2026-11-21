@@ -355,12 +355,21 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
                         listener=getattr(listener, 'name', 'the others'), lived=lived,
                         told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
                         unknown='\n'.join(f'- {m}' for m in missing) or 'Nothing listed.', words=words, deed=deed or '(does nothing; only speaks)', leaves='')
-    reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
-    found = json_reply.parse(reply) if reply else None
-    if not isinstance(found, dict) or 'can' not in found:
+    def ask(note=''):
+        reply = context.llm.ask({}, [UserMessage(content=prompt + note)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
+        found = json_reply.parse(reply) if reply else None
+        if not isinstance(found, dict) or 'can' not in found:
+            return None, []
+        found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and not e.get('goes')]   # leaving is the actor's mark
+        return found, faults(context, speaker, found)
+    found, wrong = ask()
+    if found is None:
         return None
-    found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and not e.get('goes')]   # leaving is the actor's mark
-    wrong = faults(context, speaker, found)
+    if wrong:   # sent back once with what is wrong with it, as a deed is (resolve): a thing's name cut short lost a deed
+        trace.event('resolve_again', character=speaker.name, deed=deed[:200], faults=wrong)
+        again, still = ask(AGAIN.format(faults='\n'.join(f'- {w}.' for w in wrong)))
+        if again is not None:
+            found, wrong = again, still
     left = str(found.get('left_out') or '').strip()
     refused = ''
     if wrong:   # what names something that is not here does nothing

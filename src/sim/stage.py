@@ -538,11 +538,17 @@ def _stems(text, skip=()):
     return {w[:5] for w in re.findall(r"[a-z0-9_]{4,}", text.lower()) if w not in skip}
 
 
+def unnamed(name, text):
+    """`text` without its doer's name at its head, for a line the name is put before ('Samantha,
+    sitting...' was put down 'Samantha Samantha, sitting'; 'Receptionist The Receptionist sorts')."""
+    return re.sub(rf'^\s*(?:[Tt]he\s+)?{re.escape(name)}[\s,]+', '', text or '')
+
+
 def stage_line(name, deed, result):
     """What the audience reads for a physical action: the deed, then only what the result adds.
     The result used to follow whole, so a deed was told two or three times over (the actor's
     words, the world's fact, the narrator's restatement) with the body's condition in brackets."""
-    deed = re.sub(rf'^\s*{re.escape(name)}\s+', '', (deed or '').strip()).rstrip('. ')
+    deed = unnamed(name, (deed or '').strip()).rstrip('. ')
     if '@' in deed:   # an action label given as the deed ('gather berries@Berries9'): the result tells it
         deed = ''
     result = re.sub(r'\s*\([^()]*\bis now\b[^()]*\)', '', result or '').strip()
