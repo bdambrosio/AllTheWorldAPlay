@@ -114,7 +114,7 @@ def places_near(character, cut=14):
     context = character.context
     here, unseen = _here(character), set(unseen_places(character))
     near = sorted((world.span(context, here, res.xy), rid, res) for rid, res in world.listed(context) if rid not in unseen)
-    return '; '.join(f"{rid} ({'here' if world.at_place(context, here, res) else f'about {world.minutes(context, here, res.xy)} minutes walk ' + world.bearing(here, res.xy).lower()})"
+    return '; '.join(f"{rid} ({'here' if world.at_place(context, here, res) else world.away(context, here, res.xy)})"
                      for d, rid, res in near[:cut])
 
 
@@ -1680,7 +1680,7 @@ def travel(character, to, advance_clock=True):
     if moved:
         ledger.of(context).wrote('position')
     if getattr(character, 'body', None) is not None:
-        character.body.sheltered = False
+        character.body.sheltered = world.sheltered(context, to)   # by where it now is: inside a hut, a cave, a thicket
         if cfg.get('travel_need'):
             character.body.adjust(cfg['travel_need'], 0.01 * effort)
     if advance_clock:

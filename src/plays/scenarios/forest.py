@@ -70,6 +70,41 @@ infrastructure_types = ForestInfrastructure
 property_types = ForestProperty
 resource_types = ResourceTypeRegistry(ForestResources)  # Use dynamic registry
 
+# How the places of this world are, and how they sit: laid out in metres, anew for each
+# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
+#   radius: metres. enclosed: walls (open: standing open, as a cave's mouth). shelter: inside it is
+#   under shelter. blocks_view: not seen across. hides: what is inside is not seen from outside.
+kinds = {
+    'Berries': {'radius': 2}, 'Mushrooms': {'radius': 3}, 'Fallen_Branch': {'radius': 3}, 'Apple_Tree': {'radius': 5},
+    'Spring': {'radius': 4},
+    'Thicket': {'radius': 6, 'shelter': True, 'blocks_view': True, 'hides': True},
+    'Cave': {'radius': 5, 'enclosed': True, 'open': True, 'shelter': True},
+    'Hut': {'radius': 4, 'enclosed': True, 'shelter': True},
+}
+layout = {
+    # the forest holds everything; pace is metres a minute on foot; cover is what is overhead
+    'regions': [
+        {'kind': 'Forest', 'whole': True, 'radius': 1200, 'pace': 50, 'cover': 'trees'},
+        {'kind': 'Clearing', 'count': 6, 'radius': (40, 80), 'pace': 75, 'cover': 'open'},
+        {'kind': 'Meadow', 'count': 2, 'radius': (100, 150), 'pace': 75, 'cover': 'open'},
+        # a rocky rise some way off: high ground, and nothing is seen across it
+        {'kind': 'Rise', 'count': 1, 'radius': 150, 'pace': 35, 'cover': 'open', 'from_start': (500, 900), 'blocks_view': True, 'overlooks': True},
+    ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
+    'scatter': {'within': 700, 'apart': 40},
+    # 'on': the ground a kind is found on, by weight. from_start: metres from where they start.
+    'places': [
+        {'kind': 'Berries', 'on': {'Clearing': 2.0, 'Meadow': 1.0, 'Forest': 0.5}},
+        {'kind': 'Mushrooms', 'on': {'Forest': 1.0}},
+        {'kind': 'Fallen_Branch', 'on': {'Forest': 1.0, 'Clearing': 0.5}},
+        {'kind': 'Apple_Tree', 'on': {'Clearing': 1.0, 'Forest': 0.6}},
+        {'kind': 'Spring', 'on': {'Forest': 1.0}, 'from_start': (150, 700)},
+        {'kind': 'Thicket', 'on': {'Forest': 2.0, 'Clearing': 1.0}},
+        {'kind': 'Cave', 'on': {'Rise': 1.0}},
+        {'kind': 'Hut', 'foot_of': 'Rise'},     # at the foot of the rise, on the side they start from
+    ],
+}
+
 # Add at top with other interface names
 required_resource = resource_types.Hut  # or Market, etc.
 required_resource_name = "Hut"  # or "Market", etc.

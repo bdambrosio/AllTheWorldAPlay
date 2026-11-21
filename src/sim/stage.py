@@ -265,7 +265,7 @@ def set_scene(context, scene, characters, opens_act):
             world.put(character, xy)
             ledger.of(context).wrote('position')
             if getattr(character, 'body', None) is not None:
-                character.body.sheltered = False
+                character.body.sheltered = world.sheltered(context, xy)
         else:
             longest = max(longest, survival.travel(character, xy, advance_clock=False))
         movers.append((character.name, 0))
@@ -303,8 +303,7 @@ def gazetteer(context):
             kinds.add(res.kind)
     for d, rid, res, offers in listed:
         nearest = min(cast, key=lambda c: world.span(context, here(c), res.xy))
-        reach = ('here' if world.at_place(context, here(nearest), res)
-                 else f'{world.far(context, here(nearest), res.xy)} from {nearest.name}, about {world.minutes(context, here(nearest), res.xy)} min walk')
+        reach = 'here' if world.at_place(context, here(nearest), res) else world.reach_words(context, here(nearest), res.xy, nearest.name)
         owner = res.owner
         # an uncast owner is said only where what can be done there depends on whose it is
         owned = ((', has an owner' if survival.ownership_used(context, res.kind) else '') if isinstance(owner, Part)
@@ -568,7 +567,6 @@ def _looks(context, character):
 
 
 # Terrain a place stands in that makes it a room: a picture of it is an interior.
-INDOOR_TERRAIN = {'Building', 'House'}
 
 
 def _place_name(context, place, res):
@@ -595,7 +593,7 @@ def _place_words(context, cast):
     res = world.place(context, place)
     words = _place_name(context, place, res) if res else plain(context, place)
     told = res.description if res else None
-    indoor = bool(res) and world.region(context, res.xy) in INDOOR_TERRAIN
+    indoor = bool(res) and world.indoors(context, res.xy)
     return (f"{words} ({told[0].lower() + told[1:]})" if told and told.lower() not in words.lower() else words), indoor
 
 

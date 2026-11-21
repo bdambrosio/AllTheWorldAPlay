@@ -11,6 +11,7 @@ stays, and what answers it changes.
 A position is whatever `at` gives. Callers hand it back to this module (tiles, bearing, where,
 region, put) and do not look inside it."""
 import logging
+import os
 import re
 
 logger = logging.getLogger('simulation_core')
@@ -60,16 +61,29 @@ def _grid(context):
 
 def build(context, scenario_module):
     """Lay out the world of a performance from its world file."""
-    from sim import map as grid_map
     from sim.trace import trace
+    if getattr(scenario_module, 'layout', None) and not os.environ.get('ATWAP_GRID'):
+        # a world file that says how its places sit is laid out in metres (sim/land.py)
+        from sim.land import Land
+        context.map, context.land = None, Land(context, scenario_module, seed=int(os.environ['ATWAP_WORLD_SEED']) if os.environ.get('ATWAP_WORLD_SEED') else None)
+        trace.event('world_built', seed=context.land.seed, places=[
+            {'id': p.id, 'kind': p.kind, 'at': [round(p.xy[0], 1), round(p.xy[1], 1)], 'radius': round(p.radius, 1), 'region': p.region,
+             'description': p.description} for p in context.land.table.values()])
+        return
+    from sim import map as grid_map
     context.map = grid_map.WorldMap(60, 60, scenario_module)
     # the places as laid out, so that what a prompt was shown of them can be made again from a trace
     trace.event('world_built', places=[{'id': p.id, 'kind': p.kind, 'at': list(p.xy), 'description': p.description} for p in places(context)])
 
 
+def _land(context):
+    return getattr(context, 'land', None)
+
+
 def scenario(context):
     """The world file this performance is played in (plays/scenarios/*.py), or None."""
-    return getattr(_grid(context), 'scenario_module', None)
+    land = _land(context)
+    return land.scenario if land is not None else getattr(_grid(context), 'scenario_module', None)
 
 
 # ---------------------------------------------------------------------------- places
@@ -156,6 +170,11 @@ def put(who, xy):
 def enter(context, who, xy, known=False):
     """Give a person a position in this world for the first time, or again. known: one this world
     may already have had a place for, by name."""
+    land = _land(context)
+    if land is not None:
+        from sim.land import Standing
+        who.mapAgent = Standing(*xy)
+        return
     from sim import map as grid_map
     grid = _grid(context)
     if getattr(who, 'mapAgent', None) is None or known:
@@ -187,6 +206,9 @@ def tiles(a, b):
 
 def bearing(frm, to):
     """Which way `to` lies from `frm`: 'North', 'Southeast', 'Current'."""
+    if isinstance(frm[0], float) or isinstance(to[0], float):
+        from sim import land
+        return land.bearing(frm, to)
     from sim.map import get_direction_name
     return get_direction_name(to[0] - frm[0], to[1] - frm[1]).name
 
@@ -274,6 +296,8 @@ def surroundings(who):
     places seen, the names of the people seen, the paths seen, one line of summary)."""
     from sim import map as grid_map
     context = who.context
+    if _land(context) is not None:
+        return _land(context).surroundings(who)
     seen = who.mapAgent.look()
     view = {direction: grid_map.extract_direction_info(_grid(context), seen, direction)
             for direction in ('Current', 'North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest')}
@@ -282,6 +306,8 @@ def surroundings(who):
 
 def view_report(who):
     """The same, as the full report a narrator is shown."""
+    if _land(who.context) is not None:
+        return _land(who.context).view_report(who)
     return who.mapAgent.get_detailed_visibility_description()
 
 
@@ -298,7 +324,7 @@ def listed(context):
 
 def built(context):
     """Has this performance a world laid out (a play with no map has not)?"""
-    return _grid(context) is not None
+    return _grid(context) is not None or _land(context) is not None
 
 
 def put_at(who, rid):
@@ -319,6 +345,19 @@ def beside(who, other):
 
 def picture(context):
     """The world drawn for whoever is running the play (the server's own window)."""
+    land = _land(context)
+    if land is not None:
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 9))
+        for p in land.table.values():
+            ax.add_patch(plt.Circle(p.xy, p.radius, fill=p.region, alpha=0.15 if p.region else 1.0, color='green' if p.region else 'black'))
+            if not p.region:
+                ax.annotate(p.id, p.xy, fontsize=6)
+        for c in context.everyone():
+            if on(c):
+                ax.plot(*at(c), 'r*'); ax.annotate(c.name, at(c), color='red', fontsize=8)
+        ax.set_aspect('equal'); ax.invert_yaxis(); ax.autoscale_view()
+        return fig
     from sim.mapview import MapVisualizer
     viz = MapVisualizer(_grid(context))
     viz.draw_terrain_and_infrastructure()
@@ -462,3 +501,40 @@ def danger_picture_words(context, positions, danger_at):
     """How near a danger is to the people of a picture, in words."""
     near = min(tiles(xy, danger_at) for xy in positions)
     return next((words for limit, words in ((2, 'close by'), (6, 'nearby')) if near <= limit), 'in the distance')
+
+
+def indoors(context, xy):
+    """Is a position inside walls?"""
+    return region(context, xy) in ('Building', 'House')
+
+
+def sheltered(context, xy):
+    """Is a position under shelter by where it is (inside a hut, a cave, a thicket)?"""
+    return False
+
+
+def away(context, a, b):
+    """How far and which way `b` is from `a`, as a person is told it."""
+    return f'about {minutes(context, a, b)} minutes walk {bearing(a, b).lower()}'
+
+
+def reach_words(context, a, b, name):
+    """How far a place at `b` is from `name`, who stands at `a`, for a list of places."""
+    return f'{far(context, a, b)} from {name}, about {minutes(context, a, b)} min walk'
+
+
+# With places laid out in metres (sim/land.py), each of these is answered there.
+def _answered_by_land(fn):
+    def asked(context, *args, **kwargs):
+        land = _land(context)
+        return getattr(land, fn.__name__)(*args, **kwargs) if land is not None else fn(context, *args, **kwargs)
+    asked.__name__, asked.__doc__ = fn.__name__, fn.__doc__
+    return asked
+
+
+for _name in ('places', 'place', 'called', 'kind_called', 'nearest', 'named_in', 'add_place', 'has_owner_part', 'listed', 'find', 'start',
+              'region', 'regions', 'region_called', 'nearest_ground', 'pace', 'where', 'resolve', 'span', 'at_place', 'on_the_spot',
+              'at_its_foot', 'together', 'lying_here', 'in_earshot', 'a_step', 'can_walk_over', 'in_sight', 'in_range',
+              'in_the_neighbourhood', 'minutes', 'told_minutes', 'walk', 'far', 'danger_start', 'danger_reaches', 'danger_source_near',
+              'danger_clear', 'danger_words', 'apart_words', 'danger_picture_words', 'indoors', 'sheltered', 'reach_words', 'away'):
+    globals()[_name] = _answered_by_land(globals()[_name])
