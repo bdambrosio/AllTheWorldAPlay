@@ -285,9 +285,9 @@ PLAN_TAGS = frozenset((
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
     'check_post_state_ambiguity',
     'director.answers', 'director.behind', 'director.read',   # what lies behind a play that stands on a question (sim/director.py)
-    'stage.resolve_deed', 'stage.resolve_say'))   # what a deed or a line does in the world as it stands (sim/resolver.py)
+    'stage.resolve_deed', 'stage.resolve_say', 'stage.resolve_setup'))   # what a deed, a line or a set-up does in the world as it stands (sim/resolver.py)
 # How hard a call thinks where nothing else says (set_reasoning): the resolver was tested at low.
-TAG_EFFORT = {'stage.resolve_deed': 'low', 'stage.resolve_say': 'low'}
+TAG_EFFORT = {'stage.resolve_deed': 'low', 'stage.resolve_say': 'low', 'stage.resolve_setup': 'low'}
 # More of the play's calls can go to the planner, by group, so that the acting model writes the
 # lines and nothing else (ATWAP_PLAN_GROUPS, e.g. 'world,character';
 # the default 'none' sends only PLAN_TAGS). A Qwen-acted play lost track of props and dropped what it

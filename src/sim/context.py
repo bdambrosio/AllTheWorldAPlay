@@ -35,7 +35,7 @@ import sim.stage as stage
 import sim.director as director
 import sim.record as record
 from sim.screenplay import Screenplay
-from sim import ablation, ledger, keeper
+from sim import ablation, ledger, keeper, resolver
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -409,7 +409,8 @@ class Context():
                         + (" In that time you ate, drank and rested as you could." if met else ''))
                 for character in self.everyone():
                     character.add_perceptual_input(told, percept=False, mode='internal')
-                self.add_event(f'About {round(hours)} hours pass')
+                # what the hours did to bodies is told with them, not done unseen
+                self.add_event(f'About {round(hours)} hours pass' + ('; in that time they eat, drink and rest as they can' if met else ''))
                 trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
                 self._hours_moved = getattr(self, '_hours_moved', 0.0) + hours
         return hours
@@ -1787,6 +1788,21 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
                         entry['keeps'].append(kept.strip())
+            if checked and ablation.enabled('resolver'):
+                # the set-up is resolved against the world in one call (sim/resolver.py
+                # resolve_setup): where the scene is, what the set-up brings that such a place
+                # would have, and the set-up and ending as they may stand. What it brings is in the
+                # world from the scene's opening, by one event.
+                found = resolver.resolve_setup(self, scene, cast, hazards=', '.join(hazards) or 'none')
+                if found is not None:
+                    with self.committing('set'):
+                        brought += resolver.apply_setup(self, scene, cast, found)
+                    keep = opens_act and not self._exit_parties()   # an act's first scene keeps its planned place (above)
+                    for key, value in (('location', '' if keep else found['place']), ('pre_narrative', found['setup']), ('post_narrative', found['ending'])):
+                        if value and value != scene.get(key):
+                            changed[key] = scene[key] = value
+                    note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in found['not_so'])
+                break
             if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
                 # the set-up is the opening only: what the scene is for is played, not told
                 purpose = f"It is to end: {scene.get('post_narrative', '')}\n" + ' '.join(
@@ -1972,7 +1988,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # The heading and the set-up name the same place: when the set-up names one place and the
         # cast is standing at it, that is where the scene is ('Setting: the apple tree' headed a
         # set-up that began 'At the spring': both were two steps away).
-        named = set(stage.places_named(self, scene.get('pre_narrative') or ''))
+        # (under the resolver the place is said by the call that resolves the set-up, and the cast
+        # is set there by stage.set_scene: no place name is looked for in the set-up's words)
+        named = set() if ablation.enabled('resolver') else set(stage.places_named(self, scene.get('pre_narrative') or ''))
         if len(named) == 1 and characters_in_scene and getattr(characters_in_scene[0], 'mapAgent', None) is not None:
             rid = next(iter(named))
             if stage._distance(stage.here(characters_in_scene[0]), self.map.resource_registry[rid]['location']) <= stage.AT_PLACE_TILES:
@@ -2274,8 +2292,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the planned duration is the least a scene takes; acts and travel have already moved the clock
         self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
         self.record_threads(characters_in_scene)   # what this scene planted, for the acts to come
-        with self.committing('offstage'):
-            survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
+        if not ablation.enabled('resolver'):
+            # (under the resolver nothing is met off the page between scenes: two people said
+            # their throats were sandpaper, and the next set-up had neither of them thirsty)
+            with self.committing('offstage'):
+                survival.meet_in_passing(self, characters_in_scene)   # ordinary needs, off the page, where the means are near
         await self.update(local_only=True)
         await asyncio.sleep(0.1)
         self.current_scene = None

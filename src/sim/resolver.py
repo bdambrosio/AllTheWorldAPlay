@@ -343,6 +343,129 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     return found
 
 
+# ---------------------------------------------------------------------------- a scene's set-up
+# The planner's set-up is a proposal. One call, shown the stage, every thing and trace of the
+# play and the places of the world, says where the scene is set, what the set-up brings in that
+# such a place would have, what it says that is not so, and the set-up as it may stand; what it
+# brings is then in the world, by one event. It takes the place of the check of the set-up's
+# claims, the admitting of them one by one, the reading of the set-up for deeds already played,
+# and the matching of place names in its text. (Untested for quality when written: 2026-11-20.)
+SETUP = """You keep the world of an improvised play. A scene is about to open with the set-up below, written by the planner. Say how it stands against the world as it is, before the audience is shown it.
+
+<world>
+{world}
+</world>
+
+The stage as it now is, where the cast stands:
+<stage>
+{stage}
+</stage>
+
+Every thing and trace of the play and where it is, what the written things say, and what has been told:
+<things>
+{things}
+</things>
+
+The places of this world (a scene is set at one of them):
+<places>
+{places}
+</places>
+
+Dangers this world may bring on: {hazards}
+
+The scene, '{title}', planned at: {location}
+<setup>
+{setup}
+</setup>
+It is to end:
+<ending>
+{ending}
+</ending>
+
+How a set-up stands:
+- It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed.
+- It may not move a thing the world has elsewhere, put in anyone's hands what they do not hold, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
+- It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
+- Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
+- Change as little as you can: keep the planner's words wherever they are true.
+
+Answer in JSON only:
+{{"place": "<the one listed place this scene is set at, by its exact name; or the word same when it is where the cast now stands>",
+  "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place would ordinarily have, two to five words>", "fixed": true or false}}],
+  "not_so": [{{"words": "<the words of the set-up or ending that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
+  "setup": "<the set-up as it may stand: the same words if nothing is wrong; else the same with each of not_so put right or left out>",
+  "ending": "<the ending as it may stand: the same words unless it needs what nobody could do in this world>"}}
+</end>"""
+
+
+def resolve_setup(context, scene, cast, hazards='none'):
+    """How a scene's set-up stands against the world: {'place', 'brings', 'not_so', 'setup',
+    'ending'}, or None when the answer could not be read (the set-up then stands as written)."""
+    from sim import keeper, record
+    first = cast[0]
+    prompt = SETUP.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+                          stage=record.account(context, 'stage', about=first, people=cast),
+                          things=record.account(context, 'planner', people=cast) or 'nothing yet',
+                          places=stage.gazetteer(context) or 'none listed', hazards=hazards or 'none',
+                          title=scene.get('scene_title', ''), location=scene.get('location') or 'same',
+                          setup=scene.get('pre_narrative', ''), ending=scene.get('post_narrative', ''))
+    reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_setup', temp=0.2, stops=['</end>'], max_tokens=900)
+    found = json_reply.parse(reply) if reply else None
+    if not isinstance(found, dict) or not str(found.get('setup') or '').strip():
+        return None
+    registry = context.map.resource_registry
+    place = str(found.get('place') or '').strip()
+    found['place'] = next((rid for rid in registry if rid.lower() == place.lower()), '')
+    found['brings'] = [b for b in found.get('brings') or [] if isinstance(b, dict) and str(b.get('thing') or '').strip()][:4]
+    found['not_so'] = [n for n in found.get('not_so') or [] if isinstance(n, dict) and str(n.get('words') or '').strip()]
+    found['setup'], found['ending'] = ' '.join(str(found['setup']).split()), ' '.join(str(found.get('ending') or '').split())
+    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], brings=found['brings'], not_so=found['not_so'],
+                setup=found['setup'][:600], ending=found['ending'][:300])
+    return found
+
+
+def apply_setup(context, scene, cast, found):
+    """Put what a set-up brings into the world, at the scene's place (inside the scene's 'set'
+    event). Returns the names of the things made."""
+    registry = context.map.resource_registry
+    at = tuple(registry[found['place']]['location']) if found['place'] in registry else stage.here(cast[0])
+    made = []
+    for b in found['brings']:
+        if survival.add_thing(context, str(b['thing']), at=at, fixed=bool(b.get('fixed'))):
+            made.append(str(b['thing']))
+    return made
+
+
+def effects_note(effects):
+    """What an act changed, in a few words, for whoever reads the page to see what was done and
+    not only said: 'berries: Joe to Samantha; Samantha kneeling'. '' when it changed nothing."""
+    out = []
+    for e in effects or []:
+        if not isinstance(e, dict):
+            continue
+        if e.get('thing') and e.get('to'):
+            out.append(f"{e['thing']}: {e.get('from') or '?'} to {e['to']}")
+        elif e.get('thing') and e.get('held_out_to'):
+            out.append(f"{e['thing']} held out to {e['held_out_to']}")
+        elif e.get('thing') and e.get('state'):
+            out.append(f"{e['thing']} {e['state']}")
+        elif e.get('thing') and e.get('read_by'):
+            out.append(f"{e['thing']} read by {e['read_by']}")
+        elif e.get('need'):
+            out.append(f"{e.get('who', '')} {e['need']} {e.get('change', 'eased')}".strip())
+        elif e.get('world'):
+            out.append(str(e['world']))
+        elif e.get('posture'):
+            out.append(f"{e.get('who', '')} {e['posture']}".strip())
+        elif e.get('mark'):
+            out.append(f"left: {e['mark']}")
+        elif e.get('new'):
+            out.append(f"now there: {e['new']}")
+        elif e.get('goes'):
+            out.append(f"{e.get('who', '')} goes {e['goes']}".strip())
+    return '; '.join(out)
+
+
 def leaving(context, character, found):
     """Who goes out of the scene by this deed, and where to: (None | 'alone' | [characters], place or None).
     Going to another place is going out of the scene: a scene has one place."""

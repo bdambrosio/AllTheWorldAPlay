@@ -257,7 +257,13 @@ class Owner:
         return over
 
     def page(self):
-        return [self.context.entry_line(e) for e in self.context.record_entries[self.start:] if e.get('text')]
+        """The scene so far, a line each, with what each act changed beside what was shown of it:
+        an outcome that needs a deed is then seen done, or seen only talked of."""
+        from sim import resolver
+        def line(e):
+            done = resolver.effects_note((e.get('event') or {}).get('effects')) if e.get('kind') != 'speech' else ''
+            return self.context.entry_line(e) + (f'  [changed: {done}]' if done else '')
+        return [line(e) for e in self.context.record_entries[self.start:] if e.get('text')]
 
     # ------------------------------------------------------------------ the beats
     def arrange(self, proposals):

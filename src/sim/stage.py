@@ -414,6 +414,17 @@ def walk(character, xy, place, alone=False, to=True):
         if other not in party and not alone:
             continue   # it has only stepped across the place
         other.look()
+    # a scene is where its cast stands: when all of it has walked on, the scene has, and whoever
+    # reads its place reads the new one (a scene walked from the thicket to the apple tree and
+    # went on being 'at Thicket7')
+    scene = getattr(context, 'current_scene', None)
+    if isinstance(scene, dict) and getattr(character, 'current_scene', None) is scene and where(context, xy) != left:
+        on_stage = [c for c in context.actors + context.extras + context.npcs if getattr(c, 'current_scene', None) is scene and not off_stage(c) and not remote(c)]
+        if on_stage and all(here(c) == tuple(xy) for c in on_stage):
+            scene['place'] = where(context, xy).removeprefix('at ')
+            if isinstance(getattr(context, 'previous_scene', None), dict):
+                context.previous_scene['xy'] = tuple(xy)
+            trace.event('scene_moved', place=scene['place'])
     # who saw it go: those it walked with and those it left (the walk's line is recorded by the walker)
     character.walk_witnesses = [character] + was_with
     trace.event('walk', character=character.name, place=place, party=[c.name for c in party], alone=alone,
