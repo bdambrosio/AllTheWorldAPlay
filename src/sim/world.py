@@ -518,6 +518,11 @@ def away(context, a, b):
     return f'about {minutes(context, a, b)} minutes walk {bearing(a, b).lower()}'
 
 
+def sight_words(context, a, b):
+    """Where a place in sight at `b` is from `a`, for the stage's list of them."""
+    return bearing(a, b).lower()
+
+
 def reach_words(context, a, b, name):
     """How far a place at `b` is from `name`, who stands at `a`, for a list of places."""
     return f'{far(context, a, b)} from {name}, about {minutes(context, a, b)} min walk'
@@ -536,5 +541,5 @@ for _name in ('places', 'place', 'called', 'kind_called', 'nearest', 'named_in',
               'region', 'regions', 'region_called', 'nearest_ground', 'pace', 'where', 'resolve', 'span', 'at_place', 'on_the_spot',
               'at_its_foot', 'together', 'lying_here', 'in_earshot', 'a_step', 'can_walk_over', 'in_sight', 'in_range',
               'in_the_neighbourhood', 'minutes', 'told_minutes', 'walk', 'far', 'danger_start', 'danger_reaches', 'danger_source_near',
-              'danger_clear', 'danger_words', 'apart_words', 'danger_picture_words', 'indoors', 'sheltered', 'reach_words', 'away'):
+              'danger_clear', 'danger_words', 'apart_words', 'danger_picture_words', 'indoors', 'sheltered', 'reach_words', 'away', 'sight_words'):
     globals()[_name] = _answered_by_land(globals()[_name])

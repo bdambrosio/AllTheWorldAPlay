@@ -170,7 +170,7 @@ def of(context, actor, people=None, full=False):
     people = [c for c in people if c not in radio]
     at = stage.here(actor)
     near = sorted((world.span(context, at, res.xy), rid, res) for rid, res in world.listed(context))
-    places = [f"{rid} ({'here' if world.at_place(context, at, res) else world.bearing(at, res.xy).lower()})"
+    places = [f"{rid} ({'here' if world.at_place(context, at, res) else world.sight_words(context, at, res.xy)})"
               for d, rid, res in near if world.in_sight(context, at, res)]
     return '\n'.join([
         f'Cast: {cast(context)}',

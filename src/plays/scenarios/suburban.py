@@ -80,6 +80,33 @@ property_types = SuburbanProperty
 resource_types = ResourceTypeRegistry(SuburbanResources)  # Use dynamic registry
 
 # Add at top with other interface names
+# How the places of this world are, and how they sit: laid out in metres, anew for each
+# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
+kinds = {
+    'House': {'radius': 8, 'enclosed': True, 'shelter': True},
+    'Bed': {'radius': 1.5}, 'Shower': {'radius': 1.5}, 'Closet': {'radius': 1.5}, 'Coffee_Maker': {'radius': 1.5}, 'Refrigerator': {'radius': 1.5},
+    'Car': {'radius': 3}, 'Mailbox': {'radius': 1.5},
+    'Bus_Stop': {'radius': 3},
+    'Office': {'radius': 15, 'enclosed': True, 'shelter': True},
+}
+layout = {
+    'regions': [
+        {'kind': 'Street', 'whole': True, 'radius': 3000, 'pace': 75, 'cover': 'open'},
+        {'kind': 'Yard', 'count': 1, 'radius': 25, 'pace': 70, 'cover': 'open', 'from_start': (0, 0)},
+        {'kind': 'City', 'count': 1, 'radius': 300, 'pace': 75, 'cover': 'open', 'from_start': (1900, 2300)},   # downtown
+    ],
+    'scatter': {'within': 400, 'apart': 30},
+    'places': [
+        {'kind': 'House', 'description': 'The house Alex and Susan live in', 'from_start': (0, 0)},   # where the play begins
+        {'kind': 'Bed', 'inside': 'House', 'apart': 3}, {'kind': 'Shower', 'inside': 'House', 'apart': 3},
+        {'kind': 'Closet', 'inside': 'House', 'apart': 3}, {'kind': 'Coffee_Maker', 'inside': 'House', 'apart': 3},
+        {'kind': 'Refrigerator', 'inside': 'House', 'apart': 3},
+        {'kind': 'Car', 'near': ('House', 3, 10)}, {'kind': 'Mailbox', 'near': ('House', 8, 14)},
+        {'kind': 'Bus_Stop', 'from_start': (150, 400)},
+        {'kind': 'Office', 'on': {'City': 1.0}},
+    ],
+}
+
 required_resource = resource_types.Office  # or Market, etc.
 required_resource_name = "Office"  # or "Market", etc.
 

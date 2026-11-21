@@ -71,7 +71,7 @@ def _dist(a, b):
 
 
 def _a_walk(minutes):
-    return f"about {minutes} minute{'' if minutes == 1 else 's'}' walk"
+    return f"about a minute's walk" if minutes == 1 else f"about {minutes} minutes' walk"
 
 
 def bearing(frm, to):
@@ -99,8 +99,9 @@ class Land:
         about.pop('radius', None)
         if isinstance(radius, (tuple, list)):
             radius = self.rng.uniform(*radius)
-        self.counts[kind] = self.counts.get(kind, 0) + 1
-        rid = name or f'{kind}{self.counts[kind]}'
+        key = (kind, bool(about.get('region')))      # a park with a fountain may stand in ground called park
+        self.counts[key] = self.counts.get(key, 0) + 1
+        rid = name or (f'{kind}_ground{self.counts[key]}' if about.get('region') else f'{kind}{self.counts[key]}')
         self.table[rid] = Place(rid, kind, description, xy, radius, **about)
         return self.table[rid]
 
@@ -116,7 +117,7 @@ class Land:
             kind = spec['kind']
             told = allocations.get(kind, {})
             for _ in range(spec.get('count', told.get('count', 1))):
-                self._new(kind, told.get('description', ''), self._spot(spec))
+                self._new(kind, spec.get('description') or told.get('description', ''), self._spot(spec), name=spec.get('name'))
 
     def _around(self, centre, span, angle=None):
         r, a = self.rng.uniform(*span), self.rng.uniform(0, 2 * math.pi) if angle is None else angle
@@ -127,11 +128,18 @@ class Land:
 
     def _spot(self, spec):
         """A position for a new place, by where its kind is said to stand."""
-        apart, within = self.scatter['apart'], self.scatter['within']
+        apart, within = spec.get('apart', self.scatter['apart']), self.scatter['within']
+        hosts = [p for p in self.table.values() if p.kind == (spec.get('inside') or (spec.get('near') or [None])[0])]
         for attempt in range(400):
             if attempt == 200:
                 apart /= 3          # a crowded clearing: nearer its neighbours than the rule, sooner than not there
-            if spec.get('foot_of'):     # at the foot of a region, on the side the play's people start from
+            if spec.get('inside'):      # within a place that holds others (a room's things in a house)
+                host = self.rng.choice(hosts)
+                xy = self._around(host.xy, (0, host.radius * 0.75))
+            elif spec.get('near'):      # beside a place, between so many metres and so many from its edge
+                host = self.rng.choice(hosts)
+                xy = self._around(host.xy, (host.radius + spec['near'][1], host.radius + spec['near'][2]))
+            elif spec.get('foot_of'):     # at the foot of a region, on the side the play's people start from
                 rise = self._regions(spec['foot_of'])[0]
                 toward = math.atan2(-rise.xy[1], -rise.xy[0]) + self.rng.uniform(-0.5, 0.5)
                 xy = self._around(rise.xy, (rise.radius + 20, rise.radius + 60), toward)
@@ -153,7 +161,7 @@ class Land:
                     lo, hi = spec.get('from_start', (0, float('inf')))
                     if not lo <= _dist(xy, (0.0, 0.0)) <= hi:
                         continue
-            if all(_dist(xy, p.xy) >= apart for p in self.table.values() if not p.region):
+            if all(_dist(xy, p.xy) >= apart for p in self.table.values() if not p.region and p not in hosts):
                 return xy
         return xy
 
@@ -239,9 +247,13 @@ class Land:
         found = [p for p in self.places() if p.holds(xy)]
         return min(found, key=lambda p: p.radius) if found else None
 
+    def enclosure(self, xy):
+        """The walled place a position is inside, the smallest; or None."""
+        found = [p for p in self.places() if p.enclosed and p.holds(xy)]
+        return min(found, key=lambda p: p.radius) if found else None
+
     def indoors(self, xy):
-        p = self.inside(xy)
-        return bool(p and p.enclosed)
+        return self.enclosure(xy) is not None
 
     def sheltered(self, xy):
         return any(p.shelter and p.holds(xy) for p in self.places())
@@ -266,15 +278,14 @@ class Land:
     def together(self, a, b):
         if self._walled_apart(a, b):
             return False
-        room = self.inside(a)
-        return _dist(a, b) <= TOGETHER or (room is not None and room.enclosed and room.holds(b))
+        room = self.enclosure(a)
+        return _dist(a, b) <= TOGETHER or (room is not None and room.radius <= SMALL and room.holds(b))
 
     def on_the_spot(self, xy, spot):
         return self.together(xy, spot)
 
     def lying_here(self, at, xy):
-        room = self.inside(xy)
-        if room is not None and room.radius <= SMALL and room.holds(at):
+        if any(p.radius <= SMALL and p.holds(at) and p.holds(xy) for p in self.places()):
             return True
         return _dist(at, xy) <= HERE and not self._walled_apart(at, xy)
 
@@ -282,8 +293,7 @@ class Land:
         return _dist(a, b) <= EARSHOT and not self._walled_apart(a, b)
 
     def a_step(self, a, b):
-        room = self.inside(a)
-        return _dist(a, b) < STEP or (room is not None and room.holds(b))
+        return _dist(a, b) < STEP or any(p.holds(a) and p.holds(b) for p in self.places())
 
     def can_walk_over(self, a, b, cfg=None):
         return _dist(a, b) <= WALK_OVER and self.sees(a, b)
@@ -343,6 +353,9 @@ class Land:
 
     def away(self, a, b):
         return f'{self.far(a, b)} {bearing(a, b).lower()}'
+
+    def sight_words(self, a, b):
+        return self.away(a, b)
 
     def reach_words(self, a, b, name):
         d = _dist(a, b)
@@ -429,7 +442,7 @@ class Land:
         xy = (who.mapAgent.x, who.mapAgent.y)
         seen, people = self.in_view(who, xy)
         ground = self.region_at(xy)
-        head = f"You are {self.where(xy)}, in the {ground.kind.lower()}" + (', under cover' if self.sheltered(xy) else '') + '.'
+        head = f"You are {self.where(xy)}, " + ('indoors' if self.indoors(xy) else f'in the {ground.kind.lower()}' + (', under cover' if self.sheltered(xy) else '')) + '.'
         def told(d, to):
             return 'here' if d < HERE else f"{self.far(xy, to)} {bearing(xy, to).lower()}"
         lines = [head]

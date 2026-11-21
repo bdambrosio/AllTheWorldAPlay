@@ -76,6 +76,35 @@ property_types = ApocalypseProperty
 resource_types = ResourceTypeRegistry(ApocalypseResources)  # Use dynamic registry
 
 # Add at top with other interface names
+# How the places of this world are, and how they sit: laid out in metres, anew for each
+# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
+kinds = {
+    'BusStop': {'radius': 3, 'shelter': True},
+    'Shop': {'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},     # doors broken in: seen into from the street
+    'Cafe': {'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
+    'Bench': {'radius': 2}, 'TrashBin': {'radius': 2},
+    'Park': {'radius': 8},      # the fountain at the heart of the park
+}
+layout = {
+    'regions': [
+        {'kind': 'Street', 'whole': True, 'radius': 600, 'pace': 70, 'cover': 'open'},
+        {'kind': 'Plaza', 'count': 1, 'radius': 50, 'pace': 65, 'cover': 'open', 'from_start': (60, 250)},
+        {'kind': 'Park', 'count': 1, 'radius': 80, 'pace': 55, 'cover': 'open', 'from_start': (80, 300)},
+        {'kind': 'Construction', 'count': 1, 'radius': 60, 'pace': 40, 'cover': 'open', 'from_start': (150, 350)},
+        # city blocks: nothing is seen across one
+        {'kind': 'Building', 'count': 8, 'radius': (30, 50), 'pace': 70, 'cover': 'open', 'from_start': (60, 400), 'blocks_view': True},
+    ],
+    'scatter': {'within': 350, 'apart': 25},
+    'places': [
+        {'kind': 'Park', 'on': {'Park': 1.0}},
+        {'kind': 'Bench', 'on': {'Park': 2.0, 'Plaza': 1.0}, 'apart': 10},
+        {'kind': 'Cafe', 'on': {'Plaza': 1.0}},
+        {'kind': 'Shop', 'on': {'Street': 1.0}},
+        {'kind': 'BusStop', 'on': {'Street': 1.0}},
+        {'kind': 'TrashBin', 'on': {'Street': 1.0, 'Plaza': 0.5}},
+    ],
+}
+
 required_resource = resource_types.Park  # or Market, etc.
 required_resource_name = "Park"  # or "Market", etc.
 
