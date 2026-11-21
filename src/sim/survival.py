@@ -71,7 +71,6 @@ from sim.trace import trace
 from sim import ablation, keeper, ledger, world
 
 DEFAULT_HARM = {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')}
-CO_PRESENT_TILES = 2       # a target character must be this close for a social action
 NEED_FELT = 0.3            # below this a need is not felt ('not hungry'): Body words change here
 _rng = random.Random()
 
@@ -114,9 +113,8 @@ def places_near(character, cut=14):
     told in a world played without a catalogue ('Spring2 (here); Thicket9 (about 9 minutes' walk west)')."""
     context = character.context
     here, unseen = _here(character), set(unseen_places(character))
-    near = sorted((_distance(here, res.xy), rid, res) for rid, res in world.listed(context) if rid not in unseen)
-    from sim import stage
-    return '; '.join(f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else f'about {walk_minutes(context, d)} minutes walk ' + stage._direction(here, res.xy).lower()})"
+    near = sorted((world.span(context, here, res.xy), rid, res) for rid, res in world.listed(context) if rid not in unseen)
+    return '; '.join(f"{rid} ({'here' if world.at_place(context, here, res) else f'about {world.minutes(context, here, res.xy)} minutes walk ' + world.bearing(here, res.xy).lower()})"
                      for d, rid, res in near[:cut])
 
 
@@ -391,7 +389,6 @@ def tick(character):
 
 
 # --------------------------------------------------------------------------- places
-_distance = world.tiles
 _direction = world.bearing
 
 
@@ -405,14 +402,14 @@ def _here(character):
     return world.at(character)
 
 
-def _nearest(character, types, mentioned=None, view=12):
-    """(resource id, resource, distance) of the best matching resource within view, or None."""
+def _nearest(character, types, mentioned=None):
+    """(resource id, resource, distance) of the best matching resource in range, or None."""
     here = _here(character)
     cfg = config(character.context) or {}
     found = []
     for rid, res in _resources_of(character.context, types):
-        d = _distance(here, res.xy)
-        if d <= view:
+        d = world.span(character.context, here, res.xy)
+        if world.in_range(character.context, here, res):
             # an id the act names first, then a type it names ('berries' over an apple tree), then distance
             named_type = bool(mentioned) and _names_type(cfg, mentioned, [res.kind])
             found.append((rid.lower() not in (mentioned or ''), not named_type, d, rid, res))
@@ -432,8 +429,13 @@ def _present(character, name=None):
             continue
         if name and other.name.lower() != name.lower():
             continue
-        out.append((other, _distance(_here(character), _here(other))))
+        out.append((other, world.span(context, _here(character), _here(other))))
     return out
+
+
+def _with(character, other):
+    """Is `other` near enough to `character` to be dealt with (handed a thing, tended, paid)?"""
+    return world.together(character.context, _here(character), _here(other))
 
 
 def _inflected(word):
@@ -559,8 +561,8 @@ def _sated(action, body):
 def _stocked(character, types):
     """The nearest resource of these types that still has something left, else the nearest."""
     here = _here(character)
-    found = sorted((res.props.get('remaining') == 0, _distance(here, res.xy), rid, res)
-                   for rid, res in _resources_of(character.context, types) if _distance(here, res.xy) <= 12)
+    found = sorted((res.props.get('remaining') == 0, world.span(character.context, here, res.xy), rid, res)
+                   for rid, res in _resources_of(character.context, types) if world.in_range(character.context, here, res))
     return (found[0][2], found[0][3], found[0][1]) if found else None
 
 
@@ -578,7 +580,7 @@ def stock(character, within=6):
         return ''
     here = _here(character)
     return '; '.join(f'{rid}: {_left(res)}' for rid, res in world.listed(character.context)
-                     if _left(res) and _distance(here, res.xy) <= within)
+                     if _left(res) and world.in_the_neighbourhood(character.context, here, res, within))
 
 
 def _unseen(character, rid):
@@ -621,7 +623,7 @@ def offered_actions(character, part='all', cut=14):
                 out.append((bool(missing), f"{action['name']}@<anyone, wherever they are>{note}"))
                 continue
             for other, d in _present(character):
-                if d <= CO_PRESENT_TILES:
+                if _with(character, other):
                     out.append((bool(missing), f"{action['name']}@{other.name}{note}"))
             continue
         types = action.get('resource_types')
@@ -646,12 +648,12 @@ def offered_actions(character, part='all', cut=14):
             continue
         if action.get('deplete') and _left(res) == 'nearly gone':
             missing = (missing + '; ' if missing else '') + 'nearly gone'
-        if d <= 1:
+        if world.at_its_foot(character.context, _here(character), res):
             if getattr(character, 'unknown_land', False) and hasattr(character, 'resource_models'):
                 character.resource_models.add_resource_model(rid)   # standing at a place is having seen it
             out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})", False))
         else:
-            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {walk_minutes(character.context, d)} minutes' walk {_direction(_here(character), res.xy)}; "
+            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {world.minutes(character.context, _here(character), res.xy)} minutes' walk {_direction(_here(character), res.xy)}; "
                                            f"first Move: {rid}{'; ' + missing if missing else ''})", _unseen(character, rid)))
     # what can be done now comes first; what needs a walk or something not held is cut first
     # (the list was cut at 12 in config order, which dropped every action with a person: a
@@ -725,9 +727,9 @@ def _chosen(context, character, label):
             return ('action', action, None, None)
         res = world.place(context, ref) if ref else None
         if res is not None and res.kind in types:
-            d = _distance(_here(character), res.xy)
+            d = world.span(context, _here(character), res.xy)
             at_hand = _nearest(character, types)
-            if d > 1 and at_hand is not None and at_hand[2] <= 1:
+            if not world.at_its_foot(context, _here(character), res) and at_hand is not None and world.at_its_foot(context, _here(character), at_hand[1]):
                 # a deed is done where the doer stands: searching under the cot in the hut was
                 # resolved to a cave out of sight, and 'the cave searched carefully' was told
                 return ('action', action, at_hand, None)
@@ -742,7 +744,7 @@ def holdings(character):
     body = getattr(character, 'body', None)
     if body is None or not config(character.context):
         return ''
-    people = [character] + [o for o, d in _present(character) if d <= CO_PRESENT_TILES]
+    people = [character] + [o for o, d in _present(character) if _with(character, o)]
     here = '; '.join(named(character.context, p) for p in lying(character.context, _here(character)))
     return '\n'.join([f"{p.name}: {'; '.join(named(character.context, i) for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
                       for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
@@ -858,17 +860,15 @@ def things_note(context, xy=None, people=()):
 
 
 def _nearest_resource_id(context, xy):
-    best = min(((_distance(xy, res.xy), rid) for rid, res in world.listed(context)
-                if res.xy), default=None)
-    return best[1] if best else ''
+    found = world.nearest(context, xy)
+    return found[1].id if found else ''
 
 
 def at_hand(context, at, xy):
     """Whether a thing lying at `at` is at the spot `xy`: beside it, or within reach and at the
     same place. (A clue laid at a bench two tiles from the cafe was listed as lying in the cafe
     and picked up there, an act before the scene written for it.)"""
-    d = _distance(at, xy)
-    return d <= 1 or (d <= CO_PRESENT_TILES and _nearest_resource_id(context, at) == _nearest_resource_id(context, xy))
+    return world.lying_here(context, at, xy)
 
 
 def lying(context, xy, hidden=False):
@@ -1055,7 +1055,7 @@ def prop_offers(character):
     if not cfg or body is None:
         return {}
     private = tuple(cfg.get('private_items', ())) or ('\0',)
-    near = [o for o, d in _present(character) if d <= CO_PRESENT_TILES and getattr(o, 'body', None) is not None]
+    near = [o for o, d in _present(character) if _with(character, o) and getattr(o, 'body', None) is not None]
     out = {}
     for item in dict.fromkeys(body.inventory):
         for other in near:
@@ -1195,7 +1195,7 @@ def shared_offers(character):
         return {}
     poses, between = _arrangement(context)
     me = character.name
-    near = [o for o, d in _present(character) if d <= CO_PRESENT_TILES and getattr(o, 'body', None) is not None]
+    near = [o for o, d in _present(character) if _with(character, o) and getattr(o, 'body', None) is not None]
     out = {}
     for action in acts:
         if action.get('target') == 'character':
@@ -1449,12 +1449,12 @@ def _do_one(context, character, label, text, act_text, via):
     return None, None
 
 
-def _can_approach(context, character, d):
+def _can_approach(context, character, to):
     """A Do aimed at a resource a short walk away (config 'approach_tiles', default 8), with no
     threat active, walks there first instead of being refused. No line-of-sight test: the
     'You could do here' offer lists resources by distance alone, and in forest the map's
     line of sight blocked targets 5 tiles off that the character had just been offered."""
-    return d <= (config(context) or {}).get('approach_tiles', 8) and not active_threat_for(character)
+    return world.can_walk_over(context, _here(character), to, config(context)) and not active_threat_for(character)
 
 
 def _refuse(character, action, fact, via, target=None):
@@ -1492,12 +1492,13 @@ def _apply(context, character, action, near, target, via, act_text=''):
         if target is None:
             return _refuse(character, action, f"There is no one here to {action['name']}.", via)
         other, d = target
-        if d > CO_PRESENT_TILES and not action.get('remote'):
-            if not _can_approach(context, character, d):
-                return _refuse(character, action, f"{other.name} is {d} tiles away; {character.name} must go to them first.",
+        if not _with(character, other) and not action.get('remote'):
+            away = world.far(context, _here(character), _here(other))
+            if not _can_approach(context, character, _here(other)):
+                return _refuse(character, action, f"{other.name} is {away} away; {character.name} must go to them first.",
                                via, other.name)
             minutes = travel(character, _here(other))
-            approach = f"{character.name} walks {d} tiles to {other.name} ({round(minutes)} min). "
+            approach = f"{character.name} walks {away} to {other.name} ({round(minutes)} min). "
         relief = action.get('target_effects') or {}
         if relief and not (action.get('transfer') or action.get('transfer_money') or action.get('target_gain') or action.get('consumes')) and all(
                 delta < 0 and other.body.levels.get(need, 0.0) < NEED_FELT for need, delta in relief.items()):
@@ -1509,21 +1510,21 @@ def _apply(context, character, action, near, target, via, act_text=''):
         if near is None:
             return _refuse(character, action, f"There is no {' or '.join(types).replace('_', ' ').lower()} in sight here.", via)
         resource_id, res, d = near
-        if d > 1 and _can_approach(context, character, d):
+        if not world.at_its_foot(context, _here(character), res) and _can_approach(context, character, res.xy):
             # the narration has usually put the character there already: walk over, then act
+            away = world.far(context, _here(character), res.xy)
             minutes = travel(character, res.xy)
-            approach = f"{character.name} walks {d} tiles to {resource_id} ({round(minutes)} min). "
-            d = 0
-        if d > 1:
-            return _refuse(character, action, f"{resource_id} is {d} tiles {_direction(_here(character), res.xy)}; "
+            approach = f"{character.name} walks {away} to {resource_id} ({round(minutes)} min). "
+        if not world.at_its_foot(context, _here(character), res):
+            return _refuse(character, action, f"{resource_id} is {world.far(context, _here(character), res.xy)} {_direction(_here(character), res.xy)}; "
                                               f"{character.name} must move there first.", via)
         props = res.props
         if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
             return _refuse(character, action, approach + f"There is nothing left at {resource_id}.", via)
         if not _prop_ok(res, action.get('requires_property'), character):
             own = _eligible(character, action)
-            elsewhere = (f" {character.name} can do that at {own[1]}, {own[0]} tiles "
-                         f"{_direction(_here(character), own[2]['location'])}." if own else '')
+            elsewhere = (f" {character.name} can do that at {own[1]}, {world.far(context, _here(character), own[2].xy)} "
+                         f"{_direction(_here(character), own[2].xy)}." if own else '')
             return _refuse(character, action, approach + f"{character.name} cannot {action['name']} at {resource_id} "
                                                          f"({', '.join(f'{k}: {_prop_value(v)}' for k, v in props.items() if k != 'remaining') or 'not possible now'})."
                                                          + elsewhere, via)
@@ -1658,17 +1659,10 @@ def _eligible(character, action):
     """(distance, id, resource) of the nearest resource of the action's types where the
     character meets the action's requires_property, however far; None when there is none."""
     here = _here(character)
-    found = [(_distance(here, res.xy), rid, res)
+    found = [(world.span(character.context, here, res.xy), rid, res)
              for rid, res in _resources_of(character.context, action.get('resource_types') or [])
              if _prop_ok(res, action.get('requires_property'), character)]
     return min(found, key=lambda f: f[:2]) if found else None
-
-
-def walk_minutes(context, tiles):
-    """About how long a walk of `tiles` takes, for what characters are told (stage.whereabouts says
-    it the same way). Actors were told '3 tiles Southeast' and guessed: the spring was 'three
-    minutes' away, then 'nine', then a fifteen-minute walk."""
-    return max(1, round(tiles * (config(context) or {}).get('tile_minutes', 2) * 1.5))
 
 
 def travel(character, to, advance_clock=True):
@@ -1678,24 +1672,20 @@ def travel(character, to, advance_clock=True):
     context = character.context
     cfg = config(context) or {}
     start = _here(character)
-    tiles = _distance(start, to)
-    if tiles:
+    moved = tuple(start) != tuple(to)
+    if moved:
         unpose(context, character)   # whoever walks off is no longer sitting, nor holding anyone's arm
-    try:
-        cost = world.pace(context, to)
-    except Exception:
-        cost = 1.5
-    minutes = tiles * cost * cfg.get('tile_minutes', 2)
+    minutes, effort = world.walk(context, start, to)
     world.put(character, to)
-    if tiles:
+    if moved:
         ledger.of(context).wrote('position')
     if getattr(character, 'body', None) is not None:
         character.body.sheltered = False
         if cfg.get('travel_need'):
-            character.body.adjust(cfg['travel_need'], 0.01 * tiles)
+            character.body.adjust(cfg['travel_need'], 0.01 * effort)
     if advance_clock:
         context.simulation_time += timedelta(minutes=minutes)
-    trace.event('travel', character=character.name, tiles=tiles, minutes=round(minutes, 1), to=list(to))
+    trace.event('travel', character=character.name, tiles=effort, minutes=round(minutes, 1), to=list(to))
     return minutes
 
 
@@ -1719,8 +1709,8 @@ def _hazard_source(context, character, hazard):
     source = hazard['source']
     best = None
     for rid, res in _resources_of(context, source.get('resource_types') or []):
-        d = _distance(_here(character), res.xy)
-        if d <= source.get('within', 6) and _prop_ok(res, source.get('requires_property'), character) \
+        d = world.span(context, _here(character), res.xy)
+        if world.danger_source_near(context, _here(character), res, source.get('within', 6)) and _prop_ok(res, source.get('requires_property'), character) \
                 and (best is None or d < best[0]):
             best = (d, rid, res)
     return best[1:] if best else None
@@ -1742,11 +1732,10 @@ def active_threat_for(character):
 
 
 def threat_position(character, threat):
-    d = _distance(_here(character), threat['location'])
     # in words a person would use: '3 tiles Northeast' went into set-ups ('the boar stands three
     # tiles off') and from there onto the page
-    far = 'close by' if d <= 2 else 'a short way off' if d <= 6 else 'some way off'
-    return 'right here' if d == 0 else f"{far} to the {_direction(_here(character), threat['location']).lower()}"
+    far = world.danger_words(character.context, _here(character), threat['location'])
+    return 'right here' if _here(character) == tuple(threat['location']) else f"{far} to the {_direction(_here(character), threat['location']).lower()}"
 
 
 def _where(anchor, threat):
@@ -1800,8 +1789,8 @@ def _start_threat(context, hazard, anchor, exposed):
         source_id, source = _hazard_source(context, anchor, hazard)
         loc = tuple(source.xy)
     else:
-        loc = world.offset(_here(anchor), _rng.choice([-3, 3]), _rng.choice([-2, 2]))
-    targets = [c.name for c in exposed if _distance(_here(c), _here(anchor)) <= 4]
+        loc = world.danger_start(context, _here(anchor), _rng)
+    targets = [c.name for c in exposed if world.danger_reaches(context, _here(anchor), _here(c))]
     for c in exposed:
         if c.name in targets:
             c.body.sheltered = False   # it comes on them where they are
@@ -1899,14 +1888,14 @@ def hazard_tick(context):
             _end_threat(context, threat, hazard.get('retreat_text', f"The {hazard['name']} passes."))
         else:
             clear = hazard.get('escape_tiles', 8)
-            caught = [c for c in targets if _distance(_here(c), threat['location']) < clear]
+            caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'], clear)]
             if not caught:
                 _end_threat(context, threat, f"{' and '.join(c.name for c in targets)} "
                                              f"{'is' if len(targets) == 1 else 'are'} clear of the {hazard['name']}.")
             elif now >= threat['deadline']:
                 # it falls on one of them, the nearest, and the page says who ('its tusks catching
                 # a leg' was nobody's leg, and both bodies were hurt)
-                victim = min(caught, key=lambda c: _distance(_here(c), threat['location']))
+                victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
                 victim.body.adjust(harm_need, hazard.get('harm', 0.3))
                 _end_threat(context, threat, hazard.get('strike_text', f"The {hazard['name']} strikes.")
                             + f" It is {victim.name} who is hurt: {victim.name} is {_word(cfg, harm_need, victim.body.levels[harm_need])}.", struck=True)

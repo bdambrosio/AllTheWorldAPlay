@@ -92,10 +92,10 @@ def remote(character):
         return words
     context = getattr(character, 'context', None)
     xy = (getattr(context, 'previous_scene', None) or {}).get('xy')
-    if xy is not None and _distance(here(character), xy) <= AT_PLACE_TILES:
+    if xy is not None and world.on_the_spot(context, here(character), xy):
         return ''
     home = world.place(context, getattr(character, 'remote_from', None) or '') if context is not None else None
-    if home is not None and _distance(here(character), home.xy) > AT_PLACE_TILES:
+    if home is not None and not world.at_place(context, here(character), home):
         return ''
     return words
 
@@ -120,7 +120,7 @@ def supporting_note(context):
 def supporting_at(context, xy, but=()):
     """The supporting actors who are at a place in person: they are in any scene set there."""
     return [c for c in context.supporting() if c not in but and world.on(c)
-            and not remote(c) and _distance(here(c), xy) <= AT_PLACE_TILES]
+            and not remote(c) and world.on_the_spot(context, here(c), xy)]
 
 
 def off_stage(character):
@@ -215,7 +215,6 @@ def next_time(now, when):
     return then
 
 
-_distance = world.tiles
 _direction = world.bearing
 resolve = world.resolve          # (position, name) of the place a scene location names, or None
 places_named = world.named_in    # the ids of the places a text names
@@ -258,8 +257,7 @@ def set_scene(context, scene, characters, opens_act):
             if getattr(character, 'body', None) is not None:
                 character.body.sheltered = True
             continue
-        tiles = _distance(here(character), xy)
-        if tiles <= AT_PLACE_TILES:   # already there: a step or two needs no telling
+        if world.on_the_spot(context, here(character), xy):   # already there: a step or two needs no telling
             if place:
                 world.put(character, xy)
             continue
@@ -270,7 +268,7 @@ def set_scene(context, scene, characters, opens_act):
                 character.body.sheltered = False
         else:
             longest = max(longest, survival.travel(character, xy, advance_clock=False))
-        movers.append((character.name, tiles))
+        movers.append((character.name, 0))
     if not movers:
         return ''
     names = ' and '.join(name for name, _ in movers)
@@ -292,10 +290,9 @@ def gazetteer(context):
     cast = [c for c in context.actors if world.on(c)]
     if not cast or not world.places(context):
         return ''
-    minutes_per_tile = (survival.config(context) or {}).get('tile_minutes', 2) * 1.5
     lines = ['Where the cast is: ' + '; '.join(f'{c.name} {remote(c) or where(context, here(c))}' for c in cast) + '.']
     cast = [c for c in cast if not remote(c)] or cast   # places are reckoned from those who can walk to them
-    places = sorted(((min(_distance(here(c), res.xy) for c in cast), rid, res)
+    places = sorted(((min(world.span(context, here(c), res.xy) for c in cast), rid, res)
                      for rid, res in world.listed(context)), key=lambda p: p[:2])
     listed, kinds = [], set()
     free = survival.free(context)   # no list of what can be done at each place: what a kind of place gives is known
@@ -305,8 +302,9 @@ def gazetteer(context):
             listed.append((d, rid, res, offers))
             kinds.add(res.kind)
     for d, rid, res, offers in listed:
-        nearest = min(cast, key=lambda c: _distance(here(c), res.xy))
-        reach = 'here' if d <= AT_PLACE_TILES else f'{d} tiles from {nearest.name}, about {round(d * minutes_per_tile)} min walk'
+        nearest = min(cast, key=lambda c: world.span(context, here(c), res.xy))
+        reach = ('here' if world.at_place(context, here(nearest), res)
+                 else f'{world.far(context, here(nearest), res.xy)} from {nearest.name}, about {world.minutes(context, here(nearest), res.xy)} min walk')
         owner = res.owner
         # an uncast owner is said only where what can be done there depends on whose it is
         owned = ((', has an owner' if survival.ownership_used(context, res.kind) else '') if isinstance(owner, Part)
@@ -333,22 +331,23 @@ def walk(character, xy, place, alone=False, to=True):
     the audience, said of the walker ('walks to Spring2 with Joe (14 tiles, 70 min)'), or ''
     when nobody moves."""
     context = character.context
-    tiles = _distance(here(character), xy)
-    if tiles == 0:
+    start = here(character)
+    if start == tuple(xy):
         return ''
+    step = world.a_step(context, start, xy)   # within the place it is at
     left = where(context, here(character))
     was_with = company(character)
     # a few steps within the place (to the woodpile and back) are taken alone; a walk to another
     # place takes the party, however short (Joe walked three tiles to the spring alone, then
     # walked back to say it was 'right there, past the ferns')
-    party = [] if alone or (tiles <= character.EARSHOT_TILES and where(context, xy) == left) else was_with
+    party = [] if alone or step else was_with
     minutes = max(survival.travel(c, xy, advance_clock=False) for c in [character] + party)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)
     # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing. A
     # short walk that ends at another place is (Joe went from the apple tree to the thicket
     # unseen, and the page had him handed a branch at the tree)
-    line = '' if tiles <= character.EARSHOT_TILES and where(context, xy) == left else (
+    line = '' if step else (
         f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '') + f" ({max(1, round(minutes))} min)")
     for other in was_with:
         if other not in party and not alone:
@@ -368,7 +367,7 @@ def walk(character, xy, place, alone=False, to=True):
     # who saw it go: those it walked with and those it left (the walk's line is recorded by the walker)
     character.walk_witnesses = [character] + was_with
     trace.event('walk', character=character.name, place=place, party=[c.name for c in party], alone=alone,
-                tiles=tiles, minutes=round(minutes, 1))
+                tiles=world.span(context, start, xy), minutes=round(minutes, 1))
     return line
 
 
@@ -383,7 +382,7 @@ def approach(character, target):
         return ''
     if remote(character) or remote(target):
         return ''   # spoken to over the radio, not walked to
-    if _distance(here(character), here(target)) <= AT_PLACE_TILES:
+    if world.on_the_spot(character.context, here(character), here(target)):
         return ''
     return walk(character, here(target), target.name, alone=True)
 
@@ -466,9 +465,8 @@ def whereabouts(character):
     for other in character.context.actors + character.context.extras + character.context.npcs:
         if other is character or getattr(other, 'current_scene', None) is not scene or not world.on(other):
             continue
-        d = _distance(here(character), here(other))
-        minutes = survival.walk_minutes(character.context, d)
-        out.append(f'{other.name} is beside you' if d <= AT_PLACE_TILES
+        minutes = world.minutes(character.context, here(character), here(other))
+        out.append(f'{other.name} is beside you' if world.on_the_spot(character.context, here(character), here(other))
                    else f'{other.name} is about {minutes} minutes\' walk {_direction(here(character), here(other))} of you, out of reach until one of you walks over')
     return '; '.join(out)
 
@@ -673,8 +671,6 @@ def portrait(context, character, mood=''):
 # description's first sentence, and the picture was a desert building site with hardhats).
 IMAGE_PROMPT = os.environ.get('ATWAP_IMAGE_PROMPT', 'new').strip().lower()
 PROMPT_BUDGET = 300   # tokens of the image model's encoder; it reads 512 and cuts the rest unseen
-APART_WORDS = ((1, 'side by side'), (3, 'a few steps apart'), (8, 'some way apart'))
-THREAT_WORDS = ((2, 'close by'), (6, 'nearby'))
 
 LOOKS = """From the description of {{$name}} below, say only how {{$name}} looks to someone seeing them: age, build, hair, face, clothes.
 One phrase beginning with 'a' or 'an', 30 words at most. No name, no health or mood, nothing of their past or character.
@@ -734,10 +730,6 @@ def _person(context, character):
             'condition': _visible(body), 'holding': _carried(body)}
 
 
-def _words_for(distance, table, far):
-    return next((words for limit, words in table if distance <= limit), far)
-
-
 def _no_speech(text):
     """A deed without the words spoken in it: a picture cannot show them, and an image model
     letters them onto the picture. The quotation marks say where speech is."""
@@ -763,12 +755,10 @@ def picture_facts(context, deed='', actor=None, setup=False):
              'setting': '' if indoor else ' '.join(context.initial_state.split('.')[0].split()).strip().rstrip('.'),
              'people': [_person(context, c) for c in shown], 'apart': '', 'threat': '', 'deed': '', 'setup': ''}
     if len(shown) > 1:
-        spread = max(_distance(here(a), here(b)) for a in shown for b in shown)
-        facts['apart'] = _words_for(spread, APART_WORDS, 'far apart')
+        facts['apart'] = world.apart_words(context, [here(c) for c in shown])
     threat = getattr(context, 'active_threat', None)
     if threat:
-        near = min(_distance(here(c), threat['location']) for c in shown)
-        facts['threat'] = f"{threat['hazard']['description']}, {_words_for(near, THREAT_WORDS, 'in the distance')}"
+        facts['threat'] = f"{threat['hazard']['description']}, {world.danger_picture_words(context, [here(c) for c in shown], threat['location'])}"
     if deed:
         facts['deed'] = _no_speech(plain(context, f"{actor.name} {deed}" if actor is not None else deed))[:220]
     scene = context.current_scene if isinstance(context.current_scene, dict) else {}

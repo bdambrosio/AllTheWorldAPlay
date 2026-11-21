@@ -31,7 +31,6 @@ from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
 
-NEARBY_TILES = 10   # places this near are in sight: they may be seen, pointed at, spoken of
 KINDS = ('item', 'holding', 'condition', 'presence', 'place', 'time', 'stock', 'outcome', 'gender', 'writing')
 
 CHECK = """You keep the record of a simulated world. A narrator has written what follows from a character's action. Find what the narration states that the record does not support.
@@ -170,9 +169,9 @@ def of(context, actor, people=None, full=False):
     radio += [c for c in heard if c not in people and (stage.remote(c) or stage.remote(actor))]
     people = [c for c in people if c not in radio]
     at = stage.here(actor)
-    near = sorted((stage._distance(at, res.xy), rid, res) for rid, res in world.listed(context))
-    places = [f"{rid} ({'here' if d <= stage.AT_PLACE_TILES else stage._direction(at, res.xy).lower()})"
-              for d, rid, res in near if d <= NEARBY_TILES]
+    near = sorted((world.span(context, at, res.xy), rid, res) for rid, res in world.listed(context))
+    places = [f"{rid} ({'here' if world.at_place(context, at, res) else world.bearing(at, res.xy).lower()})"
+              for d, rid, res in near if world.in_sight(context, at, res)]
     return '\n'.join([
         f'Cast: {cast(context)}',
         f'Time: {stage.clock(context)}',

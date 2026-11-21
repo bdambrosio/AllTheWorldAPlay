@@ -157,8 +157,6 @@ def _here(character):
     return world.at(character)
 
 
-_distance = world.tiles
-
 
 def _on_stage(context, character):
     """{name: thing}: what this character holds, and what lies where it stands."""
@@ -222,7 +220,7 @@ def keeps_off(context, character, hazard_name):
     age(context)
     for thing in ledger.of(context).loose():
         model = models(context).get(thing.get('kind'))
-        if model and _distance(thing['at'], _here(character)) <= 2 and any(
+        if model and world.together(context, thing['at'], _here(character)) and any(
                 e['while'] == thing.get('state') and KEEPS_OFF in e['does'] and (hazard_name.lower() in e['on'] or e['on'] in hazard_name.lower())
                 for e in model['effects']):
             return True
@@ -237,7 +235,7 @@ def drift(context, character, need):
     total = 0.0
     for thing in ledger.of(context).loose() + ledger.of(context).held(character.name):
         model = models(context).get(thing.get('kind'))
-        if model and (thing.get('holder') or _distance(thing['at'], _here(character)) <= 2):
+        if model and (thing.get('holder') or world.together(context, thing['at'], _here(character))):
             for e in model['effects']:
                 if e['while'] == thing.get('state') and need.lower() in e['on']:
                     total += -DRIFT if 'ease' in e['does'] else DRIFT if 'worsen' in e['does'] else 0.0
@@ -352,7 +350,7 @@ def _place_gives(context, character, wanted):
     Fallen_Branch5)? Then it is at hand, and making from it does not use the place up."""
     low = wanted.lower()
     for place in world.places(context):
-        if _distance(place.xy, _here(character)) <= 2:
+        if world.at_place(context, _here(character), place):
             for word in (place.kind, place.id):
                 word = re.sub(r'\d+$', '', word).replace('_', ' ').strip().lower()
                 if word and (word in low or low in word):

@@ -2529,7 +2529,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         return [c for c in self.context.actors + self.context.extras + self.context.npcs
                 if c is not self and c is not other and c.name != 'Viewer'
                 and getattr(c, 'current_scene', None) is scene and world.on(c)
-                and world.tiles(world.at(c), here) <= self.EARSHOT_TILES]
+                and world.in_earshot(self.context, world.at(c), here)]
 
     def hearers(self, other=None):
         """Those who hear what self says, other than self and `other`: the bystanders, and those

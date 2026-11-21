@@ -323,3 +323,142 @@ def picture(context):
     viz = MapVisualizer(_grid(context))
     viz.draw_terrain_and_infrastructure()
     return viz
+
+
+# ---------------------------------------------------------------------------- the rules of nearness
+# Each is asked by name and answered here, once. On the grid they are counts of tiles, as their
+# callers had them; with places that have positions in metres they are the rules agreed for those
+# (docs/physical-world-design.md).
+EARSHOT_TILES = 4
+
+
+def span(context, a, b):
+    """How far apart two positions are, as a number to sort and compare by (not for prompts)."""
+    return tiles(a, b)
+
+
+def at_place(context, xy, p):
+    """Is a position at this place?"""
+    return tiles(xy, p.xy) <= AT_PLACE_TILES
+
+
+def on_the_spot(context, xy, spot):
+    """Is a position at a spot (where a scene is set, where someone stands)?"""
+    return tiles(xy, spot) <= AT_PLACE_TILES
+
+
+def at_its_foot(context, xy, p):
+    """Is a position right at a place, to use it without a step?"""
+    return tiles(xy, p.xy) <= 1
+
+
+def together(context, a, b):
+    """Are two positions near enough to deal with one another: to hand a thing over, to see what
+    the other holds, for a fire at one to warm the other?"""
+    return tiles(a, b) <= 2
+
+
+def lying_here(context, at, xy):
+    """Is a thing at `at` at hand for someone at `xy`? (A clue laid at a bench two tiles from the
+    cafe was listed as lying in the cafe: the same place, not only near.)"""
+    d = tiles(at, xy)
+    return d <= 1 or (d <= 2 and _nearest_id(context, at) == _nearest_id(context, xy))
+
+
+def _nearest_id(context, xy):
+    found = nearest(context, xy)
+    return found[1].id if found else None
+
+
+def in_earshot(context, a, b):
+    """Can someone at one position hear a line said at the other, and witness what is done there?"""
+    return tiles(a, b) <= EARSHOT_TILES
+
+
+def a_step(context, a, b):
+    """Is going from one position to the other only a step within the place one is at?"""
+    return tiles(a, b) <= EARSHOT_TILES and where(context, a) == where(context, b)
+
+
+def can_walk_over(context, a, b, cfg=None):
+    """Is `b` near enough to `a` to be walked over to in the course of a deed aimed at it?"""
+    return tiles(a, b) <= (cfg or {}).get('approach_tiles', 8)
+
+
+def in_sight(context, xy, p):
+    """Is a place in sight from a position?"""
+    return tiles(xy, p.xy) <= 10
+
+
+def in_range(context, xy, p):
+    """Is a place near enough to be thought of as somewhere to go and do a thing?"""
+    return tiles(xy, p.xy) <= 12
+
+
+def in_the_neighbourhood(context, xy, p, within=6):
+    """Is a place near enough for what has been drawn from it to be known of?"""
+    return tiles(xy, p.xy) <= within
+
+
+def minutes(context, a, b):
+    """About how long the walk from one position to another is, as people are told it."""
+    return told_minutes(context, tiles(a, b))
+
+
+def told_minutes(context, n):
+    from sim import survival
+    return max(1, round(n * (survival.config(context) or {}).get('tile_minutes', 2) * 1.5))
+
+
+def walk(context, a, b):
+    """(minutes, effort) of the walk from `a` to `b` as the clock and the body are charged it."""
+    from sim import survival
+    n = tiles(a, b)
+    try:
+        cost = pace(context, b)
+    except Exception:
+        cost = 1.5
+    return n * cost * (survival.config(context) or {}).get('tile_minutes', 2), n
+
+
+def far(context, a, b):
+    """A distance in the words a line of the stage gives it: '6 tiles'."""
+    return f'{tiles(a, b)} tiles'
+
+
+def danger_start(context, xy, rng):
+    """Where a danger that comes for someone at a position first stands."""
+    return offset(xy, rng.choice([-3, 3]), rng.choice([-2, 2]))
+
+
+def danger_reaches(context, xy, other):
+    """Does a danger come for someone at `xy` also reach someone at `other`?"""
+    return tiles(xy, other) <= 4
+
+
+def danger_source_near(context, xy, p, within=6):
+    """Is the place a danger comes from near enough to a position for it to come on?"""
+    return tiles(xy, p.xy) <= within
+
+
+def danger_clear(context, xy, danger_at, clear=8):
+    """Has someone at a position got clear of a danger?"""
+    return tiles(xy, danger_at) >= clear
+
+
+def danger_words(context, xy, danger_at):
+    """How near a danger is, in words."""
+    d = tiles(xy, danger_at)
+    return 'close by' if d <= 2 else 'a short way off' if d <= 6 else 'some way off'
+
+
+def apart_words(context, positions):
+    """How far apart the people of a picture stand, in words."""
+    spread = max(tiles(a, b) for a in positions for b in positions)
+    return next((words for limit, words in ((1, 'side by side'), (3, 'a few steps apart'), (8, 'some way apart')) if spread <= limit), 'far apart')
+
+
+def danger_picture_words(context, positions, danger_at):
+    """How near a danger is to the people of a picture, in words."""
+    near = min(tiles(xy, danger_at) for xy in positions)
+    return next((words for limit, words in ((2, 'close by'), (6, 'nearby')) if near <= limit), 'in the distance')
