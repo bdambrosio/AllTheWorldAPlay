@@ -1534,6 +1534,10 @@ End response with:
                                     actors=[target, self])
                     target.focus_task.push(target_dialog_task)
                     target.actor_models.get_actor_model(self.name, create_if_missing=True).dialog.activate(source)
+                    carried, self._talk_carried = getattr(self, '_talk_carried', 0), 0
+                    if carried:   # a talk that has passed to this pair keeps the count of its lines
+                        self.actor_models.get_actor_model(target.name).dialog.carried = carried
+                        target.actor_models.get_actor_model(self.name).dialog.carried = carried
 
                 # self is speaker, don't get confused about first arg to add_turn
                 self.actor_models.get_actor_model(target.name).dialog.add_turn(self, content)
@@ -2332,6 +2336,13 @@ Respond only with the one act.
         beat = plan[at]['task'] if self.context.current_scene and at is not None and at < len(plan) else None
         if getattr(beat, 'from_talk', False):
             beat.talk_turns += 1   # every line said under a beat that was made in talk, whichever talk it is in
+        carried = getattr(dialog, 'carried', 0)
+        if carried and dialog.turn_count + carried > 12 + (4 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0):
+            # a talk that has passed from pair to pair has had its lines, whoever was spoken to last:
+            # each pass is to someone who has not yet answered in the new pair, so the rule below
+            # never let such a talk end (one beat ran forty-four lines, and the scene's other five were not played)
+            trace.event('talk_check', listener=self.name, lines=dialog.turn_count + carried, beat='passed on', awaiting=False, over=True)
+            return True
         if f'{self.name} says: ' not in transcript:
             # whoever is spoken to answers at least once: ending here left the speaker to repeat
             # the same proposal three times to someone who never replied
@@ -2350,7 +2361,10 @@ Respond only with the one act.
             # answered; and no talk runs on without end
             # the talk's turns, not the lines of `transcript`: that is its last ten, so no limit
             # above ten was ever met, and a talk on a beat that could not finish ran 41 lines
-            lines = dialog.turn_count
+            # and the whole talk's, whoever it has passed between: counted for each pair afresh, a
+            # talk that passed four times ran one beat for forty-four lines and the scene's other
+            # five beats were never played
+            lines = dialog.turn_count + getattr(dialog, 'carried', 0)
             run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
             run = 4 if run else 0
             if owner.over:
@@ -2398,7 +2412,7 @@ End your response with:
         # force end to run_on conversations
         # talk at ease runs longer than talk under pressure (the scene's kind, stage.KINDS)
         run = 6 if stage.kind(self) in ('shared job', 'lull', 'confession', 'play') else 0
-        end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n'))) > random.randint(8,10) + run)
+        end_point = rating > 7 or (random.randint(4, 10) < rating) or ((rating + len(transcript.split('\n')) + getattr(dialog, 'carried', 0)) > random.randint(8,10) + run)
         print(f'{self.name} natural_dialog_end: rating: {rating}, {end_point}')
         return end_point
     
@@ -2486,6 +2500,8 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             # turn. The corner', meant for Kidd, was answered by Marek, and Kidd, both his
             # cut-ins spent, stood by for twenty lines of a scene that was about him.)
             trace.event('talk_passed', speaker=self.name, was_with=from_actor.name, to=to.name)
+            was = from_actor.actor_models.get_actor_model(self.name).dialog
+            self._talk_carried = was.turn_count + getattr(was, 'carried', 0)   # the talk goes on: its lines so far go with it
             self._end_talk(from_actor)
         action = Act(mode='Say', action=text, actors=[self, to], reason=reason or '', duration=1, source=response_source, target=[to])
         action.leaves = getattr(self, '_reply_leaves', None)

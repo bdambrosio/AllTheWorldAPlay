@@ -57,6 +57,7 @@ class Dialog:  # (was a field-less @dataclass: every Dialog compared equal, none
         #  we store interrupted task, but don't push dialog task here, read only on character
         self.active = True
         self.turn_count = 0
+        self.carried = 0   # lines of the same talk said before it passed to this pair (Character.hear)
 
     def add_turn(self, speaker, message):
         """Record a new turn in the conversation and increase fatigue"""
