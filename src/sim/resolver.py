@@ -515,8 +515,9 @@ What each of the cast is to go after in it:
 
 How a set-up stands:
 - It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed, upon the cast from the scene's first moment.
+- It may also give a person what such a person would ordinarily have with them for what they have come to do (a student her essay and her bag, a clerk his pen and papers, a traveller a coat): say each as a brings entry with its holder, and it is in their hands. Not so given: a thing the world has elsewhere or in another's hands, money, food or drink in a world where they are hard come by, and a thing that would settle what the scene or the play is about (a signed contract, a deed to land, a key or a weapon someone lacks, a letter that tells a secret). A set-up that needs one of those is not so in that.
 - A scene is at one place. Where the set-up is at a place <places> does not list, which such a world would have inside or beside a listed one (the back room of a listed shop, a reception desk in a listed office, a shed behind a listed hut), say so as new_place, and it is made. A place that belongs to no listed place, or that this world would not have, is not made: the scene is set at the listed place nearest to what is meant.
-- It may not move a thing the world has elsewhere, put in anyone's hands what they do not hold, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
+- It may not move a thing the world has elsewhere, put in anyone's hands a thing barred above, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
 - The title, the ending and each goal are held to the same: one that rests on something not so is put toward the same end with what is so. A person may still want, fear or suspect what is not so; a goal that is to show, find or use it may not.
@@ -526,7 +527,7 @@ How a set-up stands:
 Answer in JSON only:
 {{"place": "<the one listed place this scene is set at, by its exact name; the word same when it is where the cast now stands; or the word new, with new_place>",
   "new_place": <null, or when place is new: {{"name": "<what it is called, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the listed place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false, "description": "<one plain sentence, as the places above are described>"}}>,
-  "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place would ordinarily have, two to five words>", "fixed": true or false}}],
+  "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place, or such a person, would ordinarily have, two to five words>", "fixed": true or false, "holder": "<the person who has it with them, by name; empty when it is at the place>"}}],
   "danger": "<one of the dangers listed, by its name, when the set-up as it may stand has it upon the cast now, near enough to strike; else empty. One that is heard from afar, feared, spoken of or somewhere off is not upon them>",
   "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
   "title": "<the title as it may stand>",
@@ -591,7 +592,10 @@ def apply_setup(context, scene, cast, found):
     at = place.xy if place is not None else stage.here(cast[0])
     made = []
     for b in found['brings']:
-        if survival.add_thing(context, str(b['thing']), at=at, fixed=bool(b.get('fixed'))):
+        # in the hands of the one the set-up has it with (a student's essay), or at the place
+        holder = next((c for c in cast if c.name.lower() == _low(b.get('holder')) and getattr(c, 'body', None) is not None), None)
+        if (survival.add_thing(context, str(b['thing']), holder=holder) if holder is not None
+                else survival.add_thing(context, str(b['thing']), at=at, fixed=bool(b.get('fixed')))):
             made.append(str(b['thing']))
     return made
 
