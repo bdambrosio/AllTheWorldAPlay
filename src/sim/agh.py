@@ -1469,7 +1469,7 @@ End response with:
             #print(f"Queueing message for {self.name}: {act_arg}")  # Debug
             # (Context.say keeps the line in the transcript and the record)
             self.context.to_page(self.name, f"'{act_arg}'", kind='speech', transcript=False, elevenlabs_params=json.dumps(elevenlabs_params))
-            self.context.say(self, act_arg, self.hearers())
+            self.context.say(self, act_arg, self.hearers(), to=self._first_character(target, act))
             await asyncio.sleep(0)
             if said is not None:
                 # what the line was found to tell and promise (record.speech, sim/resolver.py):
@@ -2463,23 +2463,7 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         message = re.sub(r'\.\.\..*?\.\.\.', '', message)
 
         if (self.name == 'Viewer') or self.natural_dialog_end(from_actor): # test if the dialog has reached a natural end, or hearer is viewer.
-            # close the dialog
-            dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
-            trace.event('dialog_end', speaker=from_actor.name, listener=self.name,
-                        turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
-            dialog_as_list = dialog.split('\n') 
-            self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog_as_list, use_all_texts=True)
-    
-            self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
-            self.last_task = self.focus_task.peek()
-            self._pop_dialog_task(from_actor)
-            # it would probably be better to have the other actor deactivate the dialog itself
-            other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
-            from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
-            from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
-            from_actor.last_task = from_actor.focus_task.peek()
-            from_actor._pop_dialog_task(self)
-
+            self._end_talk(from_actor)
             # (each line's promises are read as it is said: Character._promised)
             return
 
@@ -2491,7 +2475,17 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
             # no <response> (generate_dialog_turn already deactivated the dialog); an empty Say
             # was performed anyway, shown as '' and heard by from_actor, which kept talking
             return
-        action = Act(mode='Say', action=text, actors=[self, from_actor], reason=reason or '', duration=1, source=response_source, target=[from_actor])
+        to = getattr(self, '_reply_to', None) or from_actor
+        self._reply_to = None
+        if to is not from_actor:
+            # the answer is said to someone else who is there: the talk with from_actor is over,
+            # and the one spoken to has the next line (Character.acts opens the talk with them).
+            # (The answer went back to whoever had spoken, whatever it said: 'Right then, your
+            # turn. The corner', meant for Kidd, was answered by Marek, and Kidd, both his
+            # cut-ins spent, stood by for twenty lines of a scene that was about him.)
+            trace.event('talk_passed', speaker=self.name, was_with=from_actor.name, to=to.name)
+            self._end_talk(from_actor)
+        action = Act(mode='Say', action=text, actors=[self, to], reason=reason or '', duration=1, source=response_source, target=[to])
         action.leaves = getattr(self, '_reply_leaves', None)
         action.leaves_to = getattr(self, '_reply_leaves_to', None)
         action.deed, self._reply_does = getattr(self, '_reply_does', '') or '', ''
@@ -2499,6 +2493,23 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         if self.focus_action == action:
             self.focus_action = None
         await asyncio.sleep(0)
+
+    def _end_talk(self, from_actor):
+        """The talk between self and from_actor is over: each takes from it what it makes of the
+        other, and the task of talking is put down."""
+        dialog = self.actor_models.get_actor_model(from_actor.name).dialog.get_current_dialog()
+        trace.event('dialog_end', speaker=from_actor.name, listener=self.name,
+                    turns=self.actor_models.get_actor_model(from_actor.name).dialog.turn_count)
+        self.actor_models.get_actor_model(from_actor.name).short_update_relationship(dialog.split('\n'), use_all_texts=True)
+        self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
+        self.last_task = self.focus_task.peek()
+        self._pop_dialog_task(from_actor)
+        # it would probably be better to have the other actor deactivate the dialog itself
+        other_dialog = from_actor.actor_models.get_actor_model(self.name).dialog.get_current_dialog()
+        from_actor.actor_models.get_actor_model(self.name).short_update_relationship(other_dialog.split('\n'), use_all_texts=True)
+        from_actor.actor_models.get_actor_model(self.name).dialog.deactivate_dialog()
+        from_actor.last_task = from_actor.focus_task.peek()
+        from_actor._pop_dialog_task(self)
 
     def done_in_task(self, task):
         """What this character has already done toward a task, to stand beside the task itself.
@@ -2621,7 +2632,7 @@ Does {{$name}} cut in now, before {{$b}} answers? Respond with these lines only:
         with self.context.committing('line', speaker):
             self.context.to_page(speaker.name, f"'{line}'", kind='speech', transcript=False,
                               elevenlabs_params=json.dumps(speaker.speech_stylizer.voice_params(to)))
-            self.context.say(speaker, line, speaker.hearers())   # heard by all within earshot (the record)
+            self.context.say(speaker, line, speaker.hearers(), to=to)   # heard by all within earshot (the record)
         trace.event('dialog_turn', speaker=speaker.name, listener=to.name, text=line[:1000], cut_in=True)
         dialog.add_turn(speaker, line)
         self.actor_models.get_actor_model(from_actor.name).dialog.add_turn(speaker, line)
@@ -2702,7 +2713,7 @@ Keep your character's own way of speaking (see 'How you speak') from line to lin
 <the_talk_so_far>
 {{$dialog}}
 </the_talk_so_far>
-
+{{$also_here}}
 <here_and_now>
 {{$here_and_now}}
 </here_and_now>
@@ -2724,10 +2735,10 @@ The question: what does {{$name}} say back, now?
 - What {{$name}} has already asked and been answered is not asked again in other words: {{$name}} acts on the answer, doubts it aloud once, raises the price, concedes, or lets it go for now.
 - 'What you have tried so far' is {{$name}}'s own count of the moves it has made on the matter between the two of you, how each was met, and what holding to it has cost. {{$name}} knows this as a person does. A move already made and not accepted is made again only on purpose, and then harder or at a price; otherwise {{$name}} gives some ground, changes ground, or says some of what it has been keeping back.
 - A pet name or verbal habit comes now and then, not in every line.
-
+{{$to_rule}}
 Respond with this XML only:
 <response>the words {{$name}} says, and nothing else</response>
-<does>leave empty, unless {{$name}} really changes something as the words are said: then what, in the third person, 12 words at most</does>
+{{$to_field}}<does>leave empty, unless {{$name}} really changes something as the words are said: then what, in the third person, 12 words at most</does>
 <reason>4-6 words: why {{$name}} says it</reason>
 <tried>{{$name}} to itself, in place of what is under 'What you have tried so far': the moves {{$name}} has now made on the matter in hand with {{$other}}, counting this one, how each was met, and what holding to it has cost so far; 35 words at most</tried>
 <leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise. When it leaves, add where to: "with Joe, to the trail northwest"</leaves>
@@ -2749,6 +2760,9 @@ End your response with:
 
         scene_notes = self.scene_brief()
         idle = self is not from_actor and self._idle_turn()
+        # who else hears the answer and may be the one it is said to
+        third = [] if self is from_actor else [c for c in self.hearers(from_actor) if c is not self]
+        others = ' or '.join(c.name for c in third)
         answer_xml = self.llm.ask({
             'speaker': speaker,
             # the actor's own account of its moves with this person, which it rewrites with each turn (docs/performance-model.md)
@@ -2763,11 +2777,15 @@ End your response with:
             "goals": mapped_goals,
             "memories": memory_text,  # Updated from 'memory'
             'history': self.narrative.get_summary('medium'),
-            'dialog': from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
+            # every line said in its hearing, whoever said it and to whom (Context.talk_heard)
+            'dialog': self.context.talk_heard(self) or from_actor.actor_models.get_actor_model(self.name).dialog.get_transcript(max_turns=40),
             'relationship': self.actor_models.get_actor_model(from_actor.name).get_relationship(),
             # own view of the scene only: the full scene JSON revealed the other character's goal
             "scene": f"\n{scene_notes}\n" if scene_notes else '',
-            "here_and_now": self.physical_context() + self._overheard(from_actor),
+            "here_and_now": self.physical_context(),
+            'also_here': self.ALSO_HERE.format(others=others, speaker=speaker) if others else '',
+            'to_rule': self.TO_RULE.format(name=self.name, others=others, speaker=speaker) if others else '',
+            'to_field': self.TO_FIELD.format(others=others, speaker=speaker) if others else '',
             }, prompt, tag='generate_dialog_turn', temp=0.8, stops=['</end>'], max_tokens=300)
         response = xml.find('<response>', answer_xml)
         # The line ends where anything that is not the line begins. (One model closed its
@@ -2780,6 +2798,8 @@ End your response with:
         self._reply_does = '' if does.lower() in ('', 'empty', 'leave empty', 'none', 'nothing', 'no') else does
         self._reply_leaves = self.leaving_party(xml.find('<leaves>', answer_xml))
         self._reply_leaves_to = self._leave_to
+        named = ' '.join((xml.find('<to>', answer_xml) or '').split()).strip(' .').lower()
+        self._reply_to = next((c for c in third if c.name.lower() == named), None)
         if response is None:
             print(f'No response to hear')
             self.actor_models.get_actor_model(from_actor.name).dialog.deactivate_dialog()
@@ -2807,6 +2827,14 @@ End your response with:
         # (response, source task, the LLM's <reason> -- parsed but dropped before)
         return response, response_source, reason
     
+    # With more than two on stage: who else hears, and who the answer is said to.
+    ALSO_HERE = "\n{others} is also here, hears every word, and can be spoken to.\n"
+    TO_RULE = ("- A line is said to one person, named in <to>, and that person has the next line. It is {speaker}, who has just spoken to {name}, "
+               "unless the words are in truth for {others}: a question put to them, a demand turned on them, an answer to something they said "
+               "to {name} that nobody has answered. To speak about someone who is here is not to speak to them. Words meant for one person "
+               "are not said at another.\n")
+    TO_FIELD = "<to>the one person these words are said to: {speaker} or {others}</to>\n"
+
     # What a reply is for. (Every line was asked for 'to get what {name} is after', every scene
     # objective was 'press her on ...', and two people with different cards spoke in one voice of
     # deals and demands: 'Deal', 'fair trade', 'say it plain', from both, for eleven scenes.)
@@ -3329,15 +3357,6 @@ End your response with:
                          + '\n'.join(f'- {k}' for k in d['keeps']))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT
-
-    def _overheard(self, other):
-        """For a reply to `other`: what anyone else has lately said in this character's hearing
-        (the talk with `other` is in the prompt's own block). In a scene of three, the reply to
-        one knew nothing of what the third had just said."""
-        context = self.context
-        rows = [e for e in getattr(context, 'record_entries', [])[-30:] if e['kind'] == 'speech' and self.name in e['witnesses']
-                and e['doer'] not in (self.name, other.name)][-4:]
-        return ('\nAlso said in your hearing:\n' + '\n'.join(context.entry_line(e) for e in rows)) if rows else ''
 
     def physical_context(self, events=True):
         """Where the character is, its body, recent physical events, and what it could do here.

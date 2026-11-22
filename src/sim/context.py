@@ -3719,13 +3719,24 @@ End your response with </end>
             return e
         return {**e, 'text': e['lasting']} if e['lasting'] else None
 
-    def say(self, speaker, text, hearers=()):
+    def say(self, speaker, text, hearers=(), to=None):
         """A line spoken in the play: into the transcript as the audience is shown it, and into the
-        record as heard by the speaker and `hearers`."""
+        record as heard by the speaker and `hearers`. to: the one it is said to, when there is one."""
         self.transcript.append(f'{speaker.name}: "{text}"')
         if getattr(self, 'current_scene', None) is None:
             hearers = self._cast()
-        self._enter('speech', text, speaker, [speaker] + [c for c in hearers if c is not None])
+        entry = self._enter('speech', text, speaker, [speaker] + [c for c in hearers if c is not None])
+        if to is not None:
+            entry['to'] = getattr(to, 'name', to)
+
+    def talk_heard(self, character, n=40):
+        """The latest n lines spoken in `character`'s hearing, its own among them, oldest first:
+        'Lanya says: ...', and 'Lanya says to Marek: ...' where more than the two of them heard it.
+        (An answer was written from the lines of one pair alone: with three on stage, the one
+        answering had the other two's whole exchange as four lines at the foot of the page.)"""
+        name = getattr(character, 'name', character)
+        rows = [e for e in self.record_entries if e['kind'] == 'speech' and name in e['witnesses']][-n:]
+        return '\n'.join(f"{e['doer']} says{' to ' + e['to'] if e.get('to') and len(e['witnesses']) > 2 else ''}: {e['text']}" for e in rows)
 
     def _enter(self, kind, text, doer, witnesses):
         names = frozenset(getattr(c, 'name', c) for c in witnesses if c is not None)
