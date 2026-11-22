@@ -59,6 +59,10 @@ facts = [
     "Tools may be borrowed from the tool store. Mending the boat needs tools and about two hours, and is tiring. An hour and a half's sail is restful.",
     'Sitting on a bench watching the harbour eases tiredness a little.',
 ]
+# What threatens people here, in sentences (docs/dangers-design.md): the play brings one on, and the world says what comes of it
+dangers = [
+    'A sudden squall may race in off the sea over the harbour, the road and the gardens, twenty minutes from first sight. Under cover a person is safe from it, and most who run for cover make it; a boat can be made fast in time about half the time. It soaks and batters whoever is caught out and sends loose gear across the quay, but does little real harm.',
+]
 # What no deed or word gets past
 held = [
     'A boat that has not been mended does not sail.',
@@ -79,13 +83,4 @@ affordances = {
     'travel_need': 'fatigue',
     'currency': 'dollars', 'initial_money': 30,
     'tile_minutes': 2,
-    'hazards': [
-        {'name': 'squall', 'description': 'a sudden squall racing in off the sea', 'when': 'any',
-         'terrain': ['Harbor', 'Road', 'Garden'], 'chance_per_hour': 0.03, 'blocked_by': ['sheltered'],
-         'minutes_to_strike': 20, 'harm': 0.1, 'fail_text': 'the squall soaks them and slams a shutter',
-         'retreat_text': 'The squall blows itself out; the harbour glitters again.',
-         'strike_text': 'The squall hits: rain sheets down and loose gear flies across the quay.',
-         'responses': {'take cover': {'verbs': ['take cover', 'shelter', 'duck inside', 'run inside'], 'success': 0.7},
-                       'secure the boat': {'verbs': ['secure', 'tie down', 'lash', 'make fast'], 'success': 0.5}}},
-    ],
 }

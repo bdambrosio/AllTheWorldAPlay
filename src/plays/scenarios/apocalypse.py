@@ -57,6 +57,11 @@ facts = [
     'Sleep eases tiredness fully and takes about five hours. Half an hour on a bench or under a bus shelter, or twenty minutes indoors, eases it a little.',
     'A wound cleaned and bound is eased a little; it does not heal in a day.',
 ]
+# What threatens people here, in sentences (docs/dangers-design.md): the play brings one on, and the world says what comes of it
+dangers = [
+    'At night gangs in scorpion chains roam the streets, the plazas and the building sites; they leave alone anyone indoors or under cover. Within half an hour of sighting someone they close in. They can be bought off about half the time, more surely with food, water or batteries to give; fought off seldom, a little more often with a knife; run from about half the time; hidden from a little less often. Whoever they catch is shoved and beaten and left.',
+    'At any hour a strange light may split the hazy sky over the streets and the park. Within twenty minutes the ground heaves and glass rains from the buildings, unless the light fades as it came. Anyone indoors is safe from it; taking cover saves a person more often than not, and running about half the time. Those caught are cut and bruised, not badly.',
+]
 # What no deed or word gets past
 held = [
 ]
@@ -80,23 +85,4 @@ affordances = {
     'harm': {             'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
     'travel_need': 'fatigue',
     'tile_minutes': 3,
-    'hazards': [
-        {'name': 'gang', 'description': 'a knot of scorpion-chained gang members', 'when': 'night',
-         'terrain': ['Street', 'Plaza', 'Construction'], 'chance_per_hour': 0.2, 'blocked_by': ['sheltered'],
-         'minutes_to_strike': 30, 'harm': 0.35, 'fail_text': 'the gang closes in, laughing',
-         'retreat_text': 'The gang loses interest and drifts off into the smoke.',
-         'strike_text': 'The gang surrounds them, takes a shove or a swing, and moves on.',
-         'responses': {'bargain': {'verbs': ['bargain', 'negotiate', 'offer', 'talk', 'trade', 'bribe'], 'success': 0.5,
-                                   'bonus': {'canned food': 0.2, 'bottled water': 0.2, 'batteries': 0.2}},
-                       'defend': {'verbs': ['defend', 'fight', 'strike', 'threaten', 'brandish'], 'success': 0.3, 'bonus': {'knife': 0.3}},
-                       'flee': {'verbs': ['flee', 'run', 'retreat', 'escape', 'back away'], 'success': 0.5},
-                       'hide': {'verbs': ['hide', 'duck', 'freeze', 'stay still'], 'success': 0.4}}},
-        {'name': 'phenomenon', 'description': 'a strange light that splits the hazy sky', 'when': 'any',
-         'terrain': ['Street', 'Plaza', 'Park', 'Construction'], 'chance_per_hour': 0.04, 'blocked_by': ['sheltered'],
-         'minutes_to_strike': 20, 'harm': 0.15, 'fail_text': 'the light swells and the ground lurches',
-         'retreat_text': 'The light fades as suddenly as it came; the city is quiet again.',
-         'strike_text': 'The ground heaves and glass rains from the buildings.',
-         'responses': {'take cover': {'verbs': ['take cover', 'shelter', 'duck', 'hide'], 'success': 0.6},
-                       'flee': {'verbs': ['flee', 'run', 'escape'], 'success': 0.5}}},
-    ],
 }

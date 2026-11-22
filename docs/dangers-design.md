@@ -1,6 +1,6 @@
-# Dangers: proposal
+# Dangers
 
-Proposed 2026-11-22, not yet agreed. It applies `docs/world-facts-design.md` to what threatens
+Agreed 2026-11-22 and built the same day. It applies `docs/world-facts-design.md` to what threatens
 people: the last part of the world that is still a table.
 
 ## What is there now
@@ -41,8 +41,11 @@ dice or a random pick chose, not one that follows from where the story stands.
 
 ## What stays as engine policy
 
-- Dangers are rare: at most one in a play (Bruce's ruling), and the director's chance of
-  bringing one on for a scene.
+- The director chooses the style of a performance: quiet (a play of people; no danger unless
+  the story calls for one), mixed, or thrilling (a danger in most acts). The style sets how
+  often the director brings a danger upon a scene, and the planner is told it. A play file may
+  set it (`W.style`).
+- Never more than one danger in an act.
 - A scene with a danger upon the cast is urgent: short lines, the danger first.
 - When one ends in a scene, the scene's set-up carries a note that it has.
 

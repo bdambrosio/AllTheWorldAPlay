@@ -60,6 +60,10 @@ facts = [
     "The blacksmith mends tools for about 2 francs; it takes about an hour.",
     "Water drawn at a well eases thirst well. A loaf of bread is a meal. Rest indoors or in the shade eases tiredness a little.",
 ]
+# What threatens people here, in sentences (docs/dangers-design.md): the play brings one on, and the world says what comes of it
+dangers = [
+    'On a summer day a black hailstorm may roll in over the fields and the grassland, half an hour from first sight. Anyone under a roof is safe from it, and someone who runs for shelter usually makes it; sheaves can be covered in time less than half the time. Hail flattens standing wheat and bruises whoever is caught in the open.',
+]
 held = [
     "Land passes only by its deed, signed over by its owner in person with the heir standing there, and passes whole.",
     "Money comes into the play only as a wage or a sale these facts name.",
@@ -85,13 +89,4 @@ affordances = {
     'travel_need': 'fatigue',
     'currency': 'francs', 'initial_money': 5,
     'tile_minutes': 4,
-    'hazards': [
-        {'name': 'hailstorm', 'description': 'a black summer hailstorm rolling in over the fields', 'when': 'day',
-         'terrain': ['Field', 'Grassland'], 'chance_per_hour': 0.04, 'blocked_by': ['sheltered'],
-         'minutes_to_strike': 30, 'harm': 0.1, 'fail_text': 'the hail catches them in the open',
-         'retreat_text': 'The storm veers away over the hills; the wheat stands.',
-         'strike_text': 'Hail flattens the wheat and batters anyone caught in the open.',
-         'responses': {'take shelter': {'verbs': ['take shelter', 'shelter', 'run for cover', 'get inside', 'take cover'], 'success': 0.7},
-                       'cover the sheaves': {'verbs': ['cover', 'stack', 'bring in'], 'success': 0.4}}},
-    ],
 }

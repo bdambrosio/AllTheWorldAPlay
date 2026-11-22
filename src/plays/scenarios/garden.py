@@ -54,6 +54,10 @@ facts = [
     'Being groomed eases scrapes a little.',
     'Chasing the butterfly takes about ten minutes and leaves a kitten sleepier. About one time in five a shimmering wing-scale is left behind, and about one time in six the chase ends in a tumble into the rose bush.',
 ]
+# What threatens people here, in sentences (docs/dangers-design.md): the play brings one on, and the world says what comes of it
+dangers = [
+    "By day the neighbour's big bouncy dog may come bounding over the fence onto the grass and the flower beds. A kitten that hisses at it, runs or hides gets clear of it about half the time; one that is under cover it does not find. It means no harm: it bowls everyone over in a slobbery tumble, a few scrapes at worst, and is called home within a quarter of an hour.",
+]
 # What no deed or word gets past
 held = [
 ]
@@ -72,14 +76,4 @@ affordances = {
     'harm': {             'name': 'scrapes', 'words': ('unruffled', 'ruffled', 'scraped', 'hurting')},
     'travel_need': 'sleepiness',
     'tile_minutes': 1,
-    'hazards': [
-        {'name': 'dog', 'description': "the neighbour's big bouncy dog bounding over the fence", 'when': 'day',
-         'terrain': ['Grass', 'Flowers'], 'chance_per_hour': 0.06, 'blocked_by': ['sheltered'],
-         'minutes_to_strike': 15, 'harm': 0.15, 'fail_text': 'the dog bounds closer, barking happily',
-         'retreat_text': 'The dog is called home and lollops away.',
-         'strike_text': 'The dog bowls everyone over in a slobbery tumble before it is called home.',
-         'responses': {'hiss': {'verbs': ['hiss', 'puff up', 'arch', 'swat', 'growl'], 'success': 0.5},
-                       'run away': {'verbs': ['run', 'flee', 'scamper', 'dash'], 'success': 0.6},
-                       'hide': {'verbs': ['hide', 'burrow', 'freeze', 'crouch'], 'success': 0.5}}},
-    ],
 }

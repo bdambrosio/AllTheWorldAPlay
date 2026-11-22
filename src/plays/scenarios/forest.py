@@ -63,6 +63,11 @@ facts = [
     "The hut and the cave have been used by someone before: a careful search of either takes about twenty minutes and now "
     "and then turns up a knife or a length of rope.",
 ]
+# What threatens people here, in sentences (docs/dangers-design.md): the play brings one on, and the world says what comes of it
+dangers = [
+    'Wolves hunt this forest at night, under the trees and across the clearings and meadows. A wolf does not come at people who are under shelter or beside a burning fire. It circles for the better part of an hour before it comes in. Someone who stands and fights or shouts it down drives it off a little less than half the time with bare hands, most times with a stout branch, and nearly always with fire; running or hiding works about half the time. A wolf that gets in bites deep and is gone.',
+    "By day a wild boar may come at someone in the thick of the forest, within a quarter of an hour of being come upon; it leaves alone anyone under shelter. Standing against it works less than half the time, more often with a branch; running or getting out of its way works more often than not. Its tusks leave a wound, a lesser one than a wolf's bite.",
+]
 held = []
 
 # Bodies (sim/survival.py): the needs this world keeps count of and how they rise; its dangers.
@@ -84,22 +89,4 @@ affordances = {
     'harm': {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
     'travel_need': 'fatigue',
     'tile_minutes': 2,
-    'hazards': [
-        {'name': 'wolf', 'description': 'a gaunt grey wolf', 'when': 'night', 'terrain': ['Forest', 'Clearing', 'Meadow'],
-         'chance_per_hour': 0.35, 'blocked_by': ['sheltered', 'fire'], 'minutes_to_strike': 40, 'harm': 0.4,
-         'retreat_text': 'The wolf slinks back into the dark trees.',
-         'strike_text': 'The wolf darts in and bites before vanishing into the dark.', 'fail_text': 'the wolf is not deterred and lunges',
-         'responses': {'defend': {'verbs': ['defend', 'fight', 'club', 'strike', 'hit', 'swing', 'throw', 'shout', 'yell', 'wave', 'scare'],
-                                  'success': 0.45, 'bonus': {'branch': 0.3, 'fire': 0.4}},
-                       'flee': {'verbs': ['flee', 'run', 'retreat', 'escape', 'back away'], 'success': 0.5},
-                       'hide': {'verbs': ['hide', 'climb', 'freeze', 'stay still'], 'success': 0.4}}},
-        {'name': 'boar', 'description': 'a bristling wild boar', 'when': 'day', 'terrain': ['Forest'],
-         'chance_per_hour': 0.06, 'blocked_by': ['sheltered'], 'minutes_to_strike': 20, 'harm': 0.3,
-         'retreat_text': 'The boar snorts and crashes away through the undergrowth.',
-         'strike_text': 'The boar charges, its tusks catching a leg before it crashes away.', 'fail_text': 'the boar is not deterred and charges',
-         'responses': {'defend': {'verbs': ['defend', 'fight', 'club', 'strike', 'hit', 'throw', 'shout', 'yell', 'scare'],
-                                  'success': 0.4, 'bonus': {'branch': 0.3}},
-                       'flee': {'verbs': ['flee', 'run', 'retreat', 'escape', 'back away'], 'success': 0.6},
-                       'hide': {'verbs': ['hide', 'climb', 'freeze', 'stay still'], 'success': 0.6}}},
-    ],
 }

@@ -84,5 +84,4 @@ affordances = {
     'harm': {'name': 'injury', 'words': ('fine', 'sore', 'hurt', 'badly hurt')},
     'currency': 'dollars', 'initial_money': 40,
     'tile_minutes': 1,
-    'hazards': [],
 }

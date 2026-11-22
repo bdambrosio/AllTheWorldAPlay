@@ -86,7 +86,7 @@ def stakes_text(context, fallback=''):
     module = world.scenario(context)
     # a world stated in facts: the planner plans from the same facts the world rules by
     return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{facts_note(context)}' if stated(context) else '') \
-        + (f'\n{PLAN_RULE}' if config(context) else '')
+        + (f'\n{STYLES[style(context)][1]}' if dangers(context) else '') + (f'\n{PLAN_RULE}' if config(context) else '')
 
 
 # For every prompt that writes or rewrites the plan. A plan wrote 'the boar swerves, goring Joe's
@@ -134,8 +134,52 @@ def facts_note(context):
     facts, held = list(getattr(module, 'facts', None) or []), list(getattr(module, 'held', None) or [])
     if not facts:
         return ''
+    threats = dangers(context)
     return ('The facts of this world:\n' + '\n'.join(f'- {f}' for f in facts)
+            + ('\nWhat threatens people here:\n' + '\n'.join(f'- {d}' for d in threats) if threats else '')
             + ('\nHeld (no deed or word gets past these):\n' + '\n'.join(f'- {h}' for h in held) if held else ''))
+
+
+def dangers(context):
+    """What threatens people in this world, as its world file states it in sentences (docs/dangers-design.md)."""
+    return list(getattr(world.scenario(context), 'dangers', None) or [])
+
+
+# How a performance is to be played, as its director chose (Context.director_style): how often the
+# director brings a danger upon a scene, and what the planner is told. Never more than one danger in an act.
+STYLES = {'quiet': (0.0, "The director's style for this performance is quiet: a play of people and what passes between them. "
+                         "No danger comes upon them unless the story itself calls for one."),
+          'mixed': (0.15, "The director's style for this performance is mixed: mostly between people, with the world pressing on them now and then."),
+          'thrilling': (0.6, "The director's style for this performance is thrilling: the world presses hard, and a danger comes upon the cast in most acts.")}
+
+
+def style(context):
+    return getattr(context, 'style', None) if getattr(context, 'style', None) in STYLES else 'mixed'
+
+
+def come_on(context, what, cast, minutes=30):
+    """A danger, said in words, comes upon the cast: brought by a scene's set-up or by the director.
+    It is then a state of the stage until a deed ends it, those it is upon get clear of it, or it
+    comes to a head (hazard_tick). Returns it, or None when none may come on now."""
+    what = ' '.join(str(what or '').split()).strip(' .')
+    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
+    if not what or not exposed or not may_come_on(context):
+        return None
+    context._hazard_last = context.simulation_time
+    _start_threat(context, {'name': what, 'description': what, 'minutes_to_strike': minutes, 'stated': True}, exposed[0], exposed)
+    return context.active_threat
+
+
+def danger_over(context, how=''):
+    """The danger on the stage is over, by a deed as the resolver found it: told in that deed's own line."""
+    threat = getattr(context, 'active_threat', None)
+    if not threat:
+        return
+    text = ' '.join(str(how or '').split()) or f"{_described(threat['hazard'])} is gone."
+    _end_threat(context, threat, text, tell=False)
+    context.add_event(text)
+    if getattr(context, 'current_scene', None) is not None:
+        context.scene_since = list(getattr(context, 'scene_since', None) or []) + [text]
 
 
 def stands(context, fact, about=(), known=None):
@@ -2015,6 +2059,7 @@ def _start_threat(context, hazard, anchor, exposed):
     """A hazard comes on: it threatens those of `exposed` near `anchor` until answered or its deadline."""
     now = context.simulation_time
     context._hazards_started = getattr(context, '_hazards_started', 0) + 1
+    context._act_dangers = getattr(context, '_act_dangers', 0) + 1
     source_id = None
     if hazard.get('source') and _hazard_source(context, anchor, hazard) is not None:
         source_id, source = _hazard_source(context, anchor, hazard)
@@ -2037,6 +2082,8 @@ MAX_HAZARDS_PER_PLAY = 1   # from every source together: chance, the plan, the d
 def hazard_spent(context):
     """Has this play had its danger? Bruce: dangers are to be rare. A play had a boar, the boar
     again and a wolf by its second act, each from a set-up that merely named one."""
+    if dangers(context):   # never more than one in an act (Context.run_narrative_act counts from nothing)
+        return getattr(context, '_act_dangers', 0) >= 1
     return getattr(context, '_hazards_started', 0) >= MAX_HAZARDS_PER_PLAY
 
 
@@ -2050,6 +2097,9 @@ def stage_hazard(context, scene, cast):
     started with the scene: it threatens the cast, they must answer it, and it strikes or is driven
     off by the world's rules. (A planned boar was only words: it never acted, and the scene was
     about a branch.)"""
+    if dangers(context):   # in words, as the set-up check gave it
+        come_on(context, scene.get('danger'), cast)
+        return
     named = str(scene.get('danger') or '').strip().lower()
     hazard = next((h for h in (config(context) or {}).get('hazards', []) if h['name'].lower() == named), None) if named else None
     exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
@@ -2069,11 +2119,41 @@ def _fits_now(hazard, now):
     return not ((when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)))
 
 
-def director_hazard(context, cast, act_number):
+def director_danger(context, cast, scene=None):
+    """The director brings a danger upon the scene about to be played, as often as the style it
+    chose for this performance has it and never twice in an act: one of those this world says
+    threaten people, as it would come at this hour and place. Returns what it is, or None."""
+    chance = STYLES[style(context)][0]
+    if not may_come_on(context) or _rng.random() >= chance:
+        return None
+    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
+    if not exposed:
+        return None
+    from utils.Messages import UserMessage
+    from sim import stage
+    where = '; '.join(f"{c.name} {stage.where(context, _here(c))} ({'under shelter' if c.body.sheltered else 'in the open'})" for c in exposed)
+    prompt = (f"You are the director of an improvised play. You have chosen to bring a danger upon the cast in the scene about to be played.\n\n"
+              f"The scene: '{(scene or {}).get('scene_title', '')}'. {(scene or {}).get('pre_narrative', '')}\n"
+              f"It is {stage.clock(context)}. {where}.\n\nWhat threatens people in this world:\n" + '\n'.join(f'- {d}' for d in dangers(context))
+              + "\n\nWhich of these could come upon them here and now? Answer with what the cast would see of it, in three to eight words "
+                "('a gaunt grey wolf at the clearing's edge'), or with the one word none if none of them comes at this hour or in such a place.\n</end>")
+    reply = (context.llm.ask({}, [UserMessage(content=prompt)], tag='director.danger', temp=0.5, stops=['</end>'], max_tokens=60) or '').strip().strip('"\'.')
+    if not reply or reply.lower().startswith('none') or len(reply.split()) > 14:
+        trace.event('director_danger', what='', reply=reply[:120])
+        return None
+    context._director_hazard = reply
+    trace.event('director_danger', what=reply, style=style(context))
+    come_on(context, reply, exposed)
+    return reply
+
+
+def director_hazard(context, cast, act_number, scene=None):
     """The director brings on one of the world's hazards for the scene about to be played: a
     real one, by the world's rules, at most once in a play and in about half of plays. (Chance
     alone gave a daytime play no danger at all, and a narrator may no longer invent one.)
     Returns the hazard's name, or None."""
+    if dangers(context):
+        return director_danger(context, cast, scene)
     cfg = config(context)
     try:
         act_number = int(act_number)
@@ -2110,6 +2190,20 @@ def hazard_tick(context):
     harm_need = _harm(cfg)['name']
 
     threat = getattr(context, 'active_threat', None)
+    if dangers(context):
+        # a world that states its dangers: those it is upon get clear of it by going out of its
+        # reach; left to itself until its time runs out, it comes to a head, and the world says
+        # what it does (resolver.befalls). No dice bring one on: the play does (docs/dangers-design.md)
+        if threat:
+            targets = [c for c in cast if c.name in threat['targets']]
+            caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'])]
+            if not caught:
+                _end_threat(context, threat, f"{' and '.join(c.name for c in targets) or 'They'} {'is' if len(targets) == 1 else 'are'} out of reach of it.")
+            elif now >= threat['deadline']:
+                from sim import resolver
+                victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
+                resolver.befalls(context, victim, threat)
+        return
     if threat:
         hazard = threat['hazard']
         targets = [c for c in cast if c.name in threat['targets']]
@@ -2181,8 +2275,8 @@ def danger_line(character):
     threat = active_threat_for(character)
     if not threat:
         return ''
-    return (f"{threat['hazard']['description']} is {threat_position(character, threat)}; "
-            f"you could {', '.join(danger_answers(character))}")
+    answers = danger_answers(character)
+    return f"{threat['hazard']['description']} is {threat_position(character, threat)}" + (f"; you could {', '.join(answers)}" if answers else '')
 
 
 def answer_danger(context, character, threat, name):

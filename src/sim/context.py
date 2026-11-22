@@ -1622,7 +1622,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   if may_move else
                   'It must be "same": the play has already moved on in this act and is played now. Where the plan calls for another time of day, '
                   'keep the scene\'s purpose and write it for now.')
-        hazards = [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
+        hazards = survival.dangers(self) or [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
         threat = getattr(self, 'active_threat', None)
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
                   'places': stage.gazetteer(self) + stage.supporting_note(self), 'clock': stage.clock(self), 'moving': moving, 'cast': record.cast(self),
@@ -1793,7 +1793,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 
         # rarely, the director brings on one of the world's dangers; the scene is then fitted to it
         with self.committing('hazard'):
-            survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'))
+            survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'), scene)
         if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
@@ -2125,6 +2125,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
     async def run_narrative_act(self, act, act_number):
         """Run a narrative"""
         self._act_jumps = 0   # the play moves on at most MAX_JUMPS_IN_ACT times within an act
+        self._act_dangers = 0   # and has at most one danger in an act (survival.hazard_spent)
         self.establish_tension_points(act)
         self.current_act = act
         if self.screenplay.act:
@@ -2606,8 +2607,29 @@ Respond with these lines only, one sentence each:
                 # heads only: the world then ruled 'no one pruned these trees', 'no such form exists'.)
                 survival.stands(self, fact['text'], known=fact['known_to'])
         trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
+        self.director_style()
         self.send_plan()
         return self.episode
+
+    def director_style(self):
+        """The director chooses how this performance is to be played: quiet (a play of people),
+        mixed, or thrilling (the world presses hard). It decides how often a danger is brought
+        upon a scene (survival.STYLES) and is told to the planner. A play file may set it (W.style)."""
+        if getattr(self, 'style', None) in survival.STYLES or not survival.dangers(self):
+            trace.event('director_style', style=survival.style(self), by='the play' if getattr(self, 'style', None) else 'default')
+            return survival.style(self)
+        from utils.Messages import UserMessage
+        cast = '\n'.join(f"- {' '.join(str(getattr(c, 'original_character', '') or c.character).split())[:300]}" for c in self.actors)
+        prompt = (f"You are the director of an improvised play, deciding how tonight's performance is to be played.\n\nThe world: {' '.join((self.initial_state or '').split())}\n"
+                  f"{survival.stakes_text(self).splitlines()[0]}\nThe people:\n{cast}\nThe question tonight's play is about: {getattr(self, 'standing_question', '') or 'not yet settled'}\n\n"
+                  "Choose one:\n- quiet: a play of people and what passes between them; no danger comes upon them unless the story itself calls for one\n"
+                  "- mixed: mostly between people, with the world pressing on them now and then\n"
+                  "- thrilling: the world presses hard, and a danger comes upon the cast in most acts\n\n"
+                  "Choose what suits this question and these people tonight; any of the three may be right. Answer with the one word.\n</end>")
+        reply = (self.llm.ask({}, [UserMessage(content=prompt)], tag='director.style', temp=0.9, stops=['</end>'], max_tokens=20) or '').strip().lower()
+        self.style = next((s for s in survival.STYLES if s in reply), 'mixed')
+        trace.event('director_style', style=self.style, by='the director', reply=reply[:60])
+        return self.style
 
     def director_person(self, person):
         """Bring the director's person who knows a part into the play: cast at the place named, as

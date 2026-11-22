@@ -87,5 +87,4 @@ affordances = {
     'currency': 'yuan', 'initial_money': 2000,
     'private_items': ['message from'],   # what is on a phone is seen only by looking through it
     'tile_minutes': 1,
-    'hazards': [],
 }
