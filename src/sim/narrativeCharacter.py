@@ -611,18 +611,27 @@ End your response with: </end>"""
         goal = task.goal or self.focus_goal
         later = [t['task'].to_string() for t in scene_task_plan if t['actor'] is self and t['task'] is not task
                  and scene_task_plan.index(t) > context.scene_integrated_task_plan_index]
-        reply = self.llm.ask({'name': self.name, 'notes': self.director_notes(story=False),
-                              'character': self.get_character_description(),
-                              'goal': f'{goal.name}: {goal.description}' if goal else 'not said',
-                              'task': f'{task.name}: {task.description}', 'intent': task.reason, 'done_when': task.termination or 'not said',
-                              'later': '\n'.join(later) or 'none',
-                              'happened': record.last_lines(events + lines, 5000),
-                              'final': 'This is your last task in the scene.\n' if final_task else ''},
-                             [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=280)
-        found = json_reply.parse(reply) if reply else None
-        verdict = str(found.get('verdict') or '').strip().lower() if isinstance(found, dict) else ''
+        asked = {'name': self.name, 'notes': self.director_notes(story=False),
+                 'character': self.get_character_description(),
+                 'goal': f'{goal.name}: {goal.description}' if goal else 'not said',
+                 'task': f'{task.name}: {task.description}', 'intent': task.reason, 'done_when': task.termination or 'not said',
+                 'later': '\n'.join(later) or 'none',
+                 'happened': record.last_lines(events + lines, 5000),
+                 'final': 'This is your last task in the scene.\n' if final_task else ''}
+        for attempt in (1, 2):
+            reply = self.llm.ask(asked, [UserMessage(content=self.REVIEW)], tag='review_task', temp=0.2, stops=['</end>'], max_tokens=280)
+            found = json_reply.parse(reply) if reply else None
+            verdict = str(found.get('verdict') or '').strip().lower() if isinstance(found, dict) else ''
+            if verdict in ('keep', 'adapt', 'respond'):
+                break   # an answer with no verdict (one came back empty) is asked for once more
         action, how = (str(found.get(k) or '').strip() for k in ('action', 'how')) if isinstance(found, dict) else ('', '')
         serves = str(found.get('serves') or '').strip() if isinstance(found, dict) else ''
+        why = str(found.get('why') or '').strip() if isinstance(found, dict) else ''
+        if verdict == 'respond' and action and not how:
+            # the new action and why, with no sentence of how: the action is what is done. (This
+            # answer was dropped as unreadable, and the beat it replaced, a trade already made,
+            # was played again.)
+            how = action
         if verdict not in ('adapt', 'respond') or not action or not how or (verdict == 'adapt' and not serves):
             # keep; or a reply that cannot be read, names no action, or changes the action
             # without saying how the new one serves the intent: the plan stands
@@ -630,7 +639,6 @@ End your response with: </end>"""
                         verdict='keep' if verdict == 'keep' else 'unserved' if verdict == 'adapt' and action and how else 'unreadable',
                         reply='' if verdict == 'keep' else (reply or '')[:300])
             return task
-        why = str(found.get('why') or '').strip()
         new_task = Task(action, how, why if verdict == 'respond' and why else task.reason, task.actors, goal,
                         termination=str(found.get('done_when') or '').strip() or task.termination,
                         start_time=task.start_time, duration=task.duration)

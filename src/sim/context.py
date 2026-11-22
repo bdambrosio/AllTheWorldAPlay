@@ -1862,6 +1862,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
         self.scene_refusals = []   # what the stage has refused in this scene (record.refused)
+        self.scene_since = []      # what has ended since the scene opened, said beside its set-up (survival._end_threat)
         with self.committing('set', event=setting):
             self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
             survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)

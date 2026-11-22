@@ -3322,6 +3322,11 @@ End your response with:
             moved = now_at and d.get('place') and now_at != d.get('place') and world.place(self.context, now_at) is not None
             parts.append((f"This scene, '{d.get('title', '')}', opened at {d.get('place', '')} and is now at {now_at}. As it opened: {d.get('setup', '')}" if moved else
                           f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}").rstrip(': '))
+            since = getattr(self.context, 'scene_since', None)
+            if since:
+                # (the light that sent them indoors faded a line into the scene, and for seventy
+                # lines both went on watching it: the set-up and what the scene was to settle said it hung there)
+                parts.append("Since the scene opened, and whatever these notes say of it: " + ' '.join(since))
         if stage.kind_note(self):
             parts.append(stage.kind_note(self))
         if d.get('ending'):

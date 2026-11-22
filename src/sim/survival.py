@@ -2084,6 +2084,9 @@ def _end_threat(context, threat, text, struck=False, tell=True):
     context.active_threat = None
     if tell:
         _told(context, text)
+        if getattr(context, 'current_scene', None) is not None:
+            # a scene's set-up is how it opened: what has ended since is said beside it (Character.director_notes)
+            context.scene_since = list(getattr(context, 'scene_since', None) or []) + [text]
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
 
 
