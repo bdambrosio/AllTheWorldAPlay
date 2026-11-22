@@ -1260,13 +1260,23 @@ End response with:
                 # in the actor's own words ('move to ' was put in front of them: 'move to Start
                 # walking Northwest towards the spring' was a line of the play)
                 act_mode = 'Do'
-                act.resolved = survival.PASSING   # moving about where one is: seen, and nothing in the world changes (it went to the narrator unjudged)
                 # a deed, not a label: 'Trail toward the hut.' was a line of the play
                 # (only act.action was changed, and the line shown is built from act_arg: 'Samantha:
                 # Trail.' was still played four times)
                 if act_arg and not re.match(r'^[a-z]', act_arg):
                     act_arg = f"heads for the {act_arg[:1].lower()}{act_arg[1:]}"
                 act.action = act_arg   # Context.do reads act.action
+                # somewhere the world does not list may be a place it would have (the shed behind
+                # the hut): the resolver says, as for any deed, and may make the place and send the
+                # mover there. Where it finds nothing in it, it is moving about where one is: seen,
+                # and nothing in the world changes.
+                was = act.mode
+                act.mode, act.resolved = 'Do', None
+                record.judge(self.context, self, act)
+                if getattr(act, 'found', None):
+                    leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
+                else:
+                    act.mode, act.resolved, act.found = was, survival.PASSING, None
 
         # Handle world interaction
         if act_mode == 'Do':

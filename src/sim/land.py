@@ -52,6 +52,7 @@ class Place:
         self.by = said.get('by', 'ride')                  # a vehicle: the word for going by it ('drive')
         self.props = {}
         self.made = said.get('made')
+        self.names = set()                                # what else it is called by ('the shed behind the hut')
 
     @property
     def owner(self):
@@ -181,9 +182,29 @@ class Land:
         p = self.table.get(rid) if rid else None
         return p if p is not None and not p.region else None
 
+    @staticmethod
+    def _plain(name):
+        return re.sub(r'^(the|a|an)\s+', '', ' '.join(str(name or '').lower().split()))
+
     def called(self, name):
-        low = str(name or '').lower()
-        return next((p for p in self.places() if p.id.lower() == low), None)
+        low, plain = str(name or '').strip().lower(), self._plain(name)
+        return next((p for p in self.places() if p.id.lower() == low or (plain and plain in p.names)), None)
+
+    def make_place(self, name, kind, at, inside=False, metres=None, enclosed=False, description=''):
+        """A place the play brings into the world: called `name`, of a kind, inside or beside the
+        place `at`. Returns it; None when `at` is no place."""
+        host = at if isinstance(at, Place) else self.called(at)
+        if host is None:
+            return None
+        kind = '_'.join(w.capitalize() for w in re.findall(r'[A-Za-z]+', kind or name or 'place')[:3]) or 'Place'
+        if inside:
+            xy, radius = self._around(host.xy, (0, host.radius * 0.5)), max(1.5, min(3.0, host.radius / 3))
+        else:
+            away = max(2.0, min(300.0, float(metres or 10.0)))
+            xy, radius = self._around(host.xy, (host.radius + away, host.radius + away)), 3.0
+        p = self._new(kind, description or name, xy, radius=radius, enclosed=bool(enclosed) and not inside, shelter=bool(enclosed) and not inside)
+        p.names.add(self._plain(name))
+        return p
 
     def find(self, text):
         rid = str(text or '').strip().replace('#', '')

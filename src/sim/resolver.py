@@ -59,6 +59,7 @@ How this world works:
 - A look, a gesture, a step or two, a change of posture changes nothing that lasts, except the posture.
 - A deed is about the things it names: where the thing it means is not here, that part is not done, and no other thing is used in its place.
 - A deed meets this place as the stage has it. A thing, or a state or trace of a thing (a clean-cut limb, a fresh footprint), that the stage does not hold and a place of this kind would not ordinarily have is not there: the page does not show it, and what of the deed needs it is left out.
+- A deed may go to, or make, a place the stage does not name only where this world would have such a place inside or beside a named one (the shed behind the hut, the loft over the stable, a lean-to built here of branches): say it as a place effect, and it is there from then on; going there is a goes effect to the name you gave it. A place that belongs to no named place is not made, and what of the deed needs it is left out.
 - Where one part of the deed cannot be done and the rest still makes sense without it, the rest is done and that part is left out. Where nothing of it can be done, it cannot be done.
 
 Answer in JSON only:
@@ -74,7 +75,8 @@ Answer in JSON only:
      {{"who": "{name}", "posture": "<standing, sitting, kneeling, lying down>"}},
      {{"who": "{name}", "touches": "<the person touched>", "how": "<two to four words>"}},
      {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
-     {{"who": "{name}", "goes": "<a place named on the stage, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
+     {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
+     {{"who": "{name}", "goes": "<a place named on the stage, a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
      {{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}],
   "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
   "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, only what is done, no words spoken, 30 words at most>"}}
@@ -164,6 +166,11 @@ def faults(context, character, found):
                 out.append(f"there is no '{e['found']}' hidden here")
         elif e.get('mark'):
             pass   # a trace on the place: nothing it names has to be there
+        elif e.get('place'):
+            if not world.makes_places(context):
+                out.append('no place can be added to this world')
+            elif world.called(context, e.get('at')) is None:
+                out.append(f"there is no place called '{e.get('at')}' on the stage for '{e['place']}' to be inside or beside")
         elif e.get('thing'):
             if find(context, character, e['thing'], e.get('from')) is None and _low(e['thing']) not in made:
                 out.append(f"there is no '{e['thing']}' held by anyone here or lying here")
@@ -423,7 +430,7 @@ The cast as the play gives them:
 {cast}
 </cast>
 
-The places of this world (a scene is set at one of them):
+The places of this world (a scene is set at one of them, or at a new place inside or beside one):
 <places>
 {places}
 </places>
@@ -445,6 +452,7 @@ What each of the cast is to go after in it:
 
 How a set-up stands:
 - It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed, upon the cast from the scene's first moment.
+- A scene is at one place. Where the set-up is at a place <places> does not list, which such a world would have inside or beside a listed one (the back room of a listed shop, a reception desk in a listed office, a shed behind a listed hut), say so as new_place, and it is made. A place that belongs to no listed place, or that this world would not have, is not made: the scene is set at the listed place nearest to what is meant.
 - It may not move a thing the world has elsewhere, put in anyone's hands what they do not hold, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
@@ -453,7 +461,8 @@ How a set-up stands:
 - Change as little as you can: keep the planner's words wherever they are true.
 
 Answer in JSON only:
-{{"place": "<the one listed place this scene is set at, by its exact name; or the word same when it is where the cast now stands>",
+{{"place": "<the one listed place this scene is set at, by its exact name; the word same when it is where the cast now stands; or the word new, with new_place>",
+  "new_place": <null, or when place is new: {{"name": "<what it is called, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the listed place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false, "description": "<one plain sentence, as the places above are described>"}}>,
   "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place would ordinarily have, two to five words>", "fixed": true or false}}],
   "danger": "<one of the dangers listed, by its name, when the set-up as it may stand has it upon the cast now, near enough to strike; else empty. One that is heard from afar, feared, spoken of or somewhere off is not upon them>",
   "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
@@ -488,6 +497,9 @@ def resolve_setup(context, scene, cast, hazards=()):
         return None
     place = world.called(context, str(found.get('place') or '').strip())
     found['place'] = place.id if place is not None else ''
+    new = found.get('new_place') if place is None and world.makes_places(context) else None
+    # a place the set-up is at and the world does not list: made when the scene is set (apply_setup)
+    found['new_place'] = new if (isinstance(new, dict) and str(new.get('name') or '').strip() and world.called(context, new.get('at')) is not None) else None
     found['brings'] = [b for b in found.get('brings') or [] if isinstance(b, dict) and str(b.get('thing') or '').strip()][:4]
     found['not_so'] = [n for n in found.get('not_so') or [] if isinstance(n, dict) and str(n.get('words') or '').strip()]
     found['setup'], found['ending'] = ' '.join(str(found['setup']).split()), ' '.join(str(found.get('ending') or '').split())
@@ -497,7 +509,7 @@ def resolve_setup(context, scene, cast, hazards=()):
     goals = found.get('goals') if isinstance(found.get('goals'), dict) else {}
     found['goals'] = {name: ' '.join(str(g).split()) for name in planned for k, g in goals.items()
                       if _low(k) == name.lower() and str(g or '').strip() and ' '.join(str(g).split()) != planned[name]}
-    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], brings=found['brings'], danger=found['danger'],
+    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], new_place=found['new_place'], brings=found['brings'], danger=found['danger'],
                 not_so=found['not_so'], title=found['title'], setup=found['setup'][:600], ending=found['ending'][:300], goals=found['goals'])
     return found
 
@@ -505,6 +517,13 @@ def resolve_setup(context, scene, cast, hazards=()):
 def apply_setup(context, scene, cast, found):
     """Put what a set-up brings into the world, at the scene's place (inside the scene's 'set'
     event). Returns the names of the things made."""
+    new = found.get('new_place')
+    if new:
+        made_place = world.make_place(context, str(new['name']), str(new.get('kind') or ''), str(new['at']), inside=bool(new.get('inside')),
+                                      metres=new.get('metres') if isinstance(new.get('metres'), (int, float)) else None,
+                                      enclosed=bool(new.get('enclosed')), description=' '.join(str(new.get('description') or '').split()))
+        if made_place is not None:
+            found['place'], found['made_place'] = made_place.id, True
     place = world.place(context, found['place'])
     at = place.xy if place is not None else stage.here(cast[0])
     made = []
@@ -539,6 +558,8 @@ def effects_note(effects):
             out.append(f"{e.get('who', '')} {e['posture']}".strip())
         elif e.get('mark'):
             out.append(f"left: {e['mark']}")
+        elif e.get('place'):
+            out.append(f"a place now there: {e['place']}")
         elif e.get('new'):
             out.append(f"now there: {e['new']}")
         elif e.get('goes'):
@@ -612,6 +633,11 @@ def apply(context, character, act):
             # a trace of this deed on the place, kept as this deed's doing and never as a thing
             # lying here (survival.leave_mark)
             survival.leave_mark(context, character, e['mark'], on=e.get('thing'))
+        elif e.get('place'):
+            # a place the deed reaches or makes, inside or beside one the stage names: in the world from now on
+            world.make_place(context, str(e['place']), str(e.get('kind') or ''), str(e.get('at') or ''), inside=bool(e.get('inside')),
+                             metres=e.get('metres') if isinstance(e.get('metres'), (int, float)) else None, enclosed=bool(e.get('enclosed')),
+                             description=f"{str(e['place']).strip()}, {'in' if e.get('inside') else 'by'} {e.get('at')}")
         elif e.get('thing'):
             where = find(context, character, e['thing'], e.get('from'))
             if where is None:

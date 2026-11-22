@@ -1698,7 +1698,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     with self.committing('set'):
                         brought += resolver.apply_setup(self, scene, cast, found)
                     keep = opens_act and not self._exit_parties()   # an act's first scene keeps its planned place (above)
-                    for key, value in (('location', '' if keep else found['place']), ('pre_narrative', found['setup']),
+                    for key, value in (('location', '' if keep and not found.get('made_place') else found['place']), ('pre_narrative', found['setup']),
                                        ('post_narrative', found['ending']), ('scene_title', found['title'])):
                         if value and value != scene.get(key):
                             changed[key] = scene[key] = value

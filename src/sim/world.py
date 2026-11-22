@@ -518,6 +518,26 @@ def away(context, a, b):
     return f'about {minutes(context, a, b)} minutes walk {bearing(a, b).lower()}'
 
 
+def make_place(context, name, kind, at, inside=False, metres=None, enclosed=False, description=''):
+    """Bring a place into the world that the play has come to need: called `name`, of a kind,
+    inside or beside the listed place `at` (its id). Returns it, or None when it cannot be made.
+    Asked only by what decides such things: the set-up check and the resolver (sim/resolver.py)."""
+    from sim import ledger
+    from sim.trace import trace
+    land = _land(context)
+    p = land.make_place(name, kind, at, inside, metres, enclosed, description) if land is not None else None
+    if p is not None:
+        ledger.of(context).wrote('places')
+        trace.event('place_added', id=p.id, name=name, of_kind=p.kind, at=at if isinstance(at, str) else getattr(at, 'id', ''), inside=bool(inside),
+                    xy=list(p.xy), enclosed=p.enclosed, description=p.description)
+    return p
+
+
+def makes_places(context):
+    """Can a place be added to this world while it is played?"""
+    return _land(context) is not None
+
+
 def conveyance(context, a, b):
     """The vehicle someone setting out from `a` for `b` goes by (a place of the world), or None when they walk."""
     return None
