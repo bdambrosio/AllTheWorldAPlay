@@ -272,7 +272,7 @@ def ways_note(context):
         told = []
         for w in ways(cfg, need):
             takes = ([f"at {' or '.join(k.replace('_', ' ').lower() for k in w['at'])}"] if w.get('at') else []) \
-                + ([f"uses up {' or '.join(w['uses'])}"] if w.get('uses') else [])
+                + ([(f"takes one of the {w['portions']} shares of" if w.get('portions', 1) > 1 else 'uses up') + f" {' or '.join(w['uses'])}"] if w.get('uses') else [])
             told.append(f"{w['by']} ({', '.join(takes + [_how_much(w.get('amount', 0.2))])})")
         if told:
             lines.append(f'- {need}: ' + '; '.join(told))
@@ -287,7 +287,9 @@ def _way_place(context, doer, way):
 def _way_thing(doer, who, way):
     """(holder, thing) for a thing this way uses up, held by the one eased or the doer; or None."""
     for holder in (who, doer):
-        held = next((i for i in holder.body.inventory if str(i).lower() in {u.lower() for u in way['uses']}), None)
+        named = [i for i in holder.body.inventory if str(i).lower() in {u.lower() for u in way['uses']}]
+        # one already begun before a whole one
+        held = next((i for i in named if (getattr(i, 'thing', None) or {}).get('portions_gone')), named[0] if named else None)
         if held is not None:
             return holder, held
     return None
@@ -328,7 +330,18 @@ def ease(context, doer, who, need, by=None):
         ledger.of(context).wrote('places')
     if way.get('uses'):
         holder, thing = _way_thing(doer, who, way)
-        holder.body.inventory.remove(thing)
+        # a way that takes one share of a thing ('portions': how many it holds) leaves the rest
+        # in hand, and the last share uses it up. (Kidd ate his half of a tin, the whole tin was
+        # gone, and Lanya's half was refused twice: 'no tin of food is held or lying here'.)
+        kept = getattr(thing, 'thing', None)
+        gone = (kept.get('portions_gone', 0) if kept is not None else 0) + 1
+        if kept is not None and gone < way.get('portions', 1):
+            kept['portions_gone'] = gone
+            left = way['portions'] - gone
+            kept['state'], kept['since'] = 'half gone' if way['portions'] == 2 else f"partly gone, {left} share{'s' if left > 1 else ''} left", context.simulation_time
+            kept.state_by = (ledger.of(context).open or [None])[-1]
+        else:
+            holder.body.inventory.remove(thing)
     level = who.body.level(need)
     who.body.adjust(need, -min(way.get('amount', 0.2), max(0.0, level - way.get('floor', 0.0))))
     context.simulation_time += timedelta(minutes=way.get('minutes', 5))

@@ -52,13 +52,13 @@ stakes = ("In Bellona, food, clean water and a safe place to sleep must be scave
 affordances = {
     'needs': {
         'hunger': {'eased': [{'by': 'eating a can of food', 'uses': ['canned food'], 'amount': 0.5, 'minutes': 10},
-                             {'by': 'sharing a can of food with another', 'uses': ['canned food'], 'amount': 0.3, 'minutes': 10}],
+                             {'by': 'sharing a can of food with another', 'uses': ['canned food'], 'portions': 2, 'amount': 0.3, 'minutes': 10}],
                    'initial': 0.45, 'per_hour': 0.04, 'neglect_harm': 0.05,
                    'words': ('fed', 'hungry', 'very hungry', 'starving'),
                    'percepts': {0.5: "Your stomach knots; you have not eaten properly in a long time.",
                                 0.8: "Hunger makes your hands shake and your thoughts slow."}},
         'thirst': {'eased': [{'by': 'drinking a bottle of water', 'uses': ['bottled water'], 'amount': 0.6, 'minutes': 2},
-                             {'by': 'sharing a bottle of water with another', 'uses': ['bottled water'], 'amount': 0.35, 'minutes': 3},
+                             {'by': 'sharing a bottle of water with another', 'uses': ['bottled water'], 'portions': 2, 'amount': 0.35, 'minutes': 3},
                              {'by': 'drinking from the fountain', 'at': ['Park'], 'amount': 0.5, 'minutes': 5,
                               'risk': {'chance': 0.2, 'effects': {'injury': 0.2}, 'text': 'The water tastes of metal; cramps follow.'}}],
                    'initial': 0.35, 'per_hour': 0.06, 'neglect_harm': 0.05,
