@@ -181,11 +181,9 @@ def of(context, actor, people=None, full=False):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
-        *([survival.facts_note(context)] if survival.stated(context) else []),
+        *([survival.facts_note(context)] if survival.facts_note(context) else []),
         *(['What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + survival.stands_note(context)]
           if survival.stands_note(context) else []),
-        *([survival.ways_note(context)] if full and survival.ways_note(context) else []),
-        *([survival.states_note(context, people)] if survival.states(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
         'Lying here, for anyone present to take or use: ' + ('; '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
@@ -195,7 +193,6 @@ def of(context, actor, people=None, full=False):
           if (m := survival.marks_note(context, at)) else []),
         *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
            + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
-        'Stock: ' + (survival.stock(actor) or 'nothing has been used up'),
         'Danger: ' + (danger(actor) or 'none'),
         *(_acts(context, actor, people) if full else []),
     ])
@@ -216,7 +213,7 @@ def account(context, reader, about=None, people=None, full=False):
         told = [f"{t['who']} has told {', '.join(t['to']) or 'nobody yet'}: {t['fact']}" for t in ledger.of(context).told][-24:]
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
         stands = survival.stands_note(context)
-        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast), survival.states_note(context, cast),
+        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
                  ('What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + stands) if stands else '',
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
                  ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
@@ -253,19 +250,15 @@ def _acts(context, actor, people):
             for e in getattr(context, 'scene_exits', None) or []]
     refused = [f"{r['deed']} ({'; '.join(r['why']) if isinstance(r['why'], (list, tuple)) else r['why']})"
                for r in getattr(context, 'scene_refusals', None) or [] if r.get('who') == actor.name][-4:]
-    offered = [o.strip() for o in survival.offered_actions(actor, cut=None) if o.strip()]
     head = ['How they are placed: ' + ('; '.join(placed) or 'all on their feet, nobody touching'),
             'Held out, for the one named to take: ' + ('; '.join(held) or 'nothing'),
             'Gone out of this scene: ' + ('; '.join(gone) or 'nobody'),
             *([f'Tried by {actor.name} in this scene and not possible here: ' + ' | '.join(refused)] if refused else [])]
-    # what is hidden here for a search to find; with a danger on the stage, the answers this world
-    # has to it; and what the world rules on, as it stands for this person (survival.rules)
+    # what is hidden here for a search to find
     hidden = [p['name'] for p in survival.lying(context, stage.here(actor), hidden=True)]
-    answers = survival.danger_answers(actor)
-    return head + ['Hidden here, to be found only by someone who searches this place: ' + (', '.join(hidden) or 'nothing'),
-                   *([f"Answers to the danger for {actor.name} ({survival.danger_line(actor).split(';')[0]}):", *[f'- {a}' for a in answers]] if answers else []),
-                   *([f"The world's rules for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
-                      *([f'- {o}' for o in offered] or ['- none that can be done from here'])] if survival.rules(context) else [])]
+    # (said only when something is: 'Hidden here: nothing' was read as nothing to be found, and a
+    # search the world's facts leave to chance was ruled empty without a draw)
+    return head + (['Hidden here, to be found only by someone who searches this place: ' + ', '.join(hidden)] if hidden else [])
 
 
 # ---------------------------------------------------------------------------- a look at something
@@ -340,8 +333,6 @@ def look_at(context, looker, what):
             traces = survival.marks_note(context, place.xy, reader=looker)
             if traces:
                 lines.append('Traces: ' + '; '.join(traces) + '.')
-            if survival._left(place):
-                lines.append(f'Of what it gives: {survival._left(place)}.')
             return 'place', place.id, '\n'.join(lines)
         if not world.in_sight(context, here, place):
             return 'place', place.id, f'{place.id} is not in sight from here.'
@@ -378,9 +369,6 @@ def situation(context, lately='', viewer=None):
     threat = getattr(context, 'active_threat', None)
     if viewer is None or threat is None or viewer.name in threat['targets']:
         lines.append('Danger: ' + (f"{threat['hazard']['description']}, threatening {', '.join(threat['targets'])}" if threat else 'none at present') + '.')
-    used = '; '.join(f'{rid}: {survival._left(res)}' for rid, res in world.listed(context) if survival._left(res))
-    if used:
-        lines.append(f'Drawn on so far: {used}.')
     if lately:
         lines.append(f'Lately: {lately}')
     return '\n'.join(lines)
@@ -487,11 +475,10 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     remaining = [c for c in claims if c[0] not in FOUND]
     if not new:
         return facts, refused, remaining
-    places = survival.place_kinds(context)
-    cfg = survival.config(context) or {}
     needs = [n for n in (people[0].body.levels if people else {})]
-    reply = context.llm.ask({'places': '; '.join(f"{k} ({', '.join(v)})" for k, v in places.items()) or 'none',
-                             'items': ', '.join(survival.item_kinds(context)) or 'none', 'needs': ', '.join(needs) or 'none',
+    places = {p.kind: [] for p in world.places(context)}   # the kinds of place this world has
+    reply = context.llm.ask({'places': '; '.join(places) or 'none',
+                             'items': 'none', 'needs': ', '.join(needs) or 'none',
                              'people': ', '.join(c.name for c in people), 'text': text,
                              'known': known_things(context),
                              'claims': '\n'.join(f'{i + 1}. {words}' for i, (_, words) in enumerate(new))},
@@ -517,8 +504,8 @@ def admit(context, actor, claims, text, source, people=None, at=None):
             name = fields[0].lower()
             holder = person(fields[1].lower().removeprefix('held by')) if 'held by' in fields[1].lower() else None
             usual = form == 'prop' and len(fields) > 2 and fields[2].lower().startswith('ordinary')
-            if form == 'item' and name not in survival.item_kinds(context):
-                form = 'prop'   # not one of the world's own: a prop, and from a deed an unusual one
+            if form == 'item':
+                form = 'prop'   # the world lists no things of its own: a prop, and from a deed an unusual one
             same = lambda held: held.lower() == name or held.lower().endswith(' ' + name) or name.endswith(' ' + held.lower())
             holders = [c for c in people if any(same(i) for i in c.body.inventory)]
             lying_here = any(same(p['name']) for p in survival.lying(context, at))
@@ -556,7 +543,7 @@ def admit(context, actor, claims, text, source, people=None, at=None):
         elif form == 'body' and len(fields) >= 4 and person(fields[0]) is not None:
             who = person(fields[0])
             need = fields[1].lower()
-            need = survival._harm(cfg)['name'] if need in ('injury', 'harm', 'hurt', 'wound') else need
+            need = survival._harm(survival.config(context) or {})['name'] if need in ('injury', 'harm', 'hurt', 'wound') else need
             felt = who.body.levels.get(need, 0.0) >= survival.NEED_FELT
             if felt == fields[2].lower().startswith('worse'):
                 continue   # the body already shows it (a 'bruised thigh' on a bruised body made it 'badly hurt')

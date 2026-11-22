@@ -6,7 +6,8 @@ performance (sim/land.py); other places come into it as the play needs them (sim
     (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
     is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
     from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
-    by, at `pace` metres a minute, and `by` is the word for that.
+    by, at `pace` metres a minute, and `by` is the word for that. search: what is left there is found
+    only by someone who searches the place.
   layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
     cover is what is overhead) and how many of each kind there are and where: on which ground, by
     weight; inside or near (metres from its edge) another kind; from_start, metres from where the
@@ -14,7 +15,7 @@ performance (sim/land.py); other places come into it as the play needs them (sim
 """
 
 kinds = {
-    'Office': {'description': 'An office with a desk, client files and contracts', 'radius': 6, 'enclosed': True, 'shelter': True},
+    'Office': {'description': 'An office with a desk, client files and contracts', 'radius': 6, 'enclosed': True, 'shelter': True, 'search': True},
     'University_Office': {'description': "A professor's office at the university", 'radius': 6, 'enclosed': True, 'shelter': True},
     'Apartment': {'description': 'A city apartment', 'radius': 7, 'enclosed': True, 'shelter': True},
     'Cafe': {'description': 'A cafe: neutral ground for a meeting', 'radius': 7, 'enclosed': True, 'shelter': True},

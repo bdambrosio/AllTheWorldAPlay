@@ -298,20 +298,16 @@ def gazetteer(context):
                      for rid, res in world.listed(context)), key=lambda p: p[:2])
     listed, kinds = [], set()
     for d, rid, res in places:
-        offers = survival.offers(context, res, cast)   # what the world rules on there (survival.rules); what a kind of place gives is known
         if len(listed) < GAZETTEER_PLACES or res.kind not in kinds:
-            listed.append((d, rid, res, offers))
+            listed.append((d, rid, res))
             kinds.add(res.kind)
-    for d, rid, res, offers in listed:
+    for d, rid, res in listed:
         nearest = min(cast, key=lambda c: world.span(context, here(c), res.xy))
         reach = 'here' if world.at_place(context, here(nearest), res) else world.reach_words(context, here(nearest), res.xy, nearest.name)
         owner = res.owner
-        # an uncast owner is said only where what can be done there depends on whose it is
-        owned = ((', has an owner' if survival.ownership_used(context, res.kind) else '') if isinstance(owner, Part)
-                 else f", owned by {owner}" if owner else '')
+        owned = '' if isinstance(owner, Part) else f", owned by {owner}" if owner else ''   # an owner nobody is cast as goes unsaid
         lines.append(f"- {rid}: {res.description or res.kind}"
-                     + owned + f' ({reach})'
-                     + (f"; by the world's rules there: {', '.join(offers)}" if offers else ''))
+                     + owned + f' ({reach})')
     shared = []
     if shared:   # what a body can do wherever it is: the planner is held to the same acts as the actors
         lines.append('- Anywhere, with whoever is there: ' + '; '.join(a['name'] for a in shared)

@@ -214,19 +214,6 @@ def offer_lines(character):
             for label, (thing, c) in offers(character).items()]
 
 
-def keeps_off(context, character, hazard_name):
-    """Is there a thing near this character whose model keeps this danger off in its present state?"""
-    from sim import ledger
-    age(context)
-    for thing in ledger.of(context).loose():
-        model = models(context).get(thing.get('kind'))
-        if model and world.together(context, thing['at'], _here(character)) and any(
-                e['while'] == thing.get('state') and KEEPS_OFF in e['does'] and (hazard_name.lower() in e['on'] or e['on'] in hazard_name.lower())
-                for e in model['effects']):
-            return True
-    return False
-
-
 DRIFT = 0.05   # what a thing near a body adds to or takes from a need in an hour, where its model says it eases or worsens it
 
 
@@ -339,7 +326,7 @@ def _real(context, wanted):
     """Is this a thing the world keeps count of (so that its absence is a lack), or only a manner or
     a part of the place ('both hands', 'dry earth') that the keeper judged to be there?"""
     from sim import survival, ledger
-    known = {k.lower() for k in survival.item_kinds(context)} | set(models(context)) | {t['name'].lower() for t in ledger.of(context).things}
+    known = set(models(context)) | {t['name'].lower() for t in ledger.of(context).things}
     return any(k == wanted.lower() or k in wanted.lower() for k in known)
 
 

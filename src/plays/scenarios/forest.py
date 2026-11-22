@@ -6,7 +6,8 @@ performance (sim/land.py); other places come into it as the play needs them (sim
     (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
     is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
     from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
-    by, at `pace` metres a minute, and `by` is the word for that.
+    by, at `pace` metres a minute, and `by` is the word for that. search: what is left there is found
+    only by someone who searches the place.
   layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
     cover is what is overhead) and how many of each kind there are and where: on which ground, by
     weight; inside or near (metres from its edge) another kind; from_start, metres from where the
@@ -20,8 +21,8 @@ kinds = {
     'Apple_Tree': {'description': 'A large apple tree with apples', 'radius': 5},
     'Spring': {'description': 'A natural spring of fresh water', 'radius': 4},
     'Thicket': {'description': 'A dense thicket of vegetation', 'radius': 6, 'shelter': True, 'blocks_view': True, 'hides': True},
-    'Cave': {'description': 'A small cave in the rocks', 'radius': 5, 'enclosed': True, 'open': True, 'shelter': True, 'owner': True},
-    'Hut': {'description': 'A small hut for shelter', 'radius': 4, 'enclosed': True, 'shelter': True, 'owner': True},
+    'Cave': {'description': 'A small cave in the rocks', 'radius': 5, 'enclosed': True, 'open': True, 'shelter': True, 'owner': True, 'search': True},
+    'Hut': {'description': 'A small hut for shelter', 'radius': 4, 'enclosed': True, 'shelter': True, 'owner': True, 'search': True},
 }
 
 layout = {

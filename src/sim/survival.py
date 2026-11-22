@@ -85,7 +85,7 @@ def stakes_text(context, fallback=''):
     planning and act prompts; `fallback` (the engine's old wording) when the scenario has none."""
     module = world.scenario(context)
     # a world stated in facts: the planner plans from the same facts the world rules by
-    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{facts_note(context)}' if stated(context) else '') \
+    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{facts_note(context)}' if facts_note(context) else '') \
         + (f'\n{STYLES[style(context)][1]}' if dangers(context) else '') + (f'\n{PLAN_RULE}' if config(context) else '')
 
 
@@ -101,14 +101,6 @@ PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the w
              "unless a need is desperate or what meets it is out of reach.")
 
 
-def rules(context):
-    """What this world rules on: the exchanges and odds its world file lists (buying, selling and
-    paying, work for a wage, what changes hands by deed, a search that may find something, a
-    repair that may not take). Everything else a person does is the resolver's to say
-    (sim/resolver.py); these are done only by the rule, named as the stage lists it."""
-    return list((config(context) or {}).get('actions') or [])
-
-
 # ---------------------------------------------------------------------------- states the world keeps
 # A state is kept only where something in the world file depends on it (a rule that needs someone
 # dressed). The world file says what it means and what brings it about ('states': name ->
@@ -121,11 +113,6 @@ def rules(context):
 # still ruled by its tables, until it is converted.
 HOW_FAR = {'a little': 0.15, 'well': 0.45, 'fully': 0.9}
 LIKELY = {'rare': 0.05, 'unlikely': 0.2, 'as likely as not': 0.5, 'likely': 0.8, 'almost certain': 0.95}
-
-
-def stated(context):
-    """Is this world stated in facts (and so ruled without tables)?"""
-    return bool(getattr(world.scenario(context), 'facts', None))
 
 
 def facts_note(context):
@@ -217,52 +204,6 @@ def stands_note(context, reader=None):
     return '\n'.join(f"- {s['fact']}" + ('' if name is not None else f" (known to {', '.join(s['known']) or 'nobody yet'})") for s in rows)
 
 
-def states(context):
-    return dict((config(context) or {}).get('states') or {})
-
-
-def state_called(context, said):
-    said = ' '.join(str(said or '').lower().split())
-    return next((name for name in states(context) if name.lower() == said), None)
-
-
-def state_lacks(context, doer, who, said):
-    """Why this state cannot be made so of `who` by this deed: '' when it can."""
-    name = state_called(context, said)
-    if name is None:
-        return f"'{said}' is not one of the states this world keeps"
-    about = states(context)[name]
-    if about.get('at') and not any(p.kind in about['at'] and world.at_its_foot(context, _here(who), p) for p in world.places(context)):
-        return f"{who.name} becomes {name} only by {about.get('by', name)}, at {' or '.join(about['at'])}, and is at none"
-    missing = [n for n in about.get('needs') or [] if n not in who.body.flags]
-    return f"{who.name} must be {' and '.join(missing)} first" if missing else ''
-
-
-def set_state_of(context, doer, who, said, on=True):
-    name = state_called(context, said)
-    if name is None or getattr(who, 'body', None) is None:
-        return
-    if on and name not in who.body.flags:
-        who.body.flags.add(name)
-        context.simulation_time += timedelta(minutes=states(context)[name].get('minutes', 0))
-    elif not on:
-        who.body.flags.discard(name)
-    ledger.of(context).wrote('needs')
-    trace.event('state_changed', character=who.name, state=name, on=bool(on), by=doer.name)
-
-
-def states_note(context, people):
-    """For the stage: the states this world keeps, what brings each about, and who is in which."""
-    kept = states(context)
-    if not kept:
-        return ''
-    lines = [f"- {name}: {a.get('means', name)}; brought about by {a.get('by', name)}"
-             + (f" (at {' or '.join(k.replace('_', ' ').lower() for k in a['at'])})" if a.get('at') else '')
-             + (f"; needs one to be {' and '.join(a['needs'])} first" if a.get('needs') else '') for name, a in kept.items()]
-    now = '; '.join(f"{c.name}: {', '.join(n for n in kept if n in c.body.flags) or 'none of them'}" for c in people if getattr(c, 'body', None) is not None)
-    return 'States this world keeps (so of a person only once a deed has made it so):\n' + '\n'.join(lines) + f'\nNow: {now}'
-
-
 def places_near(character, cut=14):
     """The places this character knows of, nearest first, with how far each is: what its actor is
     told in a world played without a catalogue ('Spring2 (here); Thicket9 (about 9 minutes' walk west)')."""
@@ -298,28 +239,6 @@ def _word(cfg, need, value):
     return words[0] if value < 0.3 else words[1] if value < 0.6 else words[2] if value < 0.85 else words[3]
 
 
-BANDS = (0.3, 0.6, 0.85)   # where a need's words change (_word): unfelt, felt, strong, worst
-
-
-def eased(body, need):
-    """A need eased by what was done for it: one step down in its words ('badly hurt' to
-    'injured'; 'very thirsty' to 'thirsty'), to the middle of that step. (Eased was 'no longer
-    felt' for every need, and a strip of sleeve tied round a gash left Kidd unhurt.) A need not
-    felt is left as it is."""
-    level = body.level(need)
-    step = sum(level >= b for b in BANDS)   # 0 .. 3
-    if step == 0:
-        return
-    edges = (0.0,) + BANDS + (1.0,)
-    body.adjust(need, (edges[step - 1] + edges[step]) / 2 - level)
-
-
-def flag_called(body, said):
-    """The binary state of `body` (body.flags: 'dressed', 'wet') that `said` names, or None."""
-    said = ' '.join(str(said or '').lower().split())
-    return next((f for f in body.flags if f.lower() == said), None)
-
-
 def wear(context, thing, wearer):
     """Put a thing on a person, worn or bound on (a coat round them, a bandage tied on): it is then
     theirs, on the body rather than in a hand, until it is taken off or handed on."""
@@ -342,121 +261,6 @@ def need_called(body, said):
         if said == need.lower() or said in {w.lower() for w in words}:
             return need
     return None
-
-
-# ---------------------------------------------------------------------------- how a need is eased
-# A need says, where the world file introduces it, the ways it is eased and by how much
-# ('eased': a list on the need). Each way: 'by' (the words for it: 'drinking at a spring'),
-# 'amount' (how far the need falls, of 1), and what it takes: 'at' (kinds of place one must be at),
-# 'uses' (a thing held, used up), 'minutes', 'stock' (how many times a place gives it before it
-# is gone), 'risk' ({'chance', 'effects', 'text'}), 'floor' (the need falls no lower than this).
-# The resolver says which way a deed was; what it eases, and at what cost, is the world's. Eased
-# in a way the world does not list, a need falls one step in its words (`eased`).
-def ways(cfg, need):
-    """The ways this world says `need` is eased."""
-    harm = _harm(cfg or {})
-    return list(((harm if need == harm['name'] else _need_defs(cfg or {}).get(need)) or {}).get('eased') or [])
-
-
-def way_called(cfg, need, said):
-    """The way of easing `need` that `said` names, or None."""
-    said = ' '.join(str(said or '').lower().split())
-    return next((w for w in ways(cfg, need) if w['by'].lower() == said), None)
-
-
-def _how_much(amount):
-    return 'fully' if amount >= 0.7 else 'well' if amount >= 0.35 else 'a little'
-
-
-def ways_note(context):
-    """For the stage: how each need of this world is eased, by what and how much; '' when the
-    world lists no ways."""
-    cfg = config(context) or {}
-    lines = []
-    for need in list(_need_defs(cfg)) + [_harm(cfg)['name']]:
-        told = []
-        for w in ways(cfg, need):
-            takes = ([f"at {' or '.join(k.replace('_', ' ').lower() for k in w['at'])}"] if w.get('at') else []) \
-                + ([(f"takes one of the {w['portions']} shares of" if w.get('portions', 1) > 1 else 'uses up') + f" {' or '.join(w['uses'])}"] if w.get('uses') else [])
-            told.append(f"{w['by']} ({', '.join(takes + [_how_much(w.get('amount', 0.2))])})")
-        if told:
-            lines.append(f'- {need}: ' + '; '.join(told))
-    return ('How each need is eased in this world, and how far (any other way eases it a little):\n' + '\n'.join(lines)) if lines else ''
-
-
-def _way_place(context, doer, way):
-    """The place of a kind this way needs that the doer is at, or None."""
-    return next((p for p in world.places(context) if p.kind in way['at'] and world.at_its_foot(context, _here(doer), p)), None)
-
-
-def _way_thing(doer, who, way):
-    """(holder, thing) for a thing this way uses up, held by the one eased or the doer; or None."""
-    for holder in (who, doer):
-        named = [i for i in holder.body.inventory if str(i).lower() in {u.lower() for u in way['uses']}]
-        # one already begun before a whole one
-        held = next((i for i in named if (getattr(i, 'thing', None) or {}).get('portions_gone')), named[0] if named else None)
-        if held is not None:
-            return holder, held
-    return None
-
-
-def way_lacks(context, doer, who, need, by):
-    """Why `need` cannot be eased `by` this way here: '' when it can (or the way is not one listed)."""
-    way = way_called(config(context), need, by)
-    if way is None:
-        return ''
-    if way.get('at'):
-        place = _way_place(context, doer, way)
-        if place is None:
-            return f"{need} is eased by {way['by']} only at {' or '.join(way['at'])}, and {doer.name} is at none"
-        if way.get('stock') and place.props.get('remaining', way['stock']) <= 0:
-            return f"there is nothing left at {place.id}"
-    if way.get('uses') and _way_thing(doer, who, way) is None:
-        return f"{need} is eased by {way['by']} only with {' or '.join(way['uses'])} in hand, and neither has any"
-    return ''
-
-
-def ease(context, doer, who, need, by=None):
-    """`need` of `who` eased by what `doer` did, in the way named: by that way's amount, using up
-    what it uses, in its time, at its risk; or, in no listed way, one step. Returns what the world
-    has to add to the telling ('' mostly: the risk that fell)."""
-    cfg = config(context) or {}
-    way = way_called(cfg, need, by)
-    if way is None or way_lacks(context, doer, who, need, by):
-        listed = ways(cfg, need)
-        if listed:   # some other way: no more than the least of the ways the world lists, and never to nothing
-            who.body.adjust(need, -min(min(w.get('amount', 0.2) for w in listed), 0.15, who.body.level(need)))
-        else:        # a world that lists no ways for it: one step down in its words
-            eased(who.body, need)
-        return ''
-    place = _way_place(context, doer, way) if way.get('at') else None
-    if place is not None and way.get('stock'):
-        place.props['remaining'] = place.props.get('remaining', way['stock']) - 1
-        ledger.of(context).wrote('places')
-    if way.get('uses'):
-        holder, thing = _way_thing(doer, who, way)
-        # a way that takes one share of a thing ('portions': how many it holds) leaves the rest
-        # in hand, and the last share uses it up. (Kidd ate his half of a tin, the whole tin was
-        # gone, and Lanya's half was refused twice: 'no tin of food is held or lying here'.)
-        kept = getattr(thing, 'thing', None)
-        gone = (kept.get('portions_gone', 0) if kept is not None else 0) + 1
-        if kept is not None and gone < way.get('portions', 1):
-            kept['portions_gone'] = gone
-            left = way['portions'] - gone
-            kept['state'], kept['since'] = 'half gone' if way['portions'] == 2 else f"partly gone, {left} share{'s' if left > 1 else ''} left", context.simulation_time
-            kept.state_by = (ledger.of(context).open or [None])[-1]
-        else:
-            holder.body.inventory.remove(thing)
-    level = who.body.level(need)
-    who.body.adjust(need, -min(way.get('amount', 0.2), max(0.0, level - way.get('floor', 0.0))))
-    context.simulation_time += timedelta(minutes=way.get('minutes', 5))
-    who.body.last_tick = context.simulation_time   # needs during it are folded into what it did
-    risk, told = way.get('risk'), ''
-    if risk and _rng.random() < risk.get('chance', 0):
-        for harmed, delta in risk.get('effects', {}).items():
-            who.body.adjust(harmed, delta)
-        told = risk.get('text', '')
-    return told
 
 
 @dataclass
@@ -552,13 +356,10 @@ def attach(context):
     cfg = config(context)
     if not cfg:
         return
-    # what threatens and wears on the cast, in the shared situation every planning prompt reads.
-    # What a place offers is told where it is true: per place to the playwright (stage.gazetteer)
-    # and as 'You could do here' to each character.
-    dangers = [h['description'] + (' at night' if h.get('when') == 'night' else '') for h in cfg.get('hazards', [])]
+    # what wears on the cast, in the shared situation every planning prompt reads (what threatens
+    # them is among the world's facts: facts_note)
     rising = [n for n, d in _need_defs(cfg).items() if d.get('per_hour')]
-    brief = '\n' + ' '.join(filter(None, ['Dangers: ' + '; '.join(dangers) + '.' if dangers else '',
-                                          ', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '']))
+    brief = '\n' + (', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '')
     if brief.strip() and brief not in context.current_state:
         context.current_state += brief
     for character in context.everyone():
@@ -580,8 +381,6 @@ def give_body(context, character):
 def _embodied(context):
     """Everyone with a body: the cast, and NPCs given one."""
     return [c for c in context.actors + context.extras + context.npcs if getattr(c, 'body', None) is not None]
-
-
 
 
 REAL_JUMP_HOURS = 2   # a gap this long is a jump in the play, not the pause between two scenes
@@ -662,32 +461,8 @@ def tick(character):
 _direction = world.bearing
 
 
-def _resources_of(context, types):
-    for rid, res in world.listed(context):
-        if res.kind in types:
-            yield rid, res
-
-
 def _here(character):
     return world.at(character)
-
-
-def _nearest(character, types, mentioned=None):
-    """(resource id, resource, distance) of the best matching resource in range, or None."""
-    here = _here(character)
-    cfg = config(character.context) or {}
-    found = []
-    for rid, res in _resources_of(character.context, types):
-        d = world.span(character.context, here, res.xy)
-        if world.in_range(character.context, here, res):
-            # an id the act names first, then a type it names ('berries' over an apple tree), then distance
-            named_type = bool(mentioned) and _names_type(cfg, mentioned, [res.kind])
-            found.append((rid.lower() not in (mentioned or ''), not named_type, d, rid, res))
-    if not found:
-        return None
-    found.sort(key=lambda f: f[:3])
-    _, _, d, rid, res = found[0]
-    return rid, res, d
 
 
 def _present(character, name=None):
@@ -708,149 +483,11 @@ def _with(character, other):
     return world.together(character.context, _here(character), _here(other))
 
 
-def _inflected(word):
-    """Regex for a verb with ordinary inflections: drink(s/ing), snap(ped/ping), tak(e/es/ing)."""
-    stem = word[:-1] if word.endswith('e') and len(word) > 3 else word
-    tail = r'(?:e|es|ed|ing)?' if stem != word else r'(?:s|es|ed|d|ing|' + re.escape(word[-1]) + r'(?:ed|ing))?'
-    return re.escape(stem) + tail
-
-
-def _matches(text, verbs):
-    """A verb or phrase whose first word is inflected ('scoop water' matches 'scooping water',
-    'drink' matches drinks/drinking, but not 'east')."""
-    for v in verbs:
-        first, *rest = v.split()
-        pattern = r'\b' + _inflected(first) + ''.join(r'\s+' + re.escape(w) for w in rest) + r'\b'
-        if re.search(pattern, text):
-            return True
-    return False
-
-
-def _names_type(cfg, text, types):
-    """Does the act name one of these resource types? (the type, its id form, or a configured noun)"""
-    nouns = cfg.get('type_nouns') or {}
-    words = [w for t in types for w in nouns.get(t, []) + [t.lower(), t.lower().replace('_', ' ')]]
-    return any(re.search(r'\b' + re.escape(w) + r'\d*\b', text) for w in words)   # 'berries3' names Berries
-
-
 def _fmt(template, **kw):
     try:
         return template.format(**kw)
     except (KeyError, IndexError):
         return template
-
-
-FAMILY_OWNER_RELATIONS = ('father of', 'mother of', 'husband of', 'wife of')
-
-
-def _prop_value(value):
-    """A resource property as config and text use it: an owner is stored as a person's map agent,
-    or as the uncast part (stage.Part), and compared and shown by name."""
-    return getattr(value, 'name', value)
-
-
-def ownership_used(context, resource_type):
-    """Does anything that can be done at this kind of place depend on, or change, whose it is?"""
-    return any(str(resource_type) in (a.get('resource_types') or ())
-               and ('owner' in (a.get('requires_property') or {}) or 'owner' in (a.get('sets_property') or {}) or a.get('conveys'))
-               for a in (config(context) or {}).get('actions', []))
-
-
-def _household_owns(character, owner):
-    """True when `owner` (a name) is the character or a parent or spouse of the character
-    (reference manager relationships, e.g. declared by the play)."""
-    if not owner:
-        return False
-    if owner == character.name:
-        return True
-    manager = getattr(character.context, 'reference_manager', None)
-    relations = manager.get_relationships(owner) if manager else []
-    return any(rel in FAMILY_OWNER_RELATIONS and other == character.name for rel, other in relations)
-
-
-def _prop_ok(res, wanted, character):
-    """requires_property check. Value None: the property must be unset. '{actor}': it must be the
-    actor's name. '{household}' (for 'owner'): the actor, or the actor's parent or spouse;
-    '!{household}': anyone else's."""
-    props = res.props if res is not None else {}
-    for key, value in (wanted or {}).items():
-        have = _prop_value(props.get(key))
-        if value in ('{household}', '!{household}'):
-            if _household_owns(character, have) != (value == '{household}'):
-                return False
-            continue
-        value = _fmt(value, actor=character.name) if isinstance(value, str) else value
-        if value is None and have:
-            return False
-        if value is not None and have != value:
-            return False
-    return True
-
-
-# --------------------------------------------------------------------------- actions
-def _held(body, spec):
-    """The item in the inventory that an item spec names: the item itself, or for '*suffix' the
-    first held item ending with the suffix. None when nothing matches."""
-    if not spec:
-        return None
-    if spec.startswith('*'):
-        return next((i for i in body.inventory if i.endswith(spec[1:])), None)
-    return spec if spec in body.inventory else None
-
-
-def _missing(action, body):
-    """Why the actor cannot do this action now (requirements on its own body), or ''."""
-    if action.get('requires') and not _held(body, action['requires']):
-        return f"has no {action['requires'].lstrip('*')}"
-    gain = action.get('gain')
-    if gain and '{' not in gain and gain in body.inventory and not action.get('effects'):
-        return f"already has {'' if gain.endswith('s') else 'a '}{gain}"   # one branch in hand is enough: no taking it again
-    if action.get('transfer') and not _held(body, action['transfer']):
-        return f"has no {action['transfer'].lstrip('*')} to give"
-    if action.get('transfer_money') and body.money < action['transfer_money']:
-        return f"needs {action['transfer_money']:g} {body.cfg.get('currency', '')} to give".rstrip()
-    if action.get('cost') and body.money < action['cost']:
-        return f"costs {action['cost']:g} {body.cfg.get('currency', '')}".strip()
-    if action.get('requires_flag') and action['requires_flag'] not in body.flags:
-        return f"needs to be {action['requires_flag']} first"
-    if _sated(action, body):
-        return 'is ' + ' and '.join(_word(body.cfg, need, body.levels.get(need, 0.0)) for need in action['effects'])
-    return ''
-
-
-def _sated(action, body):
-    """Would this action only use up food the body does not want? (Joe ate at three bushes in a
-    row while 'not hungry'.) Such an act is no action of the world's: nothing is used and nothing
-    is refused, so chewing on is just chewing. (Refused, 'chews the apple loudly' after a first
-    bite was told as 'a loud crunching noise against the air'.)"""
-    effects = action.get('effects') or {}
-    return bool(effects) and bool(action.get('deplete') or action.get('consumes')) and all(
-        delta < 0 and body.levels.get(need, 0.0) < NEED_FELT for need, delta in effects.items())
-
-
-def _stocked(character, types):
-    """The nearest resource of these types that still has something left, else the nearest."""
-    here = _here(character)
-    found = sorted((res.props.get('remaining') == 0, world.span(character.context, here, res.xy), rid, res)
-                   for rid, res in _resources_of(character.context, types) if world.in_range(character.context, here, res))
-    return (found[0][2], found[0][3], found[0][1]) if found else None
-
-
-def _left(res):
-    """What is left of a resource that actions use up, in words; '' when it is untouched."""
-    remaining = res.props.get('remaining')
-    return '' if remaining is None else 'none left' if remaining <= 0 else 'nearly gone' if remaining == 1 else 'some left'
-
-
-def stock(character, within=6):
-    """What is left at the nearby places that have been drawn on, for the narrator: nobody was
-    shown this, so depletion was invented ('the bare stem of the depleted bush' after one meal)
-    while a bush that really was empty looked full."""
-    if not config(character.context) or not world.on(character):
-        return ''
-    here = _here(character)
-    return '; '.join(f'{rid}: {_left(res)}' for rid, res in world.listed(character.context)
-                     if _left(res) and world.in_the_neighbourhood(character.context, here, res, within))
 
 
 def _unseen(character, rid):
@@ -862,151 +499,20 @@ def _unseen(character, rid):
     return known is not None and rid not in known
 
 
-def unseen_places(character):
-    """The places behind the stage directions of available_actions(part='unseen')."""
-    return sorted(set(re.findall(r'@(\w+) \(', available_actions(character, part='unseen'))))
-
-
-def available_actions(character, part='all'):
-    """One line listing what the character could physically do here (act and dialog prompts):
-    offered_actions, joined."""
-    return '; '.join(offered_actions(character, part))
-
-
-def offered_actions(character, part='all', cut=14):
-    """What the character could physically do here, one entry for each thing.
-    part='known': what the character itself can know of (at hand, or at a place it has seen);
-    part='unseen': what lies at places it has not seen, for the director's notes to its actor.
-    The two are the same list divided, and differ from 'all' only for a character new to the
-    country. (Joe, woken in a forest he had never seen, was shown 'drink@Spring2 (4 tiles
-    Northeast)' among his surroundings and told Samantha where the spring was.)"""
-    cfg = config(character.context) if character.context else None
-    body = getattr(character, 'body', None)
-    if not cfg or body is None:
+def unseen_places(character, cut=8):
+    """The places a stranger to this country has not yet seen, nearest first: its actor's to know of
+    (stage directions), not the character's."""
+    if not getattr(character, 'unknown_land', False) or not world.on(character):
         return []
-    out, seen = [], set()
-    for action in cfg.get('actions', []):
-        missing = _missing(action, body)
-        note = f" ({missing})" if missing else ''
-        if action.get('target') == 'character':
-            if action.get('remote'):
-                out.append((bool(missing), f"{action['name']}@<anyone, wherever they are>{note}"))
-                continue
-            for other, d in _present(character):
-                if _with(character, other):
-                    out.append((bool(missing), f"{action['name']}@{other.name}{note}"))
-            continue
-        types = action.get('resource_types')
-        if not types:
-            out.append((bool(missing), action['name'] + note))
-            continue
-        if action.get('requires_property'):
-            # whose place it is decides: offer it where this character may do it (a character
-            # knows the way to its own farm), not at whichever is nearest
-            own = _eligible(character, action)
-            near = (own[1], own[2], own[0]) if own else None
-        else:
-            # the nearest with something left: an empty bush used to hide a full one further on
-            near = _stocked(character, types) if action.get('deplete') else _nearest(character, types)
-        if near is None:
-            continue
-        rid, res, d = near
-        if (action['name'], rid) in seen:
-            continue
-        seen.add((action['name'], rid))
-        if res.props.get('remaining') == 0:
-            continue
-        if action.get('deplete') and _left(res) == 'nearly gone':
-            missing = (missing + '; ' if missing else '') + 'nearly gone'
-        if world.at_its_foot(character.context, _here(character), res):
-            if getattr(character, 'unknown_land', False) and hasattr(character, 'resource_models'):
-                character.resource_models.add_resource_model(rid)   # standing at a place is having seen it
-            out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})", False))
-        else:
-            ride = world.conveyance(character.context, _here(character), res.xy)   # a car at hand, for a way too long to walk
-            by_ride = f", or about {round(world.walk(character.context, _here(character), res.xy)[0])} minutes by {ride.id}" if ride is not None else ''
-            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {world.minutes(character.context, _here(character), res.xy)} minutes' walk {_direction(_here(character), res.xy)}{by_ride}; "
-                                           f"first Move: {rid}{'; ' + missing if missing else ''})", _unseen(character, rid)))
-    # what can be done now comes first; what needs a walk or something not held is cut first
-    # (the list was cut at 12 in config order, which dropped every action with a person: a
-    # father standing with his son was never offered 'sign over the farm')
-    out = [o if len(o) == 3 else (*o, False) for o in out]
-    out = sorted(out, key=lambda o: o[0])[:cut]   # cut=None for a judge, who needs the action that cannot be done now and why
-    if part == 'unseen':
-        return [text for _, text, unseen in out if unseen]
-    out = [text for _, text, unseen in out if part == 'all' or not unseen]
-    if danger_line(character):
-        out.insert(0, 'THREAT: ' + danger_line(character))
-    return out
+    context, here = character.context, _here(character)
+    near = sorted((world.span(context, here, res.xy), rid) for rid, res in world.listed(context) if _unseen(character, rid))
+    return [rid for d, rid in near[:cut]]
 
 
-def affordance_prompt_line(character):
-    """The optional #affordance field of the act format, for worlds with affordances only."""
-    return ''   # the act format has no field for a named action: a deed is told in words, and the resolver says what it does
-    offered = available_actions(character)
-    example = next((p.split(' (')[0] for p in offered.split('; ') if p and not p.startswith('THREAT')), 'rest')
-    return ("\n#affordance for every Do: the exact label of each action it is made of, from 'You could do here' or 'Anywhere, you can also', "
-            f"joined by ' + ' (e.g. {example}; kneel + gesture to@Name), or the word passing for a small act that changes nothing. Omit for any other mode.")
-
-
-
-def do_business(context, character, label):
-    """Carry out a planned scene action ('drink@Spring1') for a character who has not done it.
-    Returns the fact line, or None when the label names no action of this world."""
-    if not config(context) or getattr(character, 'body', None) is None:
-        return None
-    chosen = _chosen(context, character, label)
-    if not chosen or chosen[0] != 'action':
-        return None
-    _, action, near, target = chosen
-    if action.get('sets') == 'sheltered' and character.body.sheltered:
-        return None   # asleep in the thicket is already sheltered there
-    character.last_affordance = None
-    fact = _apply(context, character, action, near, target, 'business', '')
-    return fact if fact and (character.last_affordance or {}).get('applied') else None
-
-
-def acts_at_a_distance(character, act):
-    """Is this Do one of the world's remote actions (sending a message)? Then the actor does
-    not walk to its target first."""
-    cfg = config(character.context)
-    if not cfg:
-        return False
-    label = (getattr(act, 'affordance', None) or '').split('@')[0].strip().lower()
-    text = (getattr(act, 'action', '') or '').lower()
-    return any(a.get('remote') and (a['name'].lower() == label or _matches(text, a.get('verbs', [])))
-               for a in cfg.get('actions', []))
-
-
-def _chosen(context, character, label):
-    """('threat', response) or ('action', action, near, target) for an #affordance label, or None."""
-    cfg = config(context)
-    label = label.strip().strip('\'"`.').split(' (')[0]
-    name, _, ref = label.partition('@')
-    name, ref = name.strip().lower(), ref.strip()
-    threat = active_threat_for(character)
-    if threat and name in threat['hazard'].get('responses', {}):
-        return ('threat', name)
-    for action in cfg.get('actions', []):
-        if action['name'].lower() != name:
-            continue
-        if action.get('target') == 'character':
-            present = _present(character, ref) if ref else _present(character)
-            return ('action', action, None, min(present, key=lambda p: p[1]) if present else None)
-        types = action.get('resource_types')
-        if not types:
-            return ('action', action, None, None)
-        res = world.place(context, ref) if ref else None
-        if res is not None and res.kind in types:
-            d = world.span(context, _here(character), res.xy)
-            at_hand = _nearest(character, types)
-            if not world.at_its_foot(context, _here(character), res) and at_hand is not None and world.at_its_foot(context, _here(character), at_hand[1]):
-                # a deed is done where the doer stands: searching under the cot in the hut was
-                # resolved to a cave out of sight, and 'the cave searched carefully' was told
-                return ('action', action, at_hand, None)
-            return ('action', action, (ref, res, d), None)
-        return ('action', action, _nearest(character, types, mentioned=ref.lower() if ref else None), None)
-    return None
+def unseen_note(character):
+    """Where the places a stranger has not seen lie, for its actor: 'Spring2 (about 9 minutes' walk west)'."""
+    context, here = character.context, _here(character) if world.on(character) else None
+    return '; '.join(f"{rid} ({world.away(context, here, world.place(context, rid).xy)})" for rid in unseen_places(character))
 
 
 def holdings(character):
@@ -1019,33 +525,6 @@ def holdings(character):
     here = '; '.join(named(character.context, p) for p in lying(character.context, _here(character)))
     return '\n'.join([f"{p.name}: {'; '.join(named(character.context, i) for i in p.body.inventory if not i.startswith(tuple(p.body.cfg.get('private_items', ())) or ('\0',))) or 'nothing'}"
                       for p in people] + ([f'Lying here, for anyone to take: {here}'] if here else []))
-
-
-# --------------------------------------------------------------------------- things that come into the world
-# A plan, or a character's deed, sometimes brings in a thing the world does not hold. It is then
-# either made real here, in the world's own terms, or refused (sim/record.py decides which).
-# Made real, a thing is one of: a prop (something nobody acts on through the world's rules: a
-# sickle, a phone), an item the world's actions use, a place of a kind the world has, or a
-# change to a body. Props are held, or lie where they were left, and change hands by the three
-# deeds in prop_offers / _prop_do.
-def item_kinds(context):
-    """The things this world's actions use (gain, need, hand over or find), by name."""
-    kinds = []
-    for action in (config(context) or {}).get('actions', []):
-        for spec in [action.get(k) for k in ('gain', 'requires', 'consumes', 'transfer')] + [f.get('item') for f in action.get('finds') or []]:
-            if spec and '{' not in spec and spec.lstrip('*') not in kinds:
-                kinds.append(spec.lstrip('*'))
-    return kinds
-
-
-def place_kinds(context):
-    """{kind of place: what can be done there}, for the kinds this map has and its actions use."""
-    kinds = {}
-    for action in (config(context) or {}).get('actions', []):
-        for kind in action.get('resource_types') or []:
-            if world.kind_called(context, kind) is not None:
-                kinds.setdefault(kind, []).append(action['name'])
-    return kinds
 
 
 def whereabouts_of(context, name):
@@ -1150,9 +629,9 @@ def lying(context, xy, hidden=False):
 
 
 def searchable(context, res):
-    """Whether this world has an action that finds things at a place of this kind."""
-    return any(a.get('finds') and (not a.get('resource_types') or res.kind in a['resource_types'])
-               for a in (config(context) or {}).get('actions', []))
+    """Whether what is left at a place of this kind is found only by searching it (its kind is
+    marked `search` in the world file): a clue put there is then hidden until someone looks."""
+    return bool((getattr(world.scenario(context), 'kinds', None) or {}).get(res.kind, {}).get('search'))
 
 
 # A thing has a state as well as a holder or a place: how it has been left by whoever last
@@ -1298,14 +777,13 @@ def _a(name):
 
 
 def add_place(context, kind, description, xy):
-    """A place of one of the world's own kinds comes into the map at xy (a pool is a Spring:
-    it can be drunk from, by the same rules). Returns (id, fact), or (None, '') for a kind this
-    world does not have."""
-    if world.kind_called(context, kind) is None or kind not in place_kinds(context):
+    """A place of one of the world's own kinds comes into the map at xy. Returns (id, fact), or
+    (None, '') for a kind this world does not have."""
+    if world.kind_called(context, kind) is None:
         return None, ''
     rid = world.add_place(context, kind, description or f'a {kind.lower()}', xy).id
     trace.event('place_added', id=rid, type=kind, description=description)
-    return rid, f"There is {description or _a(kind.lower())} here ({rid}): one can {', '.join(place_kinds(context)[kind])} there."
+    return rid, f"There is {description or _a(kind.lower())} here ({rid})."
 
 
 # Things that no action of this world covers (a shoe found in a hut, a tally stick, a page) are
@@ -1599,9 +1077,8 @@ Respond ONLY with JSON, no prose, in one of these shapes:
 
 def deed_offers(character):
     """Everything the character could do now as lines for a judge or for the actor who is sent
-    back: the world's actions, what can be done with things, the shared actions."""
-    offered = [o.strip() for o in offered_actions(character, cut=None) if o.strip()]
-    offered += [f"{name} ({PROP_GLOSS[kind].format(other=other.name if other is not None else '')})"
+    back: what can be done with things, and the shared actions."""
+    offered = [f"{name} ({PROP_GLOSS[kind].format(other=other.name if other is not None else '')})"
                 for name, (kind, item, other) in prop_offers(character).items()]
     offered += [f"{name} ({action['gloss'].format(other=other.name if other is not None else '')})"
                 for name, (action, other, item) in shared_offers(character).items()]
@@ -1714,194 +1191,7 @@ def _do_one(context, character, label, text, act_text, via):
     shared = next((v for k, v in shared_offers(character).items() if k.lower() == label.lower()), None)
     if shared:
         return 'shared', _shared_do(context, character, *shared)
-    chosen = _chosen(context, character, label)
-    if chosen and chosen[0] == 'threat':
-        # an answer to the danger, by its label: what came of it is told by the danger (_told), after the deed
-        return ('world', '') if answer_danger(context, character, active_threat_for(character), chosen[1]) else (None, None)
-    if chosen and chosen[0] == 'action':
-        _, action, near, target = chosen
-        return 'world', _apply(context, character, action, near, target, via, act_text)
     return None, None
-
-
-def _can_approach(context, character, to):
-    """A Do aimed at a resource a short walk away (config 'approach_tiles', default 8), with no
-    threat active, walks there first instead of being refused. No line-of-sight test: the
-    'You could do here' offer lists resources by distance alone, and in forest the map's
-    line of sight blocked targets 5 tiles off that the character had just been offered."""
-    return world.can_walk_over(context, _here(character), to, config(context)) and not active_threat_for(character)
-
-
-def _refuse(character, action, fact, via, target=None):
-    _record(character, action, fact, via, applied=False, target=target)
-    return fact
-
-
-def _said(act_text):
-    """The words an act carries (a message's content): what follows a colon, else what is in
-    quotes (outermost, so an apostrophe inside does not end it)."""
-    text = act_text or ''
-    if ':' in text:
-        said = text.split(':', 1)[1]
-    else:
-        quoted = re.search(r'["“](.+)["”]', text) or re.search(r"['‘](.+)['’]", text)
-        said = quoted.group(1) if quoted else ''
-    return said.strip().strip('"“”\'‘’').strip()[:160]
-
-
-def _apply(context, character, action, near, target, via, act_text=''):
-    """Check reach, stock and requirements, then apply the action's effects; returns the fact line."""
-    cfg = config(context)
-    body = character.body
-    types = action.get('resource_types')
-    resource_id = res = None
-    other = None
-    approach = ''
-    if _sated(action, body):
-        return None   # not a deed of the world's: the narration tells it as it is
-    lacking = _missing(action, body)
-    if lacking:   # before any walk: Joe walked to the mushrooms to be told he was not hungry
-        return _refuse(character, action, f"{character.name} cannot {action['name']}: {lacking}.", via,
-                       target[0].name if target else None)
-    if action.get('target') == 'character':
-        if target is None:
-            return _refuse(character, action, f"There is no one here to {action['name']}.", via)
-        other, d = target
-        if not _with(character, other) and not action.get('remote'):
-            away = world.far(context, _here(character), _here(other))
-            if not _can_approach(context, character, _here(other)):
-                return _refuse(character, action, f"{other.name} is {away} away; {character.name} must go to them first.",
-                               via, other.name)
-            minutes = travel(character, _here(other))
-            approach = f"{character.name} walks {away} to {other.name} ({round(minutes)} min). "
-        relief = action.get('target_effects') or {}
-        if relief and not (action.get('transfer') or action.get('transfer_money') or action.get('target_gain') or action.get('consumes')) and all(
-                delta < 0 and other.body.levels.get(need, 0.0) < NEED_FELT for need, delta in relief.items()):
-            # Joe's shoulder was bandaged twice while his body was 'unhurt'
-            state = ' and '.join(_word(cfg, need, other.body.levels.get(need, 0.0)) for need in relief)
-            return _refuse(character, action, approach + f"{other.name} is {state}: there is nothing to {action['name'].split()[0]}.",
-                           via, other.name)
-    elif types:
-        if near is None:
-            return _refuse(character, action, f"There is no {' or '.join(types).replace('_', ' ').lower()} in sight here.", via)
-        resource_id, res, d = near
-        if not world.at_its_foot(context, _here(character), res) and _can_approach(context, character, res.xy):
-            # the narration has usually put the character there already: walk over, then act
-            away = world.far(context, _here(character), res.xy)
-            minutes = travel(character, res.xy)
-            approach = f"{character.name} walks {away} to {resource_id} ({round(minutes)} min). "
-        if not world.at_its_foot(context, _here(character), res):
-            return _refuse(character, action, f"{resource_id} is {world.far(context, _here(character), res.xy)} {_direction(_here(character), res.xy)}; "
-                                              f"{character.name} must move there first.", via)
-        props = res.props
-        if action.get('deplete') and props.setdefault('remaining', action['deplete']) <= 0:
-            return _refuse(character, action, approach + f"There is nothing left at {resource_id}.", via)
-        if not _prop_ok(res, action.get('requires_property'), character):
-            own = _eligible(character, action)
-            elsewhere = (f" {character.name} can do that at {own[1]}, {world.far(context, _here(character), own[2].xy)} "
-                         f"{_direction(_here(character), own[2].xy)}." if own else '')
-            return _refuse(character, action, approach + f"{character.name} cannot {action['name']} at {resource_id} "
-                                                         f"({', '.join(f'{k}: {_prop_value(v)}' for k, v in props.items() if k != 'remaining') or 'not possible now'})."
-                                                         + elsewhere, via)
-    missing = _missing(action, body)
-    if missing:
-        return _refuse(character, action, approach + f"{character.name} cannot {action['name']}: {missing}.", via,
-                       other.name if other else None)
-
-    # ---- effects
-    for need, delta in (action.get('effects') or {}).items():
-        body.adjust(need, delta)
-    item = _held(body, action.get('transfer'))
-    if item and other is not None:
-        other.body.inventory.append(body.inventory.remove(item))
-        conveyed = world.place(context, item.removesuffix(action['conveys'])) if action.get('conveys') else None
-        if conveyed is not None:
-            conveyed.props['owner'] = other.name
-            context.reference_manager.declare_relationship(item.removesuffix(action['conveys']), 'owned by', other.name, 'owner of')
-    if action.get('transfer_money') and other is not None:
-        body.money -= action['transfer_money']
-        other.body.money += action['transfer_money']
-    if other is not None:
-        for need, delta in (action.get('target_effects') or {}).items():
-            was = other.body.level(need)
-            other.body.adjust(need, delta)
-            if need == _harm(cfg)['name'] and delta < 0 and was >= NEED_FELT:
-                # a wound that is tended is still a wound: one bandaging took a gored leg to
-                # 'unhurt' within the scene, and the next deed on that leg was refused
-                other.body.levels[need] = max(other.body.level(need), NEED_FELT)
-    used = _held(body, action.get('consumes'))
-    shared_with = []
-    if used:
-        body.inventory.remove(used)
-        shared_with = shared_out(context, character, used, action.get('effects') or {})
-    item = item or used or _held(body, action.get('requires'))
-    if action.get('gain'):
-        body.inventory.append(_fmt(action['gain'], actor=character.name, item=item or ''))
-    if action.get('target_gain') and other is not None:
-        received = _fmt(action['target_gain'], actor=character.name, item=item or '', said=_said(act_text)).rstrip(': ')
-        other.body.inventory.append(received)
-        other.add_perceptual_input(f'You receive a {received}', mode='internal')
-    revealed = None
-    if action.get('reveals') and other is not None:
-        revealed = [i for i in other.body.inventory if i.startswith(action['reveals'])]
-    found = None
-    concealed = lying(context, _here(character), hidden=True) if action.get('finds') else []
-    if concealed:
-        # what was put there to be found is found before the luck of the search is tried; it
-        # stays where it lies, in plain sight from now on, for anyone to take or point at
-        concealed[0].pop('hidden', None)
-        found = concealed[0]['name']
-        trace.event('thing_found', name=found, character=character.name)
-    elif action.get('finds'):
-        roll = _rng.random()
-        for f in action['finds']:
-            roll -= f.get('chance', 0)
-            if roll < 0:
-                found = f['item']
-                body.inventory.append(found)
-                break
-    if action.get('cost'):
-        body.money -= action['cost']
-    if action.get('earn'):
-        body.money += action['earn']
-    flag = action.get('sets')
-    if flag == 'sheltered':
-        body.sheltered = True
-    elif flag:
-        body.flags.add(flag)
-    # a deed that may not come off (a weld with a torch, where a kit's seal is sure): the try
-    # is made and paid for, and the place is left as it was
-    success = action.get('success')
-    failed = bool(success) and _rng.random() >= success.get('chance', 1.0)
-    for key, value in ({} if failed else action.get('sets_property') or {}).items():
-        if res is not None:
-            res.props[key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
-    if res is not None and action.get('deplete'):
-        res.props['remaining'] -= 1
-    context.simulation_time += timedelta(minutes=action.get('minutes', 10))
-    body.last_tick = context.simulation_time   # needs during the action are folded into its effect
-
-    kw = dict(resource=resource_id or 'here', target=other.name if other else '', actor=character.name, item=item or found or '')
-    where = f" at {resource_id}" if resource_id else ''
-    fact = approach + f"{character.name} {_fmt(action.get('text', action['name']), **kw)}{'' if action.get('text') else where}."
-    if failed:
-        fact = approach + f"{character.name} tries to {action['name']}{where}. " + _fmt(success.get('text', 'It does not take.'), **kw)
-    if shared_with:
-        fact += f" It was shared with {' and '.join(shared_with)}: it is used up for both, and did them the same good."
-    if action.get('finds'):
-        fact += f" {character.name} finds {found}." if found else f" {character.name} finds nothing useful."
-    if revealed is not None:
-        fact += f" {character.name} finds: {', '.join(revealed)}." if revealed else f" {character.name} finds nothing there."
-    risk = action.get('risk')
-    if risk and _rng.random() < risk.get('chance', 0):
-        for need, delta in risk.get('effects', {}).items():
-            body.adjust(need, delta)
-        fact += ' ' + _fmt(risk.get('text', ''), **kw)
-    fact += f" ({character.name} is now {body.summary()}"
-    fact += f"; {other.name} is now {other.body.summary(public=True)}.)" if other is not None else ".)"
-    _record(character, action, fact, via, applied=True, resource=resource_id, approached=bool(approach),
-            target=other.name if other else None, found=found)
-    return fact
 
 
 def _record(character, action, fact, via, applied, resource=None, approached=False, target=None, found=None):
@@ -1911,33 +1201,6 @@ def _record(character, action, fact, via, applied, resource=None, approached=Fal
     trace.event('affordance', character=character.name, action=action['name'],
                 category=action.get('category', 'survival'), applied=applied, resource=resource,
                 target=target, found=found, fact=fact, via=via, approached=approached)
-
-
-def offers(context, res, cast=()):
-    """What can be done at a resource, for the playwright's list of places. An action open to
-    only some of the cast there (a family's own farm) names them; one open to none is left out."""
-    cfg = config(context) or {}
-    cast = [c for c in cast if getattr(c, 'body', None) is not None]
-    out = []
-    for action in cfg.get('actions', []):
-        if res.kind not in (action.get('resource_types') or []):
-            continue
-        able = [c for c in cast if _prop_ok(res, action.get('requires_property'), c)]
-        if not cast or len(able) == len(cast):
-            out.append(action['name'])
-        elif able:
-            out.append(f"{action['name']} ({', '.join(c.name for c in able)} only)")
-    return out
-
-
-def _eligible(character, action):
-    """(distance, id, resource) of the nearest resource of the action's types where the
-    character meets the action's requires_property, however far; None when there is none."""
-    here = _here(character)
-    found = [(world.span(character.context, here, res.xy), rid, res)
-             for rid, res in _resources_of(character.context, action.get('resource_types') or [])
-             if _prop_ok(res, action.get('requires_property'), character)]
-    return min(found, key=lambda f: f[:2]) if found else None
 
 
 def travel(character, to, advance_clock=True):
@@ -1964,43 +1227,6 @@ def travel(character, to, advance_clock=True):
     return minutes
 
 
-# --------------------------------------------------------------------------- hazards
-def _is_night(t):
-    return t.hour < 6 or t.hour >= 20
-
-
-def _blocked(context, character, hazard):
-    blocks = hazard.get('blocked_by', [])
-    body = character.body
-    # ... or by a thing here that the world has come to know keeps this danger off (a fire, sim/keeper.py)
-    return (('sheltered' in blocks and body.sheltered) or any(b in body.flags for b in blocks)
-            or keeper.keeps_off(context, character, hazard['name']))
-
-
-def _hazard_source(context, character, hazard):
-    """The resource this hazard comes from, for this character: (id, resource) of the nearest
-    one of the source's types, in the required state, within its reach; None when there is
-    none. A hazard without a 'source' is not tied to a resource (callers check that first)."""
-    source = hazard['source']
-    best = None
-    for rid, res in _resources_of(context, source.get('resource_types') or []):
-        d = world.span(context, _here(character), res.xy)
-        if world.danger_source_near(context, _here(character), res, source.get('within', 6)) and _prop_ok(res, source.get('requires_property'), character) \
-                and (best is None or d < best[0]):
-            best = (d, rid, res)
-    return best[1:] if best else None
-
-
-def _source_gone(context, threat):
-    """True when the threat came from a resource that is no longer in the hazard's state."""
-    rid = threat.get('source')
-    if not rid:
-        return False
-    res = world.place(context, rid)
-    wanted = threat['hazard']['source'].get('requires_property')
-    return res is None or not all(_prop_ok(res, wanted, c) for c in context.actors if c.name in threat['targets'])
-
-
 def active_threat_for(character):
     threat = getattr(character.context, 'active_threat', None)
     return threat if threat and character.name in threat['targets'] else None
@@ -2022,18 +1248,14 @@ def _where(anchor, threat):
 BODY_NOTE = r'\s*\([^()]*\bis now\b[^()]*\)'   # '(Joe is now thirsty; ...)': for characters and the narrator
 
 
-# A danger, in one place. It comes on in one of three ways: a scene's set-up has it upon the cast
-# (sim/resolver.py resolve_setup names it; stage_hazard starts it), the director brings it on
-# (director_hazard), or the hours bring it (hazard_tick). It is answered only by one of its own
-# answers, as the resolver found a deed to be (answer_danger); it ends when answered, when those it
-# threatens are out of its reach or kept from it, when what it came from is gone, or when it
-# strikes. It is kept in the ledger (Context.active_threat): each of these is a change to the stage
-# inside an event. What happens is told once, by `_told`: to those present (the record), and to
-# the audience after the act it belongs to, so the page has the deed and then what came of it.
-# (Kidd's 'settles against the back wall' was found to be hiding from the gang and failed, and
-# nobody heard of it: the line it came with put nothing of the world's on the page. The two went
-# on saying the chains were drifting off, and the gang struck. Words naming a danger were also
-# read by a list of verbs, 'a gaunt grey wolf slinks out' among those it did not know.)
+# A danger, in one place (docs/dangers-design.md). The world file says in sentences what threatens
+# people there. One comes on because the play brings it: a scene's set-up has it upon the cast
+# (resolver.resolve_setup says what; stage_hazard starts it) or the director brings it on
+# (director_danger), never more than one in an act. It is then a state of the stage, in words. A
+# deed against it is ruled like any deed, put to chance on the world's odds (sim/resolver.py); it
+# ends when a deed ends it (danger_over), when those it is upon are out of its reach, or when its
+# time runs out and the world says what it does (resolver.befalls). It is kept in the ledger
+# (Context.active_threat), and each of these is a change to the stage inside an event.
 
 
 def _told(context, text):
@@ -2061,11 +1283,7 @@ def _start_threat(context, hazard, anchor, exposed):
     context._hazards_started = getattr(context, '_hazards_started', 0) + 1
     context._act_dangers = getattr(context, '_act_dangers', 0) + 1
     source_id = None
-    if hazard.get('source') and _hazard_source(context, anchor, hazard) is not None:
-        source_id, source = _hazard_source(context, anchor, hazard)
-        loc = tuple(source.xy)
-    else:
-        loc = world.danger_start(context, _here(anchor), _rng)
+    loc = world.danger_start(context, _here(anchor), _rng)
     targets = [c.name for c in exposed if world.danger_reaches(context, _here(anchor), _here(c))]
     for c in exposed:
         if c.name in targets:
@@ -2076,15 +1294,11 @@ def _start_threat(context, hazard, anchor, exposed):
     trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
 
 
-MAX_HAZARDS_PER_PLAY = 1   # from every source together: chance, the plan, the director
-
-
 def hazard_spent(context):
-    """Has this play had its danger? Bruce: dangers are to be rare. A play had a boar, the boar
-    again and a wolf by its second act, each from a set-up that merely named one."""
-    if dangers(context):   # never more than one in an act (Context.run_narrative_act counts from nothing)
-        return getattr(context, '_act_dangers', 0) >= 1
-    return getattr(context, '_hazards_started', 0) >= MAX_HAZARDS_PER_PLAY
+    """Has this act had its danger? Never more than one in an act (Context.run_narrative_act
+    counts from nothing). A play had a boar, the boar again and a wolf by its second act, each
+    from a set-up that merely named one."""
+    return getattr(context, '_act_dangers', 0) >= 1
 
 
 def may_come_on(context):
@@ -2097,26 +1311,7 @@ def stage_hazard(context, scene, cast):
     started with the scene: it threatens the cast, they must answer it, and it strikes or is driven
     off by the world's rules. (A planned boar was only words: it never acted, and the scene was
     about a branch.)"""
-    if dangers(context):   # in words, as the set-up check gave it
-        come_on(context, scene.get('danger'), cast)
-        return
-    named = str(scene.get('danger') or '').strip().lower()
-    hazard = next((h for h in (config(context) or {}).get('hazards', []) if h['name'].lower() == named), None) if named else None
-    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
-    if hazard is None or not exposed or not may_come_on(context):
-        return
-    context._hazard_last = context.simulation_time
-    _start_threat(context, hazard, exposed[0], exposed)
-
-
-# per scene from the second act on: about one play in two has one, none has two
-# (ATWAP_DIRECTOR_HAZARD overrides it, for testing)
-DIRECTOR_HAZARD_CHANCE = float(os.environ.get('ATWAP_DIRECTOR_HAZARD', 0.08))
-
-
-def _fits_now(hazard, now):
-    when = hazard.get('when', 'any')
-    return not ((when == 'night' and not _is_night(now)) or (when == 'day' and _is_night(now)))
+    come_on(context, scene.get('danger'), cast)   # in words, as the set-up check gave it
 
 
 def director_danger(context, cast, scene=None):
@@ -2147,36 +1342,8 @@ def director_danger(context, cast, scene=None):
     return reply
 
 
-def director_hazard(context, cast, act_number, scene=None):
-    """The director brings on one of the world's hazards for the scene about to be played: a
-    real one, by the world's rules, at most once in a play and in about half of plays. (Chance
-    alone gave a daytime play no danger at all, and a narrator may no longer invent one.)
-    Returns the hazard's name, or None."""
-    if dangers(context):
-        return director_danger(context, cast, scene)
-    cfg = config(context)
-    try:
-        act_number = int(act_number)
-    except (TypeError, ValueError):
-        return None
-    if act_number < 2 or not may_come_on(context) or _rng.random() >= DIRECTOR_HAZARD_CHANCE:
-        return None
-    now = context.simulation_time
-    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
-    fitting = [h for h in cfg.get('hazards', []) if _fits_now(h, now)
-               and not (h.get('source') and not any(_hazard_source(context, c, h) for c in exposed))]
-    if not exposed or not fitting:
-        return None
-    hazard = _rng.choice(fitting)
-    context._director_hazard = hazard['name']
-    context._hazard_last = now
-    trace.event('director_hazard', hazard=hazard['name'], act=act_number)
-    _start_threat(context, hazard, exposed[0], exposed)
-    return hazard['name']
-
-
 def hazard_tick(context):
-    """Roll hazard onsets and strikes for the elapsed simulation time (between one act and the next)."""
+    """Between one act and the next: has the danger on the cast been got clear of, or has its time run out?"""
     cfg = config(context)
     if not cfg:
         return
@@ -2185,71 +1352,20 @@ def hazard_tick(context):
     context._hazard_last = now
     if last is None or now <= last:
         return
-    hours = (now - last).total_seconds() / 3600
     cast = [c for c in context.actors if getattr(c, 'body', None) is not None]
-    harm_need = _harm(cfg)['name']
-
     threat = getattr(context, 'active_threat', None)
-    if dangers(context):
-        # a world that states its dangers: those it is upon get clear of it by going out of its
-        # reach; left to itself until its time runs out, it comes to a head, and the world says
-        # what it does (resolver.befalls). No dice bring one on: the play does (docs/dangers-design.md)
-        if threat:
-            targets = [c for c in cast if c.name in threat['targets']]
-            caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'])]
-            if not caught:
-                _end_threat(context, threat, f"{' and '.join(c.name for c in targets) or 'They'} {'is' if len(targets) == 1 else 'are'} out of reach of it.")
-            elif now >= threat['deadline']:
-                from sim import resolver
-                victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
-                resolver.befalls(context, victim, threat)
-        return
+    # those it is upon get clear of a danger by going out of its reach; left to itself until its
+    # time runs out, it comes to a head, and the world says what it does (resolver.befalls). No
+    # dice bring one on: the play does (docs/dangers-design.md)
     if threat:
-        hazard = threat['hazard']
         targets = [c for c in cast if c.name in threat['targets']]
-        if _source_gone(context, threat):
-            _end_threat(context, threat, hazard.get('resolved_text') or hazard.get('retreat_text', f"The {hazard['name']} is over."))
-        elif all(_blocked(context, c, hazard) for c in targets):
-            _end_threat(context, threat, hazard.get('retreat_text', f"The {hazard['name']} passes."))
-        else:
-            clear = hazard.get('escape_tiles', 8)
-            caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'], clear)]
-            if not caught:
-                _end_threat(context, threat, f"{' and '.join(c.name for c in targets)} "
-                                             f"{'is' if len(targets) == 1 else 'are'} clear of the {hazard['name']}.")
-            elif now >= threat['deadline']:
-                # it falls on one of them, the nearest, and the page says who ('its tusks catching
-                # a leg' was nobody's leg, and both bodies were hurt)
-                victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
-                victim.body.adjust(harm_need, hazard.get('harm', 0.3))
-                _end_threat(context, threat, hazard.get('strike_text', f"The {hazard['name']} strikes.")
-                            + f" It is {victim.name} who is hurt: {victim.name} is {_word(cfg, harm_need, victim.body.levels[harm_need])}.", struck=True)
-        return
-
-    if not may_come_on(context):
-        return
-    for hazard in cfg.get('hazards', []):
-        if not _fits_now(hazard, now):
-            continue
-        exposed = []
-        for c in cast:
-            try:
-                terrain = world.region(context, _here(c))
-            except Exception:
-                terrain = None
-            if hazard.get('terrain') and terrain not in hazard['terrain']:
-                continue
-            if hazard.get('source') and _hazard_source(context, c, hazard) is None:
-                continue
-            if not _blocked(context, c, hazard):
-                exposed.append(c)
-        if not exposed:
-            continue
-        p = 1 - (1 - hazard.get('chance_per_hour', 0.1)) ** hours
-        if _rng.random() >= p:
-            continue
-        _start_threat(context, hazard, exposed[0], exposed)
-        return
+        caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'])]
+        if not caught:
+            _end_threat(context, threat, f"{' and '.join(c.name for c in targets) or 'They'} {'is' if len(targets) == 1 else 'are'} out of reach of it.")
+        elif now >= threat['deadline']:
+            from sim import resolver
+            victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
+            resolver.befalls(context, victim, threat)
 
 
 def _end_threat(context, threat, text, struck=False, tell=True):
@@ -2263,59 +1379,9 @@ def _end_threat(context, threat, text, struck=False, tell=True):
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
 
 
-def danger_answers(character):
-    """The names of the answers the danger on `character` has (its 'responses'), or []: what may be
-    done about it, as the stage lists it for the actor and the resolver."""
-    threat = active_threat_for(character)
-    return list(threat['hazard'].get('responses', {}).keys()) if threat else []
-
-
 def danger_line(character):
-    """The danger on `character` with its answers, in one line, or ''."""
+    """The danger on `character`, in one line, or ''."""
     threat = active_threat_for(character)
-    if not threat:
-        return ''
-    answers = danger_answers(character)
-    return f"{threat['hazard']['description']} is {threat_position(character, threat)}" + (f"; you could {', '.join(answers)}" if answers else '')
+    return f"{threat['hazard']['description']} is {threat_position(character, threat)}" if threat else ''
 
 
-def answer_danger(context, character, threat, name):
-    """`character` answers the danger with its answer `name`, as the resolver found its deed to be
-    (an answer is never read from the deed's words). Whether it works is the world's chance, with
-    what helps it; either way it is told (_told). Returns what happened, or None when `name` is not
-    one of the danger's answers."""
-    if not threat:
-        return None
-    hazard = threat['hazard']
-    name = str(name or '').strip().lower()
-    response = next((r for n, r in hazard.get('responses', {}).items() if n.lower() == name), None)
-    if response is None:
-        return None
-    cfg = config(context)
-    p = response.get('success', 0.5)
-    for item, bonus in response.get('bonus', {}).items():
-        if item == 'fire' and keeper.keeps_off(context, character, hazard['name']):
-            p += bonus
-        elif item in character.body.inventory or item in character.body.flags:
-            p += bonus
-    context.simulation_time += timedelta(minutes=5)
-    if _rng.random() < min(0.95, p):
-        source = world.place(context, threat.get('source')) if threat.get('source') else None
-        for key, value in (response.get('sets_property') or {}).items():
-            if source is not None:
-                source.props[key] = _fmt(value, actor=character.name) if isinstance(value, str) else value
-        fact = f"{character.name} tries to {name}, and it works. " + hazard.get('retreat_text', f"The {hazard['name']} passes.")
-        _end_threat(context, threat, fact)
-    else:
-        # A stand that fails costs something the body shows and the page says. (Half a strike
-        # left Joe 'unhurt' after the boar ran through him; two scenes later the plan had him
-        # clutching his side, and the wound the last act turned on had happened off stage.)
-        harm_need = _harm(cfg)['name']
-        level = character.body.levels.get(harm_need, 0.0)
-        character.body.adjust(harm_need, max(hazard.get('harm', 0.3) / 2, NEED_FELT + 0.02 - level))
-        fail = _fmt(hazard.get('fail_text', f"the {hazard['name']} is not deterred"), actor=character.name)
-        fact = (f"{character.name} tries to {name}, but {fail}. {character.name} takes the force of it and is "
-                f"{_word(cfg, harm_need, character.body.levels[harm_need])}; {_described(hazard).lower()} is still there.")
-        _told(context, fact)
-    trace.event('hazard', phase='response', hazard=hazard['name'], character=character.name, response=name, fact=fact)
-    return fact

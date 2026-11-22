@@ -1280,8 +1280,7 @@ End response with:
 
         # Handle world interaction
         if act_mode == 'Do':
-            if not survival.acts_at_a_distance(self, act):
-                await self.approach(self._first_character(target, act))
+            await self.approach(self._first_character(target, act))
             # Get action consequences from world
             await asyncio.sleep(0)
             # the deed is one event: what it changes on the stage, the line shown for it and its
@@ -2200,7 +2199,7 @@ Respond with one act, in this form, closed by ## on a line of its own. {{$give}}
 #move the place or person walked to
 #look the name of what is looked at, or the word around
 {{$think_line}}#target the character(s) spoken to, acted on or walked to, comma separated; omit if none
-#duration minutes{{$affordance_line}}
+#duration minutes
 #leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene. When it leaves, add where to: "with Joe, to the trail northwest".
 ##
 
@@ -2222,10 +2221,8 @@ Respond only with the one act.
         do_rule = ((f"It is whatever a person could really do here with their body and what is at hand: handle what {name} holds or what lies here, "
                     "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
                     "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force."
-                    + (" What this world has rules for (buying, selling, paying, work for a wage and the like, listed under 'By the world's rules') is done as listed there, and no other way."
-                       if survival.rules(self.context) else
-                       " Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', below), in whatever way a person there would go about it."
-                       if survival.stated(self.context) else '')))
+                    + (" Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', below), in whatever way a person there would go about it."
+                       if survival.facts_note(self.context) else '')))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
                      'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
@@ -2264,7 +2261,6 @@ Respond only with the one act.
                                               "lastAct": 'see Done so far toward this task', "lastActResult": 'see What you have seen and heard lately',
                                               "say_limit": stage.say_limit(self),
                                               "here_and_now": self.physical_context(events=False),
-                                              "affordance_line": survival.affordance_prompt_line(self),
                                               "act_note": survival.act_note(self),
                                               # the scene and this actor's objective, not the play's theme: given 'is trust itself
                                               # the trap?', the actors said 'Trap—one that fed us'
@@ -3359,9 +3355,9 @@ End your response with:
             choice, reason = d['decision']
             parts.append(f"In the course of the scene {self.name} comes to choose: {choice}" + (f" ({reason})" if reason else '')
                          + f". That is not yet chosen when the scene opens; {self.name} gets there.")
-        beyond = survival.available_actions(self, part='unseen')
+        beyond = survival.unseen_note(self)
         if beyond:
-            parts.append(f"Stage directions, for choosing where to head. These lie at places {self.name} has not seen: {beyond}. "
+            parts.append(f"Stage directions, for choosing where to head. These are places {self.name} has not seen: {beyond}. "
                          f"You may Move toward one; play it as a search or a hunch with a reason {self.name} could have, "
                          f"never as knowing the way. {self.name} must not name, locate or count on such a place before reaching it.")
         missing = self.does_not_know()
@@ -3410,15 +3406,11 @@ End your response with:
             parts.append('Places you know of (a move goes to one by its name): ' + near)
         if survival.danger_line(self):
             parts.append('The danger on you: ' + survival.danger_line(self))
-        if survival.stated(self.context):
-            # a world stated in facts: how it works (no list of what may be done)
+        if survival.facts_note(self.context):   # how this world works, as its world file states it (no list of what may be done)
             parts.append('How this world works:\n' + survival.facts_note(self.context))
         known = survival.stands_note(self.context, reader=self)
         if known:   # what this person knows to stand: settled between people, or so behind the play
             parts.append('What stands, as you know it:\n' + known)
-        actions = survival.available_actions(self, part='known') if survival.rules(self.context) else ''
-        if actions:
-            parts.append("By the world's rules you could: " + actions)
         if survival.shared_line(self):
             parts.append(survival.shared_line(self))
         kept = keeper.offer_lines(self) if body is not None else []
@@ -3976,7 +3968,6 @@ end your response with:
             'llm_calls': section(llm_calls),
             'look_percept': getattr(self, 'look_percept', ''),
             'body': self.body.summary() if getattr(self, 'body', None) is not None else None,
-            'available_actions': survival.available_actions(self),
             'recent_events': list(self.context.recent_events)[-8:] if self.context else [],
         }
 

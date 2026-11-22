@@ -192,19 +192,13 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
     for actor in character.context.everyone():
         actor_genders += f'\t{actor.name}: {actor.gender}\n'
 
-    # goal and task planning see what can physically be done here; the act prompt has it in
-    # its own here-and-now block
-    could_do = ''
-    if 'here_and_now' not in addl_bindings:
-        actions = survival.available_actions(character, part='known')
-        could_do = f'\nYou could do here: {actions}' if actions else ''
     bindings = {"name":character.name,
                 "character":character.get_character_description(),
                 "drives": drives.drive_lines(character),
                 "central_narrative": character.central_narrative if character.central_narrative else 'None yet established',
                 "narrative":character.narrative.get_summary('medium'),
                 # the act and dialog prompts give the surroundings in their own here-and-now block
-                "surroundings":(character.look_percept if 'here_and_now' not in addl_bindings else 'see the here-and-now block below') + could_do,
+                "surroundings":(character.look_percept if 'here_and_now' not in addl_bindings else 'see the here-and-now block below'),
                 "time": character.context.simulation_time.isoformat(),
                 "situation": (character.context.current_state if view == 'playwright' else record.seen_by(character)) if character.context else "",
                 "actor_genders":actor_genders,

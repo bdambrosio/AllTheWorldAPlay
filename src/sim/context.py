@@ -1173,7 +1173,7 @@ End your response with:
                   "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
                   "writings": self._writings_line(actor),
-                  "clock": stage.clock(self), "stock": survival.stock(actor) or 'nothing has been used up',
+                  "clock": stage.clock(self), "stock": 'nothing has been used up',
                   "danger": record.danger(actor) or 'none',
                   "events": '\n'.join(self.witnessed(actor, n=8)) or 'nothing yet',   # what happened where the actor is
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
@@ -1793,7 +1793,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
 
         # rarely, the director brings on one of the world's dangers; the scene is then fitted to it
         with self.committing('hazard'):
-            survival.director_hazard(self, characters_in_scene, (act or {}).get('act_number'), scene)
+            survival.director_danger(self, characters_in_scene, scene)
         if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
@@ -2046,13 +2046,6 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             # task, and Joe, answering in dialog through a night, was 'rested' after standing watch
             with self.committing('time', character):
                 survival.tick(character)
-            for label in stage.pending_business(character):
-                with self.committing('deed', character):
-                    fact = survival.do_business(self, character, label)
-                    if fact:
-                        self.add_event(f'{character.name} -> {fact}', doer=character)
-                        told = re.sub(rf'^{re.escape(character.name)}\s+', '', stage.stage_line(character.name, '', fact).lstrip('. '))
-                        self.to_page(character.name, told, transcript=False)
             latest = max(latest, self.simulation_time)
         self.simulation_time = latest
         # each character's goal in the scene is judged and put away (Character.close_scene_goal)
@@ -2728,11 +2721,11 @@ Respond with one line for each thing, or the single line #none:
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'characters': '\n'.join(f"{c.name}: {' '.join(c.character.split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in people),
                               'carrying': '\n'.join(f"{c.name}: {'; '.join(c.body.inventory) or 'nothing'}" for c in people),
-                              'items': ', '.join(survival.item_kinds(self)) or 'none',
+                              'items': 'none',
                               'vehicles': ', '.join(f'{p.id} ({p.description})' for p in world.places(self) if p.vehicle) or 'none'},
                              prompt, tag='equip_cast', temp=0.2, stops=['</end>'], max_tokens=160) or ''
         given = {}
-        own = [k.lower() for k in survival.item_kinds(self)]
+        own = []
         for name, thing in re.findall(r'^\s*#has\s+([^|\n]+?)\s*\|\s*(.+?)\s*$', reply, re.M):
             holder = next((c for c in people if c.name.lower() == name.strip().lower()), None)
             thing = thing.strip(' ."\'').lower()
@@ -2761,7 +2754,7 @@ End your response with: </end>"""
         call, reading the scene's lines)."""
         title = (self.current_scene or {}).get('scene_title', '')
         start = getattr(self, '_held_at_scene_start', {})
-        consumable = set(survival.item_kinds(self))
+        consumable = set()
         for c in cast:
             body = getattr(c, 'body', None)
             if body is None:

@@ -6,7 +6,8 @@ performance (sim/land.py); other places come into it as the play needs them (sim
     (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
     is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
     from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
-    by, at `pace` metres a minute, and `by` is the word for that.
+    by, at `pace` metres a minute, and `by` is the word for that. search: what is left there is found
+    only by someone who searches the place.
   layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
     cover is what is overhead) and how many of each kind there are and where: on which ground, by
     weight; inside or near (metres from its edge) another kind; from_start, metres from where the
@@ -15,10 +16,10 @@ performance (sim/land.py); other places come into it as the play needs them (sim
 
 kinds = {
     'BusStop': {'description': 'A weathered bus stop shelter', 'radius': 3, 'shelter': True},
-    'Shop': {'description': 'A small retail shop', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
-    'Cafe': {'description': 'A cozy cafe', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
+    'Shop': {'description': 'A small retail shop', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True, 'search': True},
+    'Cafe': {'description': 'A cozy cafe', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True, 'search': True},
     'Bench': {'description': 'A weathered bench', 'radius': 2},
-    'TrashBin': {'description': 'A rusty trash bin', 'radius': 2},
+    'TrashBin': {'description': 'A rusty trash bin', 'radius': 2, 'search': True},
     'Park': {'description': 'A park with a fountain that still runs', 'radius': 8},
 }
 
