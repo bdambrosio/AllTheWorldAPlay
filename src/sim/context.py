@@ -2616,9 +2616,14 @@ Respond with these lines only, one sentence each:
         if res is None:
             trace.event('director_person_dropped', **person)
             return None
+        # someone the sketch already has in the play (a lead's client) keeps what the sketch says of
+        # them and is known to the cast as before: only a person new to the play is a stranger to
+        # it. (The director named Hu's client of ten years as its person, and from then on Hu
+        # did not know his name: he was 'sir', and 'the man at the desk'.)
+        already = any(c.name.lower() == str(person['name']).strip().lower() for c in self.everyone())
         try:
-            who = self.cast_part(person['name'], f"{person['name']}, {person['description']}", place=spot[1], wants=person['wants'],
-                                 owns=isinstance(res.owner, stage.Part), unknown=True)
+            who = self.cast_part(person['name'], f"{person['name']}, {person['description']}", place=spot[1], wants=() if already else person['wants'],
+                                 owns=isinstance(res.owner, stage.Part), unknown=not already)
         except Exception as e:
             trace.event('director_person_dropped', error=f'{type(e).__name__}: {e}', **person)
             return None
