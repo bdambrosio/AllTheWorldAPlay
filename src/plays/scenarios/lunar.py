@@ -54,16 +54,20 @@ stakes = ("On this lunar base, air, suit integrity and the failing coolant line 
 affordances = {
     'needs': {
         # 'oxygen' is suit oxygen used: it rises outside and stops inside the pressurised habitat (sheltered)
-        'oxygen': {'initial': 0.35, 'per_hour': 0.25, 'shelter_factor': 0.0, 'neglect_harm': 0.3,
+        'oxygen': {'eased': [{'by': 'refilling at the oxygen bundle or the suit station', 'at': ['Oxygentank', 'Evastation'], 'amount': 1.0, 'minutes': 10},
+                             {'by': 'breathing from another suit', 'amount': 0.25, 'minutes': 5}],
+                   'initial': 0.35, 'per_hour': 0.25, 'shelter_factor': 0.0, 'neglect_harm': 0.3,
                    'words': ('suit air plentiful', 'suit air past half', 'suit air low', 'suit air critical'),
                    'percepts': {0.5: "Your suit display flashes: oxygen past half.",
                                 0.8: "Low-oxygen alarm: your suit is chiming, and every breath feels thin."}},
-        'fatigue': {'initial': 0.3, 'per_hour': 0.06, 'shelter_factor': 0.3,
+        'fatigue': {'eased': [{'by': 'resting in a habitat module', 'at': ['Habitmodule'], 'amount': 0.4, 'minutes': 60}],
+                    'initial': 0.3, 'per_hour': 0.06, 'shelter_factor': 0.3,
                     'words': ('steady', 'tired', 'very tired', 'exhausted'),
                     'percepts': {0.5: "Working in the suit is wearing you down; your arms ache.",
                                  0.8: "You are exhausted; your hands are clumsy in the gloves."}},
     },
-    'harm': {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
+    'harm': {'eased': [{'by': 'tending the injury', 'amount': 0.2, 'minutes': 15, 'floor': 0.3}],
+             'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
     'travel_need': 'fatigue',
     'tile_minutes': 2,
     'type_nouns': {'Airlock': ['airlock', 'lock', 'hatch'], 'Gantry': ['gantry', 'coolant line', 'weld', 'line'],

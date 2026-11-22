@@ -161,6 +161,10 @@ def faults(context, character, found):
             if who is None or getattr(who, 'body', None) is None or (survival.need_called(who.body, e['need']) is None
                                                                       and survival.flag_called(who.body, e['need']) is None):
                 out.append(f"'{e['need']}' is not one of the needs the stage shows for {e.get('who') or character.name}")
+            elif survival.need_called(who.body, e['need']) and not _low(e.get('change')).startswith('wors'):
+                lacks = survival.way_lacks(context, character, who, survival.need_called(who.body, e['need']), e.get('by'))
+                if lacks:
+                    out.append(lacks)
         elif e.get('found'):
             if not any(_low(p['name']) == _low(e['found']) for p in survival.lying(context, stage.here(character), hidden=True)):
                 out.append(f"there is no '{e['found']}' hidden here")
@@ -308,11 +312,11 @@ Answer in JSON only:
 # (Untested for quality when written: 2026-11-20.)
 _SWAPS = (
     ("- What changes a body's needs (eating, drinking, resting, tending a wound) and what finds things a place holds (searching it, picking from it) happens only by one of the world's actions listed on the stage, named exactly as listed. An action marked as lacking something cannot be done. With a danger on the stage, what is done about it is one of the answers listed for it.",
-     "- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect; it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it."),
+     "- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect, by the way the stage lists for that need where it is one of them (How each need is eased: a way says what it takes, and how far it eases is the world's to say); it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it."),
     ("- Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.",
      "- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here."),
     ("""     {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},""",
-     """     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>"}},
+     """     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "by": "<when eased: the way, in the words the stage lists it for that need; or the word other>"}},
      {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
      {{"world": "<only with a danger on the stage: one of the answers listed for it, exactly as listed>"}},"""),
     ("""{{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}""",
@@ -617,8 +621,15 @@ def apply(context, character, act):
             worse = _low(e.get('change')).startswith('wors')
             if need is not None:
                 level = who.body.level(need)
-                who.body.adjust(need, 0.2) if worse else survival.eased(who.body, need)
-                trace.event('need_changed', character=who.name, need=need, change='worsened' if worse else 'eased', by=me, was=round(level, 2))
+                told = ''
+                if worse:
+                    who.body.adjust(need, 0.2)
+                else:   # by the way the world lists for it (its amount, time, cost and risk), or one step
+                    told = survival.ease(context, character, who, need, e.get('by'))
+                if told:
+                    facts.append(told)
+                trace.event('need_changed', character=who.name, need=need, change='worsened' if worse else 'eased', by=me, was=round(level, 2),
+                            now=round(who.body.level(need), 2), way=str(e.get('by') or ''))
             elif not worse and survival.flag_called(who.body, e['need']):
                 flag = survival.flag_called(who.body, e['need'])
                 who.body.flags.discard(flag)

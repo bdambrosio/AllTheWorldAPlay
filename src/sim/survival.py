@@ -189,6 +189,108 @@ def need_called(body, said):
     return None
 
 
+# ---------------------------------------------------------------------------- how a need is eased
+# A need says, where the world file introduces it, the ways it is eased and by how much
+# ('eased': a list on the need). Each way: 'by' (the words for it: 'drinking at a spring'),
+# 'amount' (how far the need falls, of 1), and what it takes: 'at' (kinds of place one must be at),
+# 'uses' (a thing held, used up), 'minutes', 'stock' (how many times a place gives it before it
+# is gone), 'risk' ({'chance', 'effects', 'text'}), 'floor' (the need falls no lower than this).
+# The resolver says which way a deed was; what it eases, and at what cost, is the world's. Eased
+# in a way the world does not list, a need falls one step in its words (`eased`).
+def ways(cfg, need):
+    """The ways this world says `need` is eased."""
+    harm = _harm(cfg or {})
+    return list(((harm if need == harm['name'] else _need_defs(cfg or {}).get(need)) or {}).get('eased') or [])
+
+
+def way_called(cfg, need, said):
+    """The way of easing `need` that `said` names, or None."""
+    said = ' '.join(str(said or '').lower().split())
+    return next((w for w in ways(cfg, need) if w['by'].lower() == said), None)
+
+
+def _how_much(amount):
+    return 'fully' if amount >= 0.7 else 'well' if amount >= 0.35 else 'a little'
+
+
+def ways_note(context):
+    """For the stage: how each need of this world is eased, by what and how much; '' when the
+    world lists no ways."""
+    cfg = config(context) or {}
+    lines = []
+    for need in list(_need_defs(cfg)) + [_harm(cfg)['name']]:
+        told = []
+        for w in ways(cfg, need):
+            takes = ([f"at {' or '.join(k.replace('_', ' ').lower() for k in w['at'])}"] if w.get('at') else []) \
+                + ([f"uses up {' or '.join(w['uses'])}"] if w.get('uses') else [])
+            told.append(f"{w['by']} ({', '.join(takes + [_how_much(w.get('amount', 0.2))])})")
+        if told:
+            lines.append(f'- {need}: ' + '; '.join(told))
+    return ('How each need is eased in this world, and how far (any other way eases it a little):\n' + '\n'.join(lines)) if lines else ''
+
+
+def _way_place(context, doer, way):
+    """The place of a kind this way needs that the doer is at, or None."""
+    return next((p for p in world.places(context) if p.kind in way['at'] and world.at_its_foot(context, _here(doer), p)), None)
+
+
+def _way_thing(doer, who, way):
+    """(holder, thing) for a thing this way uses up, held by the one eased or the doer; or None."""
+    for holder in (who, doer):
+        held = next((i for i in holder.body.inventory if str(i).lower() in {u.lower() for u in way['uses']}), None)
+        if held is not None:
+            return holder, held
+    return None
+
+
+def way_lacks(context, doer, who, need, by):
+    """Why `need` cannot be eased `by` this way here: '' when it can (or the way is not one listed)."""
+    way = way_called(config(context), need, by)
+    if way is None:
+        return ''
+    if way.get('at'):
+        place = _way_place(context, doer, way)
+        if place is None:
+            return f"{need} is eased by {way['by']} only at {' or '.join(way['at'])}, and {doer.name} is at none"
+        if way.get('stock') and place.props.get('remaining', way['stock']) <= 0:
+            return f"there is nothing left at {place.id}"
+    if way.get('uses') and _way_thing(doer, who, way) is None:
+        return f"{need} is eased by {way['by']} only with {' or '.join(way['uses'])} in hand, and neither has any"
+    return ''
+
+
+def ease(context, doer, who, need, by=None):
+    """`need` of `who` eased by what `doer` did, in the way named: by that way's amount, using up
+    what it uses, in its time, at its risk; or, in no listed way, one step. Returns what the world
+    has to add to the telling ('' mostly: the risk that fell)."""
+    cfg = config(context) or {}
+    way = way_called(cfg, need, by)
+    if way is None or way_lacks(context, doer, who, need, by):
+        listed = ways(cfg, need)
+        if listed:   # some other way: no more than the least of the ways the world lists, and never to nothing
+            who.body.adjust(need, -min(min(w.get('amount', 0.2) for w in listed), 0.15, who.body.level(need)))
+        else:        # a world that lists no ways for it: one step down in its words
+            eased(who.body, need)
+        return ''
+    place = _way_place(context, doer, way) if way.get('at') else None
+    if place is not None and way.get('stock'):
+        place.props['remaining'] = place.props.get('remaining', way['stock']) - 1
+        ledger.of(context).wrote('places')
+    if way.get('uses'):
+        holder, thing = _way_thing(doer, who, way)
+        holder.body.inventory.remove(thing)
+    level = who.body.level(need)
+    who.body.adjust(need, -min(way.get('amount', 0.2), max(0.0, level - way.get('floor', 0.0))))
+    context.simulation_time += timedelta(minutes=way.get('minutes', 5))
+    who.body.last_tick = context.simulation_time   # needs during it are folded into what it did
+    risk, told = way.get('risk'), ''
+    if risk and _rng.random() < risk.get('chance', 0):
+        for harmed, delta in risk.get('effects', {}).items():
+            who.body.adjust(harmed, delta)
+        told = risk.get('text', '')
+    return told
+
+
 @dataclass
 class Body:
     levels: dict = field(default_factory=dict)      # need -> 0..1, including the harm need

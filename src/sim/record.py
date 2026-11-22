@@ -181,6 +181,7 @@ def of(context, actor, people=None, full=False):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
+        *([survival.ways_note(context)] if full and survival.ways_note(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
         'Lying here, for anyone present to take or use: ' + ('; '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),

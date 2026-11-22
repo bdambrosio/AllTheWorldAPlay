@@ -50,15 +50,19 @@ stakes = ("For the kittens, the garden is a world of play, food, naps and small 
 # Stage business (sim/survival.py): hunting bugs, chasing, play, naps, the neighbour's dog.
 affordances = {
     'needs': {
-        'hunger': {'initial': 0.35, 'per_hour': 0.08,
+        'hunger': {'eased': [{'by': 'catching and eating a bug', 'at': ['Bug'], 'amount': 0.35, 'minutes': 5, 'stock': 3},
+                             {'by': 'nibbling seeds', 'at': ['Seed'], 'amount': 0.1, 'minutes': 5}],
+                   'initial': 0.35, 'per_hour': 0.08,
                    'words': ('full', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.5: "Your tummy rumbles; a bug would be nice.", 0.8: "You are SO hungry."}},
-        'sleepiness': {'initial': 0.2, 'per_hour': 0.1, 'shelter_factor': 0.5,
+        'sleepiness': {'eased': [{'by': 'napping', 'amount': 0.8, 'minutes': 60}],
+                       'initial': 0.2, 'per_hour': 0.1, 'shelter_factor': 0.5,
                        'words': ('bouncy', 'drowsy', 'sleepy', 'can barely keep eyes open'),
                        'percepts': {0.5: "Your eyes are getting heavy; a sunny spot looks very nice.",
                                     0.8: "You are so sleepy you keep yawning."}},
     },
-    'harm': {'name': 'scrapes', 'words': ('unruffled', 'ruffled', 'scraped', 'hurting')},
+    'harm': {'eased': [{'by': 'being groomed', 'amount': 0.15, 'minutes': 10}],
+             'name': 'scrapes', 'words': ('unruffled', 'ruffled', 'scraped', 'hurting')},
     'travel_need': 'sleepiness',
     'tile_minutes': 1,
     'type_nouns': {'Bug': ['bug', 'beetle', 'cricket'], 'Butterfly': ['butterfly'], 'Leaf': ['leaf', 'leaves'],
