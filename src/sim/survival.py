@@ -29,7 +29,7 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      'effects': {need: delta}, 'target_effects': {need: delta}, 'minutes',
                      'deplete', 'gain', 'requires', 'consumes', 'transfer': item, 'transfer_money',
                      'finds': [{'item', 'chance'}], 'earn', 'cost',
-                     'sets' ('sheltered' | 'fire' | any flag), 'ends' (a flag), 'requires_flag',
+                     'sets' ('sheltered' | 'fire' | any flag), 'requires_flag',
                      'sets_property': {key: value}, 'requires_property': {key: value or None;
                      '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
                      'risk': {'chance', 'effects', 'text'}, 'text',
@@ -84,7 +84,9 @@ def stakes_text(context, fallback=''):
     """The scenario's sentence on what is at stake physically and socially in its world, for the
     planning and act prompts; `fallback` (the engine's old wording) when the scenario has none."""
     module = world.scenario(context)
-    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{PLAN_RULE}' if config(context) else '')
+    # a world stated in facts: the planner plans from the same facts the world rules by
+    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{facts_note(context)}' if stated(context) else '') \
+        + (f'\n{PLAN_RULE}' if config(context) else '')
 
 
 # For every prompt that writes or rewrites the plan. A plan wrote 'the boar swerves, goring Joe's
@@ -112,6 +114,65 @@ def rules(context):
 # dressed). The world file says what it means and what brings it about ('states': name ->
 # {'means', 'by', 'at': kinds of place, 'minutes', 'needs': other states}); the stage shows it;
 # the resolver says when a deed makes it so or ends it; what requires it refuses without it.
+# --------------------------------------------------------------------------- a world stated in facts
+# A world file with `facts` says in sentences how its world works, and in `held` the few things no
+# deed or word gets past; it lists no actions, no ways and no states, and what a deed does there is
+# the resolver's to say each time (docs/world-facts-design.md). A world file without `facts` is
+# still ruled by its tables, until it is converted.
+HOW_FAR = {'a little': 0.15, 'well': 0.45, 'fully': 0.9}
+LIKELY = {'rare': 0.05, 'unlikely': 0.2, 'as likely as not': 0.5, 'likely': 0.8, 'almost certain': 0.95}
+
+
+def stated(context):
+    """Is this world stated in facts (and so ruled without tables)?"""
+    return bool(getattr(world.scenario(context), 'facts', None))
+
+
+def facts_note(context):
+    """How this world works and what is held in it, as its world file states them; '' for a world of tables."""
+    module = world.scenario(context)
+    facts, held = list(getattr(module, 'facts', None) or []), list(getattr(module, 'held', None) or [])
+    if not facts:
+        return ''
+    return ('The facts of this world:\n' + '\n'.join(f'- {f}' for f in facts)
+            + ('\nHeld (no deed or word gets past these):\n' + '\n'.join(f'- {h}' for h in held) if held else ''))
+
+
+def stands(context, fact, about=(), known=None):
+    """Something now stands between people: kept in these words. known: who knows it (everyone it
+    is about, when not given)."""
+    fact = ' '.join(str(fact or '').split())
+    book = ledger.of(context)
+    if not fact or any(s['fact'].lower() == fact.lower() and not s['ended'] for s in book.standing):
+        return None
+    about = [getattr(c, 'name', c) for c in about or []]
+    entry = {'fact': fact, 'about': about, 'known': [getattr(c, 'name', c) for c in (known if known is not None else about)],
+             'since': context.simulation_time, 'ended': None, 'event': book.open[-1] if book.open else None}
+    book.standing.append(entry)
+    trace.event('stands', fact=fact, about=about, known=entry['known'])
+    return entry
+
+
+def no_longer_stands(context, words):
+    """The standing fact these words give has been ended by what was just done."""
+    low = ' '.join(str(words or '').lower().split()).strip(' .')
+    for s in ledger.of(context).standing:
+        if low and not s['ended'] and s['fact'].lower().strip(' .') == low:
+            s['ended'] = context.simulation_time
+            ledger.of(context).wrote('standing')
+            trace.event('stands_ended', fact=s['fact'])
+            return s
+    return None
+
+
+def stands_note(context, reader=None):
+    """What stands, oldest first: all of it (reader None: the world's own calls and the planners),
+    or what `reader` knows of it. '' when nothing does."""
+    name = getattr(reader, 'name', reader)
+    rows = [s for s in ledger.of(context).standing if not s['ended'] and (name is None or name in s['known'])][-24:]
+    return '\n'.join(f"- {s['fact']}" + ('' if name is not None else f" (known to {', '.join(s['known']) or 'nobody yet'})") for s in rows)
+
+
 def states(context):
     return dict((config(context) or {}).get('states') or {})
 
@@ -127,8 +188,6 @@ def state_lacks(context, doer, who, said):
     if name is None:
         return f"'{said}' is not one of the states this world keeps"
     about = states(context)[name]
-    if about.get('given'):   # so of someone when the play opens, and not to be made so by anything done in it
-        return f"nothing done in the play makes anyone {name}: it is so of those of whom the play says it"
     if about.get('at') and not any(p.kind in about['at'] and world.at_its_foot(context, _here(who), p) for p in world.places(context)):
         return f"{who.name} becomes {name} only by {about.get('by', name)}, at {' or '.join(about['at'])}, and is at none"
     missing = [n for n in about.get('needs') or [] if n not in who.body.flags]
@@ -148,25 +207,16 @@ def set_state_of(context, doer, who, said, on=True):
     trace.event('state_changed', character=who.name, state=name, on=bool(on), by=doer.name)
 
 
-def state_end_lacks(context, said):
-    """Why this state cannot be ended by this deed: '' when it can."""
-    name = state_called(context, said)
-    if name is None:
-        return f"'{said}' is not one of the states this world keeps"
-    about = states(context)[name]
-    return f"{name} is ended only by {about.get('ended_by', 'what the world rules on')}, by the world's rule for it" if about.get('given') else ''
-
-
 def states_note(context, people):
     """For the stage: the states this world keeps, what brings each about, and who is in which."""
     kept = states(context)
     if not kept:
         return ''
-    lines = [f"- {name}: {a.get('means', name)}; " + ('so of those named below as the play opens, and ended by ' + a.get('ended_by', 'nothing') if a.get('given') else f"brought about by {a.get('by', name)}")
+    lines = [f"- {name}: {a.get('means', name)}; brought about by {a.get('by', name)}"
              + (f" (at {' or '.join(k.replace('_', ' ').lower() for k in a['at'])})" if a.get('at') else '')
              + (f"; needs one to be {' and '.join(a['needs'])} first" if a.get('needs') else '') for name, a in kept.items()]
     now = '; '.join(f"{c.name}: {', '.join(n for n in kept if n in c.body.flags) or 'none of them'}" for c in people if getattr(c, 'body', None) is not None)
-    return 'States this world keeps (so of a person only as said here):\n' + '\n'.join(lines) + f'\nNow: {now}'
+    return 'States this world keeps (so of a person only once a deed has made it so):\n' + '\n'.join(lines) + f'\nNow: {now}'
 
 
 def places_near(character, cut=14):
@@ -1770,8 +1820,6 @@ def _apply(context, character, action, near, target, via, act_text=''):
         body.sheltered = True
     elif flag:
         body.flags.add(flag)
-    if action.get('ends'):   # a state the deed is the end of (a renewal signed: no longer up for renewal)
-        body.flags.discard(action['ends'])
     # a deed that may not come off (a weld with a torch, where a kit's seal is sure): the try
     # is made and paid for, and the place is left as it was
     success = action.get('success')

@@ -3720,6 +3720,12 @@ End your response with </end>
             return e
         return {**e, 'text': e['lasting']} if e['lasting'] else None
 
+    def stands(self, fact, about=(), known=None):
+        """For a play file: something that stands between people when the play opens (a contract
+        running out, a debt), in a sentence. known: who knows it; those it is about, when not given."""
+        from sim import survival
+        return survival.stands(self, fact, about, known)
+
     def say(self, speaker, text, hearers=(), to=None):
         """A line spoken in the play: into the transcript as the audience is shown it, and into the
         record as heard by the speaker and `hearers`. to: the one it is said to, when there is one."""

@@ -44,27 +44,39 @@ layout = {
 
 stakes = ("In this peasant village, land, money, harvest and inheritance are what is at stake: who holds which "
           "farm and which strip of land, who works it, what the wheat fetches at market, who pays whom, and who will inherit. Heat, hard "
-          "labour and thirst are real. Land is a farm, or a strip of wheat land beside it; each has its own deed and passes whole. "
-          "It belongs to whoever its owner has signed the deed over to: the owner holds "
-          "the deed and signs it over only in person, with the heir standing there. Use these to make concrete, "
+          "labour and thirst are real. Use these to make concrete, "
           "checkable goals and obstacles tied to the farms, the mill, the market and the family.")
 
-# Stage business (sim/survival.py): field work, wheat, flour and bread, money, land claims.
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    "Land is a farm, or a strip of wheat land beside it; each has its own deed and passes whole. It belongs to whoever "
+    "its owner has signed the deed over to: the owner holds the deed and signs it over only in person, with the heir standing there.",
+    "A farm with no owner may be taken into possession by pacing out its boundaries; it takes about half an hour.",
+    "A family harvests the wheat on its own land: an afternoon's reaping, about three hours, brings in a sack of wheat "
+    "and leaves the reaper tired and thirsty.",
+    "A day's labour on another family's land, about three hours of an afternoon, is paid about 2 francs, and is as tiring.",
+    "The miller grinds a sack of wheat into a sack of flour for about 1 franc; it takes about an hour.",
+    "At the market a sack of wheat sells for about 6 francs and a sack of flour for about 9; a loaf of bread costs about 1 franc.",
+    "The blacksmith mends tools for about 2 francs; it takes about an hour.",
+    "Water drawn at a well eases thirst well. A loaf of bread is a meal. Rest indoors or in the shade eases tiredness a little.",
+]
+held = [
+    "Land passes only by its deed, signed over by its owner in person with the heir standing there, and passes whole.",
+    "Money comes into the play only as a wage or a sale these facts name.",
+]
+
+# Bodies (sim/survival.py): the needs this world keeps count of and how they rise; money; its one danger.
 affordances = {
     'needs': {   # late afternoon on a hot summer day
-        'thirst': {'eased': [{'by': 'drawing and drinking water at a well', 'at': ['Well'], 'amount': 0.7, 'minutes': 10}],
-                   'initial': 0.4, 'per_hour': 0.06, 'neglect_harm': 0.03,
+        'thirst': {'initial': 0.4, 'per_hour': 0.06, 'neglect_harm': 0.03,
                    'words': ('not thirsty', 'thirsty', 'very thirsty', 'parched'),
                    'percepts': {0.5: "The heat has dried your mouth; you want water from the well.",
                                 0.8: "Your head swims in the heat; you need water."}},
-        'hunger': {'eased': [{'by': 'eating a loaf of bread', 'uses': ['loaf of bread'], 'amount': 0.5, 'minutes': 15}],
-                   'initial': 0.3, 'per_hour': 0.03,
+        'hunger': {'initial': 0.3, 'per_hour': 0.03,
                    'words': ('fed', 'hungry', 'very hungry', 'famished'),
                    'percepts': {0.5: "You are hungry; supper is a long way off.",
                                 0.8: "Hunger gnaws at you; you need bread."}},
-        'fatigue': {'eased': [{'by': 'resting indoors', 'at': ['Farm', 'Mill', 'Blacksmith'], 'amount': 0.1, 'minutes': 10},
-                              {'by': 'resting in the shade', 'amount': 0.15, 'minutes': 30}],
-                    'initial': 0.35, 'per_hour': 0.03, 'shelter_factor': 0.5,
+        'fatigue': {'initial': 0.35, 'per_hour': 0.03, 'shelter_factor': 0.5,
                     'words': ('fresh', 'tired', 'worn out', 'spent'),
                     'percepts': {0.5: "Your back aches from the day's work.",
                                  0.8: "You are worn out; you can barely lift your arms."}},
@@ -73,46 +85,6 @@ affordances = {
     'travel_need': 'fatigue',
     'currency': 'francs', 'initial_money': 5,
     'tile_minutes': 4,
-    'type_nouns': {'Well': ['well'], 'Mill': ['mill', 'miller'], 'Blacksmith': ['blacksmith', 'forge', 'smithy'],
-                   'Farm': ['farm', 'field', 'fields', 'wheat', 'land', 'plot'], 'Market': ['market', 'stall'],
-                   'Strip': ['strip', 'strips']},
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [
-        # hiring out is on another family's land and is said as such: cutting wheat is 'harvest
-        # family wheat' (it stood first with the same verbs, so Jean harvesting became day labour)
-        {'name': 'work for wages', 'category': 'work', 'verbs': ['hire out', 'hire myself', 'labour for', 'work for wages', 'day labour', 'day-wage'],
-         'named_verbs': ['hire'], 'resource_types': ['Farm', 'Strip'], 'requires_property': {'owner': '!{household}'},
-         'effects': {'fatigue': 0.25, 'thirst': 0.15}, 'earn': 2, 'minutes': 180,
-         'text': 'labours in the fields at {resource} for a day-wage'},
-        {'name': 'take possession', 'category': 'work', 'verbs': ['claim', 'take possession', 'stake a claim', 'pace out'],
-         'resource_types': ['Farm'], 'requires_property': {'owner': None}, 'sets_property': {'owner': '{actor}'},
-         'minutes': 30, 'text': 'takes possession of {resource}, pacing out its boundaries'},
-        # '{household}': the farm is the actor's own, or a parent's or spouse's (see laTerre.py)
-        {'name': 'harvest family wheat', 'category': 'work', 'verbs': ['harvest', 'reap', 'scythe', 'bring in the wheat'],
-         'named_verbs': ['work', 'cut', 'gather'], 'resource_types': ['Farm', 'Strip'], 'requires_property': {'owner': '{household}'},
-         'effects': {'fatigue': 0.3, 'thirst': 0.15}, 'gain': 'sack of wheat', 'minutes': 180,
-         'text': "harvests wheat on the family's land at {resource}"},
-        {'name': 'grind wheat', 'category': 'work', 'verbs': ['grind', 'mill'], 'resource_types': ['Mill'],
-         'requires': 'sack of wheat', 'consumes': 'sack of wheat', 'gain': 'sack of flour', 'cost': 1, 'minutes': 60,
-         'text': "has the wheat ground at {resource}, paying the miller's fee"},
-        {'name': 'sell wheat', 'category': 'work', 'verbs': ['sell', 'trade'], 'resource_types': ['Market'],
-         'requires': 'sack of wheat', 'consumes': 'sack of wheat', 'earn': 6, 'minutes': 40,
-         'text': 'sells a sack of wheat at {resource}'},
-        {'name': 'sell flour', 'category': 'work', 'verbs': ['sell', 'trade'], 'resource_types': ['Market'],
-         'requires': 'sack of flour', 'consumes': 'sack of flour', 'earn': 9, 'minutes': 40,
-         'text': 'sells a sack of flour at {resource}'},
-        {'name': 'buy bread', 'verbs': ['buy', 'purchase'], 'resource_types': ['Market'], 'cost': 1, 'gain': 'loaf of bread',
-         'minutes': 10, 'text': 'buys a loaf of bread at {resource}'},
-        {'name': 'have tools mended', 'category': 'work', 'verbs': ['mend', 'repair', 'sharpen', 'shoe'], 'resource_types': ['Blacksmith'],
-         'cost': 2, 'sets': 'tools mended', 'minutes': 60, 'text': 'has tools mended at {resource}'},
-        {'name': 'pay', 'category': 'social', 'target': 'character', 'verbs': ['pay', 'hand over', 'settle'],
-         'transfer_money': 2, 'minutes': 2, 'text': 'pays {target} two francs'},
-        # a farm or a strip passes when its owner, holding its deed, signs it over with the heir standing there
-        {'name': 'sign over the farm', 'category': 'social', 'target': 'character',
-         'verbs': ['sign over', 'sign the deed', 'signs the deed', 'put my mark', 'makes his mark', 'make my mark', 'deed the farm'],
-         'transfer': '*deed', 'conveys': ' deed', 'minutes': 10, 'text': 'signs the {item} over to {target}'},
-    ],
     'hazards': [
         {'name': 'hailstorm', 'description': 'a black summer hailstorm rolling in over the fields', 'when': 'day',
          'terrain': ['Field', 'Grassland'], 'chance_per_hour': 0.04, 'blocked_by': ['sheltered'],

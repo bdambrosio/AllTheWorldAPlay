@@ -2219,7 +2219,9 @@ Respond only with the one act.
                     "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
                     "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force."
                     + (" What this world has rules for (buying, selling, paying, work for a wage and the like, listed under 'By the world's rules') is done as listed there, and no other way."
-                       if survival.rules(self.context) else '')))
+                       if survival.rules(self.context) else
+                       " Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', below), in whatever way a person there would go about it."
+                       if survival.stated(self.context) else '')))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
                      'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
@@ -3392,6 +3394,12 @@ End your response with:
             parts.append('Places you know of (a move goes to one by its name): ' + near)
         if survival.danger_line(self):
             parts.append('The danger on you: ' + survival.danger_line(self))
+        if survival.stated(self.context):
+            # a world stated in facts: how it works, and what this person knows to stand (no list of what may be done)
+            parts.append('How this world works:\n' + survival.facts_note(self.context))
+            known = survival.stands_note(self.context, reader=self)
+            if known:
+                parts.append('What stands, as you know it:\n' + known)
         actions = survival.available_actions(self, part='known') if survival.rules(self.context) else ''
         if actions:
             parts.append("By the world's rules you could: " + actions)

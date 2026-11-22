@@ -165,6 +165,10 @@ class Ledger:
         # 'what', 'kind' ('standing' | 'later'), 'event'}. (Kept only in the trace, an agreement
         # made in one scene was struck from the next one's set-up as never made.)
         self.promised = Kept(self, 'promised')
+        # what stands between people: {'fact', 'about' [names], 'known' [names], 'since', 'ended', 'event'}.
+        # A thing settled (a contract signed, a debt agreed, land made over) is kept in the words it
+        # was settled in, and every later ruling is shown it (docs/world-facts-design.md)
+        self.standing = Kept(self, 'standing')
         # the danger on the cast, or None: {'hazard', 'targets', 'location', 'source', 'deadline'}
         # (sim/survival.py). Kept here so that its coming on, an answer to it and its end belong
         # to an event like any other change to the stage.

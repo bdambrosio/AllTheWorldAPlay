@@ -106,8 +106,11 @@ Xue.add_perceptual_input("Xiaoyu is a client of Hu's and a prime poaching target
 for character in (Hu, Xue, Xiaoyu, Yangho):
     character.add_perceptual_input("Xiaoyu's contract with Hu and Yangho's contract with Xue both run out this Friday evening, 17 May. "
                                    "Neither renewal is signed.", mode='internal')
-for client in (Xiaoyu, Yangho):
-    client.body.flags.add('up for renewal')
+# what stands when the play opens (the world rules by it, and those named know it)
+W.stands("Xiaoyu's company is insured with Hu under a contract that runs out on the evening of Friday 17 May; it is up for renewal, "
+         "and no contract for the coming year is signed.", about=['Xiaoyu', 'Hu'], known=['Hu', 'Xue', 'Xiaoyu', 'Yangho'])
+W.stands("Yangho's company is insured with Xue under a contract that runs out on the evening of Friday 17 May; it is up for renewal, "
+         "and no contract for the coming year is signed.", about=['Yangho', 'Xue'], known=['Hu', 'Xue', 'Xiaoyu', 'Yangho'])
 
 
 # the day starts with Hu and Xue at home, the others at work or at the university
@@ -116,7 +119,7 @@ for character, place in ((Hu, 'HuDingApartment'), (Xue, 'XueApartment'), (Qiu, '
                          (Ding, 'UniversityOffice'), (Wang, 'UniversityOffice'),
                          (Xiaoyu, 'XiaoyuOffice'), (Yangho, 'YanghoOffice')):
     world.put_at(character, place)
-# whose office each is: its own work is done there (the world's rules: plays/scenarios/city.py)
+# whose office each is
 for character, place in ((Hu, 'HuOffice'), (Xue, 'XueOffice'), (Xiaoyu, 'XiaoyuOffice'), (Yangho, 'YanghoOffice'), (Ding, 'UniversityOffice')):
     world.place(W, place).props['owner'] = character.name
     W.reference_manager.declare_relationship(place, 'owned by', character.name, 'owner of')

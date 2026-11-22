@@ -50,51 +50,40 @@ stakes = ("Physical needs (water, food, rest, shelter) and natural hazards (wolv
           "stakes in this wilderness: use them to create concrete, checkable goals and obstacles tied to places and "
           "things, and keep any mystery grounded in them.")
 
-# Stage business (sim/survival.py): needs rise with simulation time, resources have affordances,
-# and natural hazards appear. Effects are mechanical; the LLM only narrates them.
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    "A spring gives clean water: a drink there eases thirst fully.",
+    "A berry bush or an apple tree gives about three helpings before it is bare. A helping eaten where it grows eases "
+    "hunger well; berries or an apple carried off and eaten later ease it a little.",
+    "Mushrooms grow in patches of about two helpings. A helping eases hunger a little, and they are sometimes bad: "
+    "about one time in three, cramps and nausea follow within the hour.",
+    "Sleep eases tiredness fully and takes about four hours. Half an hour's rest under shelter (a cave, a hut, a thicket) "
+    "eases it well; twenty minutes' rest in the open, a little.",
+    "A wound cleaned and bound is eased a little; it does not heal in a day.",
+    "The hut and the cave have been used by someone before: a careful search of either takes about twenty minutes and now "
+    "and then turns up a knife or a length of rope.",
+]
+held = []
+
+# Bodies (sim/survival.py): the needs this world keeps count of and how they rise; its dangers.
 affordances = {
     'needs': {   # where they start: thirsty from the night
-        'thirst': {'eased': [{'by': 'drinking at a spring', 'at': ['Spring'], 'amount': 0.8, 'minutes': 5}],
-                   'initial': 0.45, 'per_hour': 0.08, 'neglect_harm': 0.05,
+        'thirst': {'initial': 0.45, 'per_hour': 0.08, 'neglect_harm': 0.05,
                    'words': ('not thirsty', 'thirsty', 'very thirsty', 'desperately thirsty'),
                    'percepts': {0.5: "Your mouth is dry; you have not had water for a while.",
                                 0.8: "Thirst is becoming hard to ignore; your head aches and your lips are cracked."}},
-        'hunger': {'eased': [{'by': 'eating from a berry bush or an apple tree', 'at': ['Berries', 'Apple_Tree'], 'amount': 0.4, 'minutes': 10, 'stock': 3},
-                             {'by': 'eating mushrooms where they grow', 'at': ['Mushrooms'], 'amount': 0.3, 'minutes': 10, 'stock': 2,
-                              'risk': {'chance': 0.3, 'effects': {'injury': 0.3}, 'text': 'Soon after, cramps and nausea hit hard.'}},
-                             {'by': 'eating berries or an apple that is carried', 'uses': ['berries', 'apple'], 'amount': 0.3, 'minutes': 5}],
-                   'initial': 0.3, 'per_hour': 0.04, 'neglect_harm': 0.05,
+        'hunger': {'initial': 0.3, 'per_hour': 0.04, 'neglect_harm': 0.05,
                    'words': ('not hungry', 'hungry', 'very hungry', 'starving'),
                    'percepts': {0.5: "Your stomach is empty and growling.",
                                 0.8: "Hunger makes you light-headed and weak."}},
-        'fatigue': {'eased': [{'by': 'sleeping', 'amount': 1.0, 'minutes': 240},
-                              {'by': 'resting under shelter', 'at': ['Cave', 'Hut', 'Thicket'], 'amount': 0.3, 'minutes': 30},
-                              {'by': 'resting a while', 'amount': 0.15, 'minutes': 20}],
-                    'initial': 0.25, 'per_hour': 0.05, 'shelter_factor': 0.3,
+        'fatigue': {'initial': 0.25, 'per_hour': 0.05, 'shelter_factor': 0.3,
                     'words': ('rested', 'tired', 'very tired', 'exhausted'),
                     'percepts': {0.5: "Your legs are heavy; you are getting tired.",
                                  0.8: "You are exhausted; every step is an effort and you need rest."}},
     },
-    'harm': {'eased': [{'by': 'tending the wound', 'amount': 0.2, 'minutes': 15, 'floor': 0.3}],
-             'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
+    'harm': {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
     'travel_need': 'fatigue',
     'tile_minutes': 2,
-    'type_nouns': {'Spring': ['water', 'stream', 'pool', 'spring'], 'Berries': ['berry', 'berries'],
-                   'Apple_Tree': ['apple', 'apples'], 'Mushrooms': ['mushroom', 'mushrooms', 'fungus', 'fungi'],
-                   'Fallen_Branch': ['branch', 'branches', 'stick', 'wood', 'log'],
-                   'Thicket': ['thicket', 'bush', 'undergrowth'], 'Cave': ['cave', 'cavern'], 'Hut': ['hut', 'cabin', 'shack']},
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [   # a deed's action is chosen by the model from these labels (survival.classify_deed); verbs serve spoken claims and threat responses
-        # (No 'build a fire' here. How a fire is made, fed, banked and put out is not written ahead: the
-        # keeper models it when someone first sets about one, sim/keeper.py. The wolf is still 'blocked_by'
-        # fire below: that is the name a model's effect is matched to.)
-        {'name': 'search', 'category': 'explore', 'verbs': ['search', 'rummage', 'investigate'], 'named_verbs': ['explore', 'examine', 'inspect'],
-         'resource_types': ['Hut', 'Cave'], 'finds': [{'item': 'knife', 'chance': 0.25}, {'item': 'rope', 'chance': 0.25}],
-         'minutes': 20, 'deplete': 2, 'text': 'searches {resource} carefully'},
-        # an apple can be picked, carried, eaten later and handed over, like berries (a play
-        # planned 'she picks an apple and holds it out to him': the tree could only be eaten at)
-    ],
     'hazards': [
         {'name': 'wolf', 'description': 'a gaunt grey wolf', 'when': 'night', 'terrain': ['Forest', 'Clearing', 'Meadow'],
          'chance_per_hour': 0.35, 'blocked_by': ['sheltered', 'fire'], 'minutes_to_strike': 40, 'harm': 0.4,

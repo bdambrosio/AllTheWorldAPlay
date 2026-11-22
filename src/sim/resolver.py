@@ -49,7 +49,8 @@ RESOLVE = """You keep the physical world of an improvised play. A character is a
 {leaves}
 How this world works:
 - It is the world the setting describes. What an ordinary person could do there with their body and what is at hand can be done, though it take time and effort (a fire worked up from dry wood, a shelter of boughs); what they could not, cannot, however the deed is worded.
-- The stage above is the whole truth of who holds what and what lies here. A deed can use only what its doer holds, what lies here, what another person here gives or holds out, and what this place gives. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
+- The stage above is the truth of who holds what, and of every thing the play has so far had to do with. Beside those, a place has to hand what a place of its kind plainly has (a kitchen its cups, plates and forks, a bar its glasses and bottles, a wood its sticks and stones): such a thing is there, and the first deed to use it says it as a new effect, from the place. What is particular is only where the stage has it: a thing someone owns or has named (the grey suit, the car keys, a letter), money, food and drink in a world where they are hard come by, and anything the stage shows elsewhere.
+- A deed can use only what its doer holds, what lies here, what another person here gives or holds out, and what this place gives or plainly has. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
 - Ordinary handling of a thing that is here needs no leave: pick it up, put it down, hand it over, hold it out or up to be seen, pocket it, open, shut, fold, tear, wipe or turn it, set it on something, read it. Each is an effect: say it.
 - A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect, by the way the stage lists for that need where it is one of them (How each need is eased: a way says what it takes, and how far it eases is the world's to say); it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it.
 - What the world rules on is listed on the stage (The world's rules): buying, selling and paying, work for a wage, what changes hands by deed, a search that may or may not find something, a repair that may not take. Such a thing happens only by its rule, named exactly as listed, and one marked as lacking something cannot be done; nothing is bought, sold, earned or paid any other way.
@@ -83,7 +84,7 @@ Answer in JSON only:
      {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
      {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
      {{"who": "{name}", "goes": "<a place named on the stage (one a few steps off is stepped over to, and the scene goes on), a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
-     {{"new": "<a thing now made or picked>", "from": "<the place, or the things here, it comes from>"}}],
+     {{"new": "<a thing now made or picked, or taken up from what this place plainly has>", "from": "<the place, or the things here, it comes from>"}}],
   "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
   "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, only what is done, no words spoken, 30 words at most>"}}
 </end>"""
@@ -93,6 +94,27 @@ AGAIN = """
 Your answer could not be applied to the stage:
 {faults}
 Answer again, in the same form, from the stage as it is given."""
+
+
+def _stated(text):
+    """The same instructions for a world stated in facts (survival.stated): its facts, what is
+    held and what stands in place of the rules, the listed ways and the states."""
+    for old, new in _STATED:
+        assert text.count(old) == 1, old[:60]
+        text = text.replace(old, new)
+    return text
+
+
+_STATED = [
+    ("- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect, by the way the stage lists for that need where it is one of them (How each need is eased: a way says what it takes, and how far it eases is the world's to say); it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it.\n- What the world rules on is listed on the stage (The world's rules): buying, selling and paying, work for a wage, what changes hands by deed, a search that may or may not find something, a repair that may not take. Such a thing happens only by its rule, named exactly as listed, and one marked as lacking something cannot be done; nothing is bought, sold, earned or paid any other way.\n- A state this world keeps (States, on the stage) is so of a person only when a deed makes it so, in the way listed for it, and stays so until a deed ends it: say that as a becomes or a no_longer effect.\n",
+     '- The facts of this world are on the stage. They are true here, with their sums and their times, and are read with sense: what they say of one thing is a guide to things like it. What they do not speak of goes as it ordinarily would in such a world.\n- What is held (Held, on the stage) no deed or word gets past, however it is put and whoever asks. Where a deed would break one, that part is not done, and why says which. In "held", name each one that bears on this deed and how it stands.\n- What stands (on the stage) has been settled between people, and is so. A deed that settles something others will later have to reckon with (a contract signed, a debt agreed, a thing sold, land made over) is a stands effect: one plain sentence, with the day. A thing simply bought, sold, eaten or handed over is not: the stage shows it already. Where it ends something that stood, give that sentence, word for word, in ends.\n- A body\'s needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here. Say it as a need effect, and how far: a little, well or fully, as the facts and ordinary sense have it (a mouthful a little, a meal well). Half of a thing eases less than the whole and leaves the other half: say the state the thing is left in. It is done whether or not the body was in want.\n- Money is on the stage (Bodies). It moves only as a money effect, from the one who pays to the one paid, in the sum the facts give or the people have agreed. Someone outside the scene who is paid, or pays, in the ordinary way of this world (the bar, the baker, an employer) is named in plain words. Nobody pays what they do not have, and no money comes from nowhere.\n- A thing that leaves the play by the deed (eaten, drunk, burnt, sold to someone outside the scene) is a gone effect: it is then nowhere. A place that gives a thing which runs out (a bush, a shelf, a woodpile) is left with a mark saying how much is left, and a later deed is ruled by that mark.\n- A deed takes the time it would take: give it in minutes when it is more than a moment.\n- Where a deed may or may not come off, or may go badly (a search, a doubtful mouthful, a repair), do not decide it. Say how likely it is to go as the doer means, from the facts and from how things stand here, and what follows either way: the draw is made for you.\n- Words reach someone who is not here only by a means the facts give (a phone, a radio): say it as a sent effect.\n'),
+    ('     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "by": "<when eased: the way, in the words the stage lists it for that need; or the word other>"}},\n',
+     '     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "how_far": "<a little, well or fully>"}},\n     {{"thing": "<exact name>", "gone": "<how it leaves the play: eaten, drunk, burnt, sold to the dealer>"}},\n     {{"money": <the sum, a number>, "from": "<who pays: a person here by name, or in plain words someone outside the scene>", "to": "<who is paid, likewise>"}},\n     {{"stands": "<what is now settled, one plain sentence with the day>", "about": ["<each person it concerns, by name>"], "ends": "<a sentence under What stands that this ends, word for word; else empty>"}},\n     {{"sent": "<the words sent>", "to": "<the person they reach, by name, wherever they are>", "by": "<the means the facts give>"}},\n     {{"chance": "<how likely it goes as the doer means: rare, unlikely, as likely as not, likely or almost certain>", "if_so": [<the effects if it does, in these same forms>], "so_page": "<what is then seen, one short sentence>", "if_not": [<the effects if it does not>], "not_page": "<what is then seen>"}},\n'),
+    ('     {{"world": "<one of the world\'s rules listed on the stage, the whole of the part before the bracket, with its @place or @person, exactly as listed; or, with a danger on the stage, one of the answers listed for it>"}},\n     {{"who": "<the person it is now so of>", "becomes": "<one of the states this world keeps, by its name on the stage>"}},\n     {{"who": "<the person it is no longer so of>", "no_longer": "<a state the stage shows them in>"}},\n',
+     '     {{"world": "<only with a danger on the stage: one of the answers listed for it, exactly as listed>"}},\n'),
+    ('  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done',
+     '  "minutes": <about how long the deed takes; 0 for a moment>,\n  "held": "<each thing held that bears on this deed, and how it stands; empty if none bears>",\n  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done'),
+]
 
 
 def _low(value):
@@ -162,11 +184,32 @@ def faults(context, character, found):
             chosen = survival._chosen(context, character, str(e['world']))
             if chosen is None:
                 out.append(f"'{e['world']}' is not one of the world's rules, nor an answer to a danger, as the stage lists them")
+        elif e.get('money') is not None:
+            payer = _person(context, character, e.get('from'))
+            if not isinstance(e['money'], (int, float)) or isinstance(e['money'], bool) or e['money'] <= 0:
+                out.append('a sum of money is a number above nothing')
+            elif payer is None and _person(context, character, e.get('to')) is None:
+                out.append('money moves from or to someone who is here')
+            elif payer is not None and getattr(payer, 'body', None) is not None and payer.body.money < e['money']:
+                out.append(f"{payer.name} has only {payer.body.money:g} {payer.body.cfg.get('currency', '')}".strip())
+        elif e.get('stands'):
+            if len(str(e['stands']).split()) < 3:
+                out.append('what stands is said in a sentence')
+        elif e.get('sent'):
+            if next((c for c in context.everyone() if c.name.lower() == _low(e.get('to'))), None) is None:
+                out.append(f"nobody called '{e.get('to')}' is in the play")
+        elif e.get('chance'):
+            if _low(e['chance']) not in survival.LIKELY:
+                out.append(f"how likely is one of: {', '.join(survival.LIKELY)}")
+            for branch in ('if_so', 'if_not'):
+                out += faults(context, character, {'effects': e.get(branch) or []})
         elif e.get('need'):
             who = _person(context, character, e.get('who') or character.name)
             if who is None or getattr(who, 'body', None) is None or (survival.need_called(who.body, e['need']) is None
                                                                       and survival.flag_called(who.body, e['need']) is None):
                 out.append(f"'{e['need']}' is not one of the needs the stage shows for {e.get('who') or character.name}")
+            elif survival.stated(context):
+                pass   # how far it is eased is the resolver's to say, from the world's facts
             elif survival.need_called(who.body, e['need']) and not _low(e.get('change')).startswith('wors'):
                 lacks = survival.way_lacks(context, character, who, survival.need_called(who.body, e['need']), e.get('by'))
                 if lacks:
@@ -175,7 +218,7 @@ def faults(context, character, found):
             who = _person(context, character, e.get('who') or character.name)
             lacks = 'nobody of that name is here' if who is None or getattr(who, 'body', None) is None else (
                 survival.state_lacks(context, character, who, e['becomes']) if e.get('becomes') else
-                survival.state_end_lacks(context, e['no_longer']))
+                '' if survival.state_called(context, e['no_longer']) else f"'{e['no_longer']}' is not one of the states this world keeps")
             if lacks:
                 out.append(lacks)
         elif e.get('found'):
@@ -215,12 +258,32 @@ def _ask(context, character, act, note=''):
     to = getattr(act, 'leaves_to', None)
     leaves = '' if not getattr(act, 'leaves', None) else \
         f"\nIts actor marks it as going out of the scene{' with ' + ', '.join(c.name for c in party) if party else ' alone'}{', for ' + to if to else ''}.\n"
-    prompt = RESOLVE.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = (RESOLVE_STATED if survival.stated(context) else RESOLVE).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                             stage=record.of(context, character, people(context, character), full=True), scene=scene,
                             name=character.name, deed=act.action, leaves=leaves) + note
     reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_deed', temp=0.2, stops=['</end>'], max_tokens=700)
     found = json_reply.parse(reply) if reply else None
     return found if isinstance(found, dict) and 'can' in found else None
+
+
+def _draw(context, character, found):
+    """Where the resolver left something to chance, the draw: each chance effect gives place to
+    the effects of the way it fell, and what is then seen joins the page. The resolver says how
+    likely; it does not choose (docs/world-facts-design.md)."""
+    out, seen = [], []
+    for e in found.get('effects') or []:
+        if not (isinstance(e, dict) and e.get('chance')):
+            out.append(e)
+            continue
+        p = survival.LIKELY.get(_low(e['chance']), 0.5)
+        so = survival._rng.random() < p
+        trace.event('chance', character=character.name, likely=_low(e['chance']), p=p, so=so, so_page=str(e.get('so_page') or '')[:200], not_page=str(e.get('not_page') or '')[:200])
+        out += [x for x in (e.get('if_so') if so else e.get('if_not')) or [] if isinstance(x, dict) and not x.get('chance')]
+        seen.append(' '.join(str(e.get('so_page' if so else 'not_page') or '').split()))
+    found['effects'] = out
+    if any(seen):
+        found['page'] = ' '.join(filter(None, [str(found.get('page') or '').strip(), *seen]))
+    return found
 
 
 def resolve(context, character, act):
@@ -239,6 +302,7 @@ def resolve(context, character, act):
     if not found or wrong:
         found = {'can': False, 'why': wrong[0], 'effects': [], 'left_out': '', 'page': ''}
     found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict)]
+    _draw(context, character, found)
     found['left_out'], found['page'] = str(found.get('left_out') or '').strip(), str(found.get('page') or '').strip()
     if found.get('can') and not found['effects'] and found['left_out']:
         found.update(can=False, why=str(found.get('why') or '').strip() or f"not here: {found['left_out']}")
@@ -246,7 +310,7 @@ def resolve(context, character, act):
         found.update(can=False, why='the deed came to nothing that could be shown')
     found['can'], found['why'] = bool(found.get('can')), str(found.get('why') or '').strip()
     trace.event('resolved', character=character.name, deed=act.action[:300], can=found['can'], why=found['why'],
-                effects=found['effects'], left_out=found['left_out'], page=found['page'])
+                effects=found['effects'], left_out=found['left_out'], page=found['page'], minutes=found.get('minutes'), held=str(found.get('held') or '')[:300])
     return found
 
 
@@ -317,6 +381,13 @@ Answer in JSON only:
 </end>"""
 
 
+RESOLVE_STATED, ACT_STATED = _stated(RESOLVE), _stated(ACT).replace(
+    "and what was said or done earlier in the play, told wrongly (past:",
+    "something under What stands said otherwise (stands: 'I signed him this morning' when nothing is signed); and what was said or done earlier in the play, told wrongly (past:").replace(
+    '"<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows or past>"',
+    '"<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows, stands or past>"')
+
+
 def told_to(context, speaker, listener=None):
     """What `speaker` has told of its own life before the play (to `listener`, or to anyone): the
     facts, oldest first. Kept as told, with the line that told each (ledger.told): what a person
@@ -346,7 +417,7 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     direction = getattr(speaker, 'direction', None) or {}
     lived = '\n'.join(filter(None, [f"It opened: {direction['setup']}" if direction.get('setup') else '', *context.witnessed(speaker, n=16)])) or 'Nothing yet.'
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
-    prompt = ACT.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = (ACT_STATED if survival.stated(context) else ACT).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                         stage=about or record.of(context, speaker, others, full=True), name=speaker.name,
                         listener=getattr(listener, 'name', 'the others'), lived=lived,
                         told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
@@ -366,6 +437,8 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
         again, still = ask(AGAIN.format(faults='\n'.join(f'- {w}.' for w in wrong)))
         if again is not None:
             found, wrong = again, still
+    if not wrong:
+        _draw(context, speaker, found)
     left = str(found.get('left_out') or '').strip()
     refused = ''
     if wrong:   # what names something that is not here does nothing
@@ -385,7 +458,8 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     found['retold'] = str(found.get('retold') or '').strip()
     found['promises'] = [p for p in found.get('promises') or [] if isinstance(p, dict) and str(p.get('what') or '').strip()]
     trace.event('resolved_words', character=speaker.name, words=words[:300], deed=deed[:300], refused=found['deed_refused'], effects=found['effects'], page=found['page'],
-                findings=found['findings'], tells=found['tells'], retold=found['retold'], promises=found['promises'])
+                findings=found['findings'], tells=found['tells'], retold=found['retold'], promises=found['promises'],
+                minutes=found.get('minutes'), held=str(found.get('held') or '')[:300])
     return found
 
 
@@ -535,12 +609,20 @@ def effects_note(effects):
             out.append(f"{e['thing']} held out to {e['held_out_to']}")
         elif e.get('thing') and e.get('on'):
             out.append(f"{e['thing']} on {e['on']}")
+        elif e.get('thing') and e.get('gone'):
+            out.append(f"{e['thing']} gone ({e['gone']})")
         elif e.get('thing') and e.get('state'):
             out.append(f"{e['thing']} {e['state']}")
         elif e.get('thing') and e.get('read_by'):
             out.append(f"{e['thing']} read by {e['read_by']}")
         elif e.get('need'):
             out.append(f"{e.get('who', '')} {e['need']} {e.get('change', 'eased')}".strip())
+        elif e.get('money') is not None:
+            out.append(f"{e['money']} from {e.get('from') or '?'} to {e.get('to') or '?'}")
+        elif e.get('stands'):
+            out.append(f"now stands: {e['stands']}")
+        elif e.get('sent'):
+            out.append(f"sent to {e.get('to') or '?'}")
         elif e.get('becomes') or e.get('no_longer'):
             out.append(f"{e.get('who', '')} {'now' if e.get('becomes') else 'no longer'} {e.get('becomes') or e.get('no_longer')}".strip())
         elif e.get('world'):
@@ -590,8 +672,36 @@ def apply(context, character, act):
     if opened:   # the deed's event keeps what it was found to do, beside what that changes and the line shown
         opened[-1]['effects'] = found['effects']
     worlded = False
+    minutes = found.get('minutes')
+    if survival.stated(context) and isinstance(minutes, (int, float)) and not isinstance(minutes, bool) and minutes > 0:
+        # the time the deed takes, as the resolver gave it
+        context.simulation_time += survival.timedelta(minutes=min(float(minutes), 480))
     for e in found['effects']:
-        if e.get('world'):
+        if e.get('money') is not None:
+            # money moves between people here, or to or from someone outside the scene (a bar, an
+            # employer): it leaves one purse and comes into another, and is made nowhere
+            payer, paid = _person(context, character, e.get('from')), _person(context, character, e.get('to'))
+            for who, sign in ((payer, -1), (paid, 1)):
+                if who is not None and getattr(who, 'body', None) is not None:
+                    who.body.money += sign * e['money']
+            ledger.of(context).wrote('needs')
+            trace.event('money', character=me, sum=e['money'], frm=str(e.get('from') or ''), to=str(e.get('to') or ''))
+        elif e.get('stands'):
+            # settled, and kept in the words it was settled in: known to those who were there
+            if e.get('ends'):
+                survival.no_longer_stands(context, e['ends'])
+            survival.stands(context, e['stands'], about=[a for a in e.get('about') or [] if isinstance(a, str)],
+                            known=[c.name for c in [character] + list(character.hearers())])
+        elif e.get('sent'):
+            # words that reach someone who is not here, by a means the world's facts give: they
+            # are with that person from then on (on a phone, to be found by whoever looks)
+            other = next((c for c in context.everyone() if c.name.lower() == _low(e.get('to'))), None)
+            if other is not None and getattr(other, 'body', None) is not None:
+                words = ' '.join(str(e['sent']).split())
+                other.body.inventory.append(f"message from {me}: {words}"[:160])
+                other.add_perceptual_input(f"A message from {me} reaches you: {words}", mode='internal')
+                trace.event('sent', character=me, to=other.name, words=words[:300])
+        elif e.get('world'):
             chosen = survival._chosen(context, character, str(e['world']))
             if chosen and chosen[0] == 'threat':
                 # what came of it is told by the danger itself, after the act's own line (survival._told)
@@ -617,14 +727,17 @@ def apply(context, character, act):
             if need is not None:
                 level = who.body.level(need)
                 told = ''
-                if worse:
+                if survival.stated(context):   # how far, as the resolver judged it from the world's facts
+                    step = survival.HOW_FAR.get(_low(e.get('how_far')), survival.HOW_FAR['a little'])
+                    who.body.adjust(need, min(step, 0.3) if worse else -min(step, level))
+                elif worse:
                     who.body.adjust(need, 0.2)
                 else:   # by the way the world lists for it (its amount, time, cost and risk), or one step
                     told = survival.ease(context, character, who, need, e.get('by'))
                 if told:
                     facts.append(told)
                 trace.event('need_changed', character=who.name, need=need, change='worsened' if worse else 'eased', by=me, was=round(level, 2),
-                            now=round(who.body.level(need), 2), way=str(e.get('by') or ''))
+                            now=round(who.body.level(need), 2), way=str(e.get('by') or e.get('how_far') or ''))
             elif not worse and survival.flag_called(who.body, e['need']):
                 flag = survival.flag_called(who.body, e['need'])
                 who.body.flags.discard(flag)
@@ -663,6 +776,14 @@ def apply(context, character, act):
                     thing = survival._thing(context, name, holder or character)
                     if survival.wear(context, thing, wearer):
                         trace.event('prop_deed', character=me, deed='put on', item=name, other=wearer.name)
+                continue
+            if e.get('gone'):
+                # out of the play by this deed (eaten, sold to someone outside the scene): nowhere from now on
+                thing = survival._thing(context, name, holder or character) if kind != 'here' else \
+                    next((p for p in survival.lying(context, stage.here(character)) if _low(p['name']) == _low(name)), None)
+                if thing is not None:
+                    ledger.of(context).remove(thing)
+                    trace.event('thing_gone', character=me, thing=name, how=str(e['gone'])[:60])
                 continue
             to = _low(e.get('to'))
             other = _person(context, character, e.get('to') or e.get('held_out_to') or '')
