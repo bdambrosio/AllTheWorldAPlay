@@ -516,7 +516,8 @@ def plain(context, text):
         rid = match.group(0)
         if world.place(context, rid) is None:
             return rid
-        return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
+        # 'BusStop1' -> 'the bus stop': a kind named in run-together words is said as words
+        return 'the ' + re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', re.sub(r'\d+$', '', rid)).replace('_', ' ').lower()
     # a place's own name given in brackets after words for it is for the record, not the page
     text = re.sub(r'\s*\(([A-Z][A-Za-z_]*\d*)\)', lambda m: '' if world.place(context, m.group(1)) is not None else m.group(0), text)
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
