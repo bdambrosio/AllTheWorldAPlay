@@ -45,8 +45,10 @@ said = {'HuDingApartment': "Hu and Ding's apartment", 'XueApartment': "Xue's apa
 
 
 stakes = ("In this city the stakes are clients, careers, marriages and reputations. What is settled is what is on "
-          "paper or on a phone: a contract drafted, handed over or signed; a message sent and later found. A client "
-          "belongs to whoever holds their signed contract. Bodily needs are ordinary (a meal, a drink, rest). "
+          "paper or on a phone: a contract drafted, handed over or signed; a message sent and later found. An insurance "
+          "contract runs for a year, and a company is insured by one agent at a time. In its last week it is up for renewal: "
+          "the client may sign the renewal with the agent who holds it, or a new contract with another agent, and whichever "
+          "is signed first settles it for the coming year. A contract not up for renewal cannot be taken. Bodily needs are ordinary (a meal, a drink, rest). "
           "Use concrete, checkable goals and obstacles tied to the offices, the apartments, the cafe and the hotel bar.")
 
 # Stage business (sim/survival.py): contracts, messages, money, meals. No hazards.
@@ -69,15 +71,21 @@ affordances = {
     'type_nouns': {'Office': ['office', 'desk', 'firm'], 'University_Office': ['university', 'campus', 'department'],
                    'Apartment': ['apartment', 'home', 'flat'], 'Cafe': ['cafe', 'café', 'coffee shop'],
                    'Restaurant': ['restaurant', 'hotel bar', 'bar']},
+    # the state this world keeps, because signing depends on it: a client whose contract is in its last week
+    'states': {
+        'up for renewal': {'means': "their company's insurance contract is in its last week and none is yet signed for the coming year",
+                           'given': True, 'ended_by': 'signing a contract'},
+    },
     # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
     # words and the resolver says what comes of it (sim/resolver.py).
     'actions': [
-        # contracts: drafted at one's own office, handed to a client, signed by whoever holds one
+        # contracts: drafted at one's own office, handed to a client, and signed by a client who is up for renewal, once
         {'name': 'draft a contract', 'category': 'work', 'verbs': ['draft', 'draw up', 'write up', 'prepare the contract'],
          'named_verbs': ['prepare', 'print'], 'resource_types': ['Office'], 'requires_property': {'owner': '{actor}'}, 'gain': "{actor}'s contract",
          'effects': {'fatigue': 0.05}, 'minutes': 20, 'text': 'drafts a contract at {resource}'},
         {'name': 'sign the contract', 'category': 'work', 'verbs': ['sign', 'put my name', 'put his name', 'put her name'],
-         'requires': '*contract', 'consumes': '*contract', 'gain': '{item}, signed by {actor}', 'minutes': 2,
+         'requires': '*contract', 'consumes': '*contract', 'requires_flag': 'up for renewal', 'ends': 'up for renewal',
+         'gain': '{item}, signed by {actor}', 'minutes': 2,
          'text': 'signs {item}'},
         {'name': 'review the client file', 'category': 'explore', 'verbs': ['review the file', 'go through the file', 'study the file'],
          'named_verbs': ['review', 'read', 'study', 'check'], 'resource_types': ['Office'], 'requires_property': {'owner': '{actor}'},

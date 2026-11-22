@@ -175,7 +175,7 @@ def faults(context, character, found):
             who = _person(context, character, e.get('who') or character.name)
             lacks = 'nobody of that name is here' if who is None or getattr(who, 'body', None) is None else (
                 survival.state_lacks(context, character, who, e['becomes']) if e.get('becomes') else
-                '' if survival.state_called(context, e['no_longer']) else f"'{e['no_longer']}' is not one of the states this world keeps")
+                survival.state_end_lacks(context, e['no_longer']))
             if lacks:
                 out.append(lacks)
         elif e.get('found'):

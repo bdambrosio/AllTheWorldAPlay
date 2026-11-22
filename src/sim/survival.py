@@ -29,7 +29,7 @@ Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
                      'effects': {need: delta}, 'target_effects': {need: delta}, 'minutes',
                      'deplete', 'gain', 'requires', 'consumes', 'transfer': item, 'transfer_money',
                      'finds': [{'item', 'chance'}], 'earn', 'cost',
-                     'sets' ('sheltered' | 'fire' | any flag), 'requires_flag',
+                     'sets' ('sheltered' | 'fire' | any flag), 'ends' (a flag), 'requires_flag',
                      'sets_property': {key: value}, 'requires_property': {key: value or None;
                      '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
                      'risk': {'chance', 'effects', 'text'}, 'text',
@@ -127,6 +127,8 @@ def state_lacks(context, doer, who, said):
     if name is None:
         return f"'{said}' is not one of the states this world keeps"
     about = states(context)[name]
+    if about.get('given'):   # so of someone when the play opens, and not to be made so by anything done in it
+        return f"nothing done in the play makes anyone {name}: it is so of those of whom the play says it"
     if about.get('at') and not any(p.kind in about['at'] and world.at_its_foot(context, _here(who), p) for p in world.places(context)):
         return f"{who.name} becomes {name} only by {about.get('by', name)}, at {' or '.join(about['at'])}, and is at none"
     missing = [n for n in about.get('needs') or [] if n not in who.body.flags]
@@ -146,16 +148,25 @@ def set_state_of(context, doer, who, said, on=True):
     trace.event('state_changed', character=who.name, state=name, on=bool(on), by=doer.name)
 
 
+def state_end_lacks(context, said):
+    """Why this state cannot be ended by this deed: '' when it can."""
+    name = state_called(context, said)
+    if name is None:
+        return f"'{said}' is not one of the states this world keeps"
+    about = states(context)[name]
+    return f"{name} is ended only by {about.get('ended_by', 'what the world rules on')}, by the world's rule for it" if about.get('given') else ''
+
+
 def states_note(context, people):
     """For the stage: the states this world keeps, what brings each about, and who is in which."""
     kept = states(context)
     if not kept:
         return ''
-    lines = [f"- {name}: {a.get('means', name)}; brought about by {a.get('by', name)}"
+    lines = [f"- {name}: {a.get('means', name)}; " + ('so of those named below as the play opens, and ended by ' + a.get('ended_by', 'nothing') if a.get('given') else f"brought about by {a.get('by', name)}")
              + (f" (at {' or '.join(k.replace('_', ' ').lower() for k in a['at'])})" if a.get('at') else '')
              + (f"; needs one to be {' and '.join(a['needs'])} first" if a.get('needs') else '') for name, a in kept.items()]
     now = '; '.join(f"{c.name}: {', '.join(n for n in kept if n in c.body.flags) or 'none of them'}" for c in people if getattr(c, 'body', None) is not None)
-    return 'States this world keeps (so of a person only once a deed has made it so):\n' + '\n'.join(lines) + f'\nNow: {now}'
+    return 'States this world keeps (so of a person only as said here):\n' + '\n'.join(lines) + f'\nNow: {now}'
 
 
 def places_near(character, cut=14):
@@ -1759,6 +1770,8 @@ def _apply(context, character, action, near, target, via, act_text=''):
         body.sheltered = True
     elif flag:
         body.flags.add(flag)
+    if action.get('ends'):   # a state the deed is the end of (a renewal signed: no longer up for renewal)
+        body.flags.discard(action['ends'])
     # a deed that may not come off (a weld with a torch, where a kit's seal is sure): the try
     # is made and paid for, and the place is left as it was
     success = action.get('success')

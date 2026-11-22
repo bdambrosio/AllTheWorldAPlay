@@ -100,7 +100,14 @@ W = context.Context([Hu, Xue, Qiu, Ding],
 Hu.add_perceptual_input("You suspect your husband Ding is having an affair with Wang Lili, his student.", mode='internal')
 Hu.add_perceptual_input("Xiaoyu is your best and biggest client. You want to keep him happy.", mode='internal')
 Hu.add_perceptual_input("Yangho is a client of Xue's and a prime poaching target.", mode='internal')
+Xue.add_perceptual_input("Yangho is your client, and you mean to keep him.", mode='internal')
 Xue.add_perceptual_input("Xiaoyu is a client of Hu's and a prime poaching target.", mode='internal')
+# both contracts are in their last week: each agent is after the renewal of their own client and the signature of the other's
+for character in (Hu, Xue, Xiaoyu, Yangho):
+    character.add_perceptual_input("Xiaoyu's contract with Hu and Yangho's contract with Xue both run out this Friday evening, 17 May. "
+                                   "Neither renewal is signed.", mode='internal')
+for client in (Xiaoyu, Yangho):
+    client.body.flags.add('up for renewal')
 
 
 # the day starts with Hu and Xue at home, the others at work or at the university
@@ -113,9 +120,9 @@ for character, place in ((Hu, 'HuDingApartment'), (Xue, 'XueApartment'), (Qiu, '
 for character, place in ((Hu, 'HuOffice'), (Xue, 'XueOffice'), (Xiaoyu, 'XiaoyuOffice'), (Yangho, 'YanghoOffice'), (Ding, 'UniversityOffice')):
     world.place(W, place).props['owner'] = character.name
     W.reference_manager.declare_relationship(place, 'owned by', character.name, 'owner of')
-# a client belongs to whoever holds their signed contract: each agent holds their own client's when the play opens
-Hu.body.inventory += ["Hu's contract, signed by Xiaoyu"]
-Xue.body.inventory += ["Xue's contract, signed by Yangho"]
+# each agent holds the contract now running out
+Hu.body.inventory += ["Hu's contract with Xiaoyu, running out on Friday"]
+Xue.body.inventory += ["Xue's contract with Yangho, running out on Friday"]
 W.reference_manager.declare_relationship('Hu', 'wife of', 'Ding', 'husband of')
 W.reference_manager.declare_relationship('Wang', 'student of', 'Ding', 'teacher of')
 W.reference_manager.declare_relationship('Qiu', 'lover of', 'Ding', 'lover of')
