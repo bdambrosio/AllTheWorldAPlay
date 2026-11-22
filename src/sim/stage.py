@@ -507,8 +507,8 @@ def _far(count):
 def plain(context, text):
     """Audience text in the words of the world: the engine's numbered place names become ordinary
     ones ('Fallen_Branch9' -> 'the fallen branch', 'Berries15' -> 'the berries') and tile counts
-    go ('walks 4 tiles Southwest to' -> 'walks Southwest to'). Places an author named ('HotelBar')
-    are left as they are."""
+    go ('walks 4 tiles Southwest to' -> 'walks Southwest to'). A place an author named ('HotelBar')
+    is said as the world file's `said` gives it, or left as it is."""
     if not text or not world.built(context):
         return text
     def ordinary(match):
@@ -520,6 +520,10 @@ def plain(context, text):
     # a place's own name given in brackets after words for it is for the record, not the page
     text = re.sub(r'\s*\(([A-Z][A-Za-z_]*\d*)\)', lambda m: '' if world.place(context, m.group(1)) is not None else m.group(0), text)
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
+    # a place the author named is said as the world file says it is said ('HuDingApartment' -> "Hu and Ding's apartment")
+    said = getattr(world.scenario(context), 'said', None) or {}
+    if said:
+        text = re.sub(r'\b(' + '|'.join(re.escape(n) for n in sorted(said, key=len, reverse=True)) + r')\b', lambda m: said[m.group(1)], text)
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
     # a count of tiles before punctuation or spelled out ('visibility to 32 tiles,', 'three tiles
     # off'): the map's unit has no meaning on the page; how far it is in plain words
