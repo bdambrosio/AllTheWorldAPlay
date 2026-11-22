@@ -2659,6 +2659,10 @@ Keep your character's own way of speaking (see 'How you speak') from line to lin
         # own last lines', 40 words here against 30 in the act prompt, and 'do not answer a
         # question with a question' for characters whose voice is teasing questions.)
         speaker = 'yourself' if self is from_actor else from_actor.name
+        if not hasattr(self, 'tried_with'):
+            self.tried_with = {}
+        told_to = self._first_character(None, None) if self is from_actor and hasattr(self, '_first_character') else None
+        other_name = from_actor.name if self is not from_actor else (getattr(told_to, 'name', None) or 'the other')
         prompt_string = """You are the actor playing {{$name}}. """ + (
             """{{$name}} is thinking; give {{$name}}'s next thought.""" if self is from_actor else
             """{{$speaker}} has just spoken to {{$name}}; give {{$name}}'s answer.""") + """
@@ -2691,6 +2695,10 @@ Keep your character's own way of speaking (see 'How you speak') from line to lin
 {{$relationship}}
 </how_you_see_{{$speaker}}>
 
+<what_you_have_tried_so_far_with_{{$other}}>
+{{$tried}}
+</what_you_have_tried_so_far_with_{{$other}}>
+
 <the_talk_so_far>
 {{$dialog}}
 </the_talk_so_far>
@@ -2714,12 +2722,14 @@ The question: what does {{$name}} say back, now?
 - Truth: {{$name}} speaks only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
 - Do not reuse the phrases, images or sentence shapes of the talk so far.
 - What {{$name}} has already asked and been answered is not asked again in other words: {{$name}} acts on the answer, doubts it aloud once, raises the price, concedes, or lets it go for now.
+- 'What you have tried so far' is {{$name}}'s own count of the moves it has made on the matter between the two of you, how each was met, and what holding to it has cost. {{$name}} knows this as a person does. A move already made and not accepted is made again only on purpose, and then harder or at a price; otherwise {{$name}} gives some ground, changes ground, or says some of what it has been keeping back.
 - A pet name or verbal habit comes now and then, not in every line.
 
 Respond with this XML only:
 <response>the words {{$name}} says, and nothing else</response>
 <does>leave empty, unless {{$name}} really changes something as the words are said: then what, in the third person, 12 words at most</does>
 <reason>4-6 words: why {{$name}} says it</reason>
+<tried>{{$name}} to itself, in place of what is under 'What you have tried so far': the moves {{$name}} has now made on the matter in hand with {{$other}}, counting this one, how each was met, and what holding to it has cost so far; 35 words at most</tried>
 <leaves>no, alone, or with <names>: whether with these words {{$name}} goes out of the scene, alone (walks out on the others) or with those named who go with it ("follow me" and they come); no otherwise. When it leaves, add where to: "with Joe, to the trail northwest"</leaves>
 End your response with:
 </end>
@@ -2741,6 +2751,8 @@ End your response with:
         idle = self is not from_actor and self._idle_turn()
         answer_xml = self.llm.ask({
             'speaker': speaker,
+            # the actor's own account of its moves with this person, which it rewrites with each turn (docs/performance-model.md)
+            'other': other_name, 'tried': self.tried_with.get(other_name) or 'Nothing yet: this is your first move on it.',
             'say_limit': "25 words at most, as this person talks at ease" if idle else stage.say_limit(self),
             'way': (self.IDLE_LINE if idle else self.WAYS).replace('{name}', self.name),
             'character': self.get_character_description(),
@@ -2774,6 +2786,10 @@ End your response with:
             return '', source, ''
  
         reason = xml.find('<reason>', answer_xml)
+        tried = ' '.join((xml.find('<tried>', answer_xml) or '').split())
+        if tried:
+            self.tried_with[other_name] = tried
+            trace.event('tried', character=self.name, other=other_name, note=tried)
         if not source:
             response_source = Task('dialog with '+from_actor.name, 
                                    description='dialog with '+from_actor.name, 
