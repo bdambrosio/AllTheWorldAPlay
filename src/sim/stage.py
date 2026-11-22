@@ -279,7 +279,7 @@ def set_scene(context, scene, characters, opens_act):
         if ride is not None:
             world.bring(context, ride, xy)
         line = (f"{names} {ride.by if ride is not None else 'walk'}{'s' if len(movers) == 1 else ''} to {scene['place']}"
-                + (f' in {ride.id}' if ride is not None else '') + f" ({round(longest)} min).")
+                + (f' in {ride.id}' if ride is not None else '') + (f" ({round(longest)} min)." if round(longest) >= 1 else '.'))
     trace.event('scene_place', place=scene['place'], movers=[n for n, _ in movers], walked=not opens_act,
                 minutes=round(longest, 1), at=list(xy))
     return line

@@ -182,7 +182,7 @@ def of(context, actor, people=None, full=False):
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
         *([survival.ways_note(context)] if full and survival.ways_note(context) else []),
-        *([survival.states_note(context, people)] if full and survival.states(context) else []),
+        *([survival.states_note(context, people)] if survival.states(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
         'Lying here, for anyone present to take or use: ' + ('; '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
@@ -212,7 +212,7 @@ def account(context, reader, about=None, people=None, full=False):
         cast = list(people) if people is not None else context.everyone()
         told = [f"{t['who']} has told {', '.join(t['to']) or 'nobody yet'}: {t['fact']}" for t in ledger.of(context).told][-24:]
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
-        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
+        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast), survival.states_note(context, cast),
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
                  ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)

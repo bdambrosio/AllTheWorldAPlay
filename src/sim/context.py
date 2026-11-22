@@ -2581,8 +2581,9 @@ Respond with these lines only, one sentence each:
             if len(fields) >= 3 and fields[0] and fields[1]:
                 says = fields[3].strip(' "') if len(fields) > 3 and fields[3].strip(' "').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
                 fixed = len(fields) > 4 and fields[4].strip().lower().startswith('fixed')   # a mark or a part of the place (the director's clues say which)
+                looks = fields[5].strip(' ."') if len(fields) > 5 and fields[5].strip(' ."').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
                 clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {}),
-                              **({'fixed': True} if fixed else {})})
+                              **({'fixed': True} if fixed else {}), **({'looks': looks} if looks else {})})
         self.screenplay.clues = clues[:3]
         people = self.everyone()
         self.screenplay.set_facts(reply, [c.name for c in people])
@@ -2636,6 +2637,8 @@ Respond with these lines only, one sentence each:
             clue['place'] = spot[1]
             clue['hidden'] = survival.searchable(self, res)
             if survival.add_thing(self, clue['thing'], at=spot[0], hidden=clue['hidden'], says=clue.get('says'), fixed=bool(clue.get('fixed'))):
+                if clue.get('looks'):   # how it looks is so of it in the world (résumés 'struck through' were struck from a set-up as not so)
+                    survival.set_state(self, clue['thing'], clue['looks'])
                 placed.append(clue)
         self.screenplay.clues = placed
         trace.event('clues_placed', clues=placed)
@@ -2670,9 +2673,11 @@ Already carrying:
 {{$carrying}}
 
 Things this world's own actions produce, which are not to be handed out here: {{$items}}
+Vehicles in this world: {{$vehicles}}
 
 - List only what a character's description, or the premise of the story, says or plainly implies they have with them when the play opens and that the story turns on: evidence, a letter, a keepsake, the tool of their trade.
 - Most characters need nothing. Someone who begins with nothing (lost, stranded, robbed) gets nothing. At most two things each.
+- Whoever a vehicle listed belongs to, by the descriptions or the setting, has its keys: one line for them, beside anything else.
 - No weapon, food, drink, medicine or money, and nothing they could only have by something happening in the play.
 - What a person is wearing is not something they have with them: no clothes, shoes or anything else a description says they are dressed in.
 - One thing to a line, each a single object: 'notebook' and 'pen' on two lines, not 'notebook and pen' (a thing handed over is handed over whole).
@@ -2684,7 +2689,8 @@ Respond with one line for each thing, or the single line #none:
         reply = self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'characters': '\n'.join(f"{c.name}: {' '.join(c.character.split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}" for c in people),
                               'carrying': '\n'.join(f"{c.name}: {'; '.join(c.body.inventory) or 'nothing'}" for c in people),
-                              'items': ', '.join(survival.item_kinds(self)) or 'none'},
+                              'items': ', '.join(survival.item_kinds(self)) or 'none',
+                              'vehicles': ', '.join(f'{p.id} ({p.description})' for p in world.places(self) if p.vehicle) or 'none'},
                              prompt, tag='equip_cast', temp=0.2, stops=['</end>'], max_tokens=160) or ''
         given = {}
         own = [k.lower() for k in survival.item_kinds(self)]

@@ -805,7 +805,9 @@ def offered_actions(character, part='all', cut=14):
                 character.resource_models.add_resource_model(rid)   # standing at a place is having seen it
             out.append((bool(missing), f"{action['name']}@{rid} (here{'; ' + missing if missing else ''})", False))
         else:
-            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {world.minutes(character.context, _here(character), res.xy)} minutes' walk {_direction(_here(character), res.xy)}; "
+            ride = world.conveyance(character.context, _here(character), res.xy)   # a car at hand, for a way too long to walk
+            by_ride = f", or about {round(world.walk(character.context, _here(character), res.xy)[0])} minutes by {ride.id}" if ride is not None else ''
+            out.append((1 + bool(missing), f"{action['name']}@{rid} (about {world.minutes(character.context, _here(character), res.xy)} minutes' walk {_direction(_here(character), res.xy)}{by_ride}; "
                                            f"first Move: {rid}{'; ' + missing if missing else ''})", _unseen(character, rid)))
     # what can be done now comes first; what needs a walk or something not held is cut first
     # (the list was cut at 12 in config order, which dropped every action with a person: a

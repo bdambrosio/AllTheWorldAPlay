@@ -82,7 +82,7 @@ Answer in JSON only:
      {{"who": "{name}", "touches": "<the person touched>", "how": "<two to four words>"}},
      {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
      {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
-     {{"who": "{name}", "goes": "<a place named on the stage, a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
+     {{"who": "{name}", "goes": "<a place named on the stage (one a few steps off is stepped over to, and the scene goes on), a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
      {{"new": "<a thing now made or picked>", "from": "<the place, or the things here, it comes from>"}}],
   "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
   "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, only what is done, no words spoken, 30 words at most>"}}
@@ -356,7 +356,7 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
         found = json_reply.parse(reply) if reply else None
         if not isinstance(found, dict) or 'can' not in found:
             return None, []
-        found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and not e.get('goes')]   # leaving is the actor's mark
+        found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and (not e.get('goes') or _step(context, speaker, e))]   # leaving is the actor's mark; a step within the scene is done
         return found, faults(context, speaker, found)
     found, wrong = ask()
     if found is None:
@@ -558,11 +558,19 @@ def effects_note(effects):
     return '; '.join(out)
 
 
+def _step(context, character, e):
+    """The place a goes effect names, when it is only a step from where the doer stands: in sight
+    and near enough to be walked over to in the course of a deed (across a room, to the tree a few
+    yards off). The doer is then there, and still in the scene."""
+    p = world.called(context, str(e.get('goes') or '').strip())
+    return p if p is not None and world.can_walk_over(context, stage.here(character), p.xy) else None
+
+
 def leaving(context, character, found):
     """Who goes out of the scene by this deed, and where to: (None | 'alone' | [characters], place or None).
     Going to another place is going out of the scene: a scene has one place."""
     goes = next((e for e in found.get('effects') or [] if e.get('goes')), None)
-    if goes is None:
+    if goes is None or _step(context, character, goes) is not None:
         return None, None
     party = [c for c in (_person(context, character, n) for n in goes.get('with') or []) if c is not None and c is not character]
     to = str(goes['goes']).strip()
@@ -635,6 +643,10 @@ def apply(context, character, act):
             # a trace of this deed on the place, kept as this deed's doing and never as a thing
             # lying here (survival.leave_mark)
             survival.leave_mark(context, character, e['mark'], on=e.get('thing'))
+        elif e.get('goes'):
+            near = _step(context, character, e)   # a few steps, within the scene: the doer is there (going further is leaving: `leaving`)
+            if near is not None:
+                survival.travel(character, near.xy)
         elif e.get('place'):
             # a place the deed reaches or makes, inside or beside one the stage names: in the world from now on
             world.make_place(context, str(e['place']), str(e.get('kind') or ''), str(e.get('at') or ''), inside=bool(e.get('inside')),

@@ -58,6 +58,7 @@ Alex.add_perceptual_input("You're still in bed, feeling groggy. You can smell co
 world.put_at(Receptionist, 'Office1')
 world.put_at(Interviewer, 'Office1')
 world.beside(Susan, Alex)
+Alex.body.inventory += ['car keys']   # the car is his to drive: the keys are in his pocket when the play opens
 W.reference_manager.declare_relationship('Receptionist', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Interviewer', 'works at', 'Office1', 'employer')
 W.reference_manager.declare_relationship('Susan', 'partner of', 'Alex', 'partner of')

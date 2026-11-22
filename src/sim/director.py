@@ -125,7 +125,7 @@ BEHIND = """You are the director of an improvised play. The play stands on a que
 
 Respond with these lines only, one sentence each:
 #fact <one plain sentence> | known to: <names, or nobody>   (three or four lines)
-#clue <the thing, by a name of two to four plain words with no comma> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is the written one: its words, in one or two plain sentences; else leave empty> | <loose if it can be picked up and carried; fixed if it is a mark or a part of the place>   (two or three lines)
+#clue <the thing, by a name of two to four plain words with no comma> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is the written one: its words, in one or two plain sentences; else leave empty> | <loose if it can be picked up and carried; fixed if it is a mark or a part of the place> | <how it is, as someone standing there sees it, where that is what makes it a trace: three to eight words (struck through in heavy pen; one corner torn off); else leave empty>   (two or three lines)
 {person_format}#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)
 </end>"""
 
