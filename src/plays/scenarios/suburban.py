@@ -57,11 +57,15 @@ stakes = ("In this everyday suburban world the stakes are time, money, work and 
 # Stage business (sim/survival.py): morning routine, mail, work and money. No hazards.
 affordances = {
     'needs': {   # early morning
-        'hunger': {'initial': 0.4, 'per_hour': 0.05,
+        'hunger': {'eased': [{'by': 'eating breakfast from the refrigerator', 'at': ['Refrigerator'], 'amount': 0.5, 'minutes': 15}],
+                   'initial': 0.4, 'per_hour': 0.05,
                    'words': ('not hungry', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.5: "You are hungry; you have not eaten yet today.",
                                 0.8: "Hunger is making it hard to concentrate."}},
-        'fatigue': {'initial': 0.45, 'per_hour': 0.04,
+        'fatigue': {'eased': [{'by': 'drinking coffee', 'at': ['Coffee_Maker'], 'amount': 0.2, 'minutes': 5},
+                              {'by': 'sleeping in bed', 'at': ['Bed'], 'amount': 0.8, 'minutes': 240},
+                              {'by': 'taking a shower', 'at': ['Shower'], 'amount': 0.1, 'minutes': 15}],
+                    'initial': 0.45, 'per_hour': 0.04,
                     'words': ('alert', 'groggy', 'tired', 'exhausted'),
                     'percepts': {0.5: "You feel groggy; coffee would help.",
                                  0.8: "You are exhausted and your thoughts keep drifting."}},
@@ -73,17 +77,15 @@ affordances = {
                    'Shower': ['shower', 'bathroom'], 'Closet': ['closet', 'clothes', 'suit'], 'Bed': ['bed'],
                    'Mailbox': ['mailbox', 'mail', 'letters'], 'Office': ['office', 'desk', 'work'],
                    'Car': ['car'], 'Bus_Stop': ['bus stop', 'bus']},
+    # states this world keeps, because a rule depends on them (work needs one dressed): what each means and what brings it about
+    'states': {
+        'dressed': {'means': 'dressed for the day', 'by': 'getting dressed at the closet', 'at': ['Closet'], 'minutes': 10},
+        'showered': {'means': 'washed', 'by': 'taking a shower', 'at': ['Shower'], 'minutes': 15},
+        'interviewed': {'means': 'has sat the interview', 'by': 'sitting the interview at the office', 'at': ['Office'], 'minutes': 45, 'needs': ['dressed']},
+    },
+    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
+    # words and the resolver says what comes of it (sim/resolver.py).
     'actions': [
-        {'name': 'make coffee', 'verbs': ['brew', 'pour coffee', 'make coffee', 'drink coffee'], 'named_verbs': ['pour', 'drink', 'sip'],
-         'resource_types': ['Coffee_Maker'], 'effects': {'fatigue': -0.2}, 'minutes': 5, 'text': 'pours and drinks coffee from {resource}'},
-        {'name': 'eat breakfast', 'verbs': ['eat', 'make breakfast', 'grab a bite'], 'resource_types': ['Refrigerator'],
-         'effects': {'hunger': -0.5}, 'minutes': 15, 'text': 'eats breakfast from {resource}'},
-        {'name': 'shower', 'verbs': ['shower', 'wash'], 'resource_types': ['Shower'], 'effects': {'fatigue': -0.1},
-         'minutes': 15, 'sets': 'showered', 'text': 'showers'},
-        {'name': 'get dressed', 'verbs': ['dress', 'get dressed', 'put on', 'change into'], 'resource_types': ['Closet'],
-         'minutes': 10, 'sets': 'dressed', 'text': 'gets dressed for the day'},
-        {'name': 'sleep', 'verbs': ['sleep', 'nap', 'go back to bed', 'lie down'], 'resource_types': ['Bed'],
-         'effects': {'fatigue': -0.8}, 'minutes': 240, 'text': 'sleeps'},
         {'name': 'check the mail', 'category': 'explore', 'verbs': ['check the mail', 'open the mailbox', 'get the mail'],
          'named_verbs': ['check', 'open'], 'resource_types': ['Mailbox'],
          'finds': [{'item': 'an overdue bill', 'chance': 0.35}, {'item': 'a personal letter', 'chance': 0.25}],
@@ -92,9 +94,6 @@ affordances = {
          'resource_types': ['Office'], 'requires_flag': 'dressed', 'effects': {'fatigue': 0.25}, 'earn': 120,
          'minutes': 240, 'text': 'puts in a block of work at {resource}'},
         # the interview a candidate has come for: it is sat, dressed, at the office; how it goes is the scene's
-        {'name': 'sit the interview', 'category': 'work', 'verbs': ['interview', 'sit the interview', 'attend the interview', 'go in for the interview'],
-         'resource_types': ['Office'], 'requires_flag': 'dressed', 'effects': {'fatigue': 0.15}, 'minutes': 45, 'sets': 'interviewed',
-         'text': 'sits the interview at {resource}'},
         {'name': 'lend money', 'category': 'social', 'target': 'character', 'verbs': ['lend', 'pay', 'give money', 'hand cash'],
          'transfer_money': 20, 'minutes': 2, 'text': 'gives {target} twenty dollars'},
     ],

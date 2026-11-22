@@ -49,7 +49,8 @@ affordances = {
         'hunger': {'initial': 0.3, 'per_hour': 0.04,
                    'words': ('not hungry', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.6: "You have not eaten for hours.", 0.85: "Hunger is making it hard to concentrate."}},
-        'fatigue': {'initial': 0.2, 'per_hour': 0.03,
+        'fatigue': {'eased': [{'by': 'resting at home', 'at': ['Apartment'], 'amount': 0.5, 'minutes': 60}],
+                    'initial': 0.2, 'per_hour': 0.03,
                     'words': ('alert', 'a little tired', 'tired', 'exhausted'),
                     'percepts': {0.6: "It has been a long day and you are tired.",
                                  0.85: "You are exhausted; your judgment is slipping."}},
@@ -61,14 +62,13 @@ affordances = {
     'type_nouns': {'Office': ['office', 'desk', 'firm'], 'University_Office': ['university', 'campus', 'department'],
                    'Apartment': ['apartment', 'home', 'flat'], 'Cafe': ['cafe', 'café', 'coffee shop'],
                    'Restaurant': ['restaurant', 'hotel bar', 'bar'], 'Taxi_Stand': ['taxi stand', 'taxi']},
+    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
+    # words and the resolver says what comes of it (sim/resolver.py).
     'actions': [
         # contracts: drafted at an office, handed to a client, signed by whoever holds one
         {'name': 'draft a contract', 'category': 'work', 'verbs': ['draft', 'draw up', 'write up', 'prepare the contract'],
          'named_verbs': ['prepare', 'print'], 'resource_types': ['Office'], 'gain': "{actor}'s contract",
          'effects': {'fatigue': 0.05}, 'minutes': 20, 'text': 'drafts a contract at {resource}'},
-        {'name': 'hand over the contract', 'category': 'social', 'target': 'character',
-         'verbs': ['hand', 'give', 'pass', 'slide', 'present', 'push'], 'transfer': '*contract', 'minutes': 1,
-         'text': 'hands {target} {item}'},
         {'name': 'sign the contract', 'category': 'work', 'verbs': ['sign', 'put my name', 'put his name', 'put her name'],
          'requires': '*contract', 'consumes': '*contract', 'gain': '{item}, signed', 'minutes': 2,
          'text': 'signs {item}'},
@@ -91,8 +91,6 @@ affordances = {
          'transfer_money': 500, 'minutes': 2, 'text': 'pays {target} five hundred yuan'},
         {'name': 'buy a gift', 'verbs': ['buy a gift', 'pick out a gift', 'buy a present'], 'resource_types': ['Cafe', 'Restaurant'],
          'cost': 100, 'gain': 'gift', 'minutes': 5, 'text': 'buys a small gift at {resource}'},
-        {'name': 'give a gift', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'present', 'offer'],
-         'transfer': 'gift', 'minutes': 1, 'text': 'gives {target} a gift'},
         {'name': 'buy a meal', 'verbs': ['eat', 'order food', 'order lunch', 'order dinner', 'have lunch', 'have dinner'],
          'named_verbs': ['order'], 'resource_types': ['Cafe', 'Restaurant'], 'cost': 60,
          'effects': {'hunger': -0.6, 'fatigue': -0.05}, 'minutes': 30, 'text': 'has a meal at {resource}'},
@@ -104,8 +102,6 @@ affordances = {
          'effects': {'fatigue': -0.1}, 'target_effects': {'fatigue': -0.1}, 'minutes': 10,
          'text': 'buys {target} a drink'},
         # home and work
-        {'name': 'rest at home', 'verbs': ['rest', 'lie down', 'sleep', 'nap', 'put my feet up'], 'resource_types': ['Apartment'],
-         'effects': {'fatigue': -0.5}, 'minutes': 60, 'text': 'rests at {resource}'},
         {'name': 'teach', 'category': 'work', 'verbs': ['teach', 'lecture', 'hold office hours', 'grade papers'],
          'resource_types': ['University_Office'], 'effects': {'fatigue': 0.2}, 'earn': 200, 'minutes': 120,
          'text': 'teaches and sees students at {resource}'},

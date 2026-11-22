@@ -298,10 +298,9 @@ def gazetteer(context):
     places = sorted(((min(world.span(context, here(c), res.xy) for c in cast), rid, res)
                      for rid, res in world.listed(context)), key=lambda p: p[:2])
     listed, kinds = [], set()
-    free = survival.free(context)   # no list of what can be done at each place: what a kind of place gives is known
     for d, rid, res in places:
-        offers = [] if free else survival.offers(context, res, cast)
-        if len(listed) < GAZETTEER_PLACES or ((offers or free) and res.kind not in kinds):
+        offers = survival.offers(context, res, cast)   # what the world rules on there (survival.rules); what a kind of place gives is known
+        if len(listed) < GAZETTEER_PLACES or res.kind not in kinds:
             listed.append((d, rid, res, offers))
             kinds.add(res.kind)
     for d, rid, res, offers in listed:
@@ -313,8 +312,8 @@ def gazetteer(context):
                  else f", owned by {owner}" if owner else '')
         lines.append(f"- {rid}: {res.description or res.kind}"
                      + owned + f' ({reach})'
-                     + (f"; can be done there: {', '.join(offers)}" if offers else ''))
-    shared = [] if free else survival.shared_actions(context)
+                     + (f"; by the world's rules there: {', '.join(offers)}" if offers else ''))
+    shared = []
     if shared:   # what a body can do wherever it is: the planner is held to the same acts as the actors
         lines.append('- Anywhere, with whoever is there: ' + '; '.join(a['name'] for a in shared)
                      + '. With a thing someone holds or that lies there: give, hold out, take, put down.')
@@ -352,8 +351,15 @@ def walk(character, xy, place, alone=False, to=True):
     # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing. A
     # short walk that ends at another place is (Joe went from the apple tree to the thicket
     # unseen, and the page had him handed a branch at the tree)
+    # a place of the same kind as the one left is another of them, and which way it lies ('walks to
+    # the fallen branch' was said of a second branch, 160 metres north of the one they stood at)
+    dest, was_at = world.place(context, place), world.nearest(context, start)
+    if to and dest is not None and was_at is not None and world.at_place(context, start, was_at[1]) and was_at[1].kind == dest.kind and was_at[1].id != dest.id:
+        where_to = f"{world.bearing(start, xy).lower()} to another {dest.kind.replace('_', ' ').lower()} ({dest.id})"
+    else:
+        where_to = f"{'to ' if to else ''}{place}"
     line = '' if step else (
-        f"{ride.by + 's' if ride is not None else 'walks'} {'to ' if to else ''}{place}" + (f' with {names}' if party else '')
+        f"{ride.by + 's' if ride is not None else 'walks'} {where_to}" + (f' with {names}' if party else '')
         + (f' in {ride.id}' if ride is not None else '') + f" ({max(1, round(minutes))} min)")
     for other in was_with:
         if other not in party and not alone:
@@ -442,23 +448,8 @@ def pending_business(character):
     ('drink@Spring2'): what the scene's ending depends on (the scene 'business' field)."""
     scene = getattr(character, 'current_scene', None) or {}
     business = scene.get('business')
-    if not isinstance(business, dict) or survival.free(character.context):   # labels of a catalogue this world is played without
-        return []
-    mine = next((v for k, v in business.items() if str(k).lower() == character.name.lower()), None) or []
-    mine = [mine] if isinstance(mine, str) else mine
-    done = getattr(character, 'scene_deeds', [])
-    # only what this world lets a body do: a plan's own invention ('quench signal fire@Cave1') was
-    # given to the actor as something it must do, and the stage refused it five times running
-    cfg = survival.config(character.context) or {}
-    real = {a['name'].lower() for a in cfg.get('actions', [])} | {a['name'].lower() for a in survival.shared_actions(character.context)}
-    unreal = [str(b) for b in mine if str(b).split('@')[0].strip().lower() not in real]
-    told = scene.setdefault('_business_dropped', {})
-    if not isinstance(told, dict):
-        told = scene['_business_dropped'] = {}
-    if unreal and told.get(character.name) != unreal:   # once for each of the cast, not once a turn
-        told[character.name] = unreal
-        trace.event('business_dropped', character=character.name, business=unreal, why='no such action in this world')
-    return [str(b) for b in mine if str(b) not in unreal and str(b).split('@')[0].strip().lower() not in done]
+    # a scene's business was labels of a catalogue of actions; what is done on a stage is now the resolver's to say
+    return []
 
 
 def whereabouts(character):
@@ -526,6 +517,8 @@ def plain(context, text):
         if world.place(context, rid) is None:
             return rid
         return 'the ' + re.sub(r'\d+$', '', rid).replace('_', ' ').lower()
+    # a place's own name given in brackets after words for it is for the record, not the page
+    text = re.sub(r'\s*\(([A-Z][A-Za-z_]*\d*)\)', lambda m: '' if world.place(context, m.group(1)) is not None else m.group(0), text)
     text = re.sub(r'\b[A-Z][A-Za-z_]*\d+\b', ordinary, text)
     text = re.sub(r'\s*\b\d+ tiles?\b(?= )', '', text)
     # a count of tiles before punctuation or spelled out ('visibility to 32 tiles,', 'three tiles

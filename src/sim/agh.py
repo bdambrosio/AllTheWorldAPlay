@@ -2217,12 +2217,9 @@ Respond only with the one act.
         # what comes of it (sim/resolver.py); elsewhere, the listed actions
         do_rule = ((f"It is whatever a person could really do here with their body and what is at hand: handle what {name} holds or what lies here, "
                     "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
-                    "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force.")
-                   if survival.free(self.context) else
-                   ("It is made of the actions listed under 'You could do here' and 'Anywhere, you can also', one of them or two or three done together "
-                    f"('kneels at the water and drinks'), in {name}'s own manner; or it is a small passing act that changes nothing (traces the print with a "
-                    "fingertip, pats the ground beside him), which is seen and not remembered past the scene. Nothing else can be done in this world: clothes, "
-                    "doors, and things not listed as held or lying here cannot be moved or changed, and nobody is pushed, pulled or held by force."))
+                    "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force."
+                    + (" What this world has rules for (buying, selling, paying, work for a wage and the like, listed under 'By the world's rules') is done as listed there, and no other way."
+                       if survival.rules(self.context) else '')))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
                      'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
@@ -3347,19 +3344,17 @@ End your response with:
         parts.append(f'It is now {stage.clock(self.context)}.' + self._time_in_play())
         if events:   # what it saw done (what was said is in the prompt's own dialog block)
             parts.append('Recent events:\n' + ('\n'.join(self.context.witnessed(self, n=6, kinds=('event',))) or 'Nothing yet.'))
-        if survival.free(self.context):
-            # no list of what can be done: the places this character knows of and how far they are
-            # (what a place gives, and what a body can do with what is at hand, is not a list)
-            near = survival.places_near(self)
-            if near:
-                parts.append('Places you know of (a move goes to one by its name): ' + near)
-            if survival.danger_line(self):
-                parts.append('The danger on you: ' + survival.danger_line(self))
-            actions = ''
-        else:
-            actions = survival.available_actions(self, part='known')
+        # no list of what can be done: the places this character knows of and how far they are
+        # (what a place gives, and what a body can do with what is at hand, is not a list); and
+        # what the world rules on, as it stands for this character (survival.rules)
+        near = survival.places_near(self)
+        if near:
+            parts.append('Places you know of (a move goes to one by its name): ' + near)
+        if survival.danger_line(self):
+            parts.append('The danger on you: ' + survival.danger_line(self))
+        actions = survival.available_actions(self, part='known') if survival.rules(self.context) else ''
         if actions:
-            parts.append('You could do here: ' + actions)
+            parts.append("By the world's rules you could: " + actions)
         if survival.shared_line(self):
             parts.append(survival.shared_line(self))
         kept = keeper.offer_lines(self) if body is not None else []

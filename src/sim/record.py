@@ -182,6 +182,7 @@ def of(context, actor, people=None, full=False):
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
         *([survival.ways_note(context)] if full and survival.ways_note(context) else []),
+        *([survival.states_note(context, people)] if full and survival.states(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
         'Lying here, for anyone present to take or use: ' + ('; '.join(survival.named(context, p, reader=None) for p in survival.lying(context, at)) or 'nothing'),
@@ -252,15 +253,14 @@ def _acts(context, actor, people):
             'Held out, for the one named to take: ' + ('; '.join(held) or 'nothing'),
             'Gone out of this scene: ' + ('; '.join(gone) or 'nobody'),
             *([f'Tried by {actor.name} in this scene and not possible here: ' + ' | '.join(refused)] if refused else [])]
-    if survival.free(context):
-        # no catalogue of actions: what is hidden here for a search to find, and, with a danger
-        # on the stage, the answers this world has to it
-        hidden = [p['name'] for p in survival.lying(context, stage.here(actor), hidden=True)]
-        answers = survival.danger_answers(actor)
-        return head + ['Hidden here, to be found only by someone who searches this place: ' + (', '.join(hidden) or 'nothing'),
-                       *([f"Answers to the danger for {actor.name} ({survival.danger_line(actor).split(';')[0]}):", *[f'- {a}' for a in answers]] if answers else [])]
-    return head + [f"The world's actions for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
-                   *([f'- {o}' for o in offered] or ['- none here'])]
+    # what is hidden here for a search to find; with a danger on the stage, the answers this world
+    # has to it; and what the world rules on, as it stands for this person (survival.rules)
+    hidden = [p['name'] for p in survival.lying(context, stage.here(actor), hidden=True)]
+    answers = survival.danger_answers(actor)
+    return head + ['Hidden here, to be found only by someone who searches this place: ' + (', '.join(hidden) or 'nothing'),
+                   *([f"Answers to the danger for {actor.name} ({survival.danger_line(actor).split(';')[0]}):", *[f'- {a}' for a in answers]] if answers else []),
+                   *([f"The world's rules for {actor.name} (each is 'name@where' or 'name@who', with how far off it is or what it lacks):",
+                      *([f'- {o}' for o in offered] or ['- none that can be done from here'])] if survival.rules(context) else [])]
 
 
 def situation(context, lately='', viewer=None):

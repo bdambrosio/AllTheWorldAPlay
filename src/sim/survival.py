@@ -99,13 +99,63 @@ PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the w
              "unless a need is desperate or what meets it is out of reach.")
 
 
-def free(context):
-    """Whether this world is played without its catalogue of named actions: a body's needs are
-    facts about the person, changed by what the resolver finds an act to do (sim/resolver.py),
-    and what a kind of place gives is the model's to know. Worlds with money keep the catalogue
-    for now: paying and owning have not been worked out without it."""
-    cfg = config(context) or {}
-    return bool(cfg) and not cfg.get('currency')
+def rules(context):
+    """What this world rules on: the exchanges and odds its world file lists (buying, selling and
+    paying, work for a wage, what changes hands by deed, a search that may find something, a
+    repair that may not take). Everything else a person does is the resolver's to say
+    (sim/resolver.py); these are done only by the rule, named as the stage lists it."""
+    return list((config(context) or {}).get('actions') or [])
+
+
+# ---------------------------------------------------------------------------- states the world keeps
+# A state is kept only where something in the world file depends on it (a rule that needs someone
+# dressed). The world file says what it means and what brings it about ('states': name ->
+# {'means', 'by', 'at': kinds of place, 'minutes', 'needs': other states}); the stage shows it;
+# the resolver says when a deed makes it so or ends it; what requires it refuses without it.
+def states(context):
+    return dict((config(context) or {}).get('states') or {})
+
+
+def state_called(context, said):
+    said = ' '.join(str(said or '').lower().split())
+    return next((name for name in states(context) if name.lower() == said), None)
+
+
+def state_lacks(context, doer, who, said):
+    """Why this state cannot be made so of `who` by this deed: '' when it can."""
+    name = state_called(context, said)
+    if name is None:
+        return f"'{said}' is not one of the states this world keeps"
+    about = states(context)[name]
+    if about.get('at') and not any(p.kind in about['at'] and world.at_its_foot(context, _here(who), p) for p in world.places(context)):
+        return f"{who.name} becomes {name} only by {about.get('by', name)}, at {' or '.join(about['at'])}, and is at none"
+    missing = [n for n in about.get('needs') or [] if n not in who.body.flags]
+    return f"{who.name} must be {' and '.join(missing)} first" if missing else ''
+
+
+def set_state_of(context, doer, who, said, on=True):
+    name = state_called(context, said)
+    if name is None or getattr(who, 'body', None) is None:
+        return
+    if on and name not in who.body.flags:
+        who.body.flags.add(name)
+        context.simulation_time += timedelta(minutes=states(context)[name].get('minutes', 0))
+    elif not on:
+        who.body.flags.discard(name)
+    ledger.of(context).wrote('needs')
+    trace.event('state_changed', character=who.name, state=name, on=bool(on), by=doer.name)
+
+
+def states_note(context, people):
+    """For the stage: the states this world keeps, what brings each about, and who is in which."""
+    kept = states(context)
+    if not kept:
+        return ''
+    lines = [f"- {name}: {a.get('means', name)}; brought about by {a.get('by', name)}"
+             + (f" (at {' or '.join(k.replace('_', ' ').lower() for k in a['at'])})" if a.get('at') else '')
+             + (f"; needs one to be {' and '.join(a['needs'])} first" if a.get('needs') else '') for name, a in kept.items()]
+    now = '; '.join(f"{c.name}: {', '.join(n for n in kept if n in c.body.flags) or 'none of them'}" for c in people if getattr(c, 'body', None) is not None)
+    return 'States this world keeps (so of a person only once a deed has made it so):\n' + '\n'.join(lines) + f'\nNow: {now}'
 
 
 def places_near(character, cut=14):
@@ -772,8 +822,7 @@ def offered_actions(character, part='all', cut=14):
 
 def affordance_prompt_line(character):
     """The optional #affordance field of the act format, for worlds with affordances only."""
-    if getattr(character, 'body', None) is None or not config(character.context) or free(character.context):
-        return ''
+    return ''   # the act format has no field for a named action: a deed is told in words, and the resolver says what it does
     offered = available_actions(character)
     example = next((p.split(' (')[0] for p in offered.split('; ') if p and not p.startswith('THREAT')), 'rest')
     return ("\n#affordance for every Do: the exact label of each action it is made of, from 'You could do here' or 'Anywhere, you can also', "
@@ -1324,8 +1373,7 @@ def shared_line(character):
     """The shared actions as one standing line for an act prompt: the names once, not one entry
     for each person (the list of what can be done here is cut at fourteen)."""
     offers = shared_offers(character)
-    if not offers or free(character.context):
-        return ''
+    return ''   # no standing list of what a body can do anywhere: a deed is told in words
     alone = list(dict.fromkeys(a['name'] + (' <a thing you hold>' if a.get('item') else '') for a, other, _ in offers.values() if other is None))
     toward = list(dict.fromkeys(a['name'] + (' <a thing you hold>' if a.get('item') else '') for a, other, _ in offers.values() if other is not None))
     who = list(dict.fromkeys(other.name for _, other, _ in offers.values() if other is not None))

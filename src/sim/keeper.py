@@ -261,9 +261,7 @@ def _stage(context, character):
     from sim import survival, stage, record
     age(context)
     head = f"{stage.where(context, _here(character)).capitalize()}, {stage.clock(context)}."
-    if survival.free(context):
-        return '\n'.join(filter(None, [head, survival.holdings(character), record.account(context, character)]))
-    return '\n'.join(filter(None, [head, survival.holdings(character), 'This place offers: ' + (survival.available_actions(character, part='known') or 'nothing listed')]))
+    return '\n'.join(filter(None, [head, survival.holdings(character), record.account(context, character)]))
 
 
 # In a world played without its catalogue the keeper has no actions to name: these parts of ASK go
@@ -300,9 +298,9 @@ def consider(context, character, deed):
     if key in asked:
         return asked[key]
     known = models(context)
-    free = survival.free(context)
+    free = True   # the keeper names no action of the world: what the world rules on is the resolver's to say (survival.rules)
     ask = ASK
-    for with_catalogue, without in (FREE if free else ()):
+    for with_catalogue, without in FREE:
         assert with_catalogue in ask, 'keeper: a catalogue part of ASK was not found'
         ask = ask.replace(with_catalogue, without)
     reply = context.llm.ask({}, [UserMessage(content=ask.format(

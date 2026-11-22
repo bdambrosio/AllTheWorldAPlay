@@ -73,13 +73,9 @@ affordances = {
     'type_nouns': {'Airlock': ['airlock', 'lock', 'hatch'], 'Gantry': ['gantry', 'coolant line', 'weld', 'line'],
                    'Evastation': ['eva station', 'suit station', 'stow', 'recharge'], 'Repairpanel': ['repair panel', 'panel'],
                    'Habitmodule': ['habitat', 'hab', 'module'], 'Oxygentank': ['oxygen tank', 'o2', 'oxygen', 'tank']},
+    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
+    # words and the resolver says what comes of it (sim/resolver.py).
     'actions': [
-        {'name': 'refill oxygen', 'verbs': ['refill', 'recharge', 'top up', 'swap tank', 'plug in'], 'named_verbs': ['connect', 'hook up'],
-         'resource_types': ['Oxygentank', 'Evastation'], 'effects': {'oxygen': -1.0}, 'minutes': 10,
-         'text': 'refills suit oxygen at {resource}'},
-        {'name': 'cycle the airlock', 'verbs': ['cycle', 'enter the airlock', 'go inside', 'pressurise', 'pressurize'],
-         'named_verbs': ['enter', 'open'], 'resource_types': ['Airlock'], 'minutes': 10, 'sets': 'sheltered',
-         'text': 'cycles through {resource} into the pressurised habitat'},
         {'name': 'fetch sealant kit', 'category': 'work', 'verbs': ['fetch', 'grab', 'take', 'collect', 'get'],
          'named_verbs': [], 'resource_types': ['Evastation', 'Repairpanel'], 'gain': 'sealant kit', 'minutes': 5, 'deplete': 3,
          'text': 'takes a sealant kit from {resource}'},
@@ -99,15 +95,6 @@ affordances = {
         {'name': 'run diagnostics', 'category': 'explore', 'verbs': ['diagnose', 'run diagnostics', 'scan', 'check readings', 'inspect'],
          'resource_types': ['Repairpanel'], 'finds': [{'item': 'pressure-loss log', 'chance': 0.5}], 'minutes': 15, 'deplete': 2,
          'text': 'runs diagnostics at {resource}'},
-        {'name': 'rest', 'verbs': ['rest', 'sit', 'sleep', 'lie down'], 'resource_types': ['Habitmodule'],
-         'effects': {'fatigue': -0.4}, 'minutes': 60, 'sets': 'sheltered', 'text': 'rests in {resource}'},
-        {'name': 'buddy-breathe', 'category': 'social', 'target': 'character', 'verbs': ['share air', 'buddy-breathe', 'buddy breathe', 'cross-connect'],
-         'effects': {'oxygen': 0.25}, 'target_effects': {'oxygen': -0.25}, 'minutes': 5,
-         'text': "cross-connects suit lines and shares air with {target}"},
-        {'name': 'give sealant kit', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'pass'],
-         'transfer': 'sealant kit', 'minutes': 1, 'text': 'hands {target} a sealant kit'},
-        {'name': 'tend injury', 'category': 'social', 'target': 'character', 'verbs': ['tend', 'treat', 'patch up', 'check on'],
-         'target_effects': {'injury': -0.2}, 'minutes': 15, 'text': "treats {target}'s injury"},
     ],
     'hazards': [
         {'name': 'micrometeorites', 'description': 'a shower of micrometeorites pinging off the regolith', 'when': 'any',

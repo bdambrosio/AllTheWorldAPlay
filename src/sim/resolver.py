@@ -51,11 +51,13 @@ How this world works:
 - It is the world the setting describes. What an ordinary person could do there with their body and what is at hand can be done, though it take time and effort (a fire worked up from dry wood, a shelter of boughs); what they could not, cannot, however the deed is worded.
 - The stage above is the whole truth of who holds what and what lies here. A deed can use only what its doer holds, what lies here, what another person here gives or holds out, and what this place gives. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
 - Ordinary handling of a thing that is here needs no leave: pick it up, put it down, hand it over, hold it out or up to be seen, pocket it, open, shut, fold, tear, wipe or turn it, set it on something, read it. Each is an effect: say it.
-- What changes a body's needs (eating, drinking, resting, tending a wound) and what finds things a place holds (searching it, picking from it) happens only by one of the world's actions listed on the stage, named exactly as listed. An action marked as lacking something cannot be done. With a danger on the stage, what is done about it is one of the answers listed for it.
+- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect, by the way the stage lists for that need where it is one of them (How each need is eased: a way says what it takes, and how far it eases is the world's to say); it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it.
+- What the world rules on is listed on the stage (The world's rules): buying, selling and paying, work for a wage, what changes hands by deed, a search that may or may not find something, a repair that may not take. Such a thing happens only by its rule, named exactly as listed, and one marked as lacking something cannot be done; nothing is bought, sold, earned or paid any other way.
+- A state this world keeps (States, on the stage) is so of a person only when a deed makes it so, in the way listed for it, and stays so until a deed ends it: say that as a becomes or a no_longer effect.
 - Putting a thing on a person (a coat round someone, a strip of cloth bound round a wound) leaves it on them, worn: say it as on. Taking off what is worn puts it in a hand.
 - A touch is done as it is written: taking a hand or an arm, a hand on a shoulder, pressing a thing into someone's hand (the thing is then theirs to keep or give back). The one touched may draw away afterwards; that is theirs to play.
 - Nobody is moved, held back, stopped or searched against their will. To lead, draw, pull or beckon someone along is to ask: they answer for themselves, and where they stand or go is no effect of this deed. A thing another person holds comes away only if they give it or have held it out.
-- Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.
+- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here.
 - A look, a gesture, a step or two, a change of posture changes nothing that lasts, except the posture.
 - A deed is about the things it names: where the thing it means is not here, that part is not done, and no other thing is used in its place.
 - A deed meets this place as the stage has it. A thing, or a state or trace of a thing (a clean-cut limb, a fresh footprint), that the stage does not hold and a place of this kind would not ordinarily have is not there: the page does not show it, and what of the deed needs it is left out.
@@ -71,13 +73,17 @@ Answer in JSON only:
      {{"thing": "<exact name>", "held_out_to": "<the person it is held out or shown to>"}},
      {{"thing": "<exact name>", "on": "<the person it is now worn by or bound on, by name>"}},
      {{"thing": "<exact name of a written thing>", "read_by": "{name}"}},
-     {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},
+     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "by": "<when eased: the way, in the words the stage lists it for that need; or the word other>"}},
+     {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
+     {{"world": "<one of the world's rules listed on the stage, the whole of the part before the bracket, with its @place or @person, exactly as listed; or, with a danger on the stage, one of the answers listed for it>"}},
+     {{"who": "<the person it is now so of>", "becomes": "<one of the states this world keeps, by its name on the stage>"}},
+     {{"who": "<the person it is no longer so of>", "no_longer": "<a state the stage shows them in>"}},
      {{"who": "{name}", "posture": "<standing, sitting, kneeling, lying down>"}},
      {{"who": "{name}", "touches": "<the person touched>", "how": "<two to four words>"}},
      {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
      {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
      {{"who": "{name}", "goes": "<a place named on the stage, a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
-     {{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}],
+     {{"new": "<a thing now made or picked>", "from": "<the place, or the things here, it comes from>"}}],
   "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
   "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, only what is done, no words spoken, 30 words at most>"}}
 </end>"""
@@ -154,8 +160,8 @@ def faults(context, character, found):
             made.add(_low(e['new']))
         elif e.get('world'):
             chosen = survival._chosen(context, character, str(e['world']))
-            if chosen is None or (survival.free(context) and chosen[0] != 'threat'):
-                out.append(f"'{e['world']}' is not one of the answers listed" if survival.free(context) else f"'{e['world']}' is not one of the world's actions listed")
+            if chosen is None:
+                out.append(f"'{e['world']}' is not one of the world's rules, nor an answer to a danger, as the stage lists them")
         elif e.get('need'):
             who = _person(context, character, e.get('who') or character.name)
             if who is None or getattr(who, 'body', None) is None or (survival.need_called(who.body, e['need']) is None
@@ -165,6 +171,13 @@ def faults(context, character, found):
                 lacks = survival.way_lacks(context, character, who, survival.need_called(who.body, e['need']), e.get('by'))
                 if lacks:
                     out.append(lacks)
+        elif e.get('becomes') or e.get('no_longer'):
+            who = _person(context, character, e.get('who') or character.name)
+            lacks = 'nobody of that name is here' if who is None or getattr(who, 'body', None) is None else (
+                survival.state_lacks(context, character, who, e['becomes']) if e.get('becomes') else
+                '' if survival.state_called(context, e['no_longer']) else f"'{e['no_longer']}' is not one of the states this world keeps")
+            if lacks:
+                out.append(lacks)
         elif e.get('found'):
             if not any(_low(p['name']) == _low(e['found']) for p in survival.lying(context, stage.here(character), hidden=True)):
                 out.append(f"there is no '{e['found']}' hidden here")
@@ -202,7 +215,7 @@ def _ask(context, character, act, note=''):
     to = getattr(act, 'leaves_to', None)
     leaves = '' if not getattr(act, 'leaves', None) else \
         f"\nIts actor marks it as going out of the scene{' with ' + ', '.join(c.name for c in party) if party else ' alone'}{', for ' + to if to else ''}.\n"
-    prompt = _for(context, RESOLVE).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = RESOLVE.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                             stage=record.of(context, character, people(context, character), full=True), scene=scene,
                             name=character.name, deed=act.action, leaves=leaves) + note
     reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_deed', temp=0.2, stops=['</end>'], max_tokens=700)
@@ -304,34 +317,6 @@ Answer in JSON only:
 </end>"""
 
 
-# ---------------------------------------------------------------------------- a world without its catalogue
-# In a world played without its catalogue of named actions (survival.free) a body's needs are
-# facts about the person, and what an act does to them is the resolver's to say; what a kind of
-# place gives (berries on a bush, water at a spring) is the model's to know, not a list. The
-# rules and the effect forms that spoke of 'the world's actions' are put this way instead.
-# (Untested for quality when written: 2026-11-20.)
-_SWAPS = (
-    ("- What changes a body's needs (eating, drinking, resting, tending a wound) and what finds things a place holds (searching it, picking from it) happens only by one of the world's actions listed on the stage, named exactly as listed. An action marked as lacking something cannot be done. With a danger on the stage, what is done about it is one of the answers listed for it.",
-     "- A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here: food in hand or growing at this place, water at this place, somewhere to lie down, something to bind a wound with. Say it as a need effect, by the way the stage lists for that need where it is one of them (How each need is eased: a way says what it takes, and how far it eases is the world's to say); it is done whether or not the body was in want (a person may drink when not thirsty). What a place of its kind ordinarily gives (berries on a bush, an apple on a tree, water from a spring, a limb off a fallen branch) can be picked, drawn or taken from it while standing at it: say that as a new thing. A thing listed as hidden here comes to light only by a deed that searches where it is. With a danger on the stage, what is done about it is one of the answers listed for it."),
-    ("- Nothing comes from nothing: a new thing is one this place gives (by a listed action), or is made from things that are here.",
-     "- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here."),
-    ("""     {{"world": "<one of the world's actions, the whole of the part before the bracket, with its @place or @person, exactly as listed>"}},""",
-     """     {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "by": "<when eased: the way, in the words the stage lists it for that need; or the word other>"}},
-     {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
-     {{"world": "<only with a danger on the stage: one of the answers listed for it, exactly as listed>"}},"""),
-    ("""{{"new": "<a thing now made or picked>", "from": "<the listed action or the things here it comes from>"}}""",
-     """{{"new": "<a thing now made or picked>", "from": "<the place, or the things here, it comes from>"}}"""))
-
-
-def _for(context, prompt):
-    """A resolver prompt as this world is played: with its catalogue of actions, or without."""
-    if not survival.free(context):
-        return prompt
-    for with_catalogue, without in _SWAPS:
-        prompt = prompt.replace(with_catalogue, without)
-    return prompt
-
-
 def told_to(context, speaker, listener=None):
     """What `speaker` has told of its own life before the play (to `listener`, or to anyone): the
     facts, oldest first. Kept as told, with the line that told each (ledger.told): what a person
@@ -361,7 +346,7 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     direction = getattr(speaker, 'direction', None) or {}
     lived = '\n'.join(filter(None, [f"It opened: {direction['setup']}" if direction.get('setup') else '', *context.witnessed(speaker, n=16)])) or 'Nothing yet.'
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
-    prompt = _for(context, ACT).format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+    prompt = ACT.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
                         stage=about or record.of(context, speaker, others, full=True), name=speaker.name,
                         listener=getattr(listener, 'name', 'the others'), lived=lived,
                         told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
@@ -556,6 +541,8 @@ def effects_note(effects):
             out.append(f"{e['thing']} read by {e['read_by']}")
         elif e.get('need'):
             out.append(f"{e.get('who', '')} {e['need']} {e.get('change', 'eased')}".strip())
+        elif e.get('becomes') or e.get('no_longer'):
+            out.append(f"{e.get('who', '')} {'now' if e.get('becomes') else 'no longer'} {e.get('becomes') or e.get('no_longer')}".strip())
         elif e.get('world'):
             out.append(str(e['world']))
         elif e.get('posture'):
@@ -635,6 +622,10 @@ def apply(context, character, act):
                 who.body.flags.discard(flag)
                 ledger.of(context).wrote('needs')
                 trace.event('need_changed', character=who.name, need=flag, change='cleared', by=me)
+        elif e.get('becomes') or e.get('no_longer'):
+            # a state this world keeps, made so or ended by the deed (survival.set_state_of)
+            who = _person(context, character, e.get('who') or me) or character
+            survival.set_state_of(context, character, who, e.get('becomes') or e.get('no_longer'), bool(e.get('becomes')))
         elif e.get('found'):
             thing = next((p for p in survival.lying(context, stage.here(character), hidden=True) if _low(p['name']) == _low(e['found'])), None)
             if thing is not None:

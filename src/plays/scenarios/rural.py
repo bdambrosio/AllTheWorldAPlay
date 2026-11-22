@@ -52,15 +52,19 @@ stakes = ("In this peasant village, land, money, harvest and inheritance are wha
 # Stage business (sim/survival.py): field work, wheat, flour and bread, money, land claims.
 affordances = {
     'needs': {   # late afternoon on a hot summer day
-        'thirst': {'initial': 0.4, 'per_hour': 0.06, 'neglect_harm': 0.03,
+        'thirst': {'eased': [{'by': 'drawing and drinking water at a well', 'at': ['Well'], 'amount': 0.7, 'minutes': 10}],
+                   'initial': 0.4, 'per_hour': 0.06, 'neglect_harm': 0.03,
                    'words': ('not thirsty', 'thirsty', 'very thirsty', 'parched'),
                    'percepts': {0.5: "The heat has dried your mouth; you want water from the well.",
                                 0.8: "Your head swims in the heat; you need water."}},
-        'hunger': {'initial': 0.3, 'per_hour': 0.03,
+        'hunger': {'eased': [{'by': 'eating a loaf of bread', 'uses': ['loaf of bread'], 'amount': 0.5, 'minutes': 15}],
+                   'initial': 0.3, 'per_hour': 0.03,
                    'words': ('fed', 'hungry', 'very hungry', 'famished'),
                    'percepts': {0.5: "You are hungry; supper is a long way off.",
                                 0.8: "Hunger gnaws at you; you need bread."}},
-        'fatigue': {'initial': 0.35, 'per_hour': 0.03, 'shelter_factor': 0.5,
+        'fatigue': {'eased': [{'by': 'resting indoors', 'at': ['Farm', 'Mill', 'Blacksmith'], 'amount': 0.1, 'minutes': 10},
+                              {'by': 'resting in the shade', 'amount': 0.15, 'minutes': 30}],
+                    'initial': 0.35, 'per_hour': 0.03, 'shelter_factor': 0.5,
                     'words': ('fresh', 'tired', 'worn out', 'spent'),
                     'percepts': {0.5: "Your back aches from the day's work.",
                                  0.8: "You are worn out; you can barely lift your arms."}},
@@ -72,9 +76,9 @@ affordances = {
     'type_nouns': {'Well': ['well'], 'Mill': ['mill', 'miller'], 'Blacksmith': ['blacksmith', 'forge', 'smithy'],
                    'Farm': ['farm', 'field', 'fields', 'wheat', 'land', 'plot'], 'Market': ['market', 'stall'],
                    'Strip': ['strip', 'strips']},
+    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
+    # words and the resolver says what comes of it (sim/resolver.py).
     'actions': [
-        {'name': 'draw water', 'verbs': ['drink', 'draw water', 'drink water'], 'named_verbs': ['draw', 'haul', 'lower the bucket'],
-         'resource_types': ['Well'], 'effects': {'thirst': -0.7}, 'minutes': 10, 'text': 'draws water at {resource} and drinks'},
         # hiring out is on another family's land and is said as such: cutting wheat is 'harvest
         # family wheat' (it stood first with the same verbs, so Jean harvesting became day labour)
         {'name': 'work for wages', 'category': 'work', 'verbs': ['hire out', 'hire myself', 'labour for', 'work for wages', 'day labour', 'day-wage'],
@@ -100,26 +104,14 @@ affordances = {
          'text': 'sells a sack of flour at {resource}'},
         {'name': 'buy bread', 'verbs': ['buy', 'purchase'], 'resource_types': ['Market'], 'cost': 1, 'gain': 'loaf of bread',
          'minutes': 10, 'text': 'buys a loaf of bread at {resource}'},
-        {'name': 'eat bread', 'verbs': ['eat', 'chew', 'tear off a piece'], 'resource_types': None,
-         'requires': 'loaf of bread', 'consumes': 'loaf of bread', 'effects': {'hunger': -0.5}, 'minutes': 15,
-         'text': 'eats bread'},
         {'name': 'have tools mended', 'category': 'work', 'verbs': ['mend', 'repair', 'sharpen', 'shoe'], 'resource_types': ['Blacksmith'],
          'cost': 2, 'sets': 'tools mended', 'minutes': 60, 'text': 'has tools mended at {resource}'},
-        {'name': 'go indoors', 'verbs': ['go inside', 'go indoors', 'shelter', 'take shelter', 'take cover', 'step inside'],
-         'resource_types': ['Farm', 'Mill', 'Blacksmith'], 'effects': {'fatigue': -0.1}, 'minutes': 10, 'sets': 'sheltered',
-         'text': 'goes indoors at {resource}'},
-        {'name': 'rest in the shade', 'verbs': ['rest', 'sit', 'lie down', 'take a break'], 'resource_types': None,
-         'effects': {'fatigue': -0.15}, 'minutes': 30, 'text': 'rests in the shade'},
         {'name': 'pay', 'category': 'social', 'target': 'character', 'verbs': ['pay', 'hand over', 'settle'],
          'transfer_money': 2, 'minutes': 2, 'text': 'pays {target} two francs'},
-        {'name': 'give bread', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'offer', 'share'],
-         'transfer': 'loaf of bread', 'minutes': 2, 'text': 'gives {target} a loaf of bread'},
         # a farm or a strip passes when its owner, holding its deed, signs it over with the heir standing there
         {'name': 'sign over the farm', 'category': 'social', 'target': 'character',
          'verbs': ['sign over', 'sign the deed', 'signs the deed', 'put my mark', 'makes his mark', 'make my mark', 'deed the farm'],
          'transfer': '*deed', 'conveys': ' deed', 'minutes': 10, 'text': 'signs the {item} over to {target}'},
-        {'name': 'give wheat', 'category': 'social', 'target': 'character', 'verbs': ['give', 'hand', 'pass', 'deliver'],
-         'transfer': 'sack of wheat', 'minutes': 5, 'text': 'hands {target} a sack of wheat'},
     ],
     'hazards': [
         {'name': 'hailstorm', 'description': 'a black summer hailstorm rolling in over the fields', 'when': 'day',

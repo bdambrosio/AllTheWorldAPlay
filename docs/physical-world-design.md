@@ -454,4 +454,14 @@ A world file that says how its places sit (`kinds`, `layout`: plays/scenarios/fo
 
 Places come into the world while it is played, by the two calls that decide what is so: the set-up check may set a scene at a new place inside or beside a listed one (`new_place`), and the resolver may have a deed or a walk reach or make one (the `place` effect). Each is made by `world.make_place`, inside an event, and is listed from then on. A place that belongs to no listed place is not made. (Paired replays and live cases: logs/review-20261121/places.)
 
-The five world files without a layout (rural, coastal, city, lunar, garden) are still played on the old grid (sim/map.py), through the same calls of sim/world.py, until each says how its places sit. Checks: logs/review-20261121/world/land_check.py (layout rules over twenty seeds; the rules of nearness and sight), drive_check.py, golden.py (a fixed script over each play, no model).
+Every world file says how its places sit; the old grid (sim/map.py) is gone, and sim/world.py is the front of sim/land.py and nothing else. Checks: logs/review-20261121/world/land_check.py (layout rules over twenty seeds; the rules of nearness and sight), drive_check.py, golden.py (a fixed script over each play, no model).
+
+## What a world file rules on, and what is the resolver's
+
+A world file declares only what the engine must hold someone to; whatever nothing would ever check is not declared, and is simply played: said, done, shown and kept in the record. Below its places a world file holds three kinds of thing (`affordances`):
+
+- **Needs**, each with how it rises, what neglect does, and the ways it is eased (`'eased'`: by what, how far, and what that takes: a kind of place, a thing used up, minutes, a stock that runs out, a risk). The resolver says which way a deed was (the need effect's `by`); the amount, the time and the cost are the world's (`survival.ease`). Eased any other way, a need falls no further than by the least of its listed ways.
+- **States something depends on** (`'states'`: dressed, because work needs it), each with what it means and what brings it about. The stage shows them and who is in which; the resolver says when a deed makes one so or ends it (`becomes`, `no_longer`); what requires one refuses without it.
+- **Rules** (`'actions'`): exchanges and odds, which must be the same for everyone and are not a model's to invent: buying, selling and paying, work for a wage, what changes hands by deed, a search that may find something, a repair that may not take. The stage lists them as they stand for a person; the resolver names the rule a deed falls under (the `world` effect), and the engine checks what it needs and applies it (`survival._apply`).
+
+Everything else is the resolver's and the keeper's: moving, taking, making, handing over, wearing, posture, touch, marks, new places, what a made thing does in time. There is one path for every world, with or without money (live cases: logs/review-20261121/ways, logs/review-20261121/rules).
