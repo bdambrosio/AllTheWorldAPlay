@@ -263,6 +263,90 @@ def _acts(context, actor, people):
                       *([f'- {o}' for o in offered] or ['- none that can be done from here'])] if survival.rules(context) else [])]
 
 
+# ---------------------------------------------------------------------------- a look at something
+# A look is aimed at a person, a thing or a place, by the name the stage gives it, and shows what
+# the world holds of it that can be seen from where the looker stands: nothing hidden, nothing of
+# a body's needs or anyone's thoughts. Of a person close by, also how they seem, in the two or
+# three words of the stance they carry. Of a written thing at hand, its words.
+def _plain(name):
+    return re.sub(r'^(at|the|a|an)\s+', '', ' '.join(str(name or '').lower().strip(' .,;:!?"\'').split()))
+
+
+def _seems(person):
+    stance = getattr(person, 'emotionalStance', None)
+    words = [str(getattr(getattr(stance, part, None), 'value', '') or '').lower() for part in ('arousal', 'tone', 'orientation')]
+    return ', '.join(w for w in dict.fromkeys(words) if w and w != 'neutral')
+
+
+def look_at(context, looker, what):
+    """What `looker` sees of the person, thing or place named: ('person' | 'thing' | 'place', its
+    name, the facts in a few lines). None when `what` names none of them in this world (the look
+    is then a look around)."""
+    said, here = _plain(what), stage.here(looker)
+    if not said or said in ('around', 'about', 'all around'):
+        return None
+    for c in context.everyone():
+        if c is looker or not world.on(c) or stage.remote(c) or _plain(c.name) != said:
+            continue
+        there, body = stage.here(c), getattr(c, 'body', None)
+        if not world.sees(context, here, there):
+            return 'person', c.name, f'{c.name} is not in sight from here.'
+        if not world.together(context, here, there):
+            carried = '; '.join(body._held_words(tuple(body.cfg.get('private_items', ())))) if body is not None else ''
+            return 'person', c.name, f"{c.name}, {world.away(context, here, there)}" + (f": {'; '.join(body.bearing)}" if body is not None and body.bearing else '') \
+                + (f'; {carried}' if carried else '') + '. Too far to make out more.'
+        lines = [f"{c.name}: {getattr(c, 'looks', None) or 'close by'}."]
+        if body is not None:
+            lines.append(f'To the eye: {body.visible()}.')
+        if _seems(c):
+            lines.append(f'Seems: {_seems(c)}.')
+        return 'person', c.name, '\n'.join(lines)
+    book = ledger.of(context)
+    for thing in book.things:
+        if _plain(thing['name']) != said or thing.get('hidden'):
+            continue
+        holder = next((c for c in context.everyone() if c.name == thing.get('holder')), None)
+        at = stage.here(holder) if holder is not None and world.on(holder) else thing.get('at')
+        if at is None:
+            continue
+        mine = holder is looker
+        near = mine or (world.together(context, here, at) if holder is not None else survival.at_hand(context, at, here))
+        if holder is not None and not mine and str(thing['name']).startswith(tuple(holder.body.cfg.get('private_items', ())) or ('\0',)):
+            continue   # what someone keeps to themselves is not looked over
+        if near:
+            lines = [survival.named(context, thing, reader=looker) + (f', held by {holder.name}' if holder is not None and not mine else ', in your hand' if mine else f', lying {world.where(context, at)}') + '.']
+            marks = [m['words'] for m in book.marks if str(m.get('on') or '').lower() == thing['name'].lower()]
+            if marks:
+                lines.append('On it: ' + '; '.join(marks) + '.')
+            words = survival.writing_of(context, thing['name'])
+            if words:   # read where it is one's own or lies here; in another's hand only that it is written on
+                lines.append(f'It says: {words}' if mine or holder is None else 'It has writing on it.')
+            return 'thing', thing['name'], '\n'.join(lines)
+        if world.sees(context, here, at, 1.0):
+            return 'thing', thing['name'], f"{thing['name']}, " + (f'held by {holder.name}, ' if holder is not None else 'lying ') + f"{world.away(context, here, at)}. Too far to make out more."
+    place = world.called(context, said.replace(' ', '_')) or world.called(context, said)
+    if place is not None:
+        if world.at_place(context, here, place):
+            there = [c.name for c in context.everyone() if c is not looker and world.on(c) and not stage.remote(c) and world.at_place(context, stage.here(c), place)]
+            lying = [survival.named(context, t, reader=looker) for t in survival.lying(context, place.xy)]
+            lines = [f"{place.id}: {place.description or place.kind}" + (', walled' + (' and standing open' if place.open else '') if place.enclosed else '')
+                     + (', a shelter' if place.shelter else '') + '.',
+                     'Here: ' + (', '.join(there) or 'nobody else') + '.', 'Lying here: ' + ('; '.join(lying) or 'nothing') + '.']
+            traces = survival.marks_note(context, place.xy, reader=looker)
+            if traces:
+                lines.append('Traces: ' + '; '.join(traces) + '.')
+            if survival._left(place):
+                lines.append(f'Of what it gives: {survival._left(place)}.')
+            return 'place', place.id, '\n'.join(lines)
+        if not world.in_sight(context, here, place):
+            return 'place', place.id, f'{place.id} is not in sight from here.'
+        seen = [c.name for c in context.everyone() if c is not looker and world.on(c) and world.at_place(context, stage.here(c), place) and world.sees(context, here, stage.here(c))]
+        return 'place', place.id, (f"{place.id}: {place.description or place.kind}, {world.away(context, here, place.xy)}."
+                                   + (' Its inside cannot be seen from here.' if place.enclosed and not place.open else '')
+                                   + (f" There: {', '.join(seen)}." if seen else ' Nobody is to be seen there.'))
+    return None
+
+
 def situation(context, lately='', viewer=None):
     """The Situation every prompt reads, in a world with mechanics: where and when things stand,
     from the world itself. It was free text that each narration added to and an LLM rewrote

@@ -169,7 +169,7 @@ for _name in ('places', 'listed', 'place', 'called', 'find', 'kind_called', 'nea
               'start', 'region', 'regions', 'region_called', 'nearest_ground', 'indoors', 'sheltered',
               'resolve', 'where',
               'span', 'at_place', 'at_its_foot', 'on_the_spot', 'together', 'lying_here', 'in_earshot', 'a_step',
-              'can_walk_over', 'in_sight', 'in_range', 'in_the_neighbourhood',
+              'can_walk_over', 'in_sight', 'in_range', 'in_the_neighbourhood', 'sees',
               'minutes', 'walk', 'conveyance', 'bring', 'far', 'away', 'sight_words', 'reach_words',
               'danger_start', 'danger_reaches', 'danger_source_near', 'danger_clear', 'danger_words',
               'apart_words', 'danger_picture_words'):

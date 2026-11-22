@@ -1020,6 +1020,7 @@ End your response with:
 {{$action}}{{$toward}}
 </the_look>
 
+What can be seen of it from where {{$name}} stands:
 <what_is_there>
 {{$local_map}}
 </what_is_there>
@@ -1038,7 +1039,7 @@ It is now {{$clock}}. Danger here now: {{$danger}}.
 
 The answer is what the audience is shown of the look: what {{$name}} sees or hears, in the third person ('{{$name}} sees ...', '{{$name}} hears ...'), and what {{$name}} learns from it, stated as the fact learned ('{{$name}} learns that the gate is chained').
 - Only what is there: the place, the people and things above, and what follows from what has happened. No animal, person, thing or danger that is not listed.
-- Of the others, what can be seen is what they do and how they look, not what they feel, think or mean: '{{$name}} sees Kidd look away', not 'Kidd is ashamed'; what {{$name}} learns is what the look shows, not what someone intends. Nor what {{$name}} feels: the actor plays that.
+- Of the others, what can be seen is what they do and how they look, and how they are said above to seem; not what they feel, think or mean beyond that: '{{$name}} sees Kidd look away', not 'Kidd is ashamed'; what {{$name}} learns is what the look shows, not what someone intends. Nor what {{$name}} feels: the actor plays that.
 - Looking changes nobody's body, nothing anyone holds, and not the time.
 - Nothing follows the look: no one acts.
 If the look shows {{$name}} nothing new (no movement, no change, the same trees), respond with the single word: nothing
@@ -1047,8 +1048,13 @@ At most two sentences, 50 words.
 End your response with:
 </end>
 """)]
-        local_map = world.view_report(actor)
-        local_map = xml.format_xml(local_map)
+        # a look at a person, a thing or a place by name: what the world holds of it that can be seen
+        # from here (record.look_at); else what is in view all round
+        seen = record.look_at(self, actor, action)
+        local_map = seen[2] if seen else xml.format_xml(world.view_report(actor))
+        if seen:
+            actor.add_perceptual_input(f'You look at {seen[1]}. {seen[2]}', percept=False, mode='internal')
+            trace.event('look_at', character=actor.name, at=seen[1], what=seen[0])
         aimed = target if isinstance(target, list) else [target] if target else []
         toward = ', '.join(getattr(t, 'name', str(t)) for t in aimed if t)
         inputs = {"name": actor.name, "action": action, "local_map": local_map, "toward": f' (toward {toward})' if toward else '',

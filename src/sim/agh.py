@@ -2185,7 +2185,7 @@ The question: after what is already done and said, what one act now moves {{$nam
 {{$what_an_act_is}}
 - do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words (those go in say). {{$do_rule}}
 {{$both_rule}}- move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
-- look: look around, or toward one of the eight compass points.
+- look: look at a person here, a thing here or held, or a place in sight, by its name; or look around. It shows what can be seen of it from where {{$name}} stands.
 {{$think_rule}}
 Truth: {{$name}} speaks and acts only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
 Words belong to their speaker: a name or nickname one character uses for another is that character's own, not {{$name}}'s.
@@ -2194,7 +2194,7 @@ Respond with one act, in this form, closed by ## on a line of its own. {{$give}}
 
 {{$say_line}}#do what {{$name}} does, in the third person, 20 words at most; omit if {{$name}} does nothing but speak
 #move the place or person walked to
-#look where
+#look the name of what is looked at, or the word around
 {{$think_line}}#target the character(s) spoken to, acted on or walked to, comma separated; omit if none
 #duration minutes{{$affordance_line}}
 #leaves no, alone, or with <names>. Whether with this act your character goes out of the scene: alone when it walks out on the others or goes off by itself; with and the names of those who go with it (comma separated) when they go off together ("follow me", "lead the way" and they come); no otherwise: for moving about the place, and for going to fetch, gather or look at something as part of what your character is doing here. Leaving alone ends your character's part in the scene. When it leaves, add where to: "with Joe, to the trail northwest".
