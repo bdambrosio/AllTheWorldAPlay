@@ -1,156 +1,47 @@
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import Dict, List
+"""A peasant village and its farms: a market square, a mill, a smithy, wells, fields.
 
-# Import the new dynamic resource system
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-# All enums for rural scenario
-class RuralTerrain(Enum):
-    Water = 1
-    Mountain = 2
-    Forest = 3
-    Grassland = 4
-    Field = 5
-
-class RuralInfrastructure(Enum):
-    Road = auto()
-
-class RuralResources(Enum):
-    Well = auto()
-    Mill = auto()
-    Blacksmith = auto()
-    Farm = auto()
-    Market = auto()
-    Strip = auto()      # a strip of wheat land: land a family holds besides its farm, with a deed of its own
-
-class RuralProperty(Enum):
-    Farm = auto()
-    Village = auto()
-
-# Rules for terrain generation
-terrain_rules = {
-    'elevation_noise_scale': 50.0,
-    'water_level': 0.2,
-    'mountain_level': 0.8,
-    'terrain_by_elevation': {
-        'water': {'max': 0.2, 'type': 'Water'},
-        'mountain': {'min': 0.8, 'type': 'Mountain'}
-    },
-    'lowland_distribution': {
-        'Forest': 0.4,
-        'Grassland': 0.3,
-        'Field': 0.3
-    }
+kinds = {
+    'Market': {'description': 'The village market square', 'radius': 25},
+    'Mill': {'description': 'A grain mill', 'radius': 10, 'enclosed': True, 'shelter': True, 'owner': True},
+    'Blacksmith': {'description': 'A blacksmith workshop', 'radius': 8, 'enclosed': True, 'open': True, 'shelter': True, 'owner': True},
+    'Well': {'description': 'A deep well for water', 'radius': 2, 'owner': True},
+    'Farm': {'description': 'A farmhouse with barn', 'radius': 20, 'enclosed': True, 'shelter': True, 'owner': True},
+    'Strip': {'description': 'A strip of wheat land', 'radius': 60},
 }
 
-infrastructure_rules = {
-    'road_density': 0.1,
-    'path_type': 'Road',
-    'slope_factor': 2.0,
-    'terrain_costs': {
-        'Water': float('inf'),
-        'Mountain': float('inf'),
-        'Forest': 2.0,
-        'Grassland': 1.0,
-        'Field': 1.0
-    }
-}
-
-property_rules = {
-    'min_size': 50,
-    'max_size': 150,
-    'valid_terrain': ['Field', 'Grassland']
-}
-
-# Standard interface names
-terrain_types = RuralTerrain
-infrastructure_types = RuralInfrastructure
-property_types = RuralProperty
-resource_types = ResourceTypeRegistry(RuralResources)  # Use dynamic registry
-
-# Add at top with other interface names
-required_resource = resource_types.Mill  # or Market, etc.
-required_resource_name = "Mill"  # or "Market", etc.
-
-resource_rules = {
-
-    'names': {
-        'Farm': ['MarquartFarm', 'FouanFarm'],
-        # strips are put beside a family's farm by the play (laTerre.py), in this order
-        'Strip': ['MarquartUpperStrip', 'MarquartLowerStrip', 'FouanUpperStrip', 'FouanLowerStrip'],
-
-    },
-    'allocations': [
-        {
-            'resource_type': resource_types.Well,
-            'description': 'A deep well for water',
-            'count': 5,
-            'has_npc': True,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Grassland: 1.0,
-                terrain_types.Field: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Mill,
-            'has_npc': True,
-            'description': 'A grain mill',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Field: 2.0,
-                terrain_types.Grassland: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Blacksmith,
-            'has_npc': True,
-            'description': 'A blacksmith workshop',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Field: 1.0,
-                terrain_types.Grassland: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Farm,
-            'has_npc': True,
-            'description': 'A farmhouse with barn',
-            'count': 8,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Field: 2.0,
-                terrain_types.Grassland: 1.0
-            }
-        },
-        {   # none are scattered by the map: a play places a family's strips beside its farm
-            'resource_type': resource_types.Strip,
-            'description': 'A strip of wheat land',
-            'count': 0,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Field: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Market,
-            'description': 'The village market square',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Field: 1.0,
-                terrain_types.Grassland: 1.0
-            }
-        }
-    ]
+layout = {
+    'regions': [
+        {'kind': 'Grassland', 'radius': 3000, 'pace': 70, 'cover': 'open', 'whole': True},
+        {'kind': 'Field', 'radius': (200, 350), 'pace': 60, 'cover': 'open', 'count': 6, 'from_start': (200, 1700)},
+        {'kind': 'Forest', 'radius': 250, 'pace': 45, 'cover': 'trees', 'count': 2, 'from_start': (800, 2200)},
+        {'kind': 'Hill', 'radius': 300, 'pace': 35, 'cover': 'open', 'count': 1, 'from_start': (1500, 2500), 'blocks_view': True, 'overlooks': True},
+    ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
+    'scatter': {'within': 1800, 'apart': 150},
+    'places': [
+        {'kind': 'Market', 'count': 1, 'from_start': (0, 0)},
+        {'kind': 'Mill', 'count': 1, 'near': ('Market', 200, 600)},
+        {'kind': 'Blacksmith', 'count': 1, 'near': ('Market', 20, 150), 'apart': 20},
+        {'kind': 'Farm', 'count': 8, 'on': {'Field': 1.0}, 'from_start': (300, 1800), 'apart': 250, 'names': ['MarquartFarm', 'FouanFarm']},
+        {'kind': 'Well', 'count': 5, 'on': {'Field': 1.0, 'Grassland': 1.0}, 'from_start': (50, 1500), 'apart': 60},
+        {'kind': 'Strip', 'count': 0, 'names': ['MarquartUpperStrip', 'MarquartLowerStrip', 'FouanUpperStrip', 'FouanLowerStrip']},
+    ],
 }
 
 
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In this peasant village, land, money, harvest and inheritance are what is at stake: who holds which "
           "farm and which strip of land, who works it, what the wheat fetches at market, who pays whom, and who will inherit. Heat, hard "
           "labour and thirst are real. Land is a farm, or a strip of wheat land beside it; each has its own deed and passes whole. "

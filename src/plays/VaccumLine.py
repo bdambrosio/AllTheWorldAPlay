@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import importlib
 
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -23,7 +24,6 @@ from plays.scenarios import lunar  # pylint: disable=import-error
 importlib.reload(lunar)            # safe-reload for dev cycles
 
 # Required by the engine: tells the runtime which map file to load.
-map_file_name = "lunar.py"
 
 # Flag marking this as a narrative-driven (vs. sandbox) play.
 narrative = True
@@ -120,9 +120,9 @@ One bad choice and everything vents into the void.""",
 
 # Where each starts
 try:
-    Jade.mapAgent.move_to_resource("Gantry1")    # exterior catwalk
-    Cmdr.mapAgent.move_to_resource("Airlock1")    # interior hatch zone
-    Novak.mapAgent.move_to_resource("Habitmodule1")   # a place to stand on the map; she is on Earth (Novak.remote)
+    world.put_at(Jade, "Gantry1")    # exterior catwalk
+    world.put_at(Cmdr, "Airlock1")    # interior hatch zone
+    world.put_at(Novak, "Habitmodule1")   # a place to stand on the map; she is on Earth (Novak.remote)
     # she is welding the line as the play opens: the torch is the play's, not left to equip_cast
     # (which gave it in one run and not the next, and the world then told her she had no torch)
     Jade.body.inventory.append('welding torch')

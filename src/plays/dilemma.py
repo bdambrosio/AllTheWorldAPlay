@@ -6,6 +6,7 @@ import wave
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -16,7 +17,6 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(coastal)
 
-map_file_name = 'coastal.py' # needed to trigger narrative creation
 
 # Main character - a person facing a difficult decision with competing drives
 Maya = NarrativeCharacter("Maya", """Maya, a talented 32-year-old female artist, wearing a paint-splattered white t-shirt and jeans.
@@ -84,9 +84,9 @@ Maya and Elijah are sitting outside Elijah's workshop overlooking the harbor, wh
 start_time='2024-05-14T19:30:00', scenario_module=coastal,
 server_name=server_name)
 
-Maya.mapAgent.move_to_resource('Workshop1')
-Elijah.mapAgent.move_to_resource('Workshop1')
-Chrys.mapAgent.move_to_resource('Gallery1')
+world.put_at(Maya, 'Workshop1')
+world.put_at(Elijah, 'Workshop1')
+world.put_at(Chrys, 'Gallery1')
 
 narrative='demo.json' # comment this out for normal unscripted play.
 

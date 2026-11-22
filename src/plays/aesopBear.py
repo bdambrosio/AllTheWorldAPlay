@@ -11,6 +11,7 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -21,7 +22,6 @@ import plays.scenarios.forest as forest
 
 importlib.reload(forest)    
 narrative=True
-map_file_name='forest.py' # needed to trigger narrative creation
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Characters
@@ -78,7 +78,6 @@ Bear.set_drives([
 ])
 
 # Bear begins asleep in the cave (a Mountain tile in Forest map).
-Bear.init_x, Bear.init_y = 45, 12   # tweak if you prefer another cave coordinate
 #Bear.autonomy.action = False        # Inert until players draw near
 
 
@@ -95,6 +94,7 @@ and no clear idea where civilisation lies.""",
     start_time='2024-06-15T08:00:00', scenario_module=forest,
     server_name=server_name
 )
+world.put_at(Bear, 'Cave1')   # the bear begins at the cave, off in the rocky rise
 
 # Prime their immediate confusion thoughts
 Leo.add_perceptual_input("You think: Where in Hades are we? And where's my pack?", mode="internal")

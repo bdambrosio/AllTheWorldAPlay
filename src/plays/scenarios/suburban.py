@@ -1,209 +1,54 @@
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import Dict, List
+"""A suburb: a house and what is in it, a car, the street, and an office downtown.
 
-# Import the new dynamic resource system
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-# All enums for suburban scenario
-class SuburbanTerrain(Enum):
-    Water = 1         # Required terrain type
-    House = 2         # Indoor living space
-    Yard = 3          # Outdoor private space
-    Street = 4        # Vehicle paths
-    Sidewalk = 5      # Pedestrian paths
-    Park = 6          # Public outdoor space
-    City = 7        # Indoor work space
-
-class SuburbanInfrastructure(Enum):
-    Sidewalk = auto()  # Pedestrian infrastructure
-
-class SuburbanResources(Enum):
-    Refrigerator = auto()
-    Shower = auto()
-    Closet = auto()
-    Car = auto()
-    Bus_Stop = auto()
-    Mailbox = auto()
-    Coffee_Maker = auto()
-    Bed = auto()
-    Office = auto()     # Required by map.py
-
-class SuburbanProperty(Enum):
-    House = auto()     # Private residential
-    City = auto()    # Commercial
-    Park = auto()    # Parks, streets, etc.
-
-# Rules for terrain generation
-terrain_rules = {
-    'elevation_noise_scale': 10.0,  # Smaller scale for suburban environment
-    'water_level': 0.1,    # Minimal water features
-    'mountain_level': 0.9,  # No mountains in suburbs
-    'terrain_by_elevation': {
-        'water': {'max': 0.1, 'type': 'Water'},  # Required water type
-    },
-    'lowland_distribution': {
-        'House': 0.3,     # Buildings
-        'Yard': 0.2,      # Private outdoor space
-        'Street': 0.2,    # Roads
-        'Sidewalk': 0.1,  # Pedestrian paths
-        'Park': 0.1,      # Public spaces
-        'City': 0.1     # Commercial buildings
-    }
-}
-
-infrastructure_rules = {
-    'road_density': 0.2,      # Higher density of paths in suburban area
-    'path_type': 'Sidewalk',  # Primary infrastructure type
-    'slope_factor': 1.0,      # Minimal slope impact in suburban setting
-    'terrain_costs': {
-        'Water': float('inf'),
-        'House': float('inf'),  # Can't walk through houses
-        'City': float('inf'), # Can't walk through offices
-        'Yard': 2.0,           # Crossing yards is possible but discouraged
-        'Street': 1.5,         # Streets are crossable but not preferred
-        'Sidewalk': 1.0,       # Preferred walking path
-        'Park': 1.2           # Parks are walkable but may be indirect
-    }
-}
-
-property_rules = {
-    'min_size': 10,    # Smaller property sizes for suburban lots
-    'max_size': 30,
-    'valid_terrain': ['House', 'Yard', 'City']  # What can be owned
-}
-
-# Standard interface names
-terrain_types = SuburbanTerrain
-infrastructure_types = SuburbanInfrastructure
-property_types = SuburbanProperty
-resource_types = ResourceTypeRegistry(SuburbanResources)  # Use dynamic registry
-
-# Add at top with other interface names
-# How the places of this world are, and how they sit: laid out in metres, anew for each
-# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
 kinds = {
-    'House': {'radius': 8, 'enclosed': True, 'shelter': True},
-    'Bed': {'radius': 1.5}, 'Shower': {'radius': 1.5}, 'Closet': {'radius': 1.5}, 'Coffee_Maker': {'radius': 1.5}, 'Refrigerator': {'radius': 1.5},
-    'Car': {'radius': 3, 'vehicle': True, 'pace': 500, 'by': 'drive'},   # metres a minute: thirty kilometres an hour through town
-    'Mailbox': {'radius': 1.5},
-    'Bus_Stop': {'radius': 3},
-    'Office': {'radius': 15, 'enclosed': True, 'shelter': True},
+    'House': {'description': 'The house Alex and Susan live in', 'radius': 8, 'enclosed': True, 'shelter': True},
+    'Bed': {'description': 'A comfortable bed', 'radius': 1.5},
+    'Shower': {'description': 'A bathroom with shower', 'radius': 1.5},
+    'Closet': {'description': 'A closet with clothes', 'radius': 1.5},
+    'Coffee_Maker': {'description': 'An automatic coffee maker', 'radius': 1.5},
+    'Refrigerator': {'description': 'A refrigerator with breakfast things', 'radius': 1.5},
+    'Car': {'description': 'A parked car', 'radius': 3, 'vehicle': True, 'pace': 500, 'by': 'drive'},
+    'Mailbox': {'description': 'A mailbox', 'radius': 1.5},
+    'Bus_Stop': {'description': 'A bus stop', 'radius': 3},
+    'Office': {'description': 'A downtown office building', 'radius': 15, 'enclosed': True, 'shelter': True},
 }
+
 layout = {
     'regions': [
-        {'kind': 'Street', 'whole': True, 'radius': 16000, 'pace': 75, 'cover': 'open'},
-        {'kind': 'Yard', 'count': 1, 'radius': 25, 'pace': 70, 'cover': 'open', 'from_start': (0, 0)},
-        {'kind': 'City', 'count': 1, 'radius': 300, 'pace': 75, 'cover': 'open', 'from_start': (13500, 14500)},   # downtown: half an hour by car
+        {'kind': 'Street', 'radius': 16000, 'pace': 75, 'cover': 'open', 'whole': True},
+        {'kind': 'Yard', 'radius': 25, 'pace': 70, 'cover': 'open', 'count': 1, 'from_start': (0, 0)},
+        {'kind': 'City', 'radius': 300, 'pace': 75, 'cover': 'open', 'count': 1, 'from_start': (13500, 14500)},
     ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
     'scatter': {'within': 400, 'apart': 30},
     'places': [
-        {'kind': 'House', 'description': 'The house Alex and Susan live in', 'from_start': (0, 0)},   # where the play begins
-        {'kind': 'Bed', 'inside': 'House', 'apart': 3}, {'kind': 'Shower', 'inside': 'House', 'apart': 3},
-        {'kind': 'Closet', 'inside': 'House', 'apart': 3}, {'kind': 'Coffee_Maker', 'inside': 'House', 'apart': 3},
-        {'kind': 'Refrigerator', 'inside': 'House', 'apart': 3},
-        {'kind': 'Car', 'near': ('House', 3, 10)}, {'kind': 'Mailbox', 'near': ('House', 8, 14)},
-        {'kind': 'Bus_Stop', 'from_start': (150, 400)},
-        {'kind': 'Office', 'on': {'City': 1.0}},
+        {'kind': 'House', 'count': 1, 'from_start': (0, 0)},
+        {'kind': 'Bed', 'count': 1, 'inside': 'House', 'apart': 3},
+        {'kind': 'Shower', 'count': 1, 'inside': 'House', 'apart': 3},
+        {'kind': 'Closet', 'count': 1, 'inside': 'House', 'apart': 3},
+        {'kind': 'Coffee_Maker', 'count': 1, 'inside': 'House', 'apart': 3},
+        {'kind': 'Refrigerator', 'count': 1, 'inside': 'House', 'apart': 3},
+        {'kind': 'Car', 'count': 1, 'near': ('House', 3, 10)},
+        {'kind': 'Mailbox', 'count': 1, 'near': ('House', 8, 14)},
+        {'kind': 'Bus_Stop', 'count': 2, 'from_start': (150, 400)},
+        {'kind': 'Office', 'count': 1, 'on': {'City': 1.0}},
     ],
 }
 
-required_resource = resource_types.Office  # or Market, etc.
-required_resource_name = "Office"  # or "Market", etc.
 
-resource_rules = {
-    'allocations': [
-        {
-            'resource_type': resource_types.Bed,
-            'description': 'A comfortable bed',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.House: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Shower,
-            'description': 'A bathroom with shower',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 2,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.House: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Closet,
-            'description': 'A closet with clothes',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 2,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.House: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Coffee_Maker,
-            'description': 'An automatic coffee maker',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 2,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.House: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Refrigerator,
-            'description': 'A refrigerator with breakfast things',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 2,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.House: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Car,
-            'description': 'A parked car',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 4,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.Yard: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Mailbox,
-            'description': 'A mailbox',
-            'count': 1,
-            'requires_property': True,
-            'beside': 'Bed', 'within': 4,   # the rooms and yard of the one house
-            'terrain_weights': {
-                terrain_types.Yard: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Bus_Stop,
-            'description': 'A bus stop',
-            'count': 2,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Sidewalk: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Office,  # This will be our office building
-            'description': 'A downtown office building',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.City: 2.0  # Higher weight to ensure placement
-            }
-        }
-    ]
-} 
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In this everyday suburban world the stakes are time, money, work and relationships: being late, a "
           "missed commitment, a bill, a tense conversation, a decision that cannot wait. Bodily needs are ordinary "
           "(coffee, food, sleep, getting ready), not survival. Use concrete, checkable goals and obstacles tied to the "

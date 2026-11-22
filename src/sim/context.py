@@ -177,8 +177,7 @@ class Context():
             print(f"Context initialized {actor.name} speech_stylizer: {actor.speech_stylizer}")
             # centre stage unless the character was given a position (a play may then move it
             # after the context is created: world.put_at(H, 'Office1'))
-            start = world.start(self)
-            world.enter(self, actor, (start[0] if actor.init_x is None else actor.init_x, start[1] if actor.init_y is None else actor.init_y))
+            world.enter(self, actor)
             # Initialize relationships with valid character names. This was for knownActor relationships, I think?
             if hasattr(actor, 'narrative'):
                 valid_names = [a.name for a in self.actors+self.extras if a != actor]
@@ -854,7 +853,7 @@ If absolutely no information is available for any field, use "unknown" for that 
             from sim.agh import Character
             npc = NarrativeCharacter(name.capitalize(), character_description=description if description else f'{name} is a non-player character', init_x=x, init_y=y, server_name=self.llm.server_name)
             npc.set_context(self)   # it keeps the model client it was made with, so its calls are traced as its own
-            world.enter(self, npc, (x, y), known=True)
+            world.enter(self, npc, (x, y))
             self.npcs.append(npc)
             return npc
         return None

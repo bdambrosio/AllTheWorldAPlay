@@ -1,104 +1,43 @@
-"""A city of offices, apartments and places to meet: the world of a white-collar drama
-(ABetterLife.py). The hard facts are contracts in hand and messages on phones; there are no
-hazards, and bodily needs only colour a long day."""
-from enum import Enum, auto
+"""A city of offices and apartments, a cafe and a hotel bar: the places are named.
 
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-
-class CityTerrain(Enum):
-    Water = 1         # Required terrain type
-    Building = 2      # Offices, apartments, the university
-    Street = 3
-    Sidewalk = 4
-    Park = 5
-
-
-class CityInfrastructure(Enum):
-    Sidewalk = auto()
-
-
-class CityResources(Enum):
-    Office = auto()
-    University_Office = auto()
-    Apartment = auto()
-    Cafe = auto()
-    Restaurant = auto()
-    Taxi_Stand = auto()    # Required by map.py (the map's meeting point)
-
-
-class CityProperty(Enum):
-    Building = auto()
-    Park = auto()
-
-
-terrain_rules = {
-    'elevation_noise_scale': 10.0,
-    'water_level': 0.05,
-    'mountain_level': 0.95,
-    'terrain_by_elevation': {
-        'water': {'max': 0.05, 'type': 'Water'},
-    },
-    'lowland_distribution': {
-        'Building': 0.45,
-        'Street': 0.2,
-        'Sidewalk': 0.25,
-        'Park': 0.1,
-    }
+kinds = {
+    'Office': {'description': 'An office with a desk, client files and contracts', 'radius': 6, 'enclosed': True, 'shelter': True},
+    'University_Office': {'description': "A professor's office at the university", 'radius': 6, 'enclosed': True, 'shelter': True},
+    'Apartment': {'description': 'A city apartment', 'radius': 7, 'enclosed': True, 'shelter': True},
+    'Cafe': {'description': 'A cafe: neutral ground for a meeting', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
+    'Restaurant': {'description': 'A hotel bar and restaurant, busy in the evening', 'radius': 10, 'enclosed': True, 'shelter': True},
 }
 
-infrastructure_rules = {
-    'road_density': 0.2,
-    'path_type': 'Sidewalk',
-    'slope_factor': 1.0,
-    'terrain_costs': {
-        'Water': float('inf'),
-        'Building': 1.0,
-        'Street': 1.5,
-        'Sidewalk': 1.0,
-        'Park': 1.2,
-    }
+layout = {
+    'regions': [
+        {'kind': 'Street', 'radius': 2500, 'pace': 75, 'cover': 'open', 'whole': True},
+        {'kind': 'Building', 'radius': (40, 70), 'pace': 75, 'cover': 'open', 'count': 12, 'from_start': (150, 2000), 'blocks_view': True},
+    ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
+    'scatter': {'within': 2000, 'apart': 200},
+    'places': [
+        {'kind': 'Office', 'count': 4, 'on': {'Street': 1.0}, 'names': ['HuOffice', 'XueOffice', 'XiaoyuOffice', 'YanghoOffice']},
+        {'kind': 'University_Office', 'count': 1, 'on': {'Street': 1.0}, 'names': ['UniversityOffice']},
+        {'kind': 'Apartment', 'count': 3, 'on': {'Street': 1.0}, 'names': ['HuDingApartment', 'XueApartment', 'QiuApartment']},
+        {'kind': 'Cafe', 'count': 1, 'on': {'Street': 1.0}, 'names': ['Cafe']},
+        {'kind': 'Restaurant', 'count': 1, 'on': {'Street': 1.0}, 'names': ['HotelBar']},
+    ],
 }
 
-property_rules = {
-    'min_size': 10,
-    'max_size': 30,
-    'valid_terrain': ['Building']
-}
 
-terrain_types = CityTerrain
-infrastructure_types = CityInfrastructure
-property_types = CityProperty
-resource_types = ResourceTypeRegistry(CityResources)
-
-required_resource = resource_types.Taxi_Stand
-required_resource_name = "Taxi_Stand"
-
-
-def _place(resource_type, description, count, terrain):
-    return {'resource_type': resource_type, 'description': description, 'count': count,
-            'requires_property': False, 'terrain_weights': {terrain: 1.0}}
-
-
-resource_rules = {
-    # the places a scene can be set, by name
-    'names': {
-        'Office': ['HuOffice', 'XueOffice', 'XiaoyuOffice', 'YanghoOffice'],
-        'University_Office': ['UniversityOffice'],
-        'Apartment': ['HuDingApartment', 'XueApartment', 'QiuApartment'],
-        'Cafe': ['Cafe'],
-        'Restaurant': ['HotelBar'],
-    },
-    'allocations': [
-        _place(resource_types.Office, 'An office with a desk, client files and contracts', 4, terrain_types.Building),
-        _place(resource_types.University_Office, "A professor's office at the university", 1, terrain_types.Building),
-        _place(resource_types.Apartment, 'A city apartment', 3, terrain_types.Building),
-        _place(resource_types.Cafe, 'A cafe: neutral ground for a meeting', 1, terrain_types.Sidewalk),
-        _place(resource_types.Restaurant, 'A hotel bar and restaurant, busy in the evening', 1, terrain_types.Building),
-    ]
-}
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In this city the stakes are clients, careers, marriages and reputations. What is settled is what is on "
           "paper or on a phone: a contract drafted, handed over or signed; a message sent and later found. A client "
           "belongs to whoever holds their signed contract. Bodily needs are ordinary (a meal, a drink, rest). "

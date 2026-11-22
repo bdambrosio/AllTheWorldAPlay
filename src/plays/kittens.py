@@ -14,7 +14,6 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(garden)
 
-map_file_name = 'garden.py' # needed to trigger narrative creation
 narrative=False
 lemon = NarrativeCharacter("Lemonade", """Lemonade, a pale grey tabby kitten, a little female. 
 You love the outdoors, hunting bugs, and wrestling with Meow-Meow.

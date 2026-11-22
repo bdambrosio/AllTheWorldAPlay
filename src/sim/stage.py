@@ -36,7 +36,6 @@ def uncast_parts(context):
 
 
 SAME_PLACE = world.SAME_PLACE
-AT_PLACE_TILES = world.AT_PLACE_TILES   # this close to a place is 'at' it
 GAZETTEER_PLACES = 14     # places listed for the playwright, nearest first
 
 # One wording of the scene 'location' field and of the continuity rule, for every prompt that

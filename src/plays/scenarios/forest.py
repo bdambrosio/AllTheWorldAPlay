@@ -1,200 +1,51 @@
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import Dict, List
+"""A temperate forest with no buildings but a hut, no roads.
 
-# Import the new dynamic resource system
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-# All enums for forest scenario
-class ForestTerrain(Enum):
-    Water = 1
-    Mountain = 2
-    Forest = 4
-    Clearing = 5
-    Meadow = 6
-
-class ForestInfrastructure(Enum):
-    Trail = auto()    
-
-class ForestResources(Enum):
-    Berries = auto()
-    Mushrooms = auto()
-    Apple_Tree = auto()
-    Fallen_Branch = auto()  # wood: a branch to carry, a fire
-    Spring = auto()     # Water source
-    Cave = auto()       # Potential shelter
-    Thicket = auto()    # Dense vegetation, potential shelter
-    Hut = auto()         # Added for the new required_resource
-
-class ForestProperty(Enum):
-    pass  # Keeping property system but wilderness has no ownership
-
-# Rules for terrain generation
-terrain_rules = {
-    'elevation_noise_scale': 50.0,
-    'water_level': 0.2,
-    'mountain_level': 0.8,
-    'terrain_by_elevation': {
-        'water': {'max': 0.2, 'type': 'Water'},
-        'mountain': {'min': 0.8, 'type': 'Mountain'}
-    },
-    'lowland_distribution': {
-        'Forest': 0.7,        # Much more forest
-        'Clearing': 0.2,      # Some clearings
-        'Meadow': 0.1         # Few meadows
-    }
-}
-
-infrastructure_rules = {
-    'road_density': 0.05,     # Fewer roads in forest
-    'path_type': 'Trail',     # Specify the path type
-    'slope_factor': 2.5,      # Slightly higher penalty for slopes in forests
-    'terrain_costs': {
-        'Water': float('inf'),
-        'Mountain': float('inf'),
-        'Forest': 2.5,        # Forests are harder to traverse
-        'Clearing': 1.2,      # Clearings are easy but not as easy as fields
-        'Meadow': 1.0         # Meadows are easy to traverse
-    }
-}
-
-property_rules = {
-    'min_size': 0,    # No properties in wilderness
-    'max_size': 0,
-    'valid_terrain': ['Clearing', 'Meadow']  # Add this even if no properties are used
-}
-
-# Standard interface names
-terrain_types = ForestTerrain
-infrastructure_types = ForestInfrastructure
-property_types = ForestProperty
-resource_types = ResourceTypeRegistry(ForestResources)  # Use dynamic registry
-
-# How the places of this world are, and how they sit: laid out in metres, anew for each
-# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
-#   radius: metres. enclosed: walls (open: standing open, as a cave's mouth). shelter: inside it is
-#   under shelter. blocks_view: not seen across. hides: what is inside is not seen from outside.
 kinds = {
-    'Berries': {'radius': 2}, 'Mushrooms': {'radius': 3}, 'Fallen_Branch': {'radius': 3}, 'Apple_Tree': {'radius': 5},
-    'Spring': {'radius': 4},
-    'Thicket': {'radius': 6, 'shelter': True, 'blocks_view': True, 'hides': True},
-    'Cave': {'radius': 5, 'enclosed': True, 'open': True, 'shelter': True},
-    'Hut': {'radius': 4, 'enclosed': True, 'shelter': True},
+    'Berries': {'description': 'A bush with edible berries', 'radius': 2},
+    'Mushrooms': {'description': 'A patch of mushrooms', 'radius': 3},
+    'Fallen_Branch': {'description': 'A large fallen tree branch', 'radius': 3},
+    'Apple_Tree': {'description': 'A large apple tree with apples', 'radius': 5},
+    'Spring': {'description': 'A natural spring of fresh water', 'radius': 4},
+    'Thicket': {'description': 'A dense thicket of vegetation', 'radius': 6, 'shelter': True, 'blocks_view': True, 'hides': True},
+    'Cave': {'description': 'A small cave in the rocks', 'radius': 5, 'enclosed': True, 'open': True, 'shelter': True, 'owner': True},
+    'Hut': {'description': 'A small hut for shelter', 'radius': 4, 'enclosed': True, 'shelter': True, 'owner': True},
 }
+
 layout = {
-    # the forest holds everything; pace is metres a minute on foot; cover is what is overhead
     'regions': [
-        {'kind': 'Forest', 'whole': True, 'radius': 1200, 'pace': 50, 'cover': 'trees'},
-        {'kind': 'Clearing', 'count': 6, 'radius': (40, 80), 'pace': 75, 'cover': 'open'},
-        {'kind': 'Meadow', 'count': 2, 'radius': (100, 150), 'pace': 75, 'cover': 'open'},
-        # a rocky rise some way off: high ground, and nothing is seen across it
-        {'kind': 'Rise', 'count': 1, 'radius': 150, 'pace': 35, 'cover': 'open', 'from_start': (500, 900), 'blocks_view': True, 'overlooks': True},
+        {'kind': 'Forest', 'radius': 1200, 'pace': 50, 'cover': 'trees', 'whole': True},
+        {'kind': 'Clearing', 'radius': (40, 80), 'pace': 75, 'cover': 'open', 'count': 6},
+        {'kind': 'Meadow', 'radius': (100, 150), 'pace': 75, 'cover': 'open', 'count': 2},
+        {'kind': 'Rise', 'radius': 150, 'pace': 35, 'cover': 'open', 'count': 1, 'from_start': (500, 900), 'blocks_view': True, 'overlooks': True},
     ],
     # places lie within this of where the play's people start, more of them nearer, and this far apart
     'scatter': {'within': 700, 'apart': 40},
-    # 'on': the ground a kind is found on, by weight. from_start: metres from where they start.
     'places': [
-        {'kind': 'Berries', 'on': {'Clearing': 2.0, 'Meadow': 1.0, 'Forest': 0.5}},
-        {'kind': 'Mushrooms', 'on': {'Forest': 1.0}},
-        {'kind': 'Fallen_Branch', 'on': {'Forest': 1.0, 'Clearing': 0.5}},
-        {'kind': 'Apple_Tree', 'on': {'Clearing': 1.0, 'Forest': 0.6}},
-        {'kind': 'Spring', 'on': {'Forest': 1.0}, 'from_start': (150, 700)},
-        {'kind': 'Thicket', 'on': {'Forest': 2.0, 'Clearing': 1.0}},
-        {'kind': 'Cave', 'on': {'Rise': 1.0}},
-        {'kind': 'Hut', 'foot_of': 'Rise'},     # at the foot of the rise, on the side they start from
+        {'kind': 'Berries', 'count': 15, 'on': {'Clearing': 2.0, 'Meadow': 1.0, 'Forest': 0.5}},
+        {'kind': 'Mushrooms', 'count': 10, 'on': {'Forest': 1.0}},
+        {'kind': 'Fallen_Branch', 'count': 24, 'on': {'Forest': 1.0, 'Clearing': 0.5}},
+        {'kind': 'Apple_Tree', 'count': 16, 'on': {'Clearing': 1.0, 'Forest': 0.6}},
+        {'kind': 'Spring', 'count': 3, 'on': {'Forest': 1.0}, 'from_start': (150, 700)},
+        {'kind': 'Thicket', 'count': 12, 'on': {'Forest': 2.0, 'Clearing': 1.0}},
+        {'kind': 'Cave', 'count': 1, 'on': {'Rise': 1.0}},
+        {'kind': 'Hut', 'count': 1, 'foot_of': 'Rise'},
     ],
 }
 
-# Add at top with other interface names
-required_resource = resource_types.Hut  # or Market, etc.
-required_resource_name = "Hut"  # or "Market", etc.
 
-resource_rules = {
-    'allocations': [
-        {
-            'resource_type': resource_types.Berries,
-            'description': 'A bush with edible berries',
-            'count': 15,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Clearing: 2.0,
-                terrain_types.Meadow: 1.0,
-                terrain_types.Forest: 0.5
-            }
-        },
-        {
-            'resource_type': resource_types.Mushrooms,
-            'description': 'A patch of mushrooms',
-            'count': 10,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Forest: 2.0
-            }
-        },
-        {
-            'resource_type': resource_types.Fallen_Branch,
-            'description': 'A large fallen tree branch',
-            'count': 24,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Forest: 1.0,
-                terrain_types.Clearing: 0.5
-            }
-        },
-        {
-            'resource_type': resource_types.Apple_Tree,
-            'description': 'A large apple tree with apples',
-            'count': 16,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Forest: 0.6,
-                terrain_types.Clearing: 1.0
-            }
-        },
-         {
-            'resource_type': resource_types.Spring,
-            'description': 'A natural spring of fresh water',
-            'count': 3,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Forest: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Cave,
-            'description': 'A small cave in the rocks',
-            'has_npc': True,
-            'count': 1,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Mountain: 2.0
-            }
-        },
-        {
-            'resource_type': resource_types.Hut,
-            'description': 'A small hut for shelter',
-            'has_npc': True,
-            'count': 1,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Mountain: 2.0
-            }
-        },
-        {
-            'resource_type': resource_types.Thicket,
-            'description': 'A dense thicket of vegetation',
-            'count': 12,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Forest: 2.0,
-                terrain_types.Clearing: 1.0
-            }
-        }
-    ]
-} 
-
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("Physical needs (water, food, rest, shelter) and natural hazards (wolves at night, wild boar) are real "
           "stakes in this wilderness: use them to create concrete, checkable goals and obstacles tied to places and "
           "things, and keep any mystery grounded in them.")

@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -14,7 +15,6 @@ import plays.scenarios.city as city
 
 importlib.reload(city)
 
-map_file_name='city.py' # needed to trigger narrative creation
 narrative=True
 # Character definitions
 Hu = NarrativeCharacter("Hu", """Hu Manli, a healthy, professionally dressed 39-year-old Chinese woman, an insurance executive.
@@ -104,7 +104,7 @@ Xue.add_perceptual_input("Xiaoyu is a client of Hu's and a prime poaching target
 for character, place in ((Hu, 'HuDingApartment'), (Xue, 'XueApartment'), (Qiu, 'QiuApartment'),
                          (Ding, 'UniversityOffice'), (Wang, 'UniversityOffice'),
                          (Xiaoyu, 'XiaoyuOffice'), (Yangho, 'YanghoOffice')):
-    character.mapAgent.move_to_resource(place)
+    world.put_at(character, place)
 W.reference_manager.declare_relationship('Hu', 'wife of', 'Ding', 'husband of')
 W.reference_manager.declare_relationship('Wang', 'student of', 'Ding', 'teacher of')
 W.reference_manager.declare_relationship('Xiaoyu', 'client of', 'Hu', 'insurance agent of')

@@ -96,6 +96,7 @@ class Land:
         self.table = {}          # id -> Place, in the order the world came to have them (regions too)
         self.counts = {}
         self.kinds = dict(getattr(scenario, 'kinds', {}) or {})
+        self.named = {}          # kind -> the names its author has given, not yet taken
         self.build(scenario.layout)
 
     # ------------------------------------------------------------------ laying it out
@@ -103,16 +104,19 @@ class Land:
         about = {**self.kinds.get(kind, {}), **said}
         radius = about.pop('radius', 3.0) if radius is None else radius
         about.pop('radius', None)
+        description = description or about.get('description', '')
+        about.pop('description', None)
         if isinstance(radius, (tuple, list)):
             radius = self.rng.uniform(*radius)
         key = (kind, bool(about.get('region')))      # a park with a fountain may stand in ground called park
         self.counts[key] = self.counts.get(key, 0) + 1
+        if not name and not about.get('region') and self.named.get(kind):
+            name = self.named[kind].pop(0)       # the next of those its author has named ('MarquartFarm')
         rid = name or (f'{kind}_ground{self.counts[key]}' if about.get('region') else f'{kind}{self.counts[key]}')
         self.table[rid] = Place(rid, kind, description, xy, radius, **about)
         return self.table[rid]
 
     def build(self, layout):
-        allocations = {str(a['resource_type']).split('.')[-1]: a for a in getattr(self.scenario, 'resource_rules', {}).get('allocations', [])}
         self.scatter = layout.get('scatter', {'within': 700, 'apart': 40})
         for r in layout['regions']:
             for _ in range(r.get('count', 1)):
@@ -120,10 +124,9 @@ class Land:
                 self._new(r['kind'], r.get('description', ''), xy, region=True, **{k: v for k, v in r.items() if k not in ('kind', 'count', 'from_start', 'whole', 'description')})
         self.whole = max((p for p in self.table.values() if p.region), key=lambda p: p.radius)   # the region that holds the rest
         for spec in layout['places']:
-            kind = spec['kind']
-            told = allocations.get(kind, {})
-            for _ in range(spec.get('count', told.get('count', 1))):
-                self._new(kind, spec.get('description') or told.get('description', ''), self._spot(spec), name=spec.get('name'))
+            self.named[spec['kind']] = list(spec.get('names') or [])
+            for _ in range(spec.get('count', 1)):
+                self._new(spec['kind'], spec.get('description', ''), self._spot(spec))
 
     def _around(self, centre, span, angle=None):
         r, a = self.rng.uniform(*span), self.rng.uniform(0, 2 * math.pi) if angle is None else angle
@@ -218,7 +221,9 @@ class Land:
         return re.sub(r'[\s_]+', '_', str(name or '').strip()).lower()
 
     def kind_called(self, name):
-        return next((k for k in self._kinds() if k.lower() == self._word(name)), None)
+        """The kind of place a word names in this world ('spring' -> 'Spring'), or None: a kind
+        the world file gives, or one a place has come to be of."""
+        return next((k for k in list(self.kinds) + self._kinds() if k.lower() == self._word(name)), None)
 
     def region_called(self, name):
         return next((k for k in self._kinds(regions=True) if k.lower() == self._word(name)), None)
@@ -239,10 +244,8 @@ class Land:
         return self._new(kind, description or '', xy)
 
     def has_owner_part(self, place):
-        for a in getattr(self.scenario, 'resource_rules', {}).get('allocations', []):
-            if str(a['resource_type']).split('.')[-1] == place.kind:
-                return a.get('has_npc', False)
-        return False
+        """Does this world say a place of this kind has an owner (a mill, a hut)?"""
+        return bool(self.kinds.get(place.kind, {}).get('owner'))
 
     # ------------------------------------------------------------------ the ground
     def start(self):

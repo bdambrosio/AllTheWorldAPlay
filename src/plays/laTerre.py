@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -14,7 +15,6 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(rural)
 
-map_file_name = 'rural.py' # needed to trigger narrative creation
 narrative=True
 J = NarrativeCharacter("Jean", """Jean Marquart, a hardworking young unmarried peasant farmer working his father's farm. 
 You left military service to return to the family farm.
@@ -50,14 +50,14 @@ W = context.Context([J, F],
 # how this play's pictures are made (sim/stage.py picture and portrait); the default is photographic
 W.image_style = 'Watercolor painting in soft pastel tones, loose brushwork, 19th century French countryside'
 
-J.mapAgent.move_to_resource('MarquartFarm')
+world.put_at(J, 'MarquartFarm')
 # each farm belongs to the father, a supporting actor cast here as its owner
 # ... and each father holds the deed to his farm: it passes only when he signs it over, both present
 W.cast_part('Marquart', "Marquart, an ageing peasant farmer and a man, Jean's father, owner of MarquartFarm", place='MarquartFarm'
             ).body.inventory.append('MarquartFarm deed')
 W.reference_manager.declare_relationship('Marquart', 'father of', 'Jean', 'child_of')
 J.look()
-F.mapAgent.move_to_resource('FouanFarm')
+world.put_at(F, 'FouanFarm')
 W.cast_part('Fouan', "Fouan, an old peasant farmer and a man, Francoise's father, owner of FouanFarm", place='FouanFarm'
             ).body.inventory.append('FouanFarm deed')
 W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'child_of')
@@ -65,9 +65,9 @@ W.reference_manager.declare_relationship('Fouan', 'father of', 'Francoise', 'chi
 # its own in the father's hands: land that can be divided, where a farm passes whole
 import sim.survival as survival
 for farm, father in (('MarquartFarm', 'Marquart'), ('FouanFarm', 'Fouan')):
-    fx, fy = W.map.resource_registry[farm]['location']
-    for dx in (3, -3):
-        xy = (min(max(fx + dx, 0), W.map.width - 1), fy)
+    fx, fy = world.place(W, farm).xy
+    for dx in (200, -200):      # metres east and west of the farmhouse
+        xy = (fx + dx, fy)
         strip, _ = survival.add_place(W, 'Strip', f'a strip of wheat land beside {farm}', xy)
         W.cast_part(father, place=strip).body.inventory.append(f'{strip} deed')
 J.add_perceptual_input("You think – Another long day of toil in the fields. When will I get my fair share of this land that I pour my sweat into? I returned from the army to be a farmer, not a lackey for my family.", mode='internal')

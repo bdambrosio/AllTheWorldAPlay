@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import importlib
 import sim.context as context
+import sim.world as world
 from sim.narrativeCharacter import NarrativeCharacter
 import plays.config as configuration
 from sim.cognitive.drives import Drive
@@ -14,7 +15,6 @@ server_name = configuration.server_name
 model_name = configuration.model_name
 importlib.reload(coastal)
 
-map_file_name = 'coastal.py'
 
 # Main character - a talented artist who finds inspiration in the coastal town
 Maya = NarrativeCharacter("Maya", """Maya, a 32-year-old female watercolor artist, wearing a paint-splattered white t-shirt and jeans.
@@ -86,8 +86,8 @@ start_time='2024-05-14T08:30:00', scenario_module=coastal,
 server_name=server_name)
 
 # Position characters at appropriate locations
-Maya.mapAgent.move_to_resource('Studio1')  # Maya at her studio gallery
-Elijah.mapAgent.move_to_resource('Workshop1')  # Elijah at his boat workshop
-Chrys.mapAgent.move_to_resource('Cafe1')  
+world.put_at(Maya, 'Studio1')  # Maya at her studio gallery
+world.put_at(Elijah, 'Workshop1')  # Elijah at his boat workshop
+world.put_at(Chrys, 'Cafe1')  
 
 # Let the scenario unfold naturally from here

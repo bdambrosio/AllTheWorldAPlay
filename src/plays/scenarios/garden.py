@@ -1,141 +1,48 @@
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import Dict, List
+"""One garden, as kittens have it: grass, shrubs, flower beds, a tree.
 
-# Import the new dynamic resource system
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-# All enums for forest scenario
-class GardenTerrain(Enum):
-    Water = 1
-    Grass = 2
-    Shrubs = 3
-    Trees = 4
-    Flowers = 5
-    Rocks = 6
-
-class GardenInfrastructure(Enum):
-    Path = auto()    
-    Trail = auto()    
-
-class GardenResources(Enum):
-    Tree = auto()
-    Bug = auto()
-    Butterfly = auto()
-    Leaf = auto()
-    Seed = auto()
-    Ball = auto()  # Potential shelter
-
-
-class GardenProperty(Enum):
-    pass  # Keeping property system but no ownership
-
-# Rules for terrain generation
-terrain_rules = {
-    'elevation_noise_scale': 50.0,
-    'water_level': 0.2,
-    'mountain_level': 0.8,
-    'terrain_by_elevation': {
-        'water': {'max': 0.2, 'type': 'Water'},
-        'trees': {'min': 0.8, 'type': 'Trees'}
-    },
-    'lowland_distribution': {
-        'Grass': 0.4,        
-        'Shrubs': 0.3,      
-        'Flowers': 0.2,
-        'Rocks': 0.1
-    }
+kinds = {
+    'Bug': {'description': 'yummy bug', 'radius': 0.3},
+    'Butterfly': {'description': 'A bright butterfly flitting among the flowers', 'radius': 0.3},
+    'Leaf': {'description': 'A deep pile of crunchy fallen leaves', 'radius': 0.6},
+    'Seed': {'description': 'A scatter of seeds under the bird feeder', 'radius': 0.4},
+    'Ball': {'description': 'A bright red ball', 'radius': 0.3},
+    'Tree': {'description': 'The garden tree', 'radius': 1},
 }
 
-infrastructure_rules = {
-    'road_density': 0.05,     
-    'path_type': 'Trail',    
-    'slope_factor': 2.5,      
-    'terrain_costs': {
-        'Water': float('inf'),
-        'Grass': 1.0,
-        'Shrubs': 1.0,
-        'Trees': 1.0,
-        'Flowers': 1.0,
-        'Rocks': 2.0
-    }
+layout = {
+    'regions': [
+        {'kind': 'Grass', 'radius': 30, 'pace': 40, 'cover': 'open', 'whole': True},
+        {'kind': 'Shrubs', 'radius': (3, 5), 'pace': 25, 'cover': 'trees', 'count': 4, 'from_start': (4, 25), 'hides': True},
+        {'kind': 'Trees', 'radius': 4, 'pace': 35, 'cover': 'trees', 'count': 2, 'from_start': (6, 25)},
+        {'kind': 'Flowers', 'radius': (2, 3), 'pace': 35, 'cover': 'open', 'count': 3, 'from_start': (4, 25)},
+        {'kind': 'Rocks', 'radius': 2, 'pace': 30, 'cover': 'open', 'count': 1, 'from_start': (6, 25)},
+    ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
+    'scatter': {'within': 25, 'apart': 1.5},
+    'places': [
+        {'kind': 'Bug', 'count': 15, 'on': {'Grass': 2.0, 'Shrubs': 1.0, 'Flowers': 0.5}},
+        {'kind': 'Butterfly', 'count': 10, 'on': {'Grass': 2.0, 'Shrubs': 1.0, 'Flowers': 0.5}},
+        {'kind': 'Leaf', 'count': 24, 'on': {'Grass': 1.0, 'Shrubs': 0.5}},
+        {'kind': 'Seed', 'count': 16, 'on': {'Grass': 0.6, 'Shrubs': 1.0}},
+        {'kind': 'Ball', 'count': 3, 'on': {'Grass': 1.0, 'Shrubs': 0.5}},
+        {'kind': 'Tree', 'count': 1, 'on': {'Trees': 1.0}},
+    ],
 }
 
-property_rules = {
-    'min_size': 0,    # No properties in wilderness
-    'max_size': 0,
-    'valid_terrain': ['Shrubs', 'Trees', 'Flowers', 'Rocks']  # Add this even if no properties are used
-}
 
-# Standard interface names
-terrain_types = GardenTerrain
-infrastructure_types = GardenInfrastructure
-property_types = GardenProperty
-resource_types = ResourceTypeRegistry(GardenResources)  # Use dynamic registry
-
-# Add at top with other interface names
-required_resource = resource_types.Tree  # or Market, etc.
-required_resource_name = "Tree"  # or "Market", etc.
-
-resource_rules = {
-    'allocations': [
-        {
-            'resource_type': resource_types.Bug,
-            'description': 'yummy bug',
-            'count': 15,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Grass: 2.0,
-                terrain_types.Shrubs: 1.0,
-                terrain_types.Flowers: 0.5
-            }
-        },
-        {
-            'resource_type': resource_types.Butterfly,
-            'description': 'A bright butterfly flitting among the flowers',
-            'count': 10,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Grass: 2.0,
-                terrain_types.Shrubs: 1.0,
-                terrain_types.Flowers: 0.5
-            }
-        },
-        {
-            'resource_type': resource_types.Leaf,
-            'description': 'A deep pile of crunchy fallen leaves',
-            'count': 24,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Grass: 1.0,
-                terrain_types.Shrubs: 0.5
-            }
-        },
-        {
-            'resource_type': resource_types.Seed,
-            'description': 'A scatter of seeds under the bird feeder',
-            'count': 16,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Grass: 0.6,
-                terrain_types.Shrubs: 1.0
-            }
-        },
-         {
-            'resource_type': resource_types.Ball,
-            'description': 'A bright red ball',
-            'count': 3,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Grass: 1.0,
-                terrain_types.Shrubs: 0.5
-            }
-        },
-
-    ]
-} 
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("For the kittens, the garden is a world of play, food, naps and small dangers: a bug to catch, a "
           "butterfly to chase, a ball to win, a warm nap, the neighbour's dog. Use these concrete, playful goals and "
           "obstacles tied to things in the garden; keep the tone gentle and the magic light.")

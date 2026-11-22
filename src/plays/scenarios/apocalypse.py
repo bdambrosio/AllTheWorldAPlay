@@ -1,174 +1,48 @@
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import Dict, List
+"""A ruined city: streets, a plaza, a park with a fountain that still runs.
 
-# Import the new dynamic resource system
-from sim.map import ResourceTypeRegistry
+How the places of this world are, and how they sit. They are laid out in metres, anew for each
+performance (sim/land.py); other places come into it as the play needs them (sim/world.py).
+  kinds: for each kind of place, what it is, and in metres its radius. enclosed: it has walls
+    (open: they stand open, as a cave's mouth or a shop with its front broken in). shelter: inside it
+    is under shelter. blocks_view: nothing is seen across it. hides: what is inside is not seen
+    from outside. owner: it has an owner's part, which someone may be cast in. vehicle: it is gone
+    by, at `pace` metres a minute, and `by` is the word for that.
+  layout: the ground (regions: large places that hold the rest; pace is metres a minute on foot,
+    cover is what is overhead) and how many of each kind there are and where: on which ground, by
+    weight; inside or near (metres from its edge) another kind; from_start, metres from where the
+    play's people first stand; names, for those the author has named.
+"""
 
-# All enums for apocalypse scenario
-class ApocalypseTerrain(Enum):
-    Water = 1       # Required by map.py
-    Street = 2      # Roads and walkways
-    Building = 3    # Commercial/residential buildings
-    Plaza = 4       # Open spaces, squares
-    Park = 5        # Green spaces
-    Construction = 6 # Building sites
-
-class ApocalypseInfrastructure(Enum):
-    Road = auto()   # Main thoroughfares
-    Path = auto()   # Smaller walkways
-
-class ApocalypseResources(Enum):
-    BusStop = auto()     # Public transport
-    Shop = auto()        # Retail locations
-    Cafe = auto()        # Food/drink venues
-    Bench = auto()       # Rest spots
-    TrashBin = auto()    # Waste disposal
-    Park = auto()      # Required by map.py
-
-class ApocalypseProperty(Enum):
-    Building = auto()    # Commercial/residential
-    Shop = auto()        # Retail space
-    Cafe = auto()        # Food venue
-    Plaza = auto()       # Public space
-
-# Rules for terrain generation
-terrain_rules = {
-    'elevation_noise_scale': 20.0,  # Larger scale for urban environment
-    'water_level': 0.1,    # Minimal water features
-    'mountain_level': 0.9,  # No mountains
-    'terrain_by_elevation': {
-        'water': {'max': 0.1, 'type': 'Water'},  # Required water type
-    },
-    'lowland_distribution': {
-        'Building': 0.3,    # Buildings
-        'Street': 0.2,      # Roads
-        'Plaza': 0.2,       # Open spaces
-        'Park': 0.2,        # Green spaces
-        'Construction': 0.1  # Building sites
-    }
-}
-
-infrastructure_rules = {
-    'road_density': 0.4,      # High density for urban setting
-    'path_type': 'Road',      # Primary infrastructure type
-    'slope_factor': 1.0,      # Minimal slope impact
-    'terrain_costs': {
-        'Water': float('inf'),
-        'Building': float('inf'),
-        'Street': 1.0,
-        'Plaza': 1.2,
-        'Park': 1.5,
-        'Construction': 2.0
-    }
-}
-
-property_rules = {
-    'min_size': 10,    # Smaller property sizes for urban lots
-    'max_size': 30,
-    'valid_terrain': ['Building', 'Plaza']  # What can be owned
-}
-
-# Standard interface names
-terrain_types = ApocalypseTerrain
-infrastructure_types = ApocalypseInfrastructure
-property_types = ApocalypseProperty
-resource_types = ResourceTypeRegistry(ApocalypseResources)  # Use dynamic registry
-
-# Add at top with other interface names
-# How the places of this world are, and how they sit: laid out in metres, anew for each
-# performance (sim/land.py). Counts and descriptions are those of resource_rules below.
 kinds = {
-    'BusStop': {'radius': 3, 'shelter': True},
-    'Shop': {'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},     # doors broken in: seen into from the street
-    'Cafe': {'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
-    'Bench': {'radius': 2}, 'TrashBin': {'radius': 2},
-    'Park': {'radius': 8},      # the fountain at the heart of the park
+    'BusStop': {'description': 'A weathered bus stop shelter', 'radius': 3, 'shelter': True},
+    'Shop': {'description': 'A small retail shop', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
+    'Cafe': {'description': 'A cozy cafe', 'radius': 7, 'enclosed': True, 'open': True, 'shelter': True},
+    'Bench': {'description': 'A weathered bench', 'radius': 2},
+    'TrashBin': {'description': 'A rusty trash bin', 'radius': 2},
+    'Park': {'description': 'A park with a fountain that still runs', 'radius': 8},
 }
+
 layout = {
     'regions': [
-        {'kind': 'Street', 'whole': True, 'radius': 600, 'pace': 70, 'cover': 'open'},
-        {'kind': 'Plaza', 'count': 1, 'radius': 50, 'pace': 65, 'cover': 'open', 'from_start': (60, 250)},
-        {'kind': 'Park', 'count': 1, 'radius': 80, 'pace': 55, 'cover': 'open', 'from_start': (80, 300)},
-        {'kind': 'Construction', 'count': 1, 'radius': 60, 'pace': 40, 'cover': 'open', 'from_start': (150, 350)},
-        # city blocks: nothing is seen across one
-        {'kind': 'Building', 'count': 8, 'radius': (30, 50), 'pace': 70, 'cover': 'open', 'from_start': (60, 400), 'blocks_view': True},
+        {'kind': 'Street', 'radius': 600, 'pace': 70, 'cover': 'open', 'whole': True},
+        {'kind': 'Plaza', 'radius': 50, 'pace': 65, 'cover': 'open', 'count': 1, 'from_start': (60, 250)},
+        {'kind': 'Park', 'radius': 80, 'pace': 55, 'cover': 'open', 'count': 1, 'from_start': (80, 300)},
+        {'kind': 'Construction', 'radius': 60, 'pace': 40, 'cover': 'open', 'count': 1, 'from_start': (150, 350)},
+        {'kind': 'Building', 'radius': (30, 50), 'pace': 70, 'cover': 'open', 'count': 8, 'from_start': (60, 400), 'blocks_view': True},
     ],
+    # places lie within this of where the play's people start, more of them nearer, and this far apart
     'scatter': {'within': 350, 'apart': 25},
     'places': [
-        {'kind': 'Park', 'on': {'Park': 1.0}},
-        {'kind': 'Bench', 'on': {'Park': 2.0, 'Plaza': 1.0}, 'apart': 10},
-        {'kind': 'Cafe', 'on': {'Plaza': 1.0}},
-        {'kind': 'Shop', 'on': {'Street': 1.0}},
-        {'kind': 'BusStop', 'on': {'Street': 1.0}},
-        {'kind': 'TrashBin', 'on': {'Street': 1.0, 'Plaza': 0.5}},
+        {'kind': 'Park', 'count': 1, 'on': {'Park': 1.0}},
+        {'kind': 'Bench', 'count': 3, 'on': {'Park': 2.0, 'Plaza': 1.0}, 'apart': 10},
+        {'kind': 'Cafe', 'count': 1, 'on': {'Plaza': 1.0}},
+        {'kind': 'Shop', 'count': 2, 'on': {'Street': 1.0}},
+        {'kind': 'BusStop', 'count': 2, 'on': {'Street': 1.0}},
+        {'kind': 'TrashBin', 'count': 2, 'on': {'Street': 1.0, 'Plaza': 0.5}},
     ],
 }
 
-required_resource = resource_types.Park  # or Market, etc.
-required_resource_name = "Park"  # or "Market", etc.
 
-resource_rules = {
-    'allocations': [
-        {
-            'resource_type': resource_types.BusStop,
-            'description': 'A weathered bus stop shelter',
-            'count': 2,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Street: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Shop,
-            'description': 'A small retail shop',
-            'count': 2,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Building: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Cafe,
-            'description': 'A cozy cafe',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Building: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Bench,
-            'description': 'A weathered bench',
-            'count': 3,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Park: 1.0,
-                terrain_types.Plaza: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.TrashBin,
-            'description': 'A rusty trash bin',
-            'count': 2,
-            'requires_property': False,
-            'terrain_weights': {
-                terrain_types.Street: 1.0
-            }
-        },
-        {
-            'resource_type': resource_types.Park,  # Required by map.py
-            'description': 'A park with a fountain that still runs',
-            'count': 1,
-            'requires_property': True,
-            'terrain_weights': {
-                terrain_types.Plaza: 2.0  # Higher weight to ensure placement
-            }
-        }
-    ]
-} 
-
-# What is at stake in this world (planning and act prompts; sim/survival.py stakes_text).
 stakes = ("In Bellona, food, clean water and a safe place to sleep must be scavenged or bargained for, and the city "
           "is unpredictable: gangs roam the streets at night and strange phenomena break out without warning. Use "
           "scavenging, barter, trust and betrayal over scarce goods as concrete, checkable goals and obstacles tied "
