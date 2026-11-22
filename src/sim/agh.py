@@ -3302,6 +3302,7 @@ End your response with:
         """Leave the scene, and the ones going along leave with it. told: the departure, with
         who went along, is already in the scene's record."""
         party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
+        party = [c for c in party if c not in (getattr(self, 'walk_stayed', None) or [])]   # whoever chose to stay has not left (stage.goes_along)
         to = getattr(act, 'leaves_to', None)
         stage.leave(self, party, told=told, to=to)
         for other in party:

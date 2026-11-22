@@ -320,6 +320,43 @@ def company(character):
     return [c for c in character.bystanders() if world.on(c)]
 
 
+GOES = """You are the actor playing {name} in an improvised play. {walker} is setting off for {place}, on foot.
+
+What has just been said and done, in {name}'s hearing and sight:
+<lately>
+{lately}
+</lately>
+
+What {name} is after in this scene: {goal}
+
+Does {name} go along with {walker} now, or stay here? People who are together mostly go when the other sets off. {name} stays when {name} is in the middle of something {name} would not drop, has just said no to going, was not asked along (the other has said it is going by itself, or will be back), or has a reason of {name}'s own to stay. Where {walker} goes is {walker}'s to say; whether {name} goes is {name}'s.
+
+Answer with these two lines only:
+#goes yes or no
+#why four to eight words
+</end>"""
+
+
+def goes_along(other, walker, place):
+    """Does `other` go along when `walker` sets off for another place? Its own actor says. (The
+    one setting off named who came, and nobody asked them: Samantha walked Joe off the rock he
+    had just begun to climb, and a stranger slipping away took the whole scene with him.)"""
+    from utils.Messages import UserMessage
+    from utils import hash_utils
+    context = other.context
+    direction = getattr(other, 'direction', None) or {}
+    lately = '\n'.join(context.witnessed(other, n=8)) or 'Nothing yet.'
+    try:
+        reply = other.llm.ask({}, [UserMessage(content=GOES.format(name=other.name, walker=walker.name, place=plain(context, f'x {place}')[2:] or place,
+                                                                  lately=lately, goal=direction.get('goal') or 'not said'))],
+                              tag='stage.goes_along', temp=0.2, stops=['</end>'], max_tokens=40) or ''
+    except Exception:
+        reply = ''
+    goes = not (hash_utils.find('goes', reply) or 'yes').strip().lower().startswith('n')   # unread: together, as before
+    trace.event('goes_along', character=other.name, walker=walker.name, place=place, goes=goes, why=(hash_utils.find('why', reply) or '').strip()[:80])
+    return goes
+
+
 def walk(character, xy, place, alone=False, to=True):
     """A character walks to a tile, and its scene partners come along unless it goes alone (a
     scene's cast stays together: Samantha used to reach the spring an hour ahead of Joe, who was
@@ -336,7 +373,10 @@ def walk(character, xy, place, alone=False, to=True):
     # a few steps within the place (to the woodpile and back) are taken alone; a walk to another
     # place takes the party, however short (Joe walked three tiles to the spring alone, then
     # walked back to say it was 'right there, past the ferns')
-    party = [] if alone or step else was_with
+    # each of those with it says for itself whether it comes (goes_along)
+    party = [] if alone or step else [c for c in was_with if goes_along(c, character, place)]
+    stayed = [] if alone or step else [c for c in was_with if c not in party]
+    character.walk_stayed = stayed
     ride = None if step else world.conveyance(context, start, xy)   # a car at hand, for a way too long to walk
     minutes = max(survival.travel(c, xy, advance_clock=False) for c in [character] + party)
     if ride is not None:
@@ -371,6 +411,11 @@ def walk(character, xy, place, alone=False, to=True):
             if isinstance(getattr(context, 'previous_scene', None), dict):
                 context.previous_scene['xy'] = tuple(xy)
             trace.event('scene_moved', place=scene['place'])
+    # one who walks off to another place while someone stays behind has gone out of the scene, with
+    # those who went along: the scene is where the ones who stayed are
+    if stayed and isinstance(scene, dict) and getattr(character, 'current_scene', None) is scene and where(context, xy) != left:
+        for c in [character] + party:
+            leave(c, [x for x in [character] + party if x is not c], told=True, to=place)
     # who saw it go: those it walked with and those it left (the walk's line is recorded by the walker)
     character.walk_witnesses = [character] + was_with
     trace.event('walk', character=character.name, place=place, party=[c.name for c in party], alone=alone,
