@@ -1182,6 +1182,11 @@ def named(context, thing, character=None, reader=False):
         # a thing made in the play (a fire, a marker) is told as its maker's; one only picked or
         # taken from what the place gives is nobody's making, and where it is says enough
         got = any(isinstance(e, dict) and e.get('world') for e in (found.made or {}).get('effects') or [])
+        # likewise one taken up from what a place plainly has (a suit from the closet, a cup in a
+        # kitchen): listed as 'made by Alex', the suit he put on was ruled not to be clothes from the closet
+        land = getattr(context, 'land', None)
+        got = got or any(isinstance(e, dict) and e.get('new') and land is not None and land.named_in(str(e.get('from') or ''))
+                         for e in (found.made or {}).get('effects') or [])
         by = '' if got or (found.made or {}).get('effects') is None else whose(found.made, reader)
         made = f'made {by}' if by.startswith('by') else by
     notes = [n for n in (found.get('spot') if found.get('at') is not None else '', 'worn' if found.get('worn') else '',
