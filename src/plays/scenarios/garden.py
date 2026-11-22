@@ -47,34 +47,31 @@ stakes = ("For the kittens, the garden is a world of play, food, naps and small 
           "butterfly to chase, a ball to win, a warm nap, the neighbour's dog. Use these concrete, playful goals and "
           "obstacles tied to things in the garden; keep the tone gentle and the magic light.")
 
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    'A bug caught and eaten eases hunger well; there are about three to be had at a spot. Seeds nibbled ease it a little.',
+    "An hour's nap eases sleepiness fully.",
+    'Being groomed eases scrapes a little.',
+    'Chasing the butterfly takes about ten minutes and leaves a kitten sleepier. About one time in five a shimmering wing-scale is left behind, and about one time in six the chase ends in a tumble into the rose bush.',
+]
+# What no deed or word gets past
+held = [
+]
+
 # Stage business (sim/survival.py): hunting bugs, chasing, play, naps, the neighbour's dog.
 affordances = {
     'needs': {
-        'hunger': {'eased': [{'by': 'catching and eating a bug', 'at': ['Bug'], 'amount': 0.35, 'minutes': 5, 'stock': 3},
-                             {'by': 'nibbling seeds', 'at': ['Seed'], 'amount': 0.1, 'minutes': 5}],
-                   'initial': 0.35, 'per_hour': 0.08,
+        'hunger': {                   'initial': 0.35, 'per_hour': 0.08,
                    'words': ('full', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.5: "Your tummy rumbles; a bug would be nice.", 0.8: "You are SO hungry."}},
-        'sleepiness': {'eased': [{'by': 'napping', 'amount': 0.8, 'minutes': 60}],
-                       'initial': 0.2, 'per_hour': 0.1, 'shelter_factor': 0.5,
+        'sleepiness': {                       'initial': 0.2, 'per_hour': 0.1, 'shelter_factor': 0.5,
                        'words': ('bouncy', 'drowsy', 'sleepy', 'can barely keep eyes open'),
                        'percepts': {0.5: "Your eyes are getting heavy; a sunny spot looks very nice.",
                                     0.8: "You are so sleepy you keep yawning."}},
     },
-    'harm': {'eased': [{'by': 'being groomed', 'amount': 0.15, 'minutes': 10}],
-             'name': 'scrapes', 'words': ('unruffled', 'ruffled', 'scraped', 'hurting')},
+    'harm': {             'name': 'scrapes', 'words': ('unruffled', 'ruffled', 'scraped', 'hurting')},
     'travel_need': 'sleepiness',
     'tile_minutes': 1,
-    'type_nouns': {'Bug': ['bug', 'beetle', 'cricket'], 'Butterfly': ['butterfly'], 'Leaf': ['leaf', 'leaves'],
-                   'Seed': ['seed', 'seeds'], 'Ball': ['ball']},
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [
-        {'name': 'chase the butterfly', 'category': 'explore', 'verbs': ['chase', 'leap at', 'swat', 'stalk'],
-         'resource_types': ['Butterfly'], 'effects': {'sleepiness': 0.1}, 'minutes': 10,
-         'finds': [{'item': 'a shimmering wing-scale', 'chance': 0.2}], 'text': 'chases the butterfly round and round {resource}',
-         'risk': {'chance': 0.15, 'effects': {'scrapes': 0.1}, 'text': 'A tumble into the rose bush!'}},
-    ],
     'hazards': [
         {'name': 'dog', 'description': "the neighbour's big bouncy dog bounding over the fence", 'when': 'day',
          'terrain': ['Grass', 'Flowers'], 'chance_per_hour': 0.06, 'blocked_by': ['sheltered'],

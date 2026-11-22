@@ -51,14 +51,27 @@ stakes = ("In this harbour town, livelihoods, art, money and relationships are a
           "gallery sale, a boat that needs mending, favours and promises between neighbours. Use concrete, checkable "
           "goals and obstacles tied to the studio, the workshop, the gallery, the cafe and the harbour.")
 
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    'A coffee at the cafe costs about 4 dollars and takes the edge off tiredness; a meal there costs about 12 and eases hunger well.',
+    'A painting takes an afternoon in the studio, about three hours, and a carving the same in the workshop; both are tiring.',
+    'The gallery sells a finished painting for about 150 dollars and a carving for about 90; a sale takes about half an hour.',
+    "Tools may be borrowed from the tool store. Mending the boat needs tools and about two hours, and is tiring. An hour and a half's sail is restful.",
+    'Sitting on a bench watching the harbour eases tiredness a little.',
+]
+# What no deed or word gets past
+held = [
+    'A boat that has not been mended does not sail.',
+    'Money comes into the play only as a sale these facts name.',
+]
+
 # Stage business (sim/survival.py): making and selling work, the cafe, the boat, a squall.
 affordances = {
     'needs': {
         'hunger': {'initial': 0.3, 'per_hour': 0.04,
                    'words': ('not hungry', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.5: "You are getting hungry.", 0.8: "You are very hungry; it is hard to focus."}},
-        'fatigue': {'eased': [{'by': 'sitting and watching the harbour', 'at': ['Bench'], 'amount': 0.15, 'minutes': 20}],
-                    'initial': 0.3, 'per_hour': 0.03, 'shelter_factor': 0.5,
+        'fatigue': {                    'initial': 0.3, 'per_hour': 0.03, 'shelter_factor': 0.5,
                     'words': ('fresh', 'tired', 'very tired', 'exhausted'),
                     'percepts': {0.5: "You are tiring.", 0.8: "You are exhausted."}},
     },
@@ -66,37 +79,6 @@ affordances = {
     'travel_need': 'fatigue',
     'currency': 'dollars', 'initial_money': 30,
     'tile_minutes': 2,
-    'type_nouns': {'Cafe': ['cafe', 'café', 'coffee'], 'Studio': ['studio', 'easel', 'canvas'], 'Workshop': ['workshop', 'bench'],
-                   'Gallery': ['gallery'], 'Boat': ['boat', 'hull', 'dinghy'], 'Tools': ['tools', 'toolbox'],
-                   'Bench': ['bench'], 'Bridge': ['bridge']},
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [
-        {'name': 'buy coffee', 'verbs': ['buy coffee', 'order coffee', 'drink coffee'], 'named_verbs': ['buy', 'order', 'drink'],
-         'resource_types': ['Cafe'], 'cost': 4, 'effects': {'fatigue': -0.2}, 'minutes': 15, 'text': 'buys and drinks a coffee at {resource}'},
-        {'name': 'eat a meal', 'verbs': ['eat', 'order lunch', 'order food'], 'resource_types': ['Cafe'], 'cost': 12,
-         'effects': {'hunger': -0.6}, 'minutes': 30, 'text': 'eats a meal at {resource}'},
-        {'name': 'paint', 'category': 'work', 'verbs': ['paint', 'finish the canvas', 'work on the painting'], 'named_verbs': ['work', 'create'],
-         'resource_types': ['Studio'], 'effects': {'fatigue': 0.2}, 'gain': 'finished painting', 'minutes': 180,
-         'text': 'paints at {resource} until a canvas is finished'},
-        {'name': 'make a carving', 'category': 'work', 'verbs': ['carve', 'build', 'make'], 'named_verbs': ['work'],
-         'resource_types': ['Workshop'], 'effects': {'fatigue': 0.2}, 'gain': 'carving', 'minutes': 180,
-         'text': 'works at {resource} until a carving is finished'},
-        {'name': 'sell a painting', 'category': 'work', 'verbs': ['sell', 'hang', 'consign'], 'resource_types': ['Gallery'],
-         'requires': 'finished painting', 'consumes': 'finished painting', 'earn': 150, 'minutes': 30,
-         'text': 'sells a painting through {resource}'},
-        {'name': 'sell a carving', 'category': 'work', 'verbs': ['sell', 'consign'], 'resource_types': ['Gallery'],
-         'requires': 'carving', 'consumes': 'carving', 'earn': 90, 'minutes': 30, 'text': 'sells a carving through {resource}'},
-        {'name': 'borrow tools', 'verbs': ['borrow', 'take', 'pick up', 'grab'], 'named_verbs': [], 'resource_types': ['Tools'],
-         'gain': 'tools', 'minutes': 5, 'deplete': 2, 'text': 'borrows tools from {resource}'},
-        {'name': 'mend the boat', 'category': 'work', 'verbs': ['mend', 'repair', 'caulk', 'patch', 'fix'], 'resource_types': ['Boat'],
-         'requires': 'tools', 'requires_property': {'mended': None}, 'sets_property': {'mended': True},
-         'effects': {'fatigue': 0.25}, 'minutes': 120, 'text': 'mends {resource}'},
-        {'name': 'go sailing', 'verbs': ['sail', 'go sailing', 'row out', 'take the boat out'], 'resource_types': ['Boat'],
-         'requires_property': {'mended': True}, 'effects': {'fatigue': -0.1}, 'minutes': 90, 'text': 'takes {resource} out on the water'},
-        {'name': 'pay', 'category': 'social', 'target': 'character', 'verbs': ['pay', 'lend money', 'hand cash', 'settle up'],
-         'transfer_money': 20, 'minutes': 2, 'text': 'pays {target} twenty dollars'},
-    ],
     'hazards': [
         {'name': 'squall', 'description': 'a sudden squall racing in off the sea', 'when': 'any',
          'terrain': ['Harbor', 'Road', 'Garden'], 'chance_per_hour': 0.03, 'blocked_by': ['sheltered'],

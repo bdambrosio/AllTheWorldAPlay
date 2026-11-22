@@ -48,49 +48,38 @@ stakes = ("In Bellona, food, clean water and a safe place to sleep must be scave
           "scavenging, barter, trust and betrayal over scarce goods as concrete, checkable goals and obstacles tied "
           "to places, alongside the characters' personal mysteries.")
 
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    'Food and clean water are hard come by: there is none to hand unless someone holds it or a search turns it up.',
+    'A can of food is a meal for one, or half a meal each for two who share it. A bottle of water quenches one, or takes the edge off the thirst of two who share it.',
+    'The fountain in the park runs: a drink there eases thirst well, and about one time in five the water tastes of metal and cramps follow.',
+    'Scavenging a shop, a cafe or a trash bin takes about half an hour and may turn up a can of food or a bottle of water (each about one time in three), now and then batteries or a knife. A place gives up about three finds before it is picked clean.',
+    'Sleep eases tiredness fully and takes about five hours. Half an hour on a bench or under a bus shelter, or twenty minutes indoors, eases it a little.',
+    'A wound cleaned and bound is eased a little; it does not heal in a day.',
+]
+# What no deed or word gets past
+held = [
+]
+
 # Stage business (sim/survival.py): scavenged goods, barter, shelter, gangs and phenomena.
 affordances = {
     'needs': {
-        'hunger': {'eased': [{'by': 'eating a can of food', 'uses': ['canned food'], 'amount': 0.5, 'minutes': 10},
-                             {'by': 'sharing a can of food with another', 'uses': ['canned food'], 'portions': 2, 'amount': 0.3, 'minutes': 10}],
-                   'initial': 0.45, 'per_hour': 0.04, 'neglect_harm': 0.05,
+        'hunger': {                   'initial': 0.45, 'per_hour': 0.04, 'neglect_harm': 0.05,
                    'words': ('fed', 'hungry', 'very hungry', 'starving'),
                    'percepts': {0.5: "Your stomach knots; you have not eaten properly in a long time.",
                                 0.8: "Hunger makes your hands shake and your thoughts slow."}},
-        'thirst': {'eased': [{'by': 'drinking a bottle of water', 'uses': ['bottled water'], 'amount': 0.6, 'minutes': 2},
-                             {'by': 'sharing a bottle of water with another', 'uses': ['bottled water'], 'portions': 2, 'amount': 0.35, 'minutes': 3},
-                             {'by': 'drinking from the fountain', 'at': ['Park'], 'amount': 0.5, 'minutes': 5,
-                              'risk': {'chance': 0.2, 'effects': {'injury': 0.2}, 'text': 'The water tastes of metal; cramps follow.'}}],
-                   'initial': 0.35, 'per_hour': 0.06, 'neglect_harm': 0.05,
+        'thirst': {                   'initial': 0.35, 'per_hour': 0.06, 'neglect_harm': 0.05,
                    'words': ('not thirsty', 'thirsty', 'very thirsty', 'parched'),
                    'percepts': {0.5: "Your throat is dry and gritty with the city's dust.",
                                 0.8: "Thirst pounds behind your eyes; you need water now."}},
-        'fatigue': {'eased': [{'by': 'sleeping', 'amount': 1.0, 'minutes': 300},
-                              {'by': 'resting on a bench or under a bus shelter', 'at': ['Bench', 'BusStop'], 'amount': 0.2, 'minutes': 30},
-                              {'by': 'resting indoors', 'at': ['Shop', 'Cafe'], 'amount': 0.2, 'minutes': 20}],
-                    'initial': 0.3, 'per_hour': 0.04, 'shelter_factor': 0.3,
+        'fatigue': {                    'initial': 0.3, 'per_hour': 0.04, 'shelter_factor': 0.3,
                     'words': ('alert', 'tired', 'very tired', 'exhausted'),
                     'percepts': {0.5: "Weariness drags at you; the streets seem longer.",
                                  0.8: "You are exhausted; you need somewhere safe to sleep."}},
     },
-    'harm': {'eased': [{'by': 'tending the wound', 'amount': 0.2, 'minutes': 15, 'floor': 0.3}],
-             'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
+    'harm': {             'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')},
     'travel_need': 'fatigue',
     'tile_minutes': 3,
-    'type_nouns': {'Shop': ['shop', 'store'], 'TrashBin': ['trash', 'bin', 'garbage', 'dumpster'],
-                   'Cafe': ['cafe', 'café'], 'BusStop': ['bus stop', 'shelter'], 'Bench': ['bench'],
-                   'Park': ['park', 'fountain']},
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [
-        {'name': 'scavenge', 'category': 'explore', 'verbs': ['scavenge', 'rummage', 'loot', 'dig through', 'pick through'],
-         'named_verbs': ['search', 'check', 'explore'], 'resource_types': ['Shop', 'TrashBin', 'Cafe'],
-         'finds': [{'item': 'canned food', 'chance': 0.3}, {'item': 'bottled water', 'chance': 0.3},
-                   {'item': 'batteries', 'chance': 0.1}, {'item': 'knife', 'chance': 0.1}],
-         'minutes': 30, 'deplete': 3, 'text': 'scavenges through {resource}'},
-        # sharing what one has: both eat or drink, and it is used up (a can split onto cardboard
-        # was taken as handing over the whole can, and the one who split it then had none to eat)
-    ],
     'hazards': [
         {'name': 'gang', 'description': 'a knot of scorpion-chained gang members', 'when': 'night',
          'terrain': ['Street', 'Plaza', 'Construction'], 'chance_per_hour': 0.2, 'blocked_by': ['sheltered'],

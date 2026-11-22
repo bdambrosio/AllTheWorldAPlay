@@ -54,18 +54,29 @@ stakes = ("In this everyday suburban world the stakes are time, money, work and 
           "(coffee, food, sleep, getting ready), not survival. Use concrete, checkable goals and obstacles tied to the "
           "house, the commute and the office.")
 
+# How this world works, in sentences (docs/world-facts-design.md). Nothing here is matched by code.
+facts = [
+    'Breakfast from the refrigerator takes about fifteen minutes and eases hunger well.',
+    "A cup of coffee takes the edge off tiredness for the one who drinks it; a shower does a little less; four hours' sleep in bed eases it well.",
+    'Getting dressed at the closet takes about ten minutes, a shower about fifteen. A person is dressed for the day once they have put on clothes from the closet.',
+    'The mail comes to the mailbox: checking it takes a few minutes, and there is sometimes an overdue bill in it (about one day in three) or a personal letter (about one in four).',
+    "A half-day's work at the office, about four hours, pays about 120 dollars and is tiring.",
+    'An interview at the office takes about three quarters of an hour.',
+]
+# What no deed or word gets past
+held = [
+    'Nobody works at the office, or sits an interview there, who is not dressed for the day.',
+    'Money comes into the play only as a wage these facts name.',
+]
+
 # Stage business (sim/survival.py): morning routine, mail, work and money. No hazards.
 affordances = {
     'needs': {   # early morning
-        'hunger': {'eased': [{'by': 'eating breakfast from the refrigerator', 'at': ['Refrigerator'], 'amount': 0.5, 'minutes': 15}],
-                   'initial': 0.4, 'per_hour': 0.05,
+        'hunger': {                   'initial': 0.4, 'per_hour': 0.05,
                    'words': ('not hungry', 'peckish', 'hungry', 'very hungry'),
                    'percepts': {0.5: "You are hungry; you have not eaten yet today.",
                                 0.8: "Hunger is making it hard to concentrate."}},
-        'fatigue': {'eased': [{'by': 'drinking coffee', 'at': ['Coffee_Maker'], 'amount': 0.2, 'minutes': 5},
-                              {'by': 'sleeping in bed', 'at': ['Bed'], 'amount': 0.8, 'minutes': 240},
-                              {'by': 'taking a shower', 'at': ['Shower'], 'amount': 0.1, 'minutes': 15}],
-                    'initial': 0.45, 'per_hour': 0.04,
+        'fatigue': {                    'initial': 0.45, 'per_hour': 0.04,
                     'words': ('alert', 'groggy', 'tired', 'exhausted'),
                     'percepts': {0.5: "You feel groggy; coffee would help.",
                                  0.8: "You are exhausted and your thoughts keep drifting."}},
@@ -73,29 +84,5 @@ affordances = {
     'harm': {'name': 'injury', 'words': ('fine', 'sore', 'hurt', 'badly hurt')},
     'currency': 'dollars', 'initial_money': 40,
     'tile_minutes': 1,
-    'type_nouns': {'Coffee_Maker': ['coffee', 'coffee maker'], 'Refrigerator': ['fridge', 'refrigerator', 'breakfast'],
-                   'Shower': ['shower', 'bathroom'], 'Closet': ['closet', 'clothes', 'suit'], 'Bed': ['bed'],
-                   'Mailbox': ['mailbox', 'mail', 'letters'], 'Office': ['office', 'desk', 'work'],
-                   'Car': ['car'], 'Bus_Stop': ['bus stop', 'bus']},
-    # states this world keeps, because a rule depends on them (work needs one dressed): what each means and what brings it about
-    'states': {
-        'dressed': {'means': 'dressed for the day', 'by': 'getting dressed at the closet', 'at': ['Closet'], 'minutes': 10},
-        'showered': {'means': 'washed', 'by': 'taking a shower', 'at': ['Shower'], 'minutes': 15},
-        'interviewed': {'means': 'has sat the interview', 'by': 'sitting the interview at the office', 'at': ['Office'], 'minutes': 45, 'needs': ['dressed']},
-    },
-    # what this world rules on: exchanges and odds (sim/survival.py rules). Everything else a person does is told in
-    # words and the resolver says what comes of it (sim/resolver.py).
-    'actions': [
-        {'name': 'check the mail', 'category': 'explore', 'verbs': ['check the mail', 'open the mailbox', 'get the mail'],
-         'named_verbs': ['check', 'open'], 'resource_types': ['Mailbox'],
-         'finds': [{'item': 'an overdue bill', 'chance': 0.35}, {'item': 'a personal letter', 'chance': 0.25}],
-         'minutes': 3, 'deplete': 1, 'text': 'checks the mail'},
-        {'name': 'work', 'category': 'work', 'verbs': ['answer email', 'take the meeting', 'finish the report'], 'named_verbs': ['work'],
-         'resource_types': ['Office'], 'requires_flag': 'dressed', 'effects': {'fatigue': 0.25}, 'earn': 120,
-         'minutes': 240, 'text': 'puts in a block of work at {resource}'},
-        # the interview a candidate has come for: it is sat, dressed, at the office; how it goes is the scene's
-        {'name': 'lend money', 'category': 'social', 'target': 'character', 'verbs': ['lend', 'pay', 'give money', 'hand cash'],
-         'transfer_money': 20, 'minutes': 2, 'text': 'gives {target} twenty dollars'},
-    ],
     'hazards': [],
 }
