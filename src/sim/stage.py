@@ -376,7 +376,9 @@ def walk(character, xy, place, alone=False, to=True):
     # each of those with it says for itself whether it comes (goes_along)
     party = [] if alone or step else [c for c in was_with if goes_along(c, character, place)]
     stayed = [] if alone or step else [c for c in was_with if c not in party]
-    character.walk_stayed = stayed
+    if not (alone or step):
+        character.walk_asked = list(getattr(character, 'walk_asked', None) or []) + was_with
+        character.walk_stayed = list(getattr(character, 'walk_stayed', None) or []) + stayed
     ride = None if step else world.conveyance(context, start, xy)   # a car at hand, for a way too long to walk
     minutes = max(survival.travel(c, xy, advance_clock=False) for c in [character] + party)
     if ride is not None:

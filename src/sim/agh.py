@@ -1187,6 +1187,7 @@ End response with:
         when it is over, however it ends: an act that fails part-way leaves no event open for
         what comes after to be put down to."""
         opened = self.context.events_open()
+        self.walk_stayed, self.walk_asked = [], []   # who was asked along in this act, and who stayed (stage.goes_along)
         try:
             return await self._acts(act, target, act_mode, act_arg, reason, source)
         finally:
@@ -1494,7 +1495,7 @@ End response with:
                 target = act.target
             if leaving:
                 # a parting line: the others hear it, the speaker goes, and nobody answers the door
-                party = act.leaves if isinstance(act.leaves, list) else []
+                party = self._going_along(act)   # those who do go, each having said so
                 to = getattr(act, 'leaves_to', None)
                 gone = ('leaves' if not party else f"leaves with {', '.join(c.name for c in party)}") + (f', for {to}.' if to else '.')
                 with self.context.committing('leave', self):
@@ -3298,11 +3299,24 @@ End your response with:
         party = [c for c in here if c.name.lower() in names]
         return party or 'alone'
 
+    def _going_along(self, act):
+        """Those of the ones this act names as leaving with its doer who do go. Each says for
+        itself, once in an act, where a walk has not asked it already (stage.goes_along): asked
+        only on a walk to a named place, Joe was still taken 'for the northwest' unasked. Whoever
+        stays has not left."""
+        party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
+        to = getattr(act, 'leaves_to', None)
+        for other in party:
+            if other not in (getattr(self, 'walk_asked', None) or []):
+                self.walk_asked = list(getattr(self, 'walk_asked', None) or []) + [other]
+                if not stage.goes_along(other, self, to or 'somewhere else'):
+                    self.walk_stayed = list(getattr(self, 'walk_stayed', None) or []) + [other]
+        return [c for c in party if c not in (getattr(self, 'walk_stayed', None) or [])]
+
     def _leave_with(self, act, told=False):
         """Leave the scene, and the ones going along leave with it. told: the departure, with
         who went along, is already in the scene's record."""
-        party = act.leaves if isinstance(getattr(act, 'leaves', None), list) else []
-        party = [c for c in party if c not in (getattr(self, 'walk_stayed', None) or [])]   # whoever chose to stay has not left (stage.goes_along)
+        party = self._going_along(act)
         to = getattr(act, 'leaves_to', None)
         stage.leave(self, party, told=told, to=to)
         for other in party:
