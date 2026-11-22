@@ -85,15 +85,16 @@ resource_types = ResourceTypeRegistry(SuburbanResources)  # Use dynamic registry
 kinds = {
     'House': {'radius': 8, 'enclosed': True, 'shelter': True},
     'Bed': {'radius': 1.5}, 'Shower': {'radius': 1.5}, 'Closet': {'radius': 1.5}, 'Coffee_Maker': {'radius': 1.5}, 'Refrigerator': {'radius': 1.5},
-    'Car': {'radius': 3}, 'Mailbox': {'radius': 1.5},
+    'Car': {'radius': 3, 'vehicle': True, 'pace': 500, 'by': 'drive'},   # metres a minute: thirty kilometres an hour through town
+    'Mailbox': {'radius': 1.5},
     'Bus_Stop': {'radius': 3},
     'Office': {'radius': 15, 'enclosed': True, 'shelter': True},
 }
 layout = {
     'regions': [
-        {'kind': 'Street', 'whole': True, 'radius': 3000, 'pace': 75, 'cover': 'open'},
+        {'kind': 'Street', 'whole': True, 'radius': 16000, 'pace': 75, 'cover': 'open'},
         {'kind': 'Yard', 'count': 1, 'radius': 25, 'pace': 70, 'cover': 'open', 'from_start': (0, 0)},
-        {'kind': 'City', 'count': 1, 'radius': 300, 'pace': 75, 'cover': 'open', 'from_start': (1900, 2300)},   # downtown
+        {'kind': 'City', 'count': 1, 'radius': 300, 'pace': 75, 'cover': 'open', 'from_start': (13500, 14500)},   # downtown: half an hour by car
     ],
     'scatter': {'within': 400, 'apart': 30},
     'places': [

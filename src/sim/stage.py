@@ -249,7 +249,7 @@ def set_scene(context, scene, characters, opens_act):
     xy, place = target if target else (anchor, None)
     scene['place'] = place or where(context, xy).removeprefix('at ')
     context.previous_scene = {'cast': tuple(c.name for c in characters), 'xy': xy}
-    movers, longest = [], 0.0
+    movers, longest, ride = [], 0.0, None
     for character in characters:
         if remote(character):
             # in the scene by voice, from where they are: and indoors there (Novak on Earth was
@@ -267,6 +267,7 @@ def set_scene(context, scene, characters, opens_act):
             if getattr(character, 'body', None) is not None:
                 character.body.sheltered = world.sheltered(context, xy)
         else:
+            ride = ride or world.conveyance(context, here(character), xy)
             longest = max(longest, survival.travel(character, xy, advance_clock=False))
         movers.append((character.name, 0))
     if not movers:
@@ -276,7 +277,10 @@ def set_scene(context, scene, characters, opens_act):
         line = f"{names} {'is' if len(movers) == 1 else 'are'} now at {scene['place']}."
     else:
         context.simulation_time += survival.timedelta(minutes=longest)
-        line = f"{names} walk{'s' if len(movers) == 1 else ''} to {scene['place']} ({round(longest)} min)."
+        if ride is not None:
+            world.bring(context, ride, xy)
+        line = (f"{names} {ride.by if ride is not None else 'walk'}{'s' if len(movers) == 1 else ''} to {scene['place']}"
+                + (f' in {ride.id}' if ride is not None else '') + f" ({round(longest)} min).")
     trace.event('scene_place', place=scene['place'], movers=[n for n, _ in movers], walked=not opens_act,
                 minutes=round(longest, 1), at=list(xy))
     return line
@@ -340,14 +344,18 @@ def walk(character, xy, place, alone=False, to=True):
     # place takes the party, however short (Joe walked three tiles to the spring alone, then
     # walked back to say it was 'right there, past the ferns')
     party = [] if alone or step else was_with
+    ride = None if step else world.conveyance(context, start, xy)   # a car at hand, for a way too long to walk
     minutes = max(survival.travel(c, xy, advance_clock=False) for c in [character] + party)
+    if ride is not None:
+        world.bring(context, ride, xy)
     context.simulation_time += survival.timedelta(minutes=minutes)
     names = ' and '.join(c.name for c in party)
     # steps within a place are not told: a page of 'walks South (15 min)' tracked nothing. A
     # short walk that ends at another place is (Joe went from the apple tree to the thicket
     # unseen, and the page had him handed a branch at the tree)
     line = '' if step else (
-        f"walks {'to ' if to else ''}{place}" + (f' with {names}' if party else '') + f" ({max(1, round(minutes))} min)")
+        f"{ride.by + 's' if ride is not None else 'walks'} {'to ' if to else ''}{place}" + (f' with {names}' if party else '')
+        + (f' in {ride.id}' if ride is not None else '') + f" ({max(1, round(minutes))} min)")
     for other in was_with:
         if other not in party and not alone:
             continue   # it has only stepped across the place

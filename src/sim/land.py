@@ -16,6 +16,8 @@ The rules of nearness are stated once here, in metres (agreed 2026-11-21):
              times as far from high ground; never through closed walls, nor across a place that
              blocks the view, nor into a place that hides what is in it. A person counts as 2.5.
   shelter    inside a place that is one
+  a vehicle  a place of a kind the world file calls one (a car): someone setting out for a place more than
+             ten minutes' walk off, with one within 60, goes by it, in its time, and it ends where they do
   a danger   comes from a source within 60; first stands 30 to 40 off; reaches the one it comes
              for and anyone within 15 of them; is got clear of at 150 and out of its sight"""
 import math
@@ -26,6 +28,7 @@ HERE, SMALL, TOGETHER, EARSHOT, STEP, WALK_OVER = 3.0, 10.0, 8.0, 25.0, 10.0, 30
 PERSON, UNDER_TREES, IN_THE_OPEN, FROM_HIGH = 2.5, 25.0, 75.0, 3.0
 DANGER_SOURCE, DANGER_REACH, DANGER_FROM, DANGER_CLEAR = 60.0, 15.0, (30.0, 40.0), 150.0
 PACE = 70.0                      # metres a minute, where a region says nothing else
+RIDE_FROM, RIDE_BEYOND = 60.0, 10     # a vehicle within this of where one sets out is gone by, for a way longer on foot than these minutes
 MINUTES_AN_EFFORT = 3.0          # what a walk costs a body is counted by these (a tile of the old grid was about this)
 BEARINGS = ('East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest', 'North', 'Northeast')
 
@@ -44,7 +47,9 @@ class Place:
         self.hides = bool(said.get('hides'))              # what is inside is not seen from outside (a thicket)
         self.overlooks = bool(said.get('overlooks'))
         self.cover = said.get('cover', 'trees')           # a region: 'trees' or 'open'
-        self.pace = said.get('pace')                      # a region: metres a minute on foot
+        self.pace = said.get('pace')                      # a region: metres a minute on foot; a vehicle: metres a minute by it
+        self.vehicle = bool(said.get('vehicle'))
+        self.by = said.get('by', 'ride')                  # a vehicle: the word for going by it ('drive')
         self.props = {}
         self.made = said.get('made')
 
@@ -337,7 +342,21 @@ class Land:
         return self.in_sight(xy, p)
 
     # ------------------------------------------------------------------ walking, and distance in words
+    def conveyance(self, a, b):
+        """The vehicle someone setting out from `a` for `b` goes by, or None when they walk."""
+        if self.minutes(a, b) <= RIDE_BEYOND:
+            return None
+        found = [(_dist(a, p.xy), p.id, p) for p in self.places() if p.vehicle and _dist(a, p.xy) <= RIDE_FROM]
+        return min(found)[2] if found else None
+
+    def bring(self, vehicle, to):
+        """A vehicle gone by ends where its riders do, beside the place."""
+        vehicle.xy = (round(to[0] + vehicle.radius + 2.0, 1), round(to[1], 1))
+
     def walk(self, a, b):
+        vehicle = self.conveyance(a, b)
+        if vehicle is not None:      # getting in and out, and the way at its pace; it tires nobody
+            return 2.0 + _dist(a, b) / (vehicle.pace or 500.0), 0.0
         minutes = _dist(a, b) / self.pace(b)
         return minutes, minutes / MINUTES_AN_EFFORT
 
@@ -359,8 +378,10 @@ class Land:
 
     def reach_words(self, a, b, name):
         d = _dist(a, b)
+        vehicle = self.conveyance(a, b)
         return (f'a few steps from {name}' if d < 10 else f'close by {name}' if d < 50
-                else f"{_a_walk(self.minutes(a, b))} from {name}")
+                else f"{_a_walk(self.minutes(a, b))} from {name}"
+                + (f", or about {round(self.walk(a, b)[0])} minutes by {vehicle.id}" if vehicle is not None else ''))
 
     def where(self, xy):
         room = self.inside(xy)
