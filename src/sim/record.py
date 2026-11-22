@@ -182,7 +182,8 @@ def of(context, actor, people=None, full=False):
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
         *([survival.facts_note(context)] if survival.stated(context) else []),
-        *(['What stands (settled between people, and so):\n' + survival.stands_note(context)] if survival.stands_note(context) else []),
+        *(['What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + survival.stands_note(context)]
+          if survival.stands_note(context) else []),
         *([survival.ways_note(context)] if full and survival.ways_note(context) else []),
         *([survival.states_note(context, people)] if survival.states(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
@@ -216,7 +217,7 @@ def account(context, reader, about=None, people=None, full=False):
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
         stands = survival.stands_note(context)
         parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast), survival.states_note(context, cast),
-                 ('What stands (settled between people, and so; a plan may not have it otherwise):\n' + stands) if stands else '',
+                 ('What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + stands) if stands else '',
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
                  ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)

@@ -3395,11 +3395,11 @@ End your response with:
         if survival.danger_line(self):
             parts.append('The danger on you: ' + survival.danger_line(self))
         if survival.stated(self.context):
-            # a world stated in facts: how it works, and what this person knows to stand (no list of what may be done)
+            # a world stated in facts: how it works (no list of what may be done)
             parts.append('How this world works:\n' + survival.facts_note(self.context))
-            known = survival.stands_note(self.context, reader=self)
-            if known:
-                parts.append('What stands, as you know it:\n' + known)
+        known = survival.stands_note(self.context, reader=self)
+        if known:   # what this person knows to stand: settled between people, or so behind the play
+            parts.append('What stands, as you know it:\n' + known)
         actions = survival.available_actions(self, part='known') if survival.rules(self.context) else ''
         if actions:
             parts.append("By the world's rules you could: " + actions)

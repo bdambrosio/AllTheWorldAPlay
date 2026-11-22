@@ -2600,6 +2600,11 @@ Respond with these lines only, one sentence each:
             for c in people:
                 if c.name in fact['known_to'] and not fact.get('of'):
                     c.add_perceptual_input(f"You know this, and have told no one: {fact['text']}", percept=False, mode='internal')
+            if not fact.get('of'):
+                # what the director settled is so in the world, and the world rules by it: kept as
+                # standing, known to those the director named. (It was kept in the plan and in their
+                # heads only: the world then ruled 'no one pruned these trees', 'no such form exists'.)
+                survival.stands(self, fact['text'], known=fact['known_to'])
         trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
         self.send_plan()
         return self.episode
