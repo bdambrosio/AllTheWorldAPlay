@@ -8,6 +8,20 @@ So this is an overhaul, in progress. It is now on `main`, and it is not finished
 
 cheers - Bruce
 
+### Read one
+
+A performance can now be made into a small book: the text as it was played, an act a part and a scene a chapter, with the pictures shown during the performance. Nothing in it is rewritten.
+
+- *Lost*, a play in four acts, as performed on 23 November 2026: [read it in the browser](https://htmlpreview.github.io/?https://github.com/bdambrosio/AllTheWorldAPlay/blob/main/docs/books/lost-20261123-110149/book.html) or [as a PDF](docs/books/lost-20261123-110149/book.pdf). The HTML file itself is [here](docs/books/lost-20261123-110149/book.html); it holds its own pictures, so it can be saved and opened anywhere.
+
+That performance took an hour and cost about five dollars in model calls.
+
+### Coming next: plays in several parts
+
+That book ends with a woman who will not say what she is hiding from, a tin of store-bought matches in a forest with no roads, and two people who still do not know how they got there. I wanted the next part and there was no way to ask for one: when a performance ends, nothing is kept that it could be picked up from.
+
+So the next piece of work is a performance that continues. At the end of each part the state of the play is written to a readable file (what is so, who knows what, what everyone holds and has promised, the clock). On request, the director reads it and opens the next part: a new question taken from what the last part left open, starting when it judges best. Nothing of this is built yet.
+
 ### What it is
 
 ImprovAI is a stage for improvised plays performed by AI actors. Given a short scenario, it:
@@ -28,7 +42,8 @@ Older sample replays are at [demo](https://demo.tuuyi.com), with more background
 **The world is the authority.** The old engine let every LLM call write freely about the world, then fed that text back to every other call as the situation. Whatever a narrator once wrote was true from then on. The new rule is that the world keeps the record and everything else is held to it.
 
 - **A world that keeps count.** Each play runs in a world (forest, farm, city, lunar base and others) that tracks bodies (thirst, hunger, fatigue, injury), what each character carries, places and what can be done at them, what has been used up, and dangers. Eating, drinking, giving, sheltering and fighting off a boar happen by rules, not by narration.
-- **Narration is checked before anyone sees it.** What the narrator writes after an action is compared with the world's record. A mistake is written out. The check costs about a third of a second.
+- **What a line or a deed does is ruled before anyone sees it.** A model is given the stage as the world records it, and what the speaker has lived and been told, and rules what happens: what changes, what is refused, and what the page says. A scene's set-up is checked against the same record, and what does not stand is struck.
+- **A director, and a question.** Before each performance a director writes, from the sketch, the question the play stands on that night, and settles what is so behind it: a few facts, the things that show them, and sometimes one more person who knows a part. What the cast does about it is theirs. Every night gets a different answer, so every night is a different play.
 - **New things are made real or refused.** When a plan or the director brings in something new, it is put in the world's own terms and becomes real: an injury is in the body, a pool can be drunk from. A character's own action can produce an ordinary prop (a farmer's sickle) but cannot conjure water, a weapon or a cure. A refusal is followed through: the actor is told, bystanders see a failed try, and the page shows what happened instead of what was meant.
 - **Plans are fitted to the play as it stands.** Each scene is refitted just before it is played, to where the cast is, what time it is and what their bodies need, then checked the same way.
 - **Speech is held to what a speaker must know.** A character may be wrong about the world and may lie on purpose. It may not be mistaken about its own hands, its own body or the hour.
@@ -54,17 +69,27 @@ What is not done:
 - The clock moves slowly. A play that wants a night often ends in the early afternoon.
 - Outcome lines and act summaries shown to the audience are still unchecked model text.
 - The checks make mistakes of their own, in both directions. Most of the recent work has been finding those.
-- Only `lost`, `laTerre`, `ABetterLife` and `VaccumLine` have been run on the current code. The other plays have not.
+- A set-up check sometimes strikes what the cast has in fact seen (in the *Lost* above, that anything store-bought had been found).
+- A performance cannot be continued (see above).
+- Only `lost`, `bellona`, `laTerre`, `ABetterLife` and `VaccumLine` have been run on the current code. The other plays have not.
 - Thinking is switched off on every model call for speed. A per-run switch to turn it on for chosen calls exists; whether it helps has not been measured.
 - The containers and the hosted demo are from the old version.
 
 ### Running it
 
-The current setup is local: a model served by vLLM, a local image server, the Python backend and the React UI. It has been run on one machine, mine. Expect to adjust things.
+The current setup is a local image server, the Python backend and the React UI, with hosted models. It has been run on one machine, mine. Expect to adjust things.
+
+Three models share a play, all set in `src/plays/config.py`:
+
+- the parts are played by GLM-5.3-Flash on Fireworks (`FIREWORKS_PROJECT_KEY`);
+- the play is planned, and its set-ups and deeds ruled, by Claude Opus 5.5 (`CLAUDE_API_KEY` or `ANTHROPIC_API_KEY`);
+- the ruling on each spoken line goes to GPT-6.2 Sol (`OPENAI_API_KEY`). It was three quarters of the cost on Opus.
+
+`ATWAP_LLM=vllm ./start-local.sh` plays the parts on a local model instead (an OpenAI-compatible server on port 5000), and with `ATWAP_PLAN_LLM=same ATWAP_SAY_LLM=plan` as well that model does everything, so no keys are needed; the plays are much weaker that way.
 
 You need:
 
-- an OpenAI-compatible LLM server on port 5000 (I use a Qwen model under vLLM);
+- the keys above in `~/.config/secrets.env`;
 - a GPU with room for the image server (FLUX.2-klein, about 8 GB), or `NO_IMAGES=1` for grey placeholders;
 - Python 3.13 and `uv`, Node and npm.
 
@@ -81,8 +106,9 @@ NO_TTS=1 ./start-local.sh        # image server :5008, backend :8010, UI :3000
 
 Then open http://localhost:3000, click Initialize, pick a play, Load, and Run. Planning the first act takes a minute or two before anything appears.
 
-- `start-local.sh` reads API keys from `~/.config/secrets.env` if that file exists. None are needed for a local model. `ELEVENLABS_API_KEY` enables voices; `NO_TTS=1` runs without them.
-- The model is chosen in `src/plays/config.py`. The hosted providers listed there (OpenAI, Anthropic, Gemini, Grok, OpenRouter and others) worked in version 3.0 and have not been tried since the overhaul.
+- `start-local.sh` reads API keys from `~/.config/secrets.env` if that file exists. `ELEVENLABS_API_KEY` enables voices; `NO_TTS=1` runs without them. Its warning about no server on port 5000 can be ignored when the parts are played by a hosted model.
+- The other providers listed in `src/plays/config.py` (Gemini, Grok, OpenRouter and others) worked in version 3.0 and have not been tried since the overhaul.
+- **Make Book** in the control panel makes the book of the loaded run and shows where it is.
 - The older full install (`src/requirements.txt`, the Dockerfiles) is out of date.
 
 ### Using the UI
@@ -126,6 +152,7 @@ All of these read the run trace, written to `~/.local/share/alltheworldaplay/log
 - `tools/score_play.py`: a scorecard from a trace, with no model calls.
 - `tools/judges.py`: LLM judges over scenes and whole plays.
 - `tools/compare_runs.py`, `tools/batch_run.py`: compare runs and conditions, including with features switched off.
+- `tools/book.py`: the book of a run, as one HTML file and a PDF.
 
 ### Why
 
