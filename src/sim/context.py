@@ -2589,6 +2589,13 @@ Respond with these lines only, one sentence each:
                               **({'fixed': True} if fixed else {}), **({'looks': looks} if looks else {})})
         self.screenplay.clues = clues[:3]
         people = self.everyone()
+        marks = []   # a trace of a fact on a person (director's #mark): put on them with the clues (place_clues)
+        for line in re.findall(r'^\s*#mark\s+(.+?)\s*$', reply, re.M):
+            fields = [f.strip(' ."\'') for f in line.split('|')]
+            who = next((c.name for c in people if len(fields) >= 2 and c.name.lower() == fields[0].lower()), None)
+            if who and fields[1] and fields[1].lower() not in ('none', 'empty', '-', 'n/a'):
+                marks.append({'who': who, 'looks': fields[1], 'touches': fields[2] if len(fields) > 2 else ''})
+        self.screenplay.marks = marks[:1]
         self.screenplay.set_facts(reply, [c.name for c in people])
         for c in self.actors:   # a person's own past stays on its card (get_character_description): its own prompts only
             c.own_past = self.screenplay.set_past(reply, c.name)
@@ -2601,7 +2608,7 @@ Respond with these lines only, one sentence each:
                 # standing, known to those the director named. (It was kept in the plan and in their
                 # heads only: the world then ruled 'no one pruned these trees', 'no such form exists'.)
                 survival.stands(self, fact['text'], known=fact['known_to'])
-        trace.event('episode', **self.episode, clues=self.screenplay.clues, facts=self.screenplay.facts)
+        trace.event('episode', **self.episode, clues=self.screenplay.clues, marks=self.screenplay.marks, facts=self.screenplay.facts)
         self.director_style()
         self.send_plan()
         return self.episode
@@ -2658,8 +2665,12 @@ Respond with these lines only, one sentence each:
         not. A clue whose place is not on the map is dropped from the screenplay, so that no
         plan is told of a thing that is not there."""
         if not survival.config(self) or not self.actors:
-            self.screenplay.clues = []
+            self.screenplay.clues = self.screenplay.marks = []
             return []
+        for mark in self.screenplay.marks:   # on the person from the first moment, for anyone who looks: a split knuckle kept only
+            who = next((c for c in self.everyone() if c.name == mark['who']), None)   # as a fact nobody knew was struck from every set-up
+            if who is not None and getattr(who, 'body', None) is not None:
+                survival.leave_state(self, who, mark['looks'])
         anchor = stage.here(self.actors[0])
         placed = []
         for clue in self.screenplay.clues:
@@ -2675,7 +2686,7 @@ Respond with these lines only, one sentence each:
                     survival.set_state(self, clue['thing'], clue['looks'])
                 placed.append(clue)
         self.screenplay.clues = placed
-        trace.event('clues_placed', clues=placed)
+        trace.event('clues_placed', clues=placed, marks=self.screenplay.marks)
         self.send_plan()
         return placed
 

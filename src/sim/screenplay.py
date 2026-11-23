@@ -53,6 +53,7 @@ class Screenplay:
     question: dict = field(default_factory=dict)   # 'text' (as written), QUESTION_TAGS, 'roles': {name: role}
     frame: dict = field(default_factory=dict)      # 'settles', 'open', 'last'
     clues: list = field(default_factory=list)      # [{'thing', 'place', 'touches'}]
+    marks: list = field(default_factory=list)      # [{'who', 'looks', 'touches'}]: a trace of a fact on a person, seen by anyone (director's #mark)
     facts: list = field(default_factory=list)      # [{'text', 'known_to': [names], 'open': bool}]: what lies behind the play (set_facts)
     standing: bool = False                         # the play stands on a question from its sketch (sim/director.py): its facts are to be found
     known: dict = field(default_factory=dict)      # {name: what that person has come to, of what is so} (director.read)
@@ -149,7 +150,7 @@ class Screenplay:
                     'scenes': [scene(s) for s in plan.get('scenes') or [] if isinstance(s, dict)],
                     'choices': list(a.choices), 'played': a.performed, 'summary': a.summary}
         return {'question': dict(self.question), 'frame': dict(self.frame),
-                'facts': [dict(f) for f in self.facts], 'clues': [dict(c) for c in self.clues],
+                'facts': [dict(f) for f in self.facts], 'clues': [dict(c) for c in self.clues], 'marks': [dict(m) for m in self.marks],
                 'threads': [dict(t) for t in self.threads], 'known': dict(self.known),
                 'act_count': self.act_count, 'acts': [act(a) for a in self.acts]}
 
@@ -240,8 +241,10 @@ class Screenplay:
         point of the play in a few words ('held by Samantha'), or '' when it lies where it was
         placed. (Each was given as lying where it was planted for the whole play: a set-up laid
         the wristwatch at the spring again while Samantha held it.)"""
+        seen = ('' if not self.marks else "To be seen on a person by anyone who looks, and by themselves, with nothing to say how it came:\n"
+                + '\n'.join(f"- on {m['who']}: {m['looks']}: {m['touches']}" for m in self.marks))
         if not self.clues:
-            return ''
+            return seen
         def where(c):
             moved = now(c) if now else ''
             return moved or f"at {c['place']}" + (', not yet found' if c.get('hidden') else '')
@@ -249,4 +252,5 @@ class Screenplay:
                 + '\n'.join(f"- {c['thing']}, {where(c)}: {c['touches']}" for c in self.clues)
                 + "\nA scene may lead a character to one and turn on its being found. "
                 + ("Each shows a part of what is so and none shows all of it; nothing else is hidden in this world." if self.standing
-                   else "None of them answers the open question; nothing else is hidden in this world."))
+                   else "None of them answers the open question; nothing else is hidden in this world.")
+                + (f'\n{seen}' if seen else ''))

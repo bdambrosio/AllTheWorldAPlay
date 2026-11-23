@@ -508,19 +508,22 @@ What each of the cast is to go after in it:
 How a set-up stands:
 - It is the opening only: where the cast is, what is there, what presses on them. It may bring in, without remark, what such a place would ordinarily have (a flat stone by a spring, dust in a hut), and one of the dangers listed, upon the cast from the scene's first moment.
 - It may also give a person what such a person would ordinarily have with them for what they have come to do (a student her essay and her bag, a clerk his pen and papers, a traveller a coat): say each as a brings entry with its holder, and it is in their hands. Not so given: a thing the world has elsewhere or in another's hands, money, food or drink in a world where they are hard come by, and a thing that would settle what the scene or the play is about (a signed contract, a deed to land, a key or a weapon someone lacks, a letter that tells a secret). A set-up that needs one of those is not so in that.
+- It may say how a person looks, to the eye, where that lasts through the scene: what the stage shows of them; what <cast> says of them; a trace on them of what stands, as it is seen and never how it came; and how such a person would ordinarily look for what they have been doing (a writer's inked fingers, a walker's muddy boots). Say each that the stage does not show yet as a shows entry, and it is so of them from then on. Not so given: a wound or a hurt, or a mark that would settle what the scene or the play is about, unless What stands gives it.
 - A scene is at one place. Where the set-up is at a place <places> does not list, which such a world would have inside or beside a listed one (the back room of a listed shop, a reception desk in a listed office, a shed behind a listed hut), say so as new_place, and it is made. A place that belongs to no listed place, or that this world would not have, is not made: the scene is set at the listed place nearest to what is meant.
-- It may not move a thing the world has elsewhere, put in anyone's hands a thing barred above, say of a body what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
-- What stands (in <things>) is so in this world, whoever knows it. A set-up may rest on it, may not have it otherwise, and may show what a place would show of it (a pruned limb, a form on a desk: bring it, where the world does not yet hold it). It is known only to those named with it: a set-up may not have anyone else know it or act on it. The set-up is read out to the audience and to everyone in the scene, so it never puts into words what stands unless everyone in the scene is named as knowing it: where you put a set-up right, leave the wrong part out, and write nothing from What stands in its place.
+- It may not move a thing the world has elsewhere, put in anyone's hands a thing barred above, say of a body's needs or hurts what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
+- What stands (in <things>) is so in this world, whoever knows it. A set-up may rest on it, may not have it otherwise, and may show what a place or a person would show of it (a pruned limb, a form on a desk: bring it, where the world does not yet hold it; a scabbed knuckle: a shows entry). What is to be seen of it, on a place or on a person, is seen by everyone there, the person too; how it came is known only to those named with it: a set-up may not have anyone else know that or act on it. The set-up is read out to the audience and to everyone in the scene, so it never puts into words what stands unless everyone in the scene is named as knowing it: where you put a set-up right, leave the wrong part out, and write nothing from What stands in its place.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
 - The title, the ending and each goal are held to the same: one that rests on something not so is put toward the same end with what is so. A person may still want, fear or suspect what is not so; a goal that is to show, find or use it may not.
 - Not_so is for what the world shows otherwise. What it does not show either way (who once lived here, what is past the trees) is not for you to settle; nor is what the cast have said or promised to one another, which <things> holds only in part. What <cast> says of a person and of what they carry is so (pages in a notebook they do not remember writing), though the world does not hold it yet.
+- The set-up and its entries are one account: whatever the set-up as it may stand says of how a person looks that lasts is on the stage already or has its shows entry.
 - Change as little as you can: keep the planner's words wherever they are true.
 
 Answer in JSON only:
 {{"place": "<the one listed place this scene is set at, by its exact name; the word same when it is where the cast now stands; or the word new, with new_place>",
   "new_place": <null, or when place is new: {{"name": "<what it is called, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the listed place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false, "description": "<one plain sentence, as the places above are described>"}}>,
   "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place, or such a person, would ordinarily have or What stands says is there, two to five words>", "fixed": true or false, "holder": "<the person who has it with them, by name; empty when it is at the place>"}}],
+  "shows": [{{"who": "<a person of the cast, by name>", "state": "<how they look, to the eye, as it will still be so at the scene's end, two to six words (ink-stained fingers)>"}}],
   "danger": "<what is upon the cast, in three to eight words (a gaunt grey wolf at the clearing's edge), when the set-up as it may stand has one of the dangers above upon them now, near enough to strike, at an hour and in a place where this world says it comes; else empty. A danger the set-up has that cannot come now (the wrong hour, the wrong ground, a thing already mended) is not so: it is left out, and no other is put in its place. One that is heard from afar, feared, spoken of or somewhere off is not upon them>",
   "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
   "title": "<the title as it may stand>",
@@ -590,6 +593,8 @@ def resolve_setup(context, scene, cast, hazards=()):
     # a place the set-up is at and the world does not list: made when the scene is set (apply_setup)
     found['new_place'] = new if (isinstance(new, dict) and str(new.get('name') or '').strip() and world.called(context, new.get('at')) is not None) else None
     found['brings'] = [b for b in found.get('brings') or [] if isinstance(b, dict) and str(b.get('thing') or '').strip()][:4]
+    names = {c.name.lower() for c in cast}
+    found['shows'] = [s for s in found.get('shows') or [] if isinstance(s, dict) and _low(s.get('who')) in names and str(s.get('state') or '').strip()][:4]
     found['not_so'] = [n for n in found.get('not_so') or [] if isinstance(n, dict) and str(n.get('words') or '').strip()]
     found['setup'], found['ending'] = ' '.join(str(found['setup']).split()), ' '.join(str(found.get('ending') or '').split())
     found['title'] = ' '.join(str(found.get('title') or '').split()).strip('"\'')
@@ -598,7 +603,7 @@ def resolve_setup(context, scene, cast, hazards=()):
     goals = found.get('goals') if isinstance(found.get('goals'), dict) else {}
     found['goals'] = {name: ' '.join(str(g).split()) for name in planned for k, g in goals.items()
                       if _low(k) == name.lower() and str(g or '').strip() and ' '.join(str(g).split()) != planned[name]}
-    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], new_place=found['new_place'], brings=found['brings'], danger=found['danger'],
+    trace.event('resolved_setup', scene=scene.get('scene_title'), place=found['place'], new_place=found['new_place'], brings=found['brings'], shows=found['shows'], danger=found['danger'],
                 not_so=found['not_so'], title=found['title'], setup=found['setup'][:600], ending=found['ending'][:300], goals=found['goals'])
     return found
 
@@ -622,6 +627,12 @@ def apply_setup(context, scene, cast, found):
         if (survival.add_thing(context, str(b['thing']), holder=holder) if holder is not None
                 else survival.add_thing(context, str(b['thing']), at=at, fixed=bool(b.get('fixed')))):
             made.append(str(b['thing']))
+    # how the set-up has a person look is so of them from here on, as a deed's leaving them so is: the audience was
+    # told 'ink wet on his fingers', the stage did not hold it, and his own word of it was later ruled not so
+    for s in found.get('shows') or []:
+        who = next((c for c in cast if c.name.lower() == _low(s.get('who'))), None)
+        if who is not None:
+            survival.leave_state(context, who, str(s['state']))
     return made
 
 
