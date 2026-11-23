@@ -483,9 +483,30 @@ def open_scene(context, scene):
     to nothing by the world's check gave a second scene of 47 lines with nothing to end it) is
     kept for the line budget alone (budget_of): the scene is wound up when it has had its lines."""
     context.owner = None
+    context._scene_opened_at = len(context.record_entries)   # where the scene's page begins (reopen)
     if not ablation.enabled('scene_owner') or getattr(context, 'active_threat', None):
         return None
     context.owner = owner = Owner(context, scene)
+    if not owner.write_sheet():
+        trace.event('scene_unowned', why='no ending' if not (scene.get('post_narrative') or '').strip() else 'no sheet could be written')
+        return None
+    return owner
+
+
+def reopen(context):
+    """The danger a scene opened under is over, and the scene goes on: it is given its owner now,
+    with its sheet and its line budget counted from the scene's first line. (A light that sent
+    two people into a shop was out of reach three minutes in; the scene, with nothing to end it,
+    then played all ten of its beats in sixty-six lines: bellona-20261122-153935.) Its beats are
+    left in the order they are in. Returns the owner when it has a sheet."""
+    scene = getattr(context, 'current_scene', None)
+    held = getattr(context, 'owner', None)
+    if (scene is None or not ablation.enabled('scene_owner') or getattr(context, 'active_threat', None)
+            or (held is not None and held.scene is scene)):
+        return None
+    context.owner = owner = Owner(context, scene)
+    owner.start = getattr(context, '_scene_opened_at', owner.start)
+    trace.event('scene_owned_again', title=scene.get('scene_title'), spoken=owner.spoken())
     if not owner.write_sheet():
         trace.event('scene_unowned', why='no ending' if not (scene.get('post_narrative') or '').strip() else 'no sheet could be written')
         return None

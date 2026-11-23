@@ -1377,6 +1377,9 @@ def _end_threat(context, threat, text, struck=False, tell=True):
             # a scene's set-up is how it opened: what has ended since is said beside it (Character.director_notes)
             context.scene_since = list(getattr(context, 'scene_since', None) or []) + [text]
     trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
+    if getattr(context, 'current_scene', None) is not None:
+        from sim import scene   # a scene that opened under the danger and goes on is given its owner now
+        scene.reopen(context)
 
 
 def danger_line(character):
