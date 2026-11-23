@@ -158,6 +158,9 @@ class Ledger:
         # what a deed has left on a place: {'words', 'at', 'on' (a thing's name or None), 'event'}. A
         # trace is not a thing: it is never listed among what lies there, only as someone's doing
         self.marks = Kept(self, 'marks')
+        # how a deed has left a person, to the eye: {'who', 'words', 'placed' (how or where the person is placed
+        # here, over when they move off; else on the body or clothes, and goes with them), 'since'}
+        self.states = Kept(self, 'states')
         # what each person has told of their own life before the play: {'who', 'to' [names], 'fact',
         # 'event'}. A thing said of oneself is kept as told, and is the same for every later reader
         self.told = Kept(self, 'told')

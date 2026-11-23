@@ -717,11 +717,23 @@ def named(context, thing, character=None, reader=False):
     return name + (f" ({'; '.join(notes)})" if notes else '')
 
 
-def leave_mark(context, character, words, on=None):
+def _said(words):
+    """A trace or a state as it is kept, from the words a ruling gives; one quoted back from the stage comes
+    with whose doing it is ('door bolted (left by Marisol at 18:18)'), which is not part of it."""
+    return ' '.join(re.sub(r'\s*\((?:left |made )?by [^)]*\)\s*$', '', str(words or '')).split()).strip(' .')[:60]
+
+
+def leave_mark(context, character, words, on=None, ends=None):
     """A deed leaves a trace on the place where its doer stands (or on `on`, a thing that is part
-    of it): kept as that deed's doing (ledger.marks), not as a thing lying there."""
+    of it): kept as that deed's doing (ledger.marks), not as a thing lying there. ends: an earlier
+    trace here that this one undoes or takes the place of, word for word; it is then no longer there."""
     words = ' '.join(str(words).split()).strip(' .')[:60]
     book, at = ledger.of(context), _here(character)
+    if _said(ends):
+        old = [m for m in book.marks if m['words'].lower() == _said(ends).lower() and at_hand(context, m['at'], at)]
+        for m in old:
+            book.marks.remove(m)
+        trace.event('mark_ended' if old else 'ends_unmatched', character=character.name, mark=_said(ends), by=words)
     if not words or any(m['words'].lower() == words.lower() and at_hand(context, m['at'], at) for m in book.marks):
         return
     book.marks.append({'words': words, 'at': tuple(at), 'on': on, 'event': book.open[-1] if book.open else None})
@@ -922,22 +934,54 @@ def _arrangement(context):
 
 
 def _bear(context):
-    """Word each body's arrangement from the context's (Body.bearing)."""
+    """Word each body's arrangement, and how deeds have left it to the eye, from the context's (Body.bearing)."""
     poses, between = _arrangement(context)
+    states = ledger.of(context).states
     for c in _embodied(context):
-        c.body.bearing = ([poses[c.name]] if c.name in poses else []) + [f'{words} {b}' for a, words, b, _ in between if a == c.name]
+        c.body.bearing = ([poses[c.name]] if c.name in poses else []) + [f'{words} {b}' for a, words, b, _ in between if a == c.name] \
+            + [s['words'] for s in states if s['who'] == c.name]
+
+
+def leave_state(context, who, words, placed=False, ends=None, by=None):
+    """A deed leaves a person some way that others can see and that lasts (fingers inked, up on the rock): kept
+    in the ruling's words and shown with the body's bearing. placed: it is how or where the person is placed
+    here, and is over when they move off (unpose); else it goes with them until a deed ends it. ends: a state
+    of theirs that this undoes or takes the place of, word for word."""
+    words, states = _said(words), ledger.of(context).states
+    if _said(ends):
+        old = [s for s in states if s['who'] == who.name and s['words'].lower() == _said(ends).lower()]
+        for s in old:
+            states.remove(s)
+        trace.event('state_ended' if old else 'ends_unmatched', character=who.name, state=_said(ends), by=words)
+    if words and not any(s['who'] == who.name and s['words'].lower() == words.lower() for s in states):
+        states.append({'who': who.name, 'words': words, 'placed': bool(placed), 'since': context.simulation_time})
+        trace.event('state_left', character=who.name, state=words, placed=bool(placed), by=getattr(by, 'name', None))
+    _bear(context)
+
+
+def read_out(context, reader, item, hearers):
+    """A writing read aloud is known from then on to each who hears it (context.readers), as to its reader."""
+    for other in hearers:
+        if other.name not in context.readers.setdefault(item, set()):
+            context.readers[item].add(other.name)
+            other.add_perceptual_input(f"{reader.name} reads the {item} aloud. It says: {writing_of(context, item)}", percept=False, mode='internal')
+    if hearers:
+        trace.event('read_out', character=reader.name, thing=item, to=[o.name for o in hearers])
 
 
 def unpose(context, character=None):
     """Whoever moves off is no longer sitting, nor touching or placed by anyone; with no
     character, nobody is (a new scene)."""
     poses, between = _arrangement(context)
+    states = ledger.of(context).states
     if character is None:
         poses.clear()
         between.clear()
+        states[:] = [s for s in states if not s['placed']]
     else:
         poses.pop(character.name, None)
         between[:] = [e for e in between if character.name not in (e[0], e[2])]
+        states[:] = [s for s in states if not (s['placed'] and s['who'] == character.name)]   # how it was placed there is over
     _bear(context)
 
 

@@ -52,13 +52,13 @@ How this world works:
 - The stage above is the truth of who holds what, and of every thing the play has so far had to do with. Beside those, a place has to hand what a place of its kind plainly has (a kitchen its cups, plates and forks, a bar its glasses and bottles, a wood its sticks and stones): such a thing is there, and the first deed to use it says it as a new effect, from the place. What is particular is only where the stage has it: a thing someone owns or has named (the grey suit, the car keys, a letter), money, food and drink in a world where they are hard come by, and anything the stage shows elsewhere.
 - A deed can use only what its doer holds, what lies here, what another person here gives or holds out, and what this place gives or plainly has. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
 - What stands (on the stage, where anything does) is so in this world, whoever knows it: a deed meets the world as it says, and what it says is at a place is there though the stage does not list it yet (the first deed to use it says it as a new effect, from the place). Each is known only to those named with it. What only some know you never show or tell: the page says what is seen done, never what it means, whose doing an old thing was, or what lies behind it.
-- Ordinary handling of a thing that is here needs no leave: pick it up, put it down, hand it over, hold it out or up to be seen, pocket it, open, shut, fold, tear, wipe or turn it, set it on something, read it. Each is an effect: say it.
+- Ordinary handling of a thing that is here needs no leave: pick it up, put it down, hand it over, hold it out or up to be seen, pocket it, open, shut, fold, tear, wipe or turn it, set it on something, read it. Each is an effect: say it. Reading a writing aloud gives what it says to everyone here who hears it; read silently, it is the reader's alone.
 - The facts of this world are on the stage. They are true here, with their sums and their times, and are read with sense: what they say of one thing is a guide to things like it. What they do not speak of goes as it ordinarily would in such a world.
 - What is held (Held, on the stage) no deed or word gets past, however it is put and whoever asks. Where a deed would break one, that part is not done, and why says which. In "held", name each one that bears on this deed and how it stands.
 - A deed that settles something others will later have to reckon with (a contract signed, a debt agreed, a thing sold, land made over) is a stands effect: one plain sentence, with the day. A thing simply bought, sold, eaten or handed over is not: the stage shows it already. Where it ends something that stood, give that sentence, word for word, in ends.
 - A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here. Say it as a need effect, and how far: a little, well or fully, as the facts and ordinary sense have it (a mouthful a little, a meal well). Half of a thing eases less than the whole and leaves the other half: say the state the thing is left in. It is done whether or not the body was in want.
 - Money is on the stage (Bodies). It moves only as a money effect, from the one who pays to the one paid, in the sum the facts give or the people have agreed. Someone outside the scene who is paid, or pays, in the ordinary way of this world (the bar, the baker, an employer) is named in plain words. Nobody pays what they do not have, and no money comes from nowhere.
-- A thing that leaves the play by the deed (eaten, drunk, burnt, sold to someone outside the scene) is a gone effect: it is then nowhere. A place that gives a thing which runs out (a bush, a shelf, a woodpile) is left with a mark saying how much is left, and a later deed is ruled by that mark.
+- A thing that leaves the play by the deed (eaten, drunk, burnt, sold to someone outside the scene) is a gone effect: it is then nowhere. A place that gives a thing which runs out (a bush, a shelf, a woodpile) is left with a mark saying how much is left, and a later deed is ruled by that mark. A place and its parts take marks, never a state: a state is for a thing held or lying here. A part of a place that a deed changes back (a bolted door unbolted, a shut window opened) is a new mark that ends the old one.
 - A deed takes the time it would take: give it in minutes when it is more than a moment.
 - Where a deed may or may not come off, or may go badly (a search, a doubtful mouthful, a repair), do not decide it. Say how likely it is to go as the doer means, from the facts and from how things stand here, and what follows either way: the draw is made for you.
 - Words reach someone who is not here only by a means the facts give (a phone, a radio): say it as a sent effect.
@@ -67,21 +67,23 @@ How this world works:
 - A touch is done as it is written: taking a hand or an arm, a hand on a shoulder, pressing a thing into someone's hand (the thing is then theirs to keep or give back). The one touched may draw away afterwards; that is theirs to play.
 - Nobody is moved, held back, stopped or searched against their will. To lead, draw, pull or beckon someone along is to ask: they answer for themselves, and where they stand or go is no effect of this deed. A thing another person holds comes away only if they give it or have held it out.
 - Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here.
-- A look, a gesture, a step or two, a change of posture changes nothing that lasts, except the posture.
+- A look, a gesture or a step or two changes nothing that lasts; a change of posture changes only the posture.
+- What a deed leaves on a person that others can see and that lasts beyond the moment (hands inked or washed clean, a sleeve torn, a face wet; up on the rock, out of sight behind the shelves) is a state of that person: say it, and when a later deed undoes it, end it. Needs, harm this world counts, posture and what is worn have their own forms.
 - A deed is about the things it names: where the thing it means is not here, that part is not done, and no other thing is used in its place.
 - A deed meets this place as the stage has it. A thing, or a state or trace of a thing (a clean-cut limb, a fresh footprint), that the stage does not hold and a place of this kind would not ordinarily have is not there: the page does not show it, and what of the deed needs it is left out.
 - A deed may go to, or make, a place the stage does not name only where this world would have such a place inside or beside a named one (the shed behind the hut, the loft over the stable, a lean-to built here of branches): say it as a place effect, and it is there from then on; going there is a goes effect to the name you gave it. A place that belongs to no named place is not made, and what of the deed needs it is left out.
 - Where one part of the deed cannot be done and the rest still makes sense without it, the rest is done and that part is left out. Where nothing of it can be done, it cannot be done.
+- The page and the effects are one account of the deed. When you have written both, read the page again: whatever it shows that is still so once the deed is over (a thing set down, moved, opened, shut, emptied or written in; a door bolted; a lamp put out; a writing read out; hands washed clean) has its entry among the effects, in the form that fits. A later deed is ruled from the effects, never from the page: what the page shows and no effect carries will not be so.
 
 Answer in JSON only:
 {{"can": true or false,
   "why": "<if it cannot: the world's reason, ten words at most; else empty>",
   "effects": [<one entry for each lasting thing the deed does, in order; empty if it changes nothing that lasts>
      {{"thing": "<a thing, by its exact name on the stage>", "from": "<who holds it now, by name, or the word here if it lies here>", "to": "<the person who now holds it, by name, or the word here for lying here>"}},
-     {{"thing": "<exact name>", "state": "<how the thing itself is left, two to five words>"}},
+     {{"thing": "<exact name>", "state": "<how the thing now is, in two to eight words. It takes the place of what the stage says of the thing: carry over what is still so, drop what no longer is>"}},
      {{"thing": "<exact name>", "held_out_to": "<the person it is held out or shown to>"}},
      {{"thing": "<exact name>", "on": "<the person it is now worn by or bound on, by name>"}},
-     {{"thing": "<exact name of a written thing>", "read_by": "{name}"}},
+     {{"thing": "<exact name of a written thing>", "read_by": ["<each person who now knows what it says: {name} when {name} reads it, and each person here it is read out to, aloud>"]}},
      {{"who": "<the person whose need it is>", "need": "<one of the needs this world keeps count of, by that name>", "change": "<eased or worsened>", "how_far": "<a little, well or fully>"}},
      {{"thing": "<exact name>", "gone": "<how it leaves the play: eaten, drunk, burnt, sold to the dealer>"}},
      {{"money": <the sum, a number>, "from": "<who pays: a person here by name, or in plain words someone outside the scene>", "to": "<who is paid, likewise>"}},
@@ -90,9 +92,10 @@ Answer in JSON only:
      {{"chance": "<how likely it goes as the doer means: rare, unlikely, as likely as not, likely or almost certain>", "if_so": [<the effects if it does, in these same forms>], "so_page": "<what is then seen, one short sentence>", "if_not": [<the effects if it does not>], "not_page": "<what is then seen>"}},
      {{"found": "<a thing listed as hidden here, by its exact name, that a search brings to light>"}},
      {{"danger": "<only with a danger on the stage: the word over, when this ends it or puts those it is upon beyond it for good>", "how": "<what is seen of its going, one short sentence>"}},
+     {{"who": "<a person here, by name>", "state": "<how the deed leaves that person, to the eye, as it now is, two to six words>", "placed": <true when it is how or where the person is placed here (up on the rock, behind the shelves), over when they move off; false when it is on the body or clothes and goes with them>, "ends": "<a state the stage shows on that person that this undoes or takes the place of, word for word; else empty>"}},
      {{"who": "{name}", "posture": "<standing, sitting, kneeling, lying down>"}},
      {{"who": "{name}", "touches": "<the person touched>", "how": "<two to four words>"}},
-     {{"mark": "<a lasting change the deed makes to the place itself, which someone coming here tomorrow would see, two to five words. A touch, a brush of the hand, a footstep, a thing looked at or traced leaves none>"}},
+     {{"mark": "<a lasting change the deed makes to the place itself or a part of it (a door, a window, a shelf, the ground), as it now is, two to six words. A touch, a footstep, a thing looked at leaves none>", "ends": "<a trace the stage lists here that this undoes or takes the place of, word for word; else empty>"}},
      {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
      {{"who": "{name}", "goes": "<a place named on the stage (one a few steps off is stepped over to, and the scene goes on), a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
      {{"new": "<a thing now made or picked, or taken up from what this place plainly has>", "from": "<the place, or the things here, it comes from>"}}],
@@ -159,6 +162,11 @@ def _person(context, character, name):
     return next((c for c in people(context, character) if c.name.lower() == low), None)
 
 
+def _names(value):
+    """The names a field gives: one, or a list of them."""
+    return [str(n) for n in (value if isinstance(value, (list, tuple)) else [value]) if n]
+
+
 def faults(context, character, found):
     """Why these effects cannot be applied: [] when they can. Only whether each name is the name
     of something: a thing on the stage (or made earlier in the deed), a person in the scene, one
@@ -203,6 +211,9 @@ def faults(context, character, found):
                 out.append(f"there is no '{e['found']}' hidden here")
         elif e.get('mark'):
             pass   # a trace on the place: nothing it names has to be there
+        elif e.get('who') and e.get('state'):
+            if _person(context, character, e['who']) is None:
+                out.append(f"nobody called '{e['who']}' is here")
         elif e.get('place'):
             if not world.makes_places(context):
                 out.append('no place can be added to this world')
@@ -307,7 +318,7 @@ ACT = """You keep the world of an improvised play. A character is about to act: 
 {world}
 </world>
 
-The stage is the whole truth of now: who is here, how each body is, who holds what, what lies here, and whose doing each trace and each state of a thing is.
+The stage is the truth of now: who is here, how each body is, who holds what, what lies here, and whose doing each trace and each state of a thing is.
 <stage>
 {stage}
 </stage>
@@ -622,7 +633,9 @@ def effects_note(effects):
         elif e.get('thing') and e.get('state'):
             out.append(f"{e['thing']} {e['state']}")
         elif e.get('thing') and e.get('read_by'):
-            out.append(f"{e['thing']} read by {e['read_by']}")
+            out.append(f"{e['thing']} read by {', '.join(_names(e['read_by']))}")
+        elif e.get('who') and e.get('state'):
+            out.append(f"{e['who']} {e['state']}")
         elif e.get('need'):
             out.append(f"{e.get('who', '')} {e['need']} {e.get('change', 'eased')}".strip())
         elif e.get('money') is not None:
@@ -729,7 +742,12 @@ def apply(context, character, act):
         elif e.get('mark'):
             # a trace of this deed on the place, kept as this deed's doing and never as a thing
             # lying here (survival.leave_mark)
-            survival.leave_mark(context, character, e['mark'], on=e.get('thing'))
+            survival.leave_mark(context, character, e['mark'], on=e.get('thing'), ends=e.get('ends'))
+        elif e.get('who') and e.get('state'):
+            # how the deed leaves a person, to the eye: on the stage with the body's bearing from now on
+            who = _person(context, character, e['who'])
+            if who is not None:
+                survival.leave_state(context, who, e['state'], placed=bool(e.get('placed')), ends=e.get('ends'), by=character)
         elif e.get('goes'):
             near = _step(context, character, e)   # a few steps, within the scene: the doer is there (going further is leaving: `leaving`)
             if near is not None:
@@ -783,6 +801,8 @@ def apply(context, character, act):
             elif e.get('read_by'):
                 if survival.writing_of(context, name):
                     survival._prop_do(context, character, 'read', name, None)
+                    # read out: each hearer the ruling names knows what it says from now on
+                    survival.read_out(context, character, name, [o for o in (_person(context, character, n) for n in _names(e['read_by'])) if o is not None and o is not character])
                     facts.append(f"The {name} says: {survival.writing_of(context, name)}")
             elif e.get('state') and kind in ('mine', 'here'):
                 survival._handle(context, character, name, e['state'])
