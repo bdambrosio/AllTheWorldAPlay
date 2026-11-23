@@ -312,13 +312,41 @@ def resolve(context, character, act):
 _head, _rest = RESOLVE.split('How this world works:')
 _rules, _answer = _rest.split('Answer in JSON only:')
 _effects = _answer[_answer.index('  "effects"'):_answer.index('  "left_out"')]
-ACT = """You keep the world of an improvised play. A character is about to act: to say something, to do something, or both at once. Say what the act does in this world as it now stands, and what of its words may stand.
+# The prompt is in two parts. ACT_RULES is the same for every line a speaker says to a hearer (the world, its rules,
+# the form of the answer) and is sent first, so that a server that keeps what it is asked to (utils/llm_api.py
+# CACHED_LEAD) reads it once; it was the last three fifths of every prompt, and
+# read again on each of some 370 lines of a play. ACT_NOW is what changes with each line. Paired replay on 24 recorded
+# lines, 2026-11-23: logs/review-20261123/cost.
+_act_rules = _rules.replace('The stage above is the truth', 'The stage is the truth')   # the stage now comes after the rules
+assert _act_rules != _rules
+ACT_RULES = """You keep the world of an improvised play. A character is about to act: to say something, to do something, or both at once. Say what the act does in this world as it now stands, and what of its words may stand. The world, how it works and the form of your answer come first; after them the stage as it now stands, what {name} has lived and told, and the act itself.
 
 <world>
 {world}
 </world>
 
-The stage is the truth of now: who is here, how each body is, who holds what, what lies here, and whose doing each trace and each state of a thing is.
+How this world works:""" + _act_rules + """
+The words:
+- The words are what {name} says aloud, and only that. Anything else written into them, what is done or how it is said ('She snorts.', '*pats her pocket*', '(whispered)'), is a finding (aloud). The mark (lie) is not one: it stays.
+- Words do nothing physical, with one exception: words that hand a thing the speaker holds to someone present, in so many words ("here, take half"), are that hand-over. Give it among the effects, and say in "page" what is seen.
+- A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); a thing at this place, or a state or trace of one, that the stage does not hold and a place of this kind would not ordinarily have (here: 'a clean-cut limb' where the stage has only torn bark); the danger on the stage, said to be gone, going or held off, or a danger said to be upon them that the stage does not show (danger); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known, unless <lived> shows {name} has since seen or been told it (knows); something under What stands that {name} is named as knowing, said otherwise (stands: 'I signed him this morning' when nothing is signed; what {name} is not named as knowing, {name} may get wrong, and that is no finding); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms). <lived> holds only the latest of the play: what is not in it may have been said or done before it, and is no finding.
+- What stands and {name} is not named as knowing is not {name}'s to know. {name} may be wrong about it, deny it or guess at it, and that is no finding of any kind: never put a line right from it.
+- These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, what someone makes of what is here (who did it, what it means: 'somebody pruned this tree'), a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
+- What {name} tells of its own life before the play is new to the world unless it is in <told>: list each new fact plainly, in the third person. If the words tell {listener} as news something already in <told>, give those words under "retold".
+- A promise is something the speaker says it will do, or agrees that they will do. Its kind: now, when it is to be done here in this scene (eat this, go in, set off); standing, when it is a rule or a condition to keep with nothing to do now ("no mushrooms", "wake me for my watch"); later, when it is for another time or place. A question, a proposal not yet agreed, or a demand on someone else is not a promise.
+
+Answer in JSON only, in this form:
+{{"can": true or false,
+  "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
+""" + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
+  "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
+  "findings": [{{"kind": "<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows, stands or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
+  "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
+  "tells": ["<each new fact {name} tells of its own life before the play>"],
+  "retold": "<the words that tell again as news what is already in told; else empty>",
+  "promises": [{{"who": "<who is to do it>", "what": "<what, in a few words>", "kind": "<now, standing or later>"}}],
+  "names": ["<each person the words tell the hearers the name of, as the cast names them>"]}}"""
+ACT_NOW = """The stage is the truth of now: who is here, how each body is, who holds what, what lies here, and whose doing each trace and each state of a thing is.
 <stage>
 {stage}
 </stage>
@@ -346,27 +374,8 @@ What {name} does not know:
 {deed}
 </deed>
 {leaves}
-How this world works:""" + _rules + """
-The words:
-- The words are what {name} says aloud, and only that. Anything else written into them, what is done or how it is said ('She snorts.', '*pats her pocket*', '(whispered)'), is a finding (aloud). The mark (lie) is not one: it stays.
-- Words do nothing physical, with one exception: words that hand a thing the speaker holds to someone present, in so many words ("here, take half"), are that hand-over. Give it among the effects, and say in "page" what is seen.
-- A person cannot be mistaken about itself at this moment. A finding is something the words state as true now that the stage or <lived> contradicts: what {name} holds or hands over (holds); how its own body is (body); where it or someone present is (where); a thing at this place, or a state or trace of one, that the stage does not hold and a place of this kind would not ordinarily have (here: 'a clean-cut limb' where the stage has only torn bark); the danger on the stage, said to be gone, going or held off, or a danger said to be upon them that the stage does not show (danger); the hour or the light (time); a physical act said to be done or being done, here and now, that was not done (done); who made a trace or left a thing as it is, when the stage says whose doing it is and the words give it to someone else or to a stranger (whose); what a written thing says (writing); he or she against the cast (gender); something under does_not_know stated as known, unless <lived> shows {name} has since seen or been told it (knows); something under What stands that {name} is named as knowing, said otherwise (stands: 'I signed him this morning' when nothing is signed; what {name} is not named as knowing, {name} may get wrong, and that is no finding); and what was said or done earlier in the play, told wrongly (past: 'the berry theory' when it was the mushrooms). <lived> holds only the latest of the play: what is not in it may have been said or done before it, and is no finding.
-- What stands and {name} is not named as knowing is not {name}'s to know. {name} may be wrong about it, deny it or guess at it, and that is no finding of any kind: never put a line right from it.
-- These are never findings: a plan, a wish, a fear, a memory of life before the play, a guess said as a guess, what someone makes of what is here (who did it, what it means: 'somebody pruned this tree'), a question, an order, an offer, what is said of another's mind, a figure of speech, a deliberate lie marked (lie). When you are not sure, it is no finding.
-- What {name} tells of its own life before the play is new to the world unless it is in <told>: list each new fact plainly, in the third person. If the words tell {listener} as news something already in <told>, give those words under "retold".
-- A promise is something the speaker says it will do, or agrees that they will do. Its kind: now, when it is to be done here in this scene (eat this, go in, set off); standing, when it is a rule or a condition to keep with nothing to do now ("no mushrooms", "wake me for my watch"); later, when it is for another time or place. A question, a proposal not yet agreed, or a demand on someone else is not a promise.
 
-Answer in JSON only:
-{{"can": true or false,
-  "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
-""" + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
-  "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
-  "findings": [{{"kind": "<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows, stands or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
-  "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
-  "tells": ["<each new fact {name} tells of its own life before the play>"],
-  "retold": "<the words that tell again as news what is already in told; else empty>",
-  "promises": [{{"who": "<who is to do it>", "what": "<what, in a few words>", "kind": "<now, standing or later>"}}],
-  "names": ["<each person the words tell the hearers the name of, as the cast names them>"]}}
+Answer in JSON only, in the form given above.
 </end>"""
 
 
@@ -399,13 +408,14 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     direction = getattr(speaker, 'direction', None) or {}
     lived = '\n'.join(filter(None, [f"It opened: {direction['setup']}" if direction.get('setup') else '', *context.witnessed(speaker, n=16)])) or 'Nothing yet.'
     missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
-    prompt = ACT.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
-                        stage=about or record.of(context, speaker, others, full=True), name=speaker.name,
-                        listener=getattr(listener, 'name', 'the others'), lived=lived,
-                        told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
-                        unknown='\n'.join(f'- {m}' for m in missing) or 'Nothing listed.', words=words, deed=deed or '(does nothing; only speaks)', leaves='')
+    hearer = getattr(listener, 'name', 'the others')
+    rules = ACT_RULES.format(world=f"{' '.join((context.initial_state or '').split())}\nThis world keeps count of: {keeper._tracks(context)}.",
+                             name=speaker.name, listener=hearer)
+    now = ACT_NOW.format(stage=about or record.of(context, speaker, others, full=True), name=speaker.name, listener=hearer, lived=lived,
+                         told='\n'.join(f'- {t}' for t in told_to(context, speaker, listener)) or 'Nothing yet.',
+                         unknown='\n'.join(f'- {m}' for m in missing) or 'Nothing listed.', words=words, deed=deed or '(does nothing; only speaks)', leaves='').replace('\n\n\nAnswer in JSON', '\n\nAnswer in JSON')
     def ask(note=''):
-        reply = context.llm.ask({}, [UserMessage(content=prompt + note)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
+        reply = context.llm.ask({}, [UserMessage(content=rules), UserMessage(content=now + note)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
         found = json_reply.parse(reply) if reply else None
         if not isinstance(found, dict) or 'can' not in found:
             return None, []

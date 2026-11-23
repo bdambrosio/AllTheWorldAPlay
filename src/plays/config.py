@@ -43,6 +43,13 @@ if os.environ.get('ATWAP_PLAN_LLM'):
     plan_model_name = os.environ.get('ATWAP_PLAN_MODEL') or None
 if plan_server_name in ('same', 'none', '') or (plan_server_name == server_name and (plan_model_name or model_name) == model_name):
     plan_server_name = None   # the same server with another model named is a planner (GLM-5.3 planning for GLM-5.3-Flash)
+# A call with a server of its own (utils/llm_api.py own): the ruling on a line and its deed goes to GPT-6.2 Sol
+# (needs OPENAI_API_KEY; effort ATWAP_SOL_EFFORT, 'low'). It was three quarters of a play's cost on Opus, and on 24
+# recorded lines Sol ruled as soundly (2026-11-23, logs/review-20261123/cost). ATWAP_SAY_LLM=plan sends it back to
+# the planner; any other server name sends it there (ATWAP_SAY_MODEL names a model).
+tag_servers = {'stage.resolve_say': ('sol', None)}
+if os.environ.get('ATWAP_SAY_LLM'):
+    tag_servers = {} if os.environ['ATWAP_SAY_LLM'] in ('plan', 'same', 'none') else {'stage.resolve_say': (os.environ['ATWAP_SAY_LLM'], os.environ.get('ATWAP_SAY_MODEL') or None)}
 # With a planner, it also keeps the world and plans each character's part (utils/llm_api.py
 # PLAN_GROUPS: 'world', 'character'), so a local acting model writes only the lines.
 # ATWAP_PLAN_GROUPS=none sends it only the play's plan; 'world' or 'character' one of the two.

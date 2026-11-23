@@ -322,6 +322,31 @@ def plan_tags():
 
 _planner = False   # False: not looked up yet; None: no planner; else the planner's LLM
 
+# ---- a call's own server: a call named in plays/config.py tag_servers goes to the server given there, whatever plays
+# and whatever plans. The ruling on a line (stage.resolve_say) was three quarters of what a play cost on Claude Opus;
+# on 24 recorded lines GPT-6.2 Sol ruled as soundly at a third of the price (logs/review-20261123/cost). If that
+# server fails the call goes on as it would have without it: to the planner, then to the playing model.
+# A call in CACHED_LEAD sends, as its first message, text that is the same from call to call: on the Anthropic path
+# and for GPT-6.2 Sol it is marked to be kept, and read again at a twentieth of the price (kept five minutes by
+# Anthropic, thirty by OpenAI, from the last reading).
+CACHED_LEAD = frozenset(('stage.resolve_say',))
+_own: dict = {}
+
+
+def own(tag):
+    """The LLM a call goes to by its own entry in plays/config.py tag_servers, or None."""
+    if tag not in _own:
+        _own[tag] = None
+        try:
+            import plays.config as config
+            named = (getattr(config, 'tag_servers', None) or {}).get(tag)
+            if named:
+                server, model = named
+                _own[tag] = next((l for l in _own.values() if l is not None and (l.server_name, l.model) == (server, model or l.model)), None) or LLM(server, model)
+        except Exception as e:
+            print(f'no server of its own for {tag}: {e}')
+    return _own[tag]
+
 
 @lru_cache(maxsize=1)
 def _routed():
@@ -523,6 +548,8 @@ class LLM():
             turns.pop()
         if not turns:
             turns, system = [{'role': 'user', 'content': system}], ''
+        if getattr(options, 'cache_lead', False) and len(turns) > 1:   # the first message is the same from call to call (CACHED_LEAD)
+            turns[0] = {'role': turns[0]['role'], 'content': [{'type': 'text', 'text': turns[0]['content'], 'cache_control': {'type': 'ephemeral'}}]}
         effort = getattr(options, 'reasoning', None) or self.effort
         budget = haiku_budget(options.max_tokens)
         request = {'model': self.model, 'messages': turns, 'max_tokens': budget}
@@ -539,9 +566,9 @@ class LLM():
                            max_tokens=budget + REASONING_TOKENS)
         reply = self.anthropic_client.messages.create(**request)
         usage = reply.usage
-        cached = getattr(usage, 'cache_read_input_tokens', 0) or 0
-        self._last_usage = ({'prompt_tokens': (usage.input_tokens or 0) + cached, 'completion_tokens': usage.output_tokens,
-                             'prompt_tokens_details': {'cached_tokens': cached}}, reply.stop_reason)
+        cached, kept = getattr(usage, 'cache_read_input_tokens', 0) or 0, getattr(usage, 'cache_creation_input_tokens', 0) or 0
+        self._last_usage = ({'prompt_tokens': (usage.input_tokens or 0) + cached + kept, 'completion_tokens': usage.output_tokens,
+                             'prompt_tokens_details': {'cached_tokens': cached, 'cache_write_tokens': kept}}, reply.stop_reason)
         if reply.stop_reason == 'refusal':
             raise Exception(f'{self.model} declined the request')
         return ''.join(block.text for block in reply.content if block.type == 'text')
@@ -564,7 +591,14 @@ class LLM():
         if self.server_name == 'sol':   # its own effort whatever the call asks; the thinking is spent from the same budget
             effort = self.reasoning_effort
             body = {"model": self.model, "messages": messages, "reasoning_effort": effort,
-                    "max_completion_tokens": options.max_tokens + (FIREWORKS_HEADROOM if effort == 'low' else 2 * REASONING_TOKENS)}
+                    "max_completion_tokens": options.max_tokens + (FIREWORKS_HEADROOM if effort == 'low' else 2 * REASONING_TOKENS),
+                    # Left to itself this model writes every prompt whole into its cache, at a quarter over the price, and reads
+                    # back only a prompt sent again entire. It keeps only what is marked: nothing, or the first message of a
+                    # call whose first message is the same from call to call (CACHED_LEAD), read again at a twentieth.
+                    "prompt_cache_options": {"mode": "explicit"}}
+            if getattr(options, 'cache_lead', False) and len(messages) > 1 and isinstance(messages[0].get('content'), str):
+                body["messages"] = [{'role': messages[0]['role'], 'content': [{'type': 'text', 'text': messages[0]['content'],
+                                                                              'prompt_cache_breakpoint': {'mode': 'explicit'}}]}] + list(messages[1:])
         delay = 2.0
         for attempt in range(retries):
             try:   # a connection that hung held the play for five minutes: give up sooner, try again
@@ -600,10 +634,10 @@ class LLM():
             usage, finish = getattr(self, '_last_usage', None) or ({}, None)
             self._last_usage = None
             details = usage.get('prompt_tokens_details') or {}
-            fields = dict(tag=tag or 'default', owner=getattr(self, 'owner', None),
+            fields = dict(tag=tag or 'default', owner=getattr(self, 'owner', None), server=self.server_name, model=self.model,
                           secs=round(time.time() - start, 3), ok=error is None, error=(error or '')[:300],
                           prompt_tokens=usage.get('prompt_tokens'), completion_tokens=usage.get('completion_tokens'),
-                          cached_tokens=details.get('cached_tokens'), finish_reason=finish,
+                          cached_tokens=details.get('cached_tokens'), cache_written_tokens=details.get('cache_write_tokens'), finish_reason=finish,
                           response_chars=len(response or ''),
                           prompt=getattr(self, '_last_prompt', None), response=response)
             for listener in _call_listeners:
@@ -625,13 +659,18 @@ class LLM():
                                     stops=stops, stop_on_json=stop_on_json, model=model)
         options.reasoning = _reasoning.get(tag) or TAG_EFFORT.get(tag) or (THINK_EFFORT.get(self.server_name)
                                                     if getattr(self, 'auto_reasoning', True) and tag not in MECHANICAL_TAGS else None)
-        if tag in _routed() and (plan := planner()) is not None and plan is not self and (plan.server_name, plan.model) != (self.server_name, self.model):
-            plan.owner = self.owner
-            response = plan.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
-                                top_p=top_p, stops=stops, stop_on_json=stop_on_json, model=model, log=log, trace=trace)
+        options.cache_lead = tag in CACHED_LEAD
+        for other in (own(tag), planner() if tag in _routed() else None):   # its own server, else the planner, else this one
+            if other is None:
+                continue
+            if other is self or (other.server_name, other.model) == (self.server_name, self.model):
+                break
+            other.owner = self.owner
+            response = other.ask(input, prompt_msgs, template=template, tag=tag, temp=temp, max_tokens=max_tokens,
+                                 top_p=top_p, stops=stops, stop_on_json=stop_on_json, model=model, log=log, trace=trace)
             if response is not None:
                 return response
-            print(f'planner failed on {tag}: the playing model writes it')
+            print(f'{other.server_name} failed on {tag}: it goes on to the next')
         try:
             if response_prime_needed and type(prompt_msgs[-1]) != AssistantMessage:
                 prompt_msgs = prompt_msgs + [AssistantMessage(content='')]
