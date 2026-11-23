@@ -295,3 +295,21 @@ h3 {
   height: 98%;
   object-fit: scale-down;
 }
+/* continuing a performance in a further part (the play dialog) */
+.continue-play {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #ccc;
+}
+.continue-play select {
+  max-width: 100%;
+}
+.continue-play label {
+  display: block;
+  margin: 8px 0;
+}
+.continue-question {
+  font-style: italic;
+  font-size: 0.9em;
+  margin: 8px 0;
+}

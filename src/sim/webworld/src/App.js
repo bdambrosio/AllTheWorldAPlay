@@ -27,6 +27,9 @@ function App() {
   const [logText, setLogText] = useState('');
   const [book, setBook] = useState(null);   // the book of the performance: {html, pdf} or {error}, or {making: true}
   const [plays, setPlays] = useState([]);
+  const [threads, setThreads] = useState([]);   // performances that can be continued in a further part
+  const [selectedThread, setSelectedThread] = useState('');
+  const [lastPart, setLastPart] = useState(false);
   const [showPlayDialog, setShowPlayDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [selectedPlay, setSelectedPlay] = useState(null);
@@ -124,6 +127,7 @@ function App() {
                 break;
               case 'play_list':
                 setPlays(data.plays);
+                setThreads(data.threads || []);
                 setShowPlayDialog(true);
                 break;
               case 'confirm_reload':
@@ -605,6 +609,39 @@ function App() {
               setShowPlayDialog(false);
               sendReplayEvent('setShowPlayDialog', { show: false });
             }}>Cancel</button>
+            {threads.length > 0 && (
+              <div className="continue-play">
+                <h3>Or continue a performance</h3>
+                <select value={selectedThread} onChange={(e) => setSelectedThread(e.target.value)}>
+                  <option value="" disabled>Select a performance...</option>
+                  {threads.map(t => (
+                    <option key={t.thread} value={t.thread} title={t.question}>
+                      {t.thread} ({t.parts === 1 ? 'one part' : `${t.parts} parts`} played)
+                    </option>
+                  ))}
+                </select>
+                {selectedThread && (
+                  <p className="continue-question">{(threads.find(t => t.thread === selectedThread) || {}).question}</p>
+                )}
+                <label>
+                  <input type="checkbox" checked={lastPart} onChange={(e) => setLastPart(e.target.checked)} />
+                  This is to be its last part
+                </label>
+                <button
+                  onClick={() => {
+                    const chosen = threads.find(t => t.thread === selectedThread);
+                    setIsProcessing(true);
+                    pendingPlayLoadRef.current = `${chosen.play} (part ${chosen.parts + 1} of ${chosen.thread})`;
+                    sendCommand('load_play', { play: chosen.play, thread: chosen.thread, final: lastPart });
+                    setShowPlayDialog(false);
+                    sendReplayEvent('setShowPlayDialog', { show: false });
+                  }}
+                  disabled={!selectedThread}
+                >
+                  Play the next part
+                </button>
+              </div>
+            )}
           </div>
         )}
 

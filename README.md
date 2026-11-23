@@ -20,7 +20,9 @@ That performance took an hour and cost about five dollars in model calls.
 
 That book ends with a woman who will not say what she is hiding from, a tin of store-bought matches in a forest with no roads, and two people who still do not know how they got there. I wanted the next part and there was no way to ask for one: when a performance ends, nothing is kept that it could be picked up from.
 
-So the next piece of work is a performance that continues. At the end of each part the state of the play is written to a readable file (what is so, who knows what, what everyone holds and has promised, the clock). On request, the director reads it and opens the next part: a new question taken from what the last part left open, starting when it judges best. Nothing of this is built yet.
+So the next piece of work is a performance that continues. At the end of each part the state of the play is written to a readable file (what is so, who knows what, what everyone holds and has promised, the clock, what each person remembers). On request, the director reads it and opens the next part: a question taken from what the last part left open, starting when it judges best. A performance to continue is chosen in the play dialog, and its book has its parts in order.
+
+This is built and has been tested only away from the stage, on the end states of recorded plays; no second part has been played yet. The director reads a finished part and opens the next one soundly. Where it has to settle something new behind the play, it still sometimes contradicts a detail of what was played.
 
 ### What it is
 

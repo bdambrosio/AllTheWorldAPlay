@@ -334,6 +334,9 @@ End your response with:
             description += f'\nHow you speak: {stylizer.voice_line()}.'
         if getattr(self, 'own_past', ''):   # settled by the director at the start (Context.frame_episode)
             description += f'\nFrom your own past, known here to you alone unless you tell it: {self.own_past}'
+        if getattr(self, 'carried', None):   # what this person remembers of the parts already played (sim/thread.py)
+            from sim import thread
+            description += '\n' + thread.card(self.carried)
         if self.actor_models.get_known_actor_relationship(self.name):
             description += '\n\n' + self.actor_models.get_known_actor_relationship(self.name)
         if type(description) != str:

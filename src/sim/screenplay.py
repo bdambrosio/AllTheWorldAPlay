@@ -59,6 +59,7 @@ class Screenplay:
     known: dict = field(default_factory=dict)      # {name: what that person has come to, of what is so} (director.read)
     walked_past: int = 0                           # acts in a row that came no nearer to what is so
     threads: list = field(default_factory=list)    # [{'kind': 'found'|'told', 'who', 'what', 'scene'}]: what the play has planted
+    earlier: str = ''                              # the parts of this performance already played, as they came out (sim/thread.py)
     act_count: int = 3                             # acts that carry the story; a closing act follows
     acts: list = field(default_factory=list)       # [ActRecord], in the order played
 
@@ -123,7 +124,10 @@ class Screenplay:
     def so_far(self):
         """What has happened in the acts already played, for whoever plans the next: each act's
         record of events and assessed outcomes, not what was planned for it."""
-        return '\n\n'.join(f"Act {a.number}, '{a.title}': {a.summary}" for a in self.performed())
+        now = '\n\n'.join(f"Act {a.number}, '{a.title}': {a.summary}" for a in self.performed())
+        if not self.earlier:
+            return now
+        return f"In the parts of this performance already played:\n{self.earlier}" + (f"\n\nIn this part:\n{now}" if now else '\n\nThis part has not begun.')
 
     # ----------------------------------------------------------------- the plan, for the director's chair
     def view(self):

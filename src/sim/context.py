@@ -32,6 +32,7 @@ import sim.survival as survival
 import sim.scene as scene_owner
 import sim.stage as stage
 import sim.director as director
+import sim.thread as thread
 import sim.record as record
 from sim.screenplay import Screenplay
 from sim import ablation, ledger, keeper, resolver, world
@@ -2227,7 +2228,12 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
                 self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
         self.play_file = play_file
-        if self.directed:   # the director writes tonight's question from the sketch
+        continued = bool(getattr(self, 'thread_parts', None))   # a part of a performance already begun (sim/thread.py)
+        if self.directed and continued:   # the director takes its question from what the play has left open
+            self.standing_question = thread.open_part(self)
+            if getattr(self, 'thread_recap', ''):
+                self.message_queue.put({'name': 'The story so far', 'text': self.thread_recap + (f"\n{self.thread_between}" if getattr(self, 'thread_between', '') else '') + '\n'})
+        elif self.directed:   # the director writes tonight's question from the sketch
             self.standing_question = director.question(self, **self.sketch_for_director())
             if not self.standing_question:
                 self.message_queue.put({'name': self.name, 'text': '----- the director could not write a question; the play is played without a director -----'})
@@ -2555,9 +2561,16 @@ Respond with these lines only, one sentence each:
         past_rule = (f"- Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from it: plain and particular (what, where, with whom). Say what happened and stop: not what it made of them. It gives a reason for something their description says of them and contradicts nothing in it. People who are not in the play may be in it, unnamed (a brother, an employer). It is not about the open question and is not one of the facts above; it says nothing of what the person will do in the play: it is theirs to keep back or to tell. Write none for a person whose description says they do not remember their past.") if leads else ''
         past_format = f"#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)" if leads else ''
         standing = bool(self.standing_question)
-        reply = director.settle(self, leads=leads, **self.sketch_for_director()) if standing else None
-        if standing and not reply:
+        continued = bool(getattr(self, 'thread_parts', None))
+        before = (list(self.screenplay.facts), list(self.screenplay.clues), {c.name: getattr(c, 'own_past', '') for c in self.actors}) if continued else None
+        if standing and continued:   # only what is not yet settled, behind all that stands; '' when the question's answer already is
+            reply = thread.settle_part(self)
+        else:
+            reply = director.settle(self, leads=leads, **self.sketch_for_director()) if standing else None
+        if standing and not reply and not (continued and not thread.needs_settling(self)):
             self.message_queue.put({'name': self.name, 'text': '----- the director could not settle what lies behind the play; it is played without -----'})
+        if standing and continued:   # a place the newly settled facts need, before anyone or anything is put at it
+            thread.make_place(self, director.read_place(reply or ''))
         if standing:
             self.director_person(director.read_person(reply or ''))
         reply = reply if standing else self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
@@ -2596,9 +2609,12 @@ Respond with these lines only, one sentence each:
             if who and fields[1] and fields[1].lower() not in ('none', 'empty', '-', 'n/a'):
                 marks.append({'who': who, 'looks': fields[1], 'touches': fields[2] if len(fields) > 2 else ''})
         self.screenplay.marks = marks[:1]
-        self.screenplay.set_facts(reply, [c.name for c in people])
+        self.screenplay.set_facts(reply, [c.name for c in self.everyone()])
+        if continued:   # what stood before this part still stands; the new facts are added, the new clues are the ones to place
+            self.screenplay.facts = before[0] + [f for f in self.screenplay.facts if not any(f['text'] == o['text'] for o in before[0])]
+            self.screenplay.clues_before = before[1]
         for c in self.actors:   # a person's own past stays on its card (get_character_description): its own prompts only
-            c.own_past = self.screenplay.set_past(reply, c.name)
+            c.own_past = self.screenplay.set_past(reply, c.name) or (before[2].get(c.name, '') if continued else '')
         for fact in self.screenplay.facts:   # who knows one is told it, once and privately
             for c in people:
                 if c.name in fact['known_to'] and not fact.get('of'):
@@ -2685,7 +2701,7 @@ Respond with these lines only, one sentence each:
                 if clue.get('looks'):   # how it looks is so of it in the world (résumés 'struck through' were struck from a set-up as not so)
                     survival.set_state(self, clue['thing'], clue['looks'])
                 placed.append(clue)
-        self.screenplay.clues = placed
+        self.screenplay.clues = list(getattr(self.screenplay, 'clues_before', None) or []) + placed   # those of the parts before lie where they were left
         trace.event('clues_placed', clues=placed, marks=self.screenplay.marks)
         self.send_plan()
         return placed
@@ -2803,6 +2819,7 @@ End your response with: </end>"""
                     "What is so behind it is there to be found; what these people do about it is theirs. "
                     "Each act should bring them nearer to what is so by their own doing (a place gone to, a thing found, a person met), or make it harder to walk past. "
                     "Plan no scene that answers the question for anyone, and no ending that has a person choose what to do about it: a scene may bring someone to a choice and stop there."
+                    + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of its last act before the closing one, these people should have come to what is so behind it, by their own doing." if getattr(self, 'thread_parts', None) else '')
                     + so_far
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
@@ -2882,6 +2899,9 @@ End your response with: </end>"""
                     self.send_plan()
             self.message_queue.put({'name': '', 'text': '\n----- end of episode -----'})
             trace.event('episode_end', **(self.episode or {}))
+            kept = await asyncio.to_thread(thread.write, self)   # the state of the play, so that this performance can be continued (sim/thread.py)
+            if kept:
+                self.message_queue.put({'name': '', 'text': f'----- the state of the play is kept: {kept} -----'})
         except Exception as e:
             stop(f'error running integrated narrative: {type(e).__name__}: {e}')
             traceback.print_exc()

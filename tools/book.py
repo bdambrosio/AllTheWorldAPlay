@@ -81,6 +81,8 @@ def performance(rows):
         if kind == 'other':   # before the curtain: each lead in its own words, and the play's question
             if who == 'Prologue':
                 book['question'] = book['question'] or text
+            elif who == 'The story so far':   # a later part of a continued performance: what the audience was told of the parts before
+                book['recap'] = text
             elif who:
                 book['players'].append({'name': who, 'says': text})
             continue
@@ -312,6 +314,59 @@ figure img { width: 100%; border-radius: 3px; display: block; }
 """
 
 
+def acts_html(book, shown, folder):
+    """The acts of one performance: each a division, its scenes as chapters, and what it came to."""
+    out = []
+    for act in book['acts']:
+        out.append(f'<section class="part"><p class="count">Act {number(act["number"])}</p><h2>{words(act["title"])}</h2></section>')
+        out += [chapter(s, shown['scenes'], folder) for s in act['scenes']]
+        if act['coda']:
+            out.append(f'<section class="close"><p class="count">Act {number(act["number"])}</p><h2>What it came to</h2><p>{words(act["coda"])}</p></section>')
+    return out
+
+
+def thread_page(parts, thread):
+    """The book of a performance played in parts: one title, the players once, and each part with the question it stood on.
+    parts: [{'book', 'shown', 'folder', 'run'}], in the order played."""
+    first = parts[0]['book']
+    title = first['play'][:1].upper() + first['play'][1:]
+    began = datetime.fromtimestamp(first['began']) if first['began'] else None
+    out = ['<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
+           f'<title>{html.escape(title)}</title><style>{CSS}</style></head><body>']
+    front = next((p for p in parts[0]['shown']['scenes'] if p['of'] == 'world' and p.get('scene') is None), None)
+    out.append('<section class="title">' + (figure(parts[0]['folder'], front, 'plate') if front else '') + f'<h1>{words(title)}</h1>'
+               + f'<p class="sub">A play in {number(len(parts)).lower()} parts, as performed' + (f' from {began.strftime("%-d %B %Y")}' if began else '') + '</p>'
+               + '<p class="house">All the World a Play</p></section>')
+    seen = set()
+    players = [(p, part) for part in parts for p in part['book']['players'] if not (p['name'] in seen or seen.add(p['name']))]
+    if players:
+        out.append('<section class="players"><p class="count">The Players</p><h2>Who is in it</h2>')
+        for p, part in players:
+            file = part['shown']['portraits'].get(p['name'])
+            img = f'<img alt="" src="data:image/jpeg;base64,{base64.b64encode(open(os.path.join(part["folder"], file), "rb").read()).decode()}">' if file else ''
+            n = parts.index(part) + 1
+            comes = f"Comes into the play in Part {number(n)}, Chapter {number(p['enters'])}." if p.get('enters') else f"Comes into the play in Part {number(n)}."
+            out.append(f'<div class="player">{img}<div><span class="who">{words(p["name"])}</span><p>{words(p["says"]) or comes}</p></div></div>')
+        out.append('</section>')
+    for n, part in enumerate(parts, 1):
+        book = part['book']
+        out.append(f'<section class="part"><p class="count">Part {number(n)}</p><h2>{words(book["question"]) if book["question"] else ""}</h2></section>')
+        if book.get('recap'):
+            out.append(f'<section class="close"><p class="count">Part {number(n)}</p><h2>The story so far</h2><p>{words(book["recap"])}</p></section>')
+        out += acts_html(book, part['shown'], part['folder'])
+    scenes = [s for part in parts for a in part['book']['acts'] for s in a['scenes']]
+    said = sum(1 for s in scenes for l in s['lines'] if l['kind'] == 'speech')
+    out.append('<section class="colophon"><p class="count">Colophon</p><h2>About this book</h2>'
+               f'<p>This is the record of one performance of <em>{words(title)}</em>, played in {number(len(parts)).lower()} parts: thread {html.escape(thread)} '
+               f'(runs {html.escape(", ".join(p["run"] for p in parts))}). The play was improvised by its actors from a sketch and a world; nothing in it was '
+               'written beforehand. Each part after the first took up the play where the one before had left it, and stands on a question the earlier parts left open.</p>'
+               f'<p>It ran to {sum(len(p["book"]["acts"]) for p in parts)} acts and {len(scenes)} scenes, with {said} spoken lines. The text is set here as it was played: '
+               'the deeds as the world told them and the lines as they were spoken, in order, with nothing rewritten.</p>'
+               f'<p>Made {datetime.now().strftime("%-d %B %Y")} by tools/book.py.</p></section>')
+    out.append('</body></html>')
+    return '\n'.join(out)
+
+
 def page(book, shown, folder, run):
     title = book['play'][:1].upper() + book['play'][1:]
     began = datetime.fromtimestamp(book['began']) if book['began'] else None
@@ -330,11 +385,7 @@ def page(book, shown, folder, run):
             img = f'<img alt="" src="data:image/jpeg;base64,{base64.b64encode(open(os.path.join(folder, file), "rb").read()).decode()}">' if file else ''
             out.append(f'<div class="player">{img}<div><span class="who">{words(p["name"])}</span><p>{words(p["says"]) or f"Comes into the play in Chapter {number(p['enters'])}."}</p></div></div>')
         out.append('</section>')
-    for act in book['acts']:
-        out.append(f'<section class="part"><p class="count">Act {number(act["number"])}</p><h2>{words(act["title"])}</h2></section>')
-        out += [chapter(s, shown['scenes'], folder) for s in act['scenes']]
-        if act['coda']:
-            out.append(f'<section class="close"><p class="count">Act {number(act["number"])}</p><h2>What it came to</h2><p>{words(act["coda"])}</p></section>')
+    out += acts_html(book, shown, folder)
     scenes = [s for a in book['acts'] for s in a['scenes']]
     said = sum(1 for s in scenes for l in s['lines'] if l['kind'] == 'speech')
     again = [p for p in shown['scenes'] if p['source'] == 'rendered again']
@@ -388,13 +439,49 @@ def make(run=None, render=False, out=None, say=print):
             'rendered_again': sum(1 for p in shown['scenes'] if p['source'] == 'rendered again')}
 
 
+def make_thread(thread, also=None, render=False, out=None, say=print):
+    """The book of a performance played in parts (src/sim/thread.py): its parts in order, as one book, kept under books/<thread>-parts.
+    also: a run now being played as the next part, not yet in the thread's file. Returns what make() returns, 'run' being the thread."""
+    path = os.path.join(HOME, 'threads', thread + '.json')
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'no thread called {thread!r} under {os.path.dirname(path)}')
+    runs = [p.get('run') for p in json.load(open(path)).get('parts') or [] if p.get('run')]
+    if also and also not in runs:
+        runs.append(also)
+    folder = os.path.abspath(out or os.path.join(BOOKS, thread + '-parts'))
+    parts = []
+    for n, run in enumerate(runs, 1):
+        if not os.path.exists(os.path.join(TRACES, run + '.jsonl')):
+            raise FileNotFoundError(f'part {n} of {thread} was run {run}, and its trace is gone')
+        rows = read(run)
+        book = performance(rows)
+        if not any(a['scenes'] for a in book['acts']):
+            continue   # a part loaded and not yet played
+        pics = os.path.join(folder, f'pictures-{n}')
+        parts.append({'book': book, 'shown': pictures(run, rows, pics, render=render, say=say), 'folder': pics, 'run': run})
+    if not parts:
+        raise ValueError(f'{thread} has no scene played yet: there is nothing to make a book of')
+    html_path, pdf_path = os.path.join(folder, 'book.html'), os.path.join(folder, 'book.pdf')
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(thread_page(parts, thread))
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
+    return {'run': thread, 'folder': folder, 'html': html_path, 'pdf': printed(html_path, pdf_path), 'parts': len(parts),
+            'acts': sum(len(p['book']['acts']) for p in parts), 'scenes': sum(len(a['scenes']) for p in parts for a in p['book']['acts']),
+            'pictures': sum(len(p['shown']['scenes']) for p in parts),
+            'rendered_again': sum(1 for p in parts for x in p['shown']['scenes'] if x['source'] == 'rendered again')}
+
+
 if __name__ == '__main__':
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     where = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else None
     if where in args:
         args.remove(where)
     t = time.time()
-    made = make(args[0] if args else None, render='--render' in sys.argv, out=where)
+    if '--thread' in sys.argv:   # tools/book.py --thread <thread>: the parts of a continued performance as one book
+        made = make_thread(args[0], render='--render' in sys.argv, out=where)
+    else:
+        made = make(args[0] if args else None, render='--render' in sys.argv, out=where)
     print(f"{made['run']}: {made['acts']} acts, {made['scenes']} scenes, {made['pictures']} pictures ({made['rendered_again']} rendered again), {time.time() - t:.0f}s")
     print(made['html'])
     print(made['pdf'] or '(no PDF: no Chrome found to print it)')

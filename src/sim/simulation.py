@@ -26,6 +26,7 @@ from utils.llm_api import LLM, generate_image
 from sim.trace import trace, TraceErrorHandler, llm_call_listener
 import sim.ablation as ablation
 import sim.stage as stage
+import sim.thread as thread
 import base64
 import asyncio
 from typing import Dict, Any
@@ -198,7 +199,8 @@ class SimulationServer:
                         
             await self.send_result({
                 'type': 'play_list',
-                'plays': play_files
+                'plays': play_files,
+                'threads': thread.listing()   # performances that can be continued in a further part (sim/thread.py)
             })
             await self.send_command_ack('initialize')    
 
@@ -242,6 +244,9 @@ class SimulationServer:
         await self._stop_play_tasks()
         self.image_cache = {}
         play_name = command.get('play')
+        wanted = command.get('thread') or os.environ.get('ATWAP_THREAD')   # the next part of a performance already begun
+        if wanted and not play_name:
+            play_name = (thread.load(wanted) or {}).get('play')
         main_dir = Path(__file__).parent
         config_path = (main_dir / '../plays/config.py').resolve()
         narrative_path = (main_dir / '../plays/narratives/').resolve()
@@ -276,6 +281,13 @@ class SimulationServer:
             llm_api.set_reasoning(command.get('reasoning') or os.environ.get('ATWAP_REASONING'))
             # opened before the play module runs: building its characters makes LLM calls
             trace.open(play_name, None)
+            # the next part of a performance already begun (sim/thread.py): the same country, and then the play as it was left
+            continued = thread.load(wanted) if wanted else None
+            if wanted and not continued:
+                raise ValueError(f"no thread {wanted} in {thread.DIR}")
+            world_seed = os.environ.get('ATWAP_WORLD_SEED')
+            if continued and thread.seed(continued) is not None:
+                os.environ['ATWAP_WORLD_SEED'] = str(thread.seed(continued))
             spec = importlib.util.spec_from_file_location("webworld_play", play_path)
             #print(f'DEBUG: spec created: {spec}')
             #print(f'DEBUG: creating module from spec...')
@@ -294,6 +306,12 @@ class SimulationServer:
             
             self.sim_context = module.W
             trace.context = self.sim_context
+            if continued:
+                os.environ.pop('ATWAP_WORLD_SEED', None) if world_seed is None else os.environ.__setitem__('ATWAP_WORLD_SEED', world_seed)
+                self.sim_context.thread_final = bool(command.get('final') or os.environ.get('ATWAP_THREAD_FINAL'))
+                applied = thread.apply(self.sim_context, continued)
+                self.sim_context.message_queue.put({'name': self.sim_context.name, 'text': f"----- part {applied['part'] + 1} of {applied['thread']}"
+                                                    + (f"; not put back: {'; '.join(applied['missing'][:6])}" if applied['missing'] else '') + ' -----'})
             trace.event('play_loaded', characters=[{'name': c.name, 'description': c.character,
                                                     'drives': [d.text for d in (c.drives or [])]}
                                                    for c in self.sim_context.actors + self.sim_context.extras],
@@ -490,6 +508,8 @@ class SimulationServer:
             await Viewer.act_on_action(Act(mode='Say', action=text, actors=[Viewer, target], reason='inject', duration=1, source=None, target=[target]), task)
             Viewer.focus_task.pop()
             await asyncio.sleep(0.1)
+            if getattr(self.sim_context, 'thread_kept', False):   # the part has ended and its state is kept: keep this too
+                asyncio.create_task(asyncio.to_thread(thread.write, self.sim_context, True, target.name))
             await self.send_result({
                 'type': 'inject',
                 'message': f'{Viewer.name} injects {target.name}: {text}'
@@ -862,7 +882,11 @@ class SimulationServer:
         """The book of the run now loaded (or, with none loaded, of the latest run): tell the UI where it is, or why not."""
         try:
             from tools import book
-            made = await asyncio.to_thread(book.make, trace.run_id, say=lambda *a: None)
+            of = getattr(self.sim_context, 'thread', None)   # a part of a continued performance: the book of all its parts
+            if of and len(getattr(self.sim_context, 'thread_parts', None) or []) >= 1:
+                made = await asyncio.to_thread(book.make_thread, of, also=trace.run_id, say=lambda *a: None)
+            else:
+                made = await asyncio.to_thread(book.make, trace.run_id, say=lambda *a: None)
             await self.send_result({'type': 'book', 'run': made['run'], 'html': made['html'], 'pdf': made['pdf'], 'scenes': made['scenes'], 'pictures': made['pictures']})
         except Exception as e:
             await self.send_result({'type': 'book', 'error': str(e)})
