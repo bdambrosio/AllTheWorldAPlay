@@ -25,6 +25,7 @@ function App() {
     paused: false
   });
   const [logText, setLogText] = useState('');
+  const [book, setBook] = useState(null);   // the book of the performance: {html, pdf} or {error}, or {making: true}
   const [plays, setPlays] = useState([]);
   const [showPlayDialog, setShowPlayDialog] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -113,6 +114,9 @@ function App() {
                 console.log('status_update:', data.status);
                 setSimState(data.status);
                 setIsProcessing(data.status.running && !data.status.paused);
+                break;
+              case 'book':
+                setBook(data);
                 break;
               case 'output':
                 console.log('output:', data.text);
@@ -531,6 +535,11 @@ function App() {
             </button>
             <button className="control-button" onClick={() => sendCommand('load_known_actors')} disabled={appMode === 'replay'}>Load</button>
             <button className="control-button" onClick={() => sendCommand('save_known_actors')} disabled={appMode === 'replay'}>Save</button>
+            <button className="control-button" disabled={appMode === 'replay' || (book && book.making)}
+              title="Make a small book of the performance so far: the text as played, with its pictures"
+              onClick={() => { setBook({ making: true }); sendCommand('make_book'); }}>
+              {book && book.making ? 'Making…' : 'Make Book'}
+            </button>
             <button 
               className="control-button" 
               onClick={handleToggleSpeech}
@@ -546,6 +555,15 @@ function App() {
               'Paused'
             }</div>
           </div>
+          {book && !book.making && (
+            <div className="book-note">
+              {book.error ? <div>Book: {book.error}</div> : <>
+                <div>Book of {book.run} ({book.scenes} scenes, {book.pictures} pictures):</div>
+                {book.pdf && <div className="book-path">{book.pdf}</div>}
+                <div className="book-path">{book.html}</div>
+              </>}
+            </div>
+          )}
           <button 
             className="director-chair-button"
             onClick={() => setShowDirectorChair(true)}

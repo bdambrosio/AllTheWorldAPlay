@@ -729,6 +729,7 @@ If absolutely no information is available for any field, use "unknown" for that 
                 prompt = f'{stage.style(self)}. Wide view. {state}{characters}'
             trace.event('image', of='world', prompt=prompt, facts=facts, builder=stage.IMAGE_PROMPT if facts else 'fallback')
             filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
+            trace.keep(filepath, 'world')
         except Exception as e:
             traceback.print_exc()
         return filepath
@@ -747,6 +748,7 @@ If absolutely no information is available for any field, use "unknown" for that 
                 prompt = f"{stage.style(self)}. Wide view. {self._image_description(actor)}, {deed}. {state}"
             trace.event('image', of='act', prompt=prompt, facts=facts, builder=stage.IMAGE_PROMPT if facts else 'fallback')
             filepath = llm_api.generate_image(self.llm, prompt, size=WORLD_IMAGE_SIZE, filepath=filepath)
+            trace.keep(filepath, 'act')
         except Exception as e:
             traceback.print_exc()
         return filepath

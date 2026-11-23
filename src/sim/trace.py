@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import shutil
 import threading
 import time
 from datetime import datetime
@@ -40,6 +42,7 @@ class PlayTrace:
         self.run_id = f"{stem}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         self.path = TRACE_DIR / f'{self.run_id}.jsonl'
         self.context = context
+        self._pictures = 0
         self._file = open(self.path, 'a', buffering=1)
         self.event('run_start', play=play_name)
         return self.path
@@ -84,6 +87,27 @@ class PlayTrace:
                     f.write(json.dumps(record, default=str) + '\n')
         except Exception:
             pass  # logging must never affect the play
+
+    def keep(self, path, of):
+        """A picture the run has just made, kept with the run: the engine writes its pictures to a few files
+        it writes over in turn, so that of a finished play only the last were left, and the book of a
+        performance (tools/book.py) had to make the rest again. A picture of the stage or of a deed (of:
+        'world', 'act') is kept each time; a portrait (of: the character's name) is kept as the latest of
+        that character. Named in the trace as an 'image_file' record."""
+        if self._file is None or not path:
+            return
+        try:
+            folder = TRACE_DIR.parent / 'pictures' / self.run_id
+            folder.mkdir(parents=True, exist_ok=True)
+            if of in ('world', 'act'):
+                self._pictures += 1
+                kept = folder / f'{self._pictures:03d}_{of}.png'
+            else:
+                kept = folder / ('portrait_' + re.sub(r'\W+', '_', str(of)) + '.png')
+            shutil.copyfile(path, kept)
+            self.event('image_file', of=of, file=str(kept))
+        except Exception:
+            pass  # keeping a picture must never affect the play
 
     def event(self, kind: str, **fields):
         if self._file is None:

@@ -161,6 +161,24 @@ body {
   color: #ccc;
 }
 
+.book-note {
+  margin: 0 0 10px;
+  padding: 10px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 0.85em;
+}
+
+.book-path {
+  margin-top: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  color: #e8d9a8;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .director-chair-button {
   margin-top: auto;
   padding: 12px;

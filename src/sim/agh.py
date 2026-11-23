@@ -813,8 +813,10 @@ adjective, adjective, adjective
         if not prompt:
             return None
         trace.event('image', of=self.name, prompt=prompt, facts=getattr(self, '_portrait_facts', None), builder=stage.IMAGE_PROMPT)
-        return await asyncio.to_thread(generate_image, self.llm, prompt, filepath=self.name + '.png',
+        path = await asyncio.to_thread(generate_image, self.llm, prompt, filepath=self.name + '.png',
                                        seed=zlib.crc32(self.name.encode()))
+        trace.keep(path, self.name)
+        return path
 
     def update_world_image(self):
         raise NotImplementedError("Derived classes must implement update_world_image")

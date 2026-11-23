@@ -623,6 +623,11 @@ class SimulationServer:
                 self.save_known_actors()
                 await asyncio.sleep(0.1)
                 return
+            elif cmd_name == 'make_book':
+                # the performance so far as a small book (tools/book.py), made off the engine's loop; the UI shows where it is
+                asyncio.create_task(self._make_book())
+                await asyncio.sleep(0.1)
+                return
             elif cmd_name == 'showMap':
                 if self.sim_context:
                     # run the window's event pump as its own task; the old inline
@@ -852,6 +857,15 @@ class SimulationServer:
                     char.actor_models = char.actor_models.load_from_file(filepath, char, self.sim_context)
             except Exception as e:
                 logging.error(f"Error loading known actors for {char.name}: {e}")
+
+    async def _make_book(self):
+        """The book of the run now loaded (or, with none loaded, of the latest run): tell the UI where it is, or why not."""
+        try:
+            from tools import book
+            made = await asyncio.to_thread(book.make, trace.run_id, say=lambda *a: None)
+            await self.send_result({'type': 'book', 'run': made['run'], 'html': made['html'], 'pdf': made['pdf'], 'scenes': made['scenes'], 'pictures': made['pictures']})
+        except Exception as e:
+            await self.send_result({'type': 'book', 'error': str(e)})
 
     def save_known_actors(self):
         """Save known actors for all characters to default location"""
