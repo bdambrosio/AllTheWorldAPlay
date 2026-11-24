@@ -317,6 +317,55 @@ def read(context, act_text, leads):
     return {'known': known, 'nearer': nearer}
 
 
+# ------------------------------------------------------------------ what is still promised
+# The stage keeps what is promised so that later scenes are held to it, and nothing took a promise
+# off it again: a play ended with 46, 'wait under cover for an hour' and 'step where Agnes steps'
+# among them, hours after the storm and the walk. After each act the promises are read against the
+# act as played, and those that bind nobody now are dropped. (A thing promised for now, in a scene,
+# goes by rule: sim/ledger.py promised.)
+SPENT = """An improvised play is being performed, and an act of it has just ended. The stage keeps what its people have promised or agreed, so that later scenes are held to it. You read the act as it was played and say which of these promises no longer binds anyone.
+
+<the_act_as_played>
+{played}
+</the_act_as_played>
+
+<promises>
+{promises}
+</promises>
+
+It is now {now}.
+
+- A promise is spent when the act shows that it binds nobody now. It was kept, broken or given up; or what happened overtook it: the thing it was about is done, gone or out of reach, the occasion it was for is over (a wait that has ended, a walk that has been made, a place they have left), or a later agreement took its place.
+- It is not spent while it is still to be kept (a thing for later whose time has not come, a thing owed), nor while it is a condition still in force (what not to ask, where not to go, keeping together).
+- Where two of them promise the same thing in other words, they are one promise: the earlier is spent.
+- Judge only from what the act shows. Where it does not show that a promise was kept or is over, the promise is not spent.
+
+Respond with one line for each spent promise, and nothing for the others:
+#spent <its number> | <what in the act ended it, in a few words>
+If none is spent, respond with the single line:
+#none
+</end>"""
+
+
+def promise_line(p):
+    at = p.get('since')
+    at = at.strftime('%H:%M') if hasattr(at, 'strftime') else str(at or '')[11:16]
+    return (f"{p['who']}" + (f" to {', '.join(p['to'])}" if p.get('to') else '') + f" ({p.get('kind', 'later')}" + (f", said at {at}" if at else ', said in an earlier part')
+            + f"): {p['what']}")
+
+
+def spent(llm, promises, played, now):
+    """Which of `promises` (lines) the act as played has left binding nobody: [(index from 0, why)]."""
+    from utils.Messages import UserMessage
+    if not promises or not played:
+        return []
+    reply = llm.ask({}, [UserMessage(content=SPENT.format(played=played, now=now, promises='\n'.join(f'{n}. {p}' for n, p in enumerate(promises, 1))))],
+                    tag='director.spent', temp=0.2, stops=['</end>'], max_tokens=700) or ''
+    found = [(f[0], f[1] if len(f) > 1 else '') for f in (_fields(l) for l in _lines('spent', reply))]
+    return [(int(n) - 1, why) for n, why in found if n.isdigit() and 0 < int(n) <= len(promises)]
+
+
+
 # ====================================================================== the thread director
 # A performance may be continued in further parts (sim/thread.py). The director of a first night
 # writes its question from the sketch; the director of a later part writes it from what the play

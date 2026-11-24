@@ -64,7 +64,8 @@ Write what {who} carries forward, in three kinds of line.
 All of it:
 - is only what the record above shows {who} seeing, hearing, doing or thinking, and what {who} carried into this part. Nothing {who} was not there for, and nothing guessed about what another person thinks, feels or hides.
 - takes the place of what {who} carried into this part: the parts before are kept in two or three sentences at the head of lived, what {who} knew of a person is kept where this part did not change it, and what was in force is kept unless this part ended it.
-- keeps what a person said as what they said, close to their words where the words matter (a place named, a term set, what was done to them): not a stronger or a looser telling of it.
+- keeps what a person said as what they said, close to their words where the words matter (a place named, a term set, what was done to them): not a stronger or a looser telling of it. What was only offered, meant or promised is told as that, not as done.
+- adds nothing to make the record fit together. Where two things in it do not agree, or one is left unexplained, each is kept as it was seen or said, and no thing, event or reason is supplied to join them. There are as many of a thing as the record shows.
 - is in the first person, as {who} would tell it, by the names {who} knows people by. Someone whose name {who} has not heard is called as {who} would call them.
 - is in plain words, in the past tense for what happened, with no judgement of the play and nothing about what will happen next.
 
@@ -213,6 +214,73 @@ def read_digest(text):
     return {'lived': ' '.join(lines('lived')), 'knows': knows, 'holds': holds}
 
 
+# A digest is read once against the record before it is kept, and written again where it is at
+# fault. (The first one kept gave Samantha 'a second button': she had said, at another spot, that
+# the one in her hand came off there, and the digest supplied a button to make the two agree.
+# She would have remembered it so in every later part.)
+DIGEST_CHECK = """A play is performed in parts. A part has just ended, and what one of its people carries into the next has been written from the record of what that person witnessed. That person will remember the part only as this says it, so before it is kept you check it against the record.
+
+<person>
+{who}
+</person>
+
+<what_this_person_witnessed>
+{witnessed}
+</what_this_person_witnessed>
+
+<their_own_thoughts>
+{thoughts}
+</their_own_thoughts>
+
+<what_they_carried_into_this_part>
+{carried}
+</what_they_carried_into_this_part>
+
+<written>
+{written}
+</written>
+
+A statement in what is written is at fault when:
+- it tells of a thing, a person, an event, a number or a reason that the record and what was carried in do not show, or says the contrary of what they show;
+- it tells as done what was only offered, meant, asked or promised;
+- it gives as said or done by one person what was said or done by another.
+It is not at fault for leaving something out, for telling in fewer words what the record tells in many, or for giving as {who}'s own belief what {who} said or thought.
+
+Respond with one line for each statement at fault, and nothing for the others:
+#fault <the words at fault, as written> | <what the record shows>
+If none is at fault, respond with the single line:
+#none
+</end>"""
+
+AGAIN = """
+
+A first writing of this was checked against the record and found at fault in these places:
+{faults}
+Write it again whole, the same where it was sound, with each of these as the record shows it."""
+
+
+def digest_text(found):
+    """A digest in the line forms it was written in."""
+    return '\n'.join([f"#lived {found['lived']}"] + [f"#knows {n} | {w}" for n, w in found['knows'].items()] + [f"#holds {h}" for h in found['holds']])
+
+
+def checked_digest(ask, who, description, witnessed, thoughts, carried=None):
+    """A digest written, read once against the record, and written again if it was at fault.
+    ask(prompt, max_tokens) -> reply. Returns (digest, faults [(words, what the record shows)])."""
+    prompt = digest_prompt(who, description, witnessed, thoughts, carried)
+    found = read_digest(ask(prompt, 900) or '')
+    if not found['lived']:
+        return found, []
+    reply = ask(DIGEST_CHECK.format(who=who, witnessed=witnessed or 'Nothing.', thoughts=thoughts or 'None kept.', written=digest_text(found),
+                                    carried=card(carried).partition('\n')[2] or 'Nothing: this was the first part.'), 500) or ''
+    faults = [tuple(x.strip() for x in f.partition('|')[::2]) for f in re.findall(r'^\s*#fault\s+(.+?)\s*$', reply, re.M)]
+    if faults:
+        again = read_digest(ask(prompt + AGAIN.format(faults='\n'.join(f'- "{w}": {shows}' for w, shows in faults)), 900) or '')
+        if again['lived']:
+            found = again
+    return found, faults
+
+
 def digest_prompt(who, description, witnessed, thoughts, carried=None):
     return DIGEST.format(who=who, description=description, witnessed=witnessed or 'Nothing.', thoughts=thoughts or 'None kept.',
                          carried=card(carried).partition('\n')[2] or 'Nothing: this was the first part.')
@@ -231,9 +299,11 @@ def digest(context, who):
     if who.name == 'Viewer' or (not witnessed and not thoughts):   # the voice of whoever watches carries nothing: it is not played
         return carried
     description = ' '.join((getattr(who, 'original_character', None) or who.character or '').split())
-    reply = context.llm.ask({}, [UserMessage(content=digest_prompt(who.name, description, witnessed, thoughts, carried))],
-                            tag='thread.digest', temp=0.3, stops=['</end>'], max_tokens=900) or ''
-    found = read_digest(reply)
+    ask = lambda prompt, room: context.llm.ask({}, [UserMessage(content=prompt)], tag='thread.digest', temp=0.3, stops=['</end>'], max_tokens=room)
+    found, faults = checked_digest(ask, who.name, description, witnessed, thoughts, carried)
+    if faults:
+        from sim.trace import trace
+        trace.event('digest_put_right', character=who.name, faults=[{'words': w, 'shows': shows} for w, shows in faults])
     return found if found['lived'] else carried   # what could not be written again is not lost
 
 

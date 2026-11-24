@@ -1184,7 +1184,8 @@ End response with:
             book = ledger.of(self.context)
             if what and not any(k['who'].lower() == (who or self.name).lower() and k['what'].lower() == what.lower() for k in book.promised):
                 book.promised.append({'who': who or self.name, 'to': [h.name for h in self.hearers() if h is not self],
-                                      'what': what, 'kind': kind or 'later', 'event': (book.open or [None])[-1]})
+                                      'what': what, 'kind': kind or 'later', 'event': (book.open or [None])[-1],
+                                      'scene': (self.context.current_scene or {}).get('scene_number'), 'since': self.context.simulation_time})
             trace.event('promise', character=self.name, who=who, what=what, when=kind, placed=placed)
 
     async def acts(self, act:Act, target: Character, act_mode: str, act_arg: str='', reason: str='', source: Task=None):

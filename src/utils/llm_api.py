@@ -284,7 +284,7 @@ PLAN_TAGS = frozenset((
     'scene.beats',      # the actors' proposals arranged into the scene's beats (sim/scene.py)
     'check_decision_required',   # whether a scene turns on a choice is the director's judgement
     'check_post_state_ambiguity',
-    'director.answers', 'director.behind', 'director.read', 'director.close', 'director.next', 'director.check',   # what lies behind a play that stands on a question (sim/director.py)
+    'director.answers', 'director.behind', 'director.read', 'director.close', 'director.next', 'director.check', 'director.spent',   # what lies behind a play that stands on a question (sim/director.py)
     'thread.digest',    # what a person carries out of a part into the next (sim/thread.py)
     'stage.resolve_deed', 'stage.resolve_say', 'stage.resolve_setup'))   # what a deed, a line or a set-up does in the world as it stands (sim/resolver.py)
 # How hard a call thinks where nothing else says (set_reasoning): the resolver was tested at low.

@@ -164,9 +164,13 @@ class Ledger:
         # what each person has told of their own life before the play: {'who', 'to' [names], 'fact',
         # 'event'}. A thing said of oneself is kept as told, and is the same for every later reader
         self.told = Kept(self, 'told')
-        # what has been promised or agreed in a line, to keep or for later: {'who', 'to' [names],
-        # 'what', 'kind' ('standing' | 'later'), 'event'}. (Kept only in the trace, an agreement
-        # made in one scene was struck from the next one's set-up as never made.)
+        # what has been promised or agreed in a line: {'who', 'to' [names], 'what', 'kind' ('now' |
+        # 'standing' | 'later'), 'event', 'scene' (the number of the scene it was made in)}. (Kept
+        # only in the trace, an agreement made in one scene was struck from the next one's set-up
+        # as never made.) A thing to do now, in the scene, is kept to the end of the scene after
+        # (Context.run_scene): by then it is done or overtaken. (Kept for good, 'come in' and 'pick
+        # two more apples' were 17 of the 46 promises a play ended with, and rulings are shown the
+        # latest 16: a standing 'not wander off alone' was no longer among them.)
         self.promised = Kept(self, 'promised')
         # what stands between people: {'fact', 'about' [names], 'known' [names], 'since', 'ended', 'event'}.
         # A thing settled (a contract signed, a debt agreed, land made over) is kept in the words it

@@ -2107,6 +2107,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         # the planned duration is the least a scene takes; acts and travel have already moved the clock
         self.simulation_time = max(self.simulation_time, scene_start + scene_duration)
         self.record_threads(characters_in_scene)   # what this scene planted, for the acts to come
+        # a thing promised for now, in a scene before this one, is done or overtaken (sim/ledger.py promised)
+        book, here = ledger.of(self), self.current_scene.get('scene_number')
+        over = [p for p in book.promised if p.get('kind') == 'now' and p.get('scene') != here]
+        for p in over:
+            book.promised.remove(p)
+        if over:
+            trace.event('promises_over', promises=[f"{p['who']}: {p['what']}" for p in over])
         # (nothing is met off the page between scenes: two people said their throats were sandpaper,
         # and the next set-up had neither of them thirsty)
         await self.update(local_only=True)
@@ -2141,6 +2148,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         for scene in scenes:
             self._scenes_numbered = getattr(self, '_scenes_numbered', 0) + 1
             scene['scene_number'] = self._scenes_numbered
+        act_began = self.simulation_time
         trace.event('act_start', number=act_number, title=act.get('act_title'),
                     planned_pre=act.get('act_pre_state'), planned_post=act.get('act_post_state'),
                     scenes=len(scenes))
@@ -2186,6 +2194,17 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             self.current_state += f'\n{act_summary}\n'
             # not given to the characters: it is their scenes' wrap-ups again, which each has of the
             # scenes it was in, with the director's verdict and scenes it was not in
+        # what is still promised, read against the act as played (sim/director.py SPENT)
+        book = ledger.of(self)
+        played = '\n'.join(self.entry_line(e) for e in self.record_entries if e.get('text') and e['time'] >= act_began)
+        over = await asyncio.to_thread(director.spent, self.llm, [director.promise_line(p) for p in book.promised], played,
+                                       self.simulation_time.strftime('%H:%M on %A'))
+        gone = [(book.promised[n], why) for n, why in over]
+        for p, _ in gone:
+            if p in book.promised:
+                book.promised.remove(p)
+        if gone:
+            trace.event('promises_spent', act=act_number, spent=[{'who': p['who'], 'what': p['what'], 'why': why} for p, why in gone], left=len(book.promised))
         trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
         self.current_act = None
         #await self.update()
