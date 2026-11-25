@@ -196,12 +196,78 @@ def no_longer_stands(context, words):
     return None
 
 
+# Who knows a thing that stands was written once, when it came to stand, and nothing added to it:
+# a director's fact told on the stage in part one was still 'known to Agnes' alone at the end of
+# part two, for the ruling on a line, the check of a set-up, the stage manager and the planner,
+# while the thread had closed its question because they had been told. (The stage manager then had
+# Agnes keep back in act 4 that she carried them, and had Samantha not know who wrote the names she
+# had been told of in act 3.) What is told or shown on the stage is kept with the thing itself, by
+# one writer (director.told_in, after each scene), and every reader has it from here.
+def told_to(entry, name=None):
+    """Who has been told a standing thing on the stage: {name: what of it ('all', or the part in a
+    few words)}; or for one name, what that one has been told of it ('' for nothing)."""
+    parts = {}
+    for t in entry.get('told') or []:
+        parts.setdefault(t['who'], []).append(t.get('what', 'all'))
+    out = {who: 'all' if 'all' in said else '; '.join(said[-3:]) for who, said in parts.items()}   # the latest parts: they are read in prompts
+    return out if name is None else out.get(name, '')
+
+
+def has_it(entry, name):
+    """Does this person have the whole of a standing thing: knew it, or has been told all of it?"""
+    return name in (entry.get('known') or []) or told_to(entry, name) == 'all'
+
+
+def tell(context, entry, who, by='', what='all', words='', scene=None):
+    """`who` has been told a standing thing, or seen it, on the stage. Returns the names newly told."""
+    what = ' '.join(str(what or 'all').split()).strip(' .') or 'all'
+    what = 'all' if what.lower() in ('all', 'all of it', 'the whole', 'whole') else what
+    new = []
+    for name in who:
+        had = told_to(entry, name)
+        if name in (entry.get('known') or []) or had == 'all' or (what != 'all' and what.lower() in had.lower()):
+            continue
+        entry.setdefault('told', []).append({'who': name, 'by': by, 'what': what, 'words': words, 'scene': scene, 'at': context.simulation_time})
+        new.append(name)
+    if new:
+        ledger.of(context).wrote('standing')
+        trace.event('told', fact=entry['fact'], who=new, by=by, what=what, words=words[:200])
+    return new
+
+
+def knowing(entry):
+    """Who knows a standing thing and who has been told it, in words: 'known to Agnes; told on the
+    stage to Samantha and Joe (Samantha: that she was carried)'."""
+    told = told_to(entry)
+    whole = [n for n, w in told.items() if w == 'all']
+    part = [f'{n}: {w}' for n, w in told.items() if w != 'all']
+    return (f"known to {', '.join(entry.get('known') or []) or 'nobody yet'}"
+            + (f"; told on the stage, all of it, to {', '.join(whole)}" if whole else '')
+            + (f"; told on the stage in part to {'; '.join(part)}" if part else ''))
+
+
+def standing(context, fact):
+    """The standing entry for these words, or None."""
+    low = ' '.join(str(fact or '').lower().split()).strip(' .')
+    return next((s for s in ledger.of(context).standing if not s['ended'] and s['fact'].lower().strip(' .') == low), None)
+
+
 def stands_note(context, reader=None):
     """What stands, oldest first: all of it (reader None: the world's own calls and the planners),
-    or what `reader` knows of it. '' when nothing does."""
+    with who knows each and who has been told it on the stage; or what `reader` knows or has been
+    told of it. '' when nothing does."""
     name = getattr(reader, 'name', reader)
-    rows = [s for s in ledger.of(context).standing if not s['ended'] and (name is None or name in s['known'])][-24:]
-    return '\n'.join(f"- {s['fact']}" + ('' if name is not None else f" (known to {', '.join(s['known']) or 'nobody yet'})") for s in rows)
+    if name is None:
+        return '\n'.join(f"- {s['fact']} ({knowing(s)})" for s in [s for s in ledger.of(context).standing if not s['ended']][-24:])
+    rows = [s for s in ledger.of(context).standing if not s['ended'] and (name in s['known'] or told_to(s, name))][-24:]
+    def mine(s):
+        if name in s['known']:
+            return f"- {s['fact']}"
+        by = ', '.join(dict.fromkeys(t['by'] for t in s.get('told') or [] if t['who'] == name and t.get('by') and t['by'].lower() != 'seen'))
+        how = f"{by} told you" if by else 'you have seen for yourself'
+        what = told_to(s, name)
+        return f"- {s['fact']}" + (f" ({how})" if what == 'all' else f" (of this {how} only: {what})")
+    return '\n'.join(mine(s) for s in rows)
 
 
 def places_near(character, cut=14):

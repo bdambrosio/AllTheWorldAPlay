@@ -62,8 +62,10 @@ Three things found in eight scenes of 2026-11-17 (logs/review-20261117) and chan
     eight scenes). With an owner a beat is played as arranged (switch 'owner_beats'), and a
     thing agreed between two is one beat
   - (after the first whole play, lost-20261117-104840) a beat already played in the talk of an
-    earlier one is not begun (already_done), unless the scene has arrived short of its floor
-    and is playing on: there a beat is what gives it its lines
+    earlier one is not begun (already_done). A scene that has arrived short of its floor and is
+    playing on was let begin such a beat, for its lines: it then asked again what had just been
+    settled ('does your low way still stand?'). There too it is not begun, and the planner is the
+    one asked; the scene plays on through the beats that are its people's own business
   - the cast walked out with an outcome still open: an exit that empties the stage waits for
     the outcomes as well as the beats, unless the beat being played is itself the leaving
     (Context.exit_allowed)
@@ -359,7 +361,7 @@ class Owner:
             self._talking, self._pending = False, None
 
     # ------------------------------------------------------------------ the tracker
-    def check(self, task=None, recount=True):
+    def check(self, task=None, recount=True, tag='scene.track'):
         """Where the scene stands now: {'beat': 'going' | 'done' | 'stalled', 'awaiting': bool,
         'next': ...}, or None when there is nothing to go on. Asked again with nothing new on the
         page and the same beat, it gives the answer it gave."""
@@ -382,7 +384,7 @@ class Owner:
         reply = self.context.llm.ask({'title': scene.get('scene_title', ''), 'place': scene.get('location', ''),
                                       'setup': scene.get('pre_narrative', ''), 'ending': scene.get('post_narrative', ''),
                                       'outcomes': outcomes, 'beat': beat or 'none in particular', 'turns': turns},
-                                     [UserMessage(content=TRACK)], tag='scene.track', temp=0.1, stops=['</end>'], max_tokens=500)
+                                     [UserMessage(content=TRACK)], tag=tag, temp=0.1, stops=['</end>'], max_tokens=500)
         found = json_reply.parse(reply) if reply else None
         self.checks += 1
         if not isinstance(found, dict) or found.get('beat') not in ('going', 'done', 'stalled'):
@@ -434,11 +436,17 @@ class Owner:
         none of them was still to play.)"""
         if not self.active or task is None:
             return False
-        first = self.check(task)
+        # In a scene that has arrived and is playing on to its floor the two looks are the planner's
+        # (tag 'scene.done'). Asked of the playing model on the six such beats of lost-20261123-171920, the
+        # two looks called done a debt not yet asked for and kept 'does your low way still stand?' after the
+        # way was agreed; the planner's looks were as two readers read all five beats they agreed on
+        # (logs/review-20261125/held).
+        tag = 'scene.done' if self.closed else 'scene.track'
+        first = self.check(task, tag=tag)
         if not first or first['beat'] != 'done':
             return False
         self._verdict = None   # look again at the same page
-        again = self.check(task, recount=False)
+        again = self.check(task, recount=False, tag=tag)
         return bool(again) and again['beat'] == 'done'
 
     @staticmethod

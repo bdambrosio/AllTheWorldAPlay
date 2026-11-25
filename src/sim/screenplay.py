@@ -197,7 +197,7 @@ class Screenplay:
         may know one (cast and owners); other names are dropped. Three at most."""
         by_lower = {n.lower(): n for n in names}
         facts = []
-        for line in re.findall(r'^\s*#fact\s+(.+?)\s*$', reply or '', re.M):
+        for line in re.findall(r'^[ \t]*#fact[ \t]+(\S.*?)[ \t]*$', reply or '', re.M):
             fields = [f.strip() for f in line.split('|')]
             text = fields[0].strip(' "')
             if not text:
@@ -216,29 +216,32 @@ class Screenplay:
     def set_past(self, reply, name):
         """Read '#past <name> | <sentence>' for one person and keep it among the facts, known to
         that person alone ('of': whose past it is). Returns the sentence, '' when there is none."""
-        for who, text in re.findall(r'^\s*#past\s+([^|\n]+?)\s*\|\s*(.+?)\s*$', reply or '', re.M):
+        for who, text in re.findall(r'^[ \t]*#past[ \t]+([^|\n]+?)[ \t]*\|[ \t]*(\S.*?)[ \t]*$', reply or '', re.M):
             text = text.strip(' "')
             if who.strip().lower() == name.lower() and text and text.lower().rstrip('.') not in ('none', 'nothing', 'n/a', '-'):
                 self.facts = [f for f in self.facts if f.get('of') != name] + [{'text': text, 'known_to': [name], 'open': False, 'of': name}]
                 return text
         return ''
 
-    def facts_note(self, pasts=False):
+    def facts_note(self, pasts=False, knowing=None):
         """The facts, for the director's own calls (the act as performed, a scene's set-up): never
         for an actor's prompt or a character's own plan. pasts: with each person's own past, for
         the calls that say how a person changes or what they keep back. Whoever writes the scenes
         is not given them: a past is its owner's to tell or keep. (Given Joe's, the planner wrote
         'use the story of the two rattling fans' into his goal in four scenes and then into
-        Samantha's; it was told three times as if new.)"""
+        Samantha's; it was told three times as if new.) knowing(fact text): who knows it and who has
+        been told it on the stage, as the stage keeps it (Context.knowing), in place of whom the
+        director first marked."""
         facts = [f for f in self.facts if pasts or not f.get('of')]
         if not facts:
             return ''
+        who = lambda f: (knowing(f['text']) if knowing and not f.get('of') else None) or f"known to: {', '.join(f['known_to']) or 'nobody'}"
         return ("What lies behind this play (the director's own; no character knows any of it except as marked, and "
                 "none of it says what anyone will do):\n"
-                + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f['known_to']) or 'nobody'}"
+                + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}{who(f)}"
                              + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in facts)
-                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it."
-                + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No scene has anyone tell all of it, and no character knows any of it before a thing or a person has shown it." if self.standing else ''))
+                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it or has been told it on the stage, and then only on as much as it was told."
+                + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No one scene has all of it told, and no character has any of it before a thing or a person has shown or told it." if self.standing else ''))
 
     def clue_note(self, now=None):
         """The clues and where each is, for whoever writes a plan. now(clue): where it is at this

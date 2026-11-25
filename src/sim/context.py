@@ -1603,15 +1603,15 @@ Respond with these lines only:
 #title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
 #setup how the scene opens, one or two sentences, true to where things stand: where the cast is, what is there, what presses on them. It is the opening only: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it; that is played
 #ending what the scene is to settle, one sentence beginning 'Whether' or 'What': the matter, not its answer
-#goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's
+#goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's. Never to leave, or to get the others moving or away, unless whether they go is the scene's matter: going comes when what the scene is for is done
 #unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
 #keeps <character name>: a thing that character knows and does NOT say, show or let slip in this scene (one line for each such thing; none for a character who keeps nothing back)
 #thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
 </end>
 
-On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see Facts for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, give no line for it. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
+On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see Facts for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, or names as its matter whether that thing is told, shown, owned or admitted, give no line for it: the scene is played to find that out, and its actor decides in it. Give none for what those in the scene already have: a thing Facts or What stands marks them as told on the stage, or that the character has told or shown them lately, is no longer kept from them; where they are marked as told a part, only the rest may have a line, and the line says the rest. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
 
-On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
+On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what Facts or What stands marks the character as told on the stage: it has that, as far as the mark says. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
 {{$strangers}}
 """)]
         if opens_act and not survival.config(self):
@@ -1638,7 +1638,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
                   'things': record.account(self, 'planner', people=cast) or 'nothing tracked',
-                  'facts': self.screenplay.facts_note(pasts=True),
+                  'facts': self.screenplay.facts_note(pasts=True, knowing=self.knowing),
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
                                         for e in self._exit_parties())
@@ -1670,13 +1670,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                                ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
                 if value and value != scene.get(key):
                     changed[key] = scene[key] = value
-            for name, goal in re.findall(r'#goal\s+([^:\n]+):\s*(.+)', reply):
+            for name, goal in re.findall(r'#goal[ \t]+([^:\n]+):[ \t]*(.+)', reply):
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
                         entry['goal'] = goal.strip()
             # where in the place each loose thing lies, as the set-up shows it: kept on the thing, so
             # that what is written of it later puts it there (survival.whereabouts_of, holdings)
-            for name, spot in re.findall(r'#thing\s+([^:\n]+):\s*(.+)', reply):
+            for name, spot in re.findall(r'#thing[ \t]+([^:\n]+):[ \t]*(.+)', reply):
                 prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
                              or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
                 if prop is not None and not prop.get('spot'):
@@ -1686,11 +1686,11 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             for entry in (scene.get('characters') or {}).values():
                 if isinstance(entry, dict):
                     entry['unknown'], entry['keeps'] = [], []
-            for name, missing in re.findall(r'#unknown\s+([^:\n]+):\s*(.+)', reply):
+            for name, missing in re.findall(r'#unknown[ \t]+([^:\n]+):[ \t]*(.+)', reply):
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
                         entry['unknown'].append(missing.strip())
-            for name, kept in re.findall(r'#keeps\s+([^:\n]+):\s*(.+)', reply):
+            for name, kept in re.findall(r'#keeps[ \t]+([^:\n]+):[ \t]*(.+)', reply):
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
                         entry['keeps'].append(kept.strip())
@@ -1865,6 +1865,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
         self.scene_refusals = []   # what the stage has refused in this scene (record.refused)
+        self.scene_not_here = {}   # what each was about to say is here and plainly is not (record.speech)
         self.scene_since = []      # what has ended since the scene opened, said beside its set-up (survival._end_threat)
         with self.committing('set', event=setting):
             self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
@@ -1991,7 +1992,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                 continue
             owner = scene_owner.owner_of(self)
             if (owner is not None and ablation.enabled('owner_beats') and not getattr(scene_task['task'], 'leaves', False)
-                    and not owner.closed and owner.already_done(scene_task['task'])):
+                    and owner.already_done(scene_task['task'])):
                 # what the beat was for has been got already, in the talk of an earlier one
                 trace.event('task_skipped', character=character.name, task=scene_task['task'].name, why='already played')
                 self.scene_integrated_task_plan_index += 1
@@ -2060,6 +2061,13 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         outcomes = await self.check_post_state_ambiguity(self.current_scene, scene=scene)
         if outcomes:
             true_outcomes = '\n'.join([outcome.get('outcome') for outcome in outcomes if outcome.get('test') == True])
+        # what of the things that stand someone in the scene was told or saw is kept with each (survival.tell):
+        # every later reader of who knows a thing has it from there
+        played = record.last_lines([str(l).strip() for l in self.transcript[getattr(self, '_scene_transcript_start', 0):] if str(l).strip()], 9000)
+        try:
+            await asyncio.to_thread(director.told_in, self, characters_in_scene, played, scene.get('scene_number') if isinstance(scene, dict) else None)
+        except Exception as e:
+            trace.event('told_failed', error=f'{type(e).__name__}: {e}')
         # The planned post_narrative is kept: overwriting it with the outcome labels ("Alliance
         # established") fed abstract labels to every character and to the next scene. The wrap-up
         # now says what physically happened, plus the assessed outcomes.
@@ -2424,8 +2432,8 @@ In performing this integration:
         elif kind == 'resolving':
             act_directives = f""" 
 In performing this integration:
-    1. Directly answer the central dramatic question: {central_dramatic_question}. The answer is not yours to choose: it is what the characters do when the act's matters are put to them, so write the scenes to bring the question to a head, and no further.
-    2. No scene should avoid engaging with the question's resolution you have chosen. Your target is 3 scenes maximum.
+    1. Bring the central dramatic question to a head: {central_dramatic_question}. The answer is not yours to choose: it is what the characters find and do when the act's matters are put to them, so write the scenes to bring the question to a head, and no further.
+    2. Every scene bears on the question. Your target is 3 scenes maximum.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
     4. Sequence scenes for maximum tension (alternate tension/relief beats)
     5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
@@ -2441,12 +2449,12 @@ In performing this integration:
     1. Show the immediate aftermath and consequences of how the last act left: {central_dramatic_question}
     2. Maximum of 2 scenes - focus on essential closure only, avoid extended exploration.
     3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
-    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).
+    4. First scene should show the immediate practical consequences of how it fell (what changes in their situation).
     5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
-    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.
-    7. Act post-state names what is still to be settled between these people now that the question is answered: how they stand with each other, what each keeps or gives up.
+    6. No new conflicts or dramatic questions. What these people have not found out stays not found: no scene goes after it again, nobody is given it, and nobody's goal is to keep it from them.
+    7. Act post-state names what is still to be settled between these people as things now stand: how they stand with each other, what each keeps or gives up.
     8. The final scene's matter is small and closing: what each takes away from this, or leaves behind.
-    9. Avoid ambiguity about outcomes - the coda confirms and completes the resolution..
+    9. The coda adds nothing to what was found or chosen: it shows it.
 """
 
         bindings = {"time": self.simulation_time.isoformat(), 
@@ -2459,7 +2467,7 @@ In performing this integration:
                                  "places": stage.gazetteer(self) + stage.supporting_note(self),
                                  "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
                                  "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
-                                 "facts": ((self.screenplay.facts_note() + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
+                                 "facts": ((self.screenplay.facts_note(knowing=self.knowing) + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
                                            if self.screenplay.facts_note() else ''),
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
@@ -2592,6 +2600,16 @@ Respond with these lines only, one sentence each:
             thread.make_place(self, director.read_place(reply or ''))
         if standing:
             self.director_person(director.read_person(reply or ''))
+            # what the one who knows a part needs from the leads, and would tell a piece of it for: theirs alone
+            # to know, kept as a thing that stands (they have it on their card, the planner and the rulings see
+            # it with who knows it, and it is marked when they tell it: survival.tell)
+            leads = ' and '.join(c.name for c in self.actors)
+            for who, need in director.read_needs(reply or ''):
+                knower = next((c for c in self.everyone() if c.name.lower() == who.lower() and c not in self.actors), None)
+                if knower is not None:
+                    survival.stands(self, f"{knower.name} needs this of {leads}: {need}. For it {knower.name} would tell them a part of what {knower.name} knows.",
+                                    about=[knower.name], known=[knower.name])
+                    trace.event('director_needs', who=knower.name, needs=need)
         reply = reply if standing else self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
                               'past_rule': past_rule, 'past_format': past_format,
                               # who each is, and what each wants (the facts are about these people: it was given their drives alone)
@@ -2611,7 +2629,7 @@ Respond with these lines only, one sentence each:
             self.episode = {'standing': self.standing_question, 'settles': '', 'open': '', 'last': ''}
             self.screenplay.standing = True
         clues = []
-        for line in re.findall(r'^\s*#clue\s+(.+?)\s*$', reply, re.M):
+        for line in re.findall(r'^[ \t]*#clue[ \t]+(\S.*?)[ \t]*$', reply, re.M):
             fields = [f.strip() for f in line.split('|')]
             if len(fields) >= 3 and fields[0] and fields[1]:
                 says = fields[3].strip(' "') if len(fields) > 3 and fields[3].strip(' "').lower() not in ('', 'none', 'empty', '-', 'n/a') else ''
@@ -2622,7 +2640,7 @@ Respond with these lines only, one sentence each:
         self.screenplay.clues = clues[:3]
         people = self.everyone()
         marks = []   # a trace of a fact on a person (director's #mark): put on them with the clues (place_clues)
-        for line in re.findall(r'^\s*#mark\s+(.+?)\s*$', reply, re.M):
+        for line in re.findall(r'^[ \t]*#mark[ \t]+(\S.*?)[ \t]*$', reply, re.M):
             fields = [f.strip(' ."\'') for f in line.split('|')]
             who = next((c.name for c in people if len(fields) >= 2 and c.name.lower() == fields[0].lower()), None)
             if who and fields[1] and fields[1].lower() not in ('none', 'empty', '-', 'n/a'):
@@ -2631,6 +2649,7 @@ Respond with these lines only, one sentence each:
         self.screenplay.set_facts(reply, [c.name for c in self.everyone()])
         if continued:   # what stood before this part still stands; the new facts are added, the new clues are the ones to place
             self.screenplay.facts = before[0] + [f for f in self.screenplay.facts if not any(f['text'] == o['text'] for o in before[0])]
+            self.thread_new_facts = [f['text'] for f in self.screenplay.facts[len(before[0]):] if not f.get('of')]   # what was settled for this part (part_unclosed)
             self.screenplay.clues_before = before[1]
         for c in self.actors:   # a person's own past stays on its card (get_character_description): its own prompts only
             c.own_past = self.screenplay.set_past(reply, c.name) or (before[2].get(c.name, '') if continued else '')
@@ -2647,6 +2666,12 @@ Respond with these lines only, one sentence each:
         self.director_style()
         self.send_plan()
         return self.episode
+
+    def knowing(self, fact):
+        """Who knows one of the director's facts and who has been told it on the stage, as the stage
+        keeps it (survival.knowing); None where the stage does not hold it (a person's own past)."""
+        entry = survival.standing(self, fact)
+        return survival.knowing(entry) if entry is not None else None
 
     def director_style(self):
         """The director chooses how this performance is to be played: quiet (a play of people),
@@ -2822,6 +2847,41 @@ End your response with: </end>"""
                 self.screenplay.add_thread('told', names[entry['who'].strip().lower()], entry['what'], title)
         trace.event('threads', threads=self.screenplay.threads)
 
+    # How a play that stands on a question is planned: said once, for every call that plans it. (Three prompts
+    # each said it their own way: 'Plan no scene that answers the question for anyone' beside 'it is to close
+    # its question' here, 'Directly answer the central dramatic question' to the one who writes the act, and
+    # 'this act must clearly succeed or fail' to the one who frames it.)
+    STANDING_PLAN = ("Its first half asks what is so. That is there to be found on the stage, by these people's own doing: from a thing found, "
+                     "a place gone to, or the person who knows a part of it, asked. The plan's work is to put each part they do not yet have "
+                     "before them: a scene set where the thing lies, or a scene with the one who knows whose matter is whether that part is told. "
+                     "The plan never writes the finding or the telling as done, and never says which way such a scene falls: that is the actors'. "
+                     "Its second half asks what these people do once they know. That is theirs: no ending has a person choose it; a scene may bring "
+                     "someone to the choice and stop there.")
+
+    def untold(self):
+        """The director's facts the leading people do not wholly have, as the stage keeps who knows and who has been
+        told each (survival.told_to): [(fact, [leads without it], [what a lead has of it so far])]."""
+        out = []
+        leads = [c.name for c in self.actors]
+        for f in self.screenplay.facts:
+            entry = None if f.get('of') else survival.standing(self, f['text'])
+            if entry is None:
+                continue
+            without = [n for n in leads if not survival.has_it(entry, n)]
+            if without:
+                out.append((f['text'], without, [f'{n} has been told: {survival.told_to(entry, n)}' for n in without if survival.told_to(entry, n)]))
+        return out
+
+    def part_unclosed(self):
+        """In a continued part: the facts behind its question that a leading person has been told or shown
+        nothing of, as the stage keeps it (untold). Those settled for this part where any were; else all that
+        stand behind the play. [] on a first night, which may end with part of it not found."""
+        if not getattr(self, 'thread_parts', None):
+            return []
+        lacking = [u for u in self.untold() if not u[2]]   # a part of it told is something put before them
+        new = getattr(self, 'thread_new_facts', None)
+        return [u for u in lacking if u[0] in new] if new else lacking
+
     def episode_note(self, closing=False):
         """The episode's frame as a note for whoever plans an act; '' when there is none."""
         frame = getattr(self, 'episode', None) or {}
@@ -2834,11 +2894,12 @@ End your response with: </end>"""
                 return (f"This is the last act. The play stands on this question: {frame['standing']} "
                         "Show where these people now are with it, in what they do: what they have found out and what each has chosen, as far as they have. "
                         "Settle nothing for them that they have not settled themselves; it may end with part of it still not found. Nobody sums it up." + so_far)
+            lacking = self.untold()
             return (f"The play stands on this question tonight: {frame['standing']} "
-                    "What is so behind it is there to be found; what these people do about it is theirs. "
-                    "Each act should bring them nearer to what is so by their own doing (a place gone to, a thing found, a person met), or make it harder to walk past. "
-                    "Plan no scene that answers the question for anyone, and no ending that has a person choose what to do about it: a scene may bring someone to a choice and stop there."
-                    + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of its last act before the closing one, these people should have come to what is so behind it, by their own doing." if getattr(self, 'thread_parts', None) else '')
+                    + self.STANDING_PLAN
+                    + (("\nOf what is so behind it, these people do not yet have (each act puts at least one of these before them):\n"
+                        + '\n'.join(f"- {fact} (not had by {', '.join(who)}" + (f"; {'; '.join(part)}" if part else '') + ')' for fact, who, part in lacking)) if lacking else '')
+                    + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of the act before the closing one, each part of what is so behind it has been put before these people, in a scene of its own if need be." if getattr(self, 'thread_parts', None) else '')
                     + so_far
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
@@ -2877,7 +2938,9 @@ End your response with: </end>"""
             return
         post_state = ''
         try:
-            for number in range(1, count + 2):
+            number, added = 0, False
+            while number <= self.screenplay.act_count:   # the acts that carry the story, and the closing act after them
+                number += 1
                 record = self.screenplay.begin_act(number)
                 closing = record.kind == 'closing'
                 focus = await self.generate_act_central_narrative(number)
@@ -2916,6 +2979,14 @@ End your response with: </end>"""
                 if self.standing_question and not closing:   # what of it they have now come to, for the next act's planners
                     director.read(self, post_state, [c.name for c in players])
                     self.send_plan()
+                    if record.kind == 'resolving' and not added and self.part_unclosed():
+                        # A continued part is to close its question, and nothing saw whether it had: the acts
+                        # were counted before the first was played, and lost-20261123-171920 went to its closing
+                        # act with what took their day never put to them. One more act that brings it to a head
+                        # is played before the closing act, once (Bruce, 2026-11-25).
+                        added = True
+                        self.screenplay.act_count += 1
+                        trace.event('act_added', after=number, lacking=[fact for fact, who, part in self.part_unclosed()])
             self.message_queue.put({'name': '', 'text': '\n----- end of episode -----'})
             trace.event('episode_end', **(self.episode or {}))
             kept = await asyncio.to_thread(thread.write, self)   # the state of the play, so that this performance can be continued (sim/thread.py)
@@ -3489,11 +3560,11 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
 {{$facts}}
 ## Task
 Generate an act-specific central narrative that:
-1. **Focuses the overall question** - Narrows the play-level dramatic question to what THIS act must resolve
+1. {{$task_focus}}
 2. **Escalates from previous acts** - Raises stakes/tension from where the story currently stands  
 3. **Creates scene-plannable conflict** - Gives characters specific dramatic targets for individual scenes
 4. **Maintains character agency** - Respects the roles and drives established in character plans
-5. **Forces binary resolution** - This act must clearly succeed or fail at its specific focus
+5. {{$task_resolution}}
 
 ## Act-Specific Guidelines
 {{$act_specific_guidelines}}
@@ -3506,8 +3577,7 @@ A paragraph or two including the following elements:
     - {character_name}: [How their overall role manifests specifically in this act - (5-6 words each) who drives decisions, who creates obstacles, etc.]
 4. Required Scene Types: [for each scene type]
     - {scene_type_name}: [a confrontation, a forced choice, a shared job, a lull after pressure, a confession, play: not every scene presses] plus short description of scene focus (4-5 words)
-5. Success Scenario: [What this act accomplishing its focus looks like, in terms of setting up the next act (5-6 words)]
-6. Failure Scenario: [What this act failing at its focus looks like, in terms of setting up the next act (5-6 words)]
+{{$scenarios}}
 7. Change: [for each character] What is different in this person, not in the plot, by the end of the act: what they hold to as it opens (a belief about themselves or the other, a guard they keep up, a habit of their nature), what the act presses them to give up or to risk, and what that costs them. It goes on from where the acts already played left them, and is shown by what it costs them: something told that exposes them, a position given up, a way out let go. Never a feeling or a trust merely declared, and never a physical act this world has no action for. (20-25 words each)
 
 Your response should be consistent with the play-level central narrative and the previous acts.
@@ -3519,18 +3589,41 @@ After the framework, repeat four of its elements on lines of their own, exactly 
 #stakes <the Stakes>
 #role <character name>: <that character's role in this act>
 #change <character name>: <as the act opens ...; by its end ...; at the cost of ...>
-""")]
+{{$actor_lines}}""")]
         # (each character's narrative summary was reset to empty here every act, erasing the
         # record of what had actually happened before the plans that use it)
 
         # by what the act is for, not by its number: a play may plan two acts or five
+        # A play that stands on a question is planned to one contract (STANDING_PLAN, episode_note): what is so
+        # is put before its people and found by them; neither the finding nor what they do about it is the
+        # plan's. This prompt asked for the opposite (an act that 'must clearly succeed or fail', a success and
+        # a failure scenario, a closing act 'after the question has been settled'), and its closing framework
+        # for lost-20261123-171920 gave one person the part 'keeping the caps unspoken' and another the change
+        # 'at the cost of his lost day staying lost'. Replay: logs/review-20261125/plan.
+        standing = bool(self.standing_question)
         act_guidance = {
             'opening': "ESTABLISH foundation - Introduce core conflict, form fragile alliances, set central stakes",
             'middle': "COMPLICATE dynamics - Deepen tension, raise external stakes, force difficult choices",
-            'resolving': "RESOLVE or collapse - Final confrontation, decisive action, ultimate success or failure",
-            'closing': "REFLECT aftermath - This is the closing act, after the question has been settled. Show consequences, "
-                       "character transformation, new equilibrium. No new conflict; nothing here succeeds or fails. " + self.episode_note(closing=True),
+            'resolving': ("BRING TO A HEAD - Every part of what is so that these people still lack is put before them, and they are brought to "
+                          "what they will do about it. How it falls is theirs" if standing else
+                          "RESOLVE or collapse - Final confrontation, decisive action, ultimate success or failure"),
+            'closing': ("REFLECT aftermath - This is the closing act. Show consequences, how these people have changed, where they now stand. "
+                        "No new conflict; nothing here succeeds or fails. " if standing else
+                        "REFLECT aftermath - This is the closing act, after the question has been settled. Show consequences, "
+                        "character transformation, new equilibrium. No new conflict; nothing here succeeds or fails. ") + self.episode_note(closing=True),
         }
+        task_focus = ("**Focuses the overall question** - Narrows the play-level question to what THIS act puts before these people: which part of what is so they may come to in it, and what that brings them to"
+                      if standing else "**Focuses the overall question** - Narrows the play-level dramatic question to what THIS act must resolve")
+        task_resolution = ("**Leaves the outcome open** - The act puts its matter to the characters. Whether they come to what is so, whether the one who knows tells it, and what anyone does about it are theirs to play: say none of them, and plan for no one to keep a thing back to the end"
+                           if standing else "**Forces binary resolution** - This act must clearly succeed or fail at its specific focus")
+        scenarios = ("5. One way it may fall: [where that would leave these people for the next act (5-6 words)]\n"
+                     "6. The other way: [where that would leave them (5-6 words)]" if standing else
+                     "5. Success Scenario: [What this act accomplishing its focus looks like, in terms of setting up the next act (5-6 words)]\n"
+                     "6. Failure Scenario: [What this act failing at its focus looks like, in terms of setting up the next act (5-6 words)]")
+        actor_lines = ("\nThe #focus and #stakes lines are given to every actor, and each #role line to that character's own actor. They say nothing of "
+                       "what lies behind the play that the one reading them neither knows nor has been told: a #focus or #stakes line holds only what "
+                       "all these people have (what has been seen and said on the stage); a #role line may rest on what that person knows.\n"
+                       if self.screenplay.facts_note() else '')
         character_act_plans = []
         for character in cast(List[NarrativeCharacter], self.actors):
             character.current_act = character.get_act_from_plan(act_number)
@@ -3542,9 +3635,10 @@ After the framework, repeat four of its elements on lines of their own, exactly 
                                  "previous_scenes_summary": self.screenplay.so_far() or 'None: this is the first act.',   # what happened, not what was planned
                                  "actor_narratives": '\n'.join([f'{character.name}: \n{character.narrative.get_summary()}\n' for character in cast(List[NarrativeCharacter], self.actors)]), 
                                  "act_specific_guidelines": act_guidance[self.screenplay.kind(act_number)],
+                                 "task_focus": task_focus, "task_resolution": task_resolution, "scenarios": scenarios, "actor_lines": actor_lines,
                                  "current_situation": self.current_state,
                                  # each person's own past is here: a change in a person has somewhere to come from
-                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note(pasts=True)}\n" if self.screenplay.facts_note(pasts=True) else ''},
+                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note(pasts=True, knowing=self.knowing)}\n" if self.screenplay.facts_note(pasts=True) else ''},
                                  prompt, max_tokens=600, stops=['</end>'], tag='act_central_narrative')
         if response:
             # the tagged lines are what an actor is given (Character.act_direction): the act's focus

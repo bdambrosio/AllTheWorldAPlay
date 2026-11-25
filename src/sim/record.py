@@ -182,7 +182,7 @@ def of(context, actor, people=None, full=False):
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
         *([survival.facts_note(context)] if survival.facts_note(context) else []),
-        *(['What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + survival.stands_note(context)]
+        *(['What stands (so in this world, whoever knows it; each is known only to those named with it, and to those marked as told it on the stage, as far as the mark says):\n' + survival.stands_note(context)]
           if survival.stands_note(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
                                    if getattr(c, 'body', None) is not None) or 'not tracked'),
@@ -214,7 +214,7 @@ def account(context, reader, about=None, people=None, full=False):
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
         stands = survival.stands_note(context)
         parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
-                 ('What stands (so in this world, whoever knows it; each is known only to those named with it):\n' + stands) if stands else '',
+                 ('What stands (so in this world, whoever knows it; each is known only to those named with it, and to those marked as told it on the stage, as far as the mark says):\n' + stands) if stands else '',
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
                  ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)
@@ -787,6 +787,13 @@ def speech(context, speaker, line, listener=None, deed=''):
                     hearer.unknown_names -= learned
                     trace.event('name_learned', character=hearer.name, names=sorted(learned), said_by=speaker.name)
     claims = speech_claims(context, speaker, found)
+    # what the line was about to say is there, and plainly is not: its speaker sees that (the line is
+    # put right before anyone hears it, and the one who was to say it went on believing it)
+    for f in found.get('findings') or []:
+        why = ' '.join(str(f.get('why') or '').split()) if isinstance(f, dict) and f.get('kind') == 'here' else ''
+        if why and why not in context.__dict__.setdefault('scene_not_here', {}).setdefault(speaker.name, []):
+            context.scene_not_here[speaker.name].append(why)
+            speaker.add_perceptual_input(f"You were about to say: {str(f.get('words') or '').strip()}. It is not so here, as you can see: {why}", percept=False, mode='internal')
     give = None
     handed = found.get('give') if isinstance(found.get('give'), dict) else None
     if handed and not claims:
@@ -897,7 +904,19 @@ def sound_deeds(context, character, acts):
 BEAT_REFUSALS = 2   # chosen deeds refused in one beat before the beat is given up
 
 
-def refused(context, character, deed, why, chosen=False):
+def _shown(why, seen=()):
+    """What the stage showed where a deed was not done, for the record of it: what was plainly not
+    there to be seen (the 'here' findings of the ruling), else the world's reason. '' when the
+    ruling gave neither ('not here: <the part left out>' names the deed again, not a reason)."""
+    seen = list(dict.fromkeys(' '.join(str(s).split()).rstrip('.') for s in seen or () if str(s).strip()))
+    if seen:
+        return '; '.join(seen)
+    why = ' '.join(('; '.join(str(w) for w in why) if isinstance(why, (list, tuple)) else str(why or '')).split()).rstrip('.')
+    return '' if not why or why.lower().startswith('not here') else why
+
+
+def refused(context, character, deed, why, chosen=False, seen=()):
+    """seen: what the ruling found plainly not there (its 'here' findings' reasons)."""
     task = character.focus_task.peek() if getattr(character, 'focus_task', None) is not None else None
     context.__dict__.setdefault('scene_refusals', []).append(
         {'who': character.name, 'deed': ' '.join(str(deed).split())[:200], 'why': '; '.join(why) if isinstance(why, (list, tuple)) else str(why),
@@ -906,9 +925,14 @@ def refused(context, character, deed, why, chosen=False):
         # a deed chosen and not done is in the record, for those present, as not done: the line
         # said with it ('I'll drink it myself') was read as done, by what stands between two
         # people and by memories, when the record held the line and nothing of the deed
+        # and with what the stage showed instead, which everyone there saw: the reason went to the
+        # doer's own actor alone, so a tread mark three deeds were refused for stayed 'the print' in
+        # the scene's record, the next act's plan and what all three carried forward
+        # (lost-20261123-171920, scenes 5 and 12; replay: logs/review-20261125/refused)
         bare = stage.unnamed(character.name, ' '.join(str(deed).split())).rstrip('. ')
+        shown = _shown(why, seen)
         if bare:
-            context.add_event(f'{character.name} meant to do this and did not; none of it happened: {bare}.', doer=character)
+            context.add_event(f'{character.name} meant to do this and did not; none of it happened: {bare}.' + (f' ({shown}.)' if shown else ''), doer=character)
 
 
 def refusals_note(character):

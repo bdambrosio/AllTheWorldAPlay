@@ -1456,7 +1456,8 @@ End response with:
                 # the deed cannot be done here: the words are still said; the actor is told why,
                 # and it counts against the beat as any refused deed does
                 trace.event('deed_refused', character=self.name, deed=deed[:300], why=[said['deed_refused']], label=None, again=False, with_line=True)
-                record.refused(self.context, self, deed, said['deed_refused'], chosen=True)
+                record.refused(self.context, self, deed, said['deed_refused'], chosen=True,
+                               seen=[f.get('why') for f in said.get('findings') or [] if isinstance(f, dict) and f.get('kind') == 'here'])
                 self.add_perceptual_input(f"You meant to: {deed}. It cannot be done here: {said['deed_refused']}.", percept=False, mode='internal')
             if said is not None and (said['effects'] or said['page']):
                 # what is done with the words (a deed beside them, or a thing the words themselves
@@ -3393,7 +3394,7 @@ End your response with:
             # line and Joe his blank night in his second: the plan kept both for the next scene)
             parts.append(f"What {self.name} keeps back in this scene. {self.name} knows it and it weighs on {self.name}, but it is not said, "
                          f"not hinted at and not let slip here, however the talk turns: asked near it, {self.name} gives less than the truth, "
-                         f"talks of something else, or says plainly that it is not for telling. A later scene brings it out:\n"
+                         f"talks of something else, or says plainly that it is not for telling:\n"
                          + '\n'.join(f'- {k}' for k in d['keeps']))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
         return self.NOTES_HEAD.format(name=self.name) + body + self.NOTES_FOOT

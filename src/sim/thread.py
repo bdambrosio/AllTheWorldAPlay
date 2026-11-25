@@ -132,7 +132,11 @@ def so(context):
         now = {} if thing is None else {'holder': thing.get('holder'), 'place': _where(context, thing.get('at')) if thing.get('at') is not None else None,
                                          'hidden': bool(thing.get('hidden'))}
         return {**_plain(c), 'now': now or 'no longer in the world'}
-    return {'facts': _plain(sp.facts), 'clues': [clue(c) for c in sp.clues], 'marks': _plain(sp.marks)}
+    from sim import survival
+    def fact(f):   # with who has been told it on the stage, as the stage keeps it (survival.told_to)
+        entry = None if f.get('of') else survival.standing(context, f['text'])
+        return {**_plain(f), **({'told': survival.told_to(entry)} if entry is not None and survival.told_to(entry) else {})}
+    return {'facts': [fact(f) for f in sp.facts], 'clues': [clue(c) for c in sp.clues], 'marks': _plain(sp.marks)}
 
 
 def story(context):
@@ -500,6 +504,7 @@ def apply(context, record):
         book.promised.append({'who': p['who'], 'to': list(p.get('to') or []), 'what': p['what'], 'kind': p.get('kind', 'later'), 'event': None})
     for s in part['stage']['standing']:
         book.standing.append({'fact': s['fact'], 'about': list(s.get('about') or []), 'known': list(s.get('known') or []),
+                              'told': [dict(t) for t in s.get('told') or []],   # who has been told it on the stage, in the parts before
                               'since': _when(s.get('since')), 'ended': _when(s.get('ended')), 'event': None})
     for name, says in (part['stage'].get('writings') or {}).items():
         book.writings[name] = says
@@ -588,6 +593,11 @@ def open_part(context, final=None):
     for n, how in read['closed']:
         if 0 < n <= len(questions) and not questions[n - 1].get('closed'):
             questions[n - 1].update(closed=parts[-1].get('part', number - 1), closed_by=how)
+    for n, status, why in read.get('still') or []:   # each open question, read again against what is now so
+        if 0 < n <= len(questions) and not questions[n - 1].get('closed'):
+            questions[n - 1]['settled'] = status == 'settled'
+            if status == 'void':   # it supposes what stands rules out: no part can answer it
+                questions[n - 1].update(closed=parts[-1].get('part', number - 1), closed_by=f'void: {why}'.strip(' :'), void=True)
     for q in read['open']:
         if not any(o['text'] == q['text'] for o in questions):
             questions.append({'text': q['text'], 'raised': parts[-1].get('part', number - 1), 'whose': q['whose'], 'settled': q['settled'],
@@ -642,8 +652,12 @@ def settle_part(context):
     if not needs_settling(context):
         return ''
     told = [f"{t['who']} told {', '.join(t['to']) or 'nobody'}: {t['fact']}" for t in ledger.of(context).told]
+    context.thread_struck = []
     reply = director.settle_next(context, sketch(context), context.thread_parts, context.standing_question, told, opens=context.simulation_time)
-    if reply:
+    # a question the part takes is settled when the whole answer written for it stands. With a line struck and
+    # not made to fit, which of them it left bare is not known here: they stay as they were, and the director who
+    # opens the next part reads every open question again against what is then so (director.CLOSE, 'still')
+    if reply and not context.thread_struck:
         for n in getattr(context, 'thread_takes', None) or []:
             context.thread_questions[n - 1]['settled'] = True
     return reply
