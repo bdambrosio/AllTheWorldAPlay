@@ -94,7 +94,7 @@ The current situation in the play
 CHARACTER_FRAME = """    
 
 ######## {{$name}}, THE CHARACTER ########
-Everything down to the closing line of this block is {{$name}}: who {{$name}} is, and what {{$name}} wants, feels, remembers and can perceive. {{$name}} speaks and acts from this, and from nothing else.
+Everything down to the closing line of this block is {{$name}}: who {{$name}} is, and what {{$name}} wants, feels, remembers and can perceive. {{$name}} speaks and acts from this and from what is given after it as physically so now, and from nothing else.
 
 #Who you are
 {{$character}}
@@ -162,7 +162,18 @@ def ask (character:Character, system_prompt:str=None, prefix:str=None, suffix:st
     if prefix:
         prompt.append(UserMessage(content=prefix+"""\nYou are {{$name}}."""))
     
-    prompt.append(UserMessage(content=PLAYWRIGHT_FRAME if view == 'playwright' else CHARACTER_FRAME))
+    frame = PLAYWRIGHT_FRAME if view == 'playwright' else CHARACTER_FRAME
+    if view != 'playwright':
+        # A heading whose whole content was a pointer to another block ('see the here-and-now block below', 'see Done so
+        # far toward this task') is left out: three of them stood in every prompt that chooses an act.
+        pointed = [('#Your immediate surroundings\n{{$surroundings}}\n##\n\n', 'here_and_now' in addl_bindings),
+                   ('#Previous act if any\n{{$lastAct}}\n##\n\n', str(addl_bindings.get('lastAct') or '').startswith('see ')),
+                   ('#Observed result of that act\n{{$lastActResult}}\n##\n', str(addl_bindings.get('lastActResult') or '').startswith('see '))]
+        for section, gone in pointed:
+            assert section in CHARACTER_FRAME
+            if gone:
+                frame = frame.replace(section, '')
+    prompt.append(UserMessage(content=frame))
     if suffix:
         prompt.append(UserMessage(content=suffix+'\n\nend your response with </end>'))
     

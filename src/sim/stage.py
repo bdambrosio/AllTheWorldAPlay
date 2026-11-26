@@ -14,7 +14,7 @@ import logging
 import os
 import re
 
-from sim import ledger, survival, world
+from sim import land, ledger, survival, world
 from sim.trace import trace
 
 logger = logging.getLogger('simulation_core')
@@ -99,10 +99,12 @@ def remote(character):
     return words
 
 
-def supporting_note(context):
+def supporting_note(context, plan=True):
     """For the prompts that plan and fit scenes (not the leads' own drafts): the supporting actors,
     what each wants and where each is, and that a scene set there has them in it. '' when the
-    play has none in person on the map."""
+    play has none in person on the map. plan: for whoever writes an act's scenes, with how such a
+    person is listed in one; the stage manager, who fits a scene already written, is not told to
+    fill "characters" and "action_order", which its answer does not have."""
     people = [c for c in context.supporting() if world.on(c) and not remote(c)]
     if not people:
         return ''
@@ -110,6 +112,9 @@ def supporting_note(context):
         said = ' '.join((getattr(c, 'original_character', None) or getattr(c, 'character', '') or '').split())
         wants = '; '.join(d.text for d in (getattr(c, 'drives', None) or [])[:2])
         return f"- {c.name}: {said}" + (f" Wants: {wants}." if wants else '') + f" Now {where(context, here(c))}."
+    if not plan:
+        return ("\nPeople of this world who are not at the centre of the play, and where each is:\n" + '\n'.join(line(c) for c in people)
+                + '\nA scene set where one of them is has that person in it; they are in no scene set elsewhere unless it has a reason for them to come.')
     return ("\nPeople of this world who are not at the centre of the play, and where each is:\n" + '\n'.join(line(c) for c in people)
             + '\nA scene set where one of them is has that person in it: list them in its "characters", with a goal of their own drawn from what they want, '
               'and in its "action_order". A goal says what that person is after in the scene, never what they tell or what anyone decides. '
@@ -285,11 +290,13 @@ def set_scene(context, scene, characters, opens_act):
     return line
 
 
-def gazetteer(context):
+def gazetteer(context, bearings=False):
     """The stage for a playwright prompt: where each cast member is, and the named places
     nearest the cast with what each offers (and to whom, when a place is someone's own) and
     how far it is. Every kind of place that offers an action is listed at least once, however
-    far, so the plan knows it exists."""
+    far, so the plan knows it exists. bearings: with which way each lies. (The check of a set-up
+    was shown 'Berries9 (southwest)' and the stage manager only how far: it wrote 'northwest', and
+    was struck; seven of 117 things struck in 21 plays were a direction or a distance.)"""
     cast = [c for c in context.actors if world.on(c)]
     if not cast or not world.places(context):
         return ''
@@ -305,6 +312,9 @@ def gazetteer(context):
     for d, rid, res in listed:
         nearest = min(cast, key=lambda c: world.span(context, here(c), res.xy))
         reach = 'here' if world.at_place(context, here(nearest), res) else world.reach_words(context, here(nearest), res.xy, nearest.name)
+        if bearings and reach != 'here':
+            way = land.bearing(here(nearest), res.xy).lower()
+            reach += '' if way == 'current' else f', to the {way}'
         owner = res.owner
         owned = '' if isinstance(owner, Part) else f", owned by {owner}" if owner else ''   # an owner nobody is cast as goes unsaid
         lines.append(f"- {rid}: {res.description or res.kind}"

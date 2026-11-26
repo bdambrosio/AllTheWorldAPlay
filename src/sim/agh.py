@@ -1900,7 +1900,9 @@ Start with an appropriate task in light of previous achievments and the dramatic
 {{$achievments}}
 
 
-Make explicit reference to diverse known or observable resources where logically fitting, ensuring broader environmental engagement across tasks.
+What is physically so now (the world keeps this, and every task is played on it):
+{{$here_and_now}}
+A task is done with what is here: what {{$name}} holds, what lies here, what another person holds and might give, what a place of this kind gives. Where it fits, make use of these and of the places you know of. Do not write a task that uses, hands over, reads, counts or points at a thing the lines above do not show: where the scene's set-up or your own plans speak of such a thing, a task may be to look for it or to ask after it, never to use it. A task that needs a thing another person holds is a task to ask them for it.
 Eating, drinking and resting are tasks only when your body says the need is at its worst, or the focus goal is about it: ordinary hunger, thirst and tiredness are seen to between scenes.
 
 A task has a name, description, reason, list of actors, start time, duration, and a termination criterion as shown below.
@@ -1985,6 +1987,9 @@ Place tasks least important to the dramatic context early in the plan when possi
                                 "central_narrative": self.story_note(),
                                 "my_narrative": self.central_narrative if self.central_narrative else '',
                                 "scene": self.director_notes(story=False),
+                                # the stage as this character has it: of 39 deeds the stage refused in 21 plays, 28 were named in the
+                                # task ('Open a single tin', 'Give Samantha the water bucket'), written with no sight of what was there
+                                "here_and_now": self.physical_context(events=False),
                                 "task_plan": "\n".join([t.to_string() for t in goal.task_plan]) if goal.task_plan else '', 
                                 "new_task": new_task.to_string() if new_task else ''},
                                tag = 'Character.generate_task_plan',
@@ -2193,12 +2198,13 @@ It serves this goal: {{$goal_string}}
 
 The question: after what is already done and said, what one act now moves {{$name}} toward what this task is for?
 - The task says what {{$name}} is after, not lines to recite. What {{$name}} has already said or done in the play ('What you have seen and heard lately', 'Done so far') is not said or done again, in the same words or in others: go on from it.
+- The task and the notes above were written before this moment. Where one of them names a thing, a mark or a state of things that 'What is physically going on right now' does not show (it is not in 'Your body', not lying here, not in what you can see of the others), the stage is right and the task is out of date: {{$name}} does not use, hold, hand over, count, read or point at it. {{$name}} goes after what the task is for with what is here, looks for the thing, asks after it, or says that it is lacking.
 - Take up the latest thing said or done to {{$name}}: answer it, use it, or refuse it.
 - {{$name}}'s drives and emotional stance decide how boldly and in what way. Pressing for a thing outright is one way among several: {{$name}} may tease, confide something, do the other a good turn, give a little to get a little, change the subject or go quiet, as this person would with this listener; not the way of {{$name}}'s own last two acts.
 
 {{$what_an_act_is}}
 - do: a physical act, in the third person and present tense, as the audience sees it ('{{$name}} hands her the cup'). It carries no words (those go in say). {{$do_rule}}
-{{$both_rule}}- move: walk to a place or person by name (a name under 'You could do here', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
+{{$both_rule}}- move: walk to a place or person by name (a name under 'Places you know of', or a character's). Those with {{$name}} come along unless {{$name}} goes alone.
 - look: look at a person here, a thing here or held, or a place in sight, by its name; or look around. It shows what can be seen of it from where {{$name}} stands.
 {{$think_rule}}
 Truth: {{$name}} speaks and acts only from what {{$name}} has seen, been told or can reasonably guess, and says a guess as a guess. 'Your body' is the truth of {{$name}}'s needs and what {{$name}} holds. A deliberate lie or bluff about oneself ends with the mark (lie), which is not shown. Speak as a person of this world: minutes and paces, ordinary names ('the spring', not 'Spring2'), nothing of a game.
@@ -2231,8 +2237,10 @@ Respond only with the one act.
         # what comes of it (sim/resolver.py); elsewhere, the listed actions
         do_rule = ((f"It is whatever a person could really do here with their body and what is at hand: handle what {name} holds or what lies here, "
                     "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
-                    "The world says what comes of it. A thing that is not held or lying here cannot be used, and nobody is pushed, pulled or held by force."
-                    + (" Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', below), in whatever way a person there would go about it."
+                    "The world says what comes of it. A thing that is not held or lying here cannot be used; what " + name + " has on (a shoe, a coat) is " + name + "'s to take off and use, listed or not. "
+                    "A thing another person holds is theirs until they hold it out or hand it over: ask for it, or put out a hand for it, and their answer is theirs to play. "
+                    "Nobody is pushed, pulled or held by force. A written thing is read before its words are said: where what it says is not given above, the deed is to read it, and nothing of it is quoted yet."
+                    + (" Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', above), in whatever way a person there would go about it."
                        if survival.facts_note(self.context) else '')))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
@@ -2242,7 +2250,7 @@ Respond only with the one act.
         else:
             forms = {'what_an_act_is': (f"What an act is: {name} says something, or does something, or does both at once (a line, and what the hands or body do as it is said). "
                                         f"Or, instead of either, {name} walks somewhere, looks, or thinks.\n"
-                                        f"- say: words {name} speaks aloud (also anything read, recited or sung), and only the words. Words do nothing physical: eating, drinking, "
+                                        f"- say: words {name} speaks aloud (also anything read, recited or sung), and only the words: nothing in brackets or asterisks, and nothing of how it is said or what is done as it is said. Words do nothing physical: eating, drinking, "
                                         "giving, taking, sitting down or going is a deed. Do not name what you and the other are to each other or what the moment means; "
                                         "ask, refuse, offer or tease, and let that show it."),
                      'both_rule': (f"- Most acts are one thing: a line, or a deed. Give both only when {name} speaks while really changing something: handing a thing over, taking it, "

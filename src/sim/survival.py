@@ -252,13 +252,14 @@ def standing(context, fact):
     return next((s for s in ledger.of(context).standing if not s['ended'] and s['fact'].lower().strip(' .') == low), None)
 
 
-def stands_note(context, reader=None):
+def stands_note(context, reader=None, without=()):
     """What stands, oldest first: all of it (reader None: the world's own calls and the planners),
     with who knows each and who has been told it on the stage; or what `reader` knows or has been
-    told of it. '' when nothing does."""
+    told of it. '' when nothing does. without: facts the same prompt already gives, word for word,
+    which are not printed again."""
     name = getattr(reader, 'name', reader)
     if name is None:
-        return '\n'.join(f"- {s['fact']} ({knowing(s)})" for s in [s for s in ledger.of(context).standing if not s['ended']][-24:])
+        return '\n'.join(f"- {s['fact']} ({knowing(s)})" for s in [s for s in ledger.of(context).standing if not s['ended'] and s['fact'] not in without][-24:])
     rows = [s for s in ledger.of(context).standing if not s['ended'] and (name in s['known'] or told_to(s, name))][-24:]
     def mine(s):
         if name in s['known']:
@@ -369,12 +370,13 @@ class Body:
     def level(self, need):
         return self.levels.get(need, 0.0)
 
-    def summary(self, public=False):
+    def summary(self, public=False, held=True):
         """The body in words. public: as someone else sees it, without the items the world
-        keeps private ('private_items' prefixes: the messages on a phone)."""
+        keeps private ('private_items' prefixes: the messages on a phone). held: with what it carries
+        and wears (False where the same prompt lists that beside it)."""
         parts = [_word(self.cfg, n, v) for n, v in self.levels.items()]
         hidden = tuple(self.cfg.get('private_items', ())) if public else ()
-        parts += self._held_words(hidden)
+        parts += self._held_words(hidden) if held else []
         if self.cfg.get('currency'):
             parts.append(f"{self.money:g} {self.cfg['currency']}")
         if self.sheltered:
@@ -655,14 +657,19 @@ def writings_note(context, xy=None, people=()):
     return '\n'.join(lines)
 
 
-def things_note(context, xy=None, people=()):
+def things_note(context, xy=None, people=(), states=False):
     """Where the things of the play are now, for any prompt that writes about them: each thing
     lying loose, with its place and where in it (prop spot), and what each of `people` carries.
     xy: only those lying at or near that spot. (A set-up put the scarf on a peg, a search found it
     swept under the floor, and the next set-up laid it on the floor again while the actors took it
-    to be in Samantha's hands: nobody writing of it was told where the world had it.)"""
+    to be in Samantha's hands: nobody writing of it was told where the world had it.)
+    states: each thing with how it has been left, as the stage lists it (named). The stage manager was
+    given bare names: 'water skin' for one the stage had as 'unstoppered, still heavy', and 'spring
+    water' for a handful long since drunk; it wrote 'the empty water skin' and 'a palmful of spring
+    water cupped in her hands', and both were struck."""
     props = [p for p in getattr(context, 'props', []) if xy is None or at_hand(context, p['at'], xy)]
-    lines = [f"{p['name']}: {whereabouts_of(context, p['name'])}" for p in props]
+    how = (lambda p: f" ({p['state']})" if isinstance(p, dict) and p.get('state') else '') if states else (lambda p: '')
+    lines = [f"{p['name']}: {whereabouts_of(context, p['name'])}{how(p)}" for p in props]
     marks = marks_note(context, xy)
     if marks:   # not things anyone left to be found: what the cast's own deeds did to a place
         lines.append("traces of the cast's own deeds (nobody else made them): " + '; '.join(marks))
@@ -671,7 +678,7 @@ def things_note(context, xy=None, people=()):
         private = tuple((body.cfg.get('private_items', ()) if body is not None else ())) or ('\0',)
         held = [i for i in (body.inventory if body is not None else []) if not i.startswith(private)]
         if held:
-            lines.append(f"carried by {person.name}: {', '.join(held)}")
+            lines.append(f"carried by {person.name}: " + ('; '.join(named(context, i, reader=None) for i in held) if states else ', '.join(held)))
     return '\n'.join(lines)
 
 
@@ -800,10 +807,17 @@ def leave_mark(context, character, words, on=None, ends=None):
         for m in old:
             book.marks.remove(m)
         trace.event('mark_ended' if old else 'ends_unmatched', character=character.name, mark=_said(ends), by=words)
-    if not words or any(m['words'].lower() == words.lower() and at_hand(context, m['at'], at) for m in book.marks):
+    if not words:
         return
+    # The same trace left again is this deed's doing, and the latest thing done to the place: it used to be
+    # dropped as already there. A door bolted, unbolted and bolted again (bellona-20261122-153935) stayed on the
+    # stage as 'unbolted, open', the later of the two traces kept, and eight rulings after it held 'bolted' to be
+    # not so. The earlier one is taken out and this one stands last, with its own time and doer.
+    again = [m for m in book.marks if m['words'].lower() == words.lower() and at_hand(context, m['at'], at)]
+    for m in again:
+        book.marks.remove(m)
     book.marks.append({'words': words, 'at': tuple(at), 'on': on, 'event': book.open[-1] if book.open else None})
-    trace.event('mark_left', character=character.name, mark=words, on=on)
+    trace.event('mark_left', character=character.name, mark=words, on=on, again=bool(again))
 
 
 def marks_note(context, xy=None, reader=None):

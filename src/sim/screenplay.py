@@ -169,10 +169,12 @@ class Screenplay:
             self.threads.append({'kind': kind, 'who': who, 'what': what, 'scene': scene})
             del self.threads[:-self.MAX_THREADS]
 
-    def thread_note(self):
+    def thread_note(self, plan=True):
         """The threads as a note for whoever plans an act. (A play raised a hospital, a steering
         wheel in fog, a ticket with a name, toys in a hut and a cave, and picked none of them up;
-        the memories the two told each other were exchanged and never set side by side.)"""
+        the memories the two told each other were exchanged and never set side by side.)
+        plan: with the charge to pick two up, which is the act planner's; the stage manager, who is to
+        change a planned scene as little as it can, is shown them without it."""
         if not self.threads:
             return ''
         found = [t for t in self.threads if t['kind'] == 'found']
@@ -180,6 +182,8 @@ class Screenplay:
         lines = ["What the play has planted so far, and not yet used:"]
         lines += [f"- found: {t['what']} ({t['who']}, in '{t['scene']}')" for t in found]
         lines += [f"- told by {t['who']}: \"{t['what']}\" (in '{t['scene']}')" for t in told]
+        if not plan:
+            return '\n'.join(lines)
         lines.append("Pick up at least two: a found thing used, questioned or compared; pieces of the past set beside each other "
                      "so that they meet (two memories that fit, or that cannot both be true). Picking up is not explaining: "
                      + ("what these people make of it is theirs." if self.standing else "the open question stays open."))
@@ -230,7 +234,7 @@ class Screenplay:
                 return text
         return ''
 
-    def facts_note(self, pasts=False, knowing=None, answers=()):
+    def facts_note(self, pasts=False, knowing=None, answers=(), setup=False):
         """The facts, for the director's own calls (the act as performed, a scene's set-up): never
         for an actor's prompt or a character's own plan. pasts: with each person's own past, for
         the calls that say how a person changes or what they keep back. Whoever writes the scenes
@@ -238,7 +242,10 @@ class Screenplay:
         'use the story of the two rattling fans' into his goal in four scenes and then into
         Samantha's; it was told three times as if new.) knowing(fact text): who knows it and who has
         been told it on the stage, as the stage keeps it (Context.knowing), in place of whom the
-        director first marked."""
+        director first marked. setup: for the stage manager, whose set-up is read out to everyone in the
+        scene: it was told that a scene may bring a character nearer to one of these or show a trace of it,
+        and wrote into set-ups and goals what only one person knew (34 of 117 things struck from set-ups
+        in 21 plays)."""
         facts = [f for f in self.facts if pasts or not f.get('of')]
         if not facts:
             return ''
@@ -248,7 +255,10 @@ class Screenplay:
                 + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}{who(f)}"
                              + ('; behind the open question: not revealed in this episode' if f['open'] else '')
                              + ("; this is what answers the first half of the play's question" if f['text'] in (answers or ()) else '') + ']' for f in facts)
-                + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it or has been told it on the stage, and then only on as much as it was told."
+                + ("\nA set-up is read out to the audience and to everyone in the scene, so it puts none of these into words beyond what everyone in the scene is marked as knowing or as told; "
+                   "and a goal has a character act only on what that character knows or has been told, and only on as much as it was told."
+                   if setup else
+                   "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it or has been told it on the stage, and then only on as much as it was told.")
                 + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No one scene has all of it told, and no character has any of it before a thing or a person has shown or told it." if self.standing else ''))
 
     def clue_note(self, now=None):

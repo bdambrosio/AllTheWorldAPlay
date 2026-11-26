@@ -202,7 +202,7 @@ def _provider(name):
 REASONING_GROUPS = {
     # what the audience reads, and the check on it
     'page': ('Character.generate_acts', 'generate_dialog_turn', 'bystander_cut_in', 'Context.do', 'Context.look',
-             'record.check', 'reground_scene'),
+             'record.check', 'reground_scene', 'scene.notes'),
     # plans and judgements behind the page
     'plan': ('NarrativeCharacter.write_narrative', 'NarrativeCharacter.replan_narrative_act', 'integrate_narratives',
              'Character.generate_task_plan', 'instantiate_narrative_goal', 'check_post_state_ambiguity',
@@ -280,6 +280,7 @@ PLAN_TAGS = frozenset((
     'NarrativeCharacter.write_narrative', 'integrate_narratives', 'act_central_narrative',
     'frame_episode', 'NarrativeCharacter.replan_narrative_act', 'NarrativeCharacter.replan_scene',
     'reground_scene', 'plan_serves_drives',
+    'scene.notes',      # the stage manager's notes to a scene's actors, written once its set-up has been checked (Context.reground_scene)
     'scene.outcomes',   # a scene's planned ending as what to watch for (sim/scene.py): written once, read at every check
     'scene.beats',      # the actors' proposals arranged into the scene's beats (sim/scene.py)
     'scene.done',       # in a scene that has arrived: has a beat about to be begun been played already (sim/scene.py already_done)

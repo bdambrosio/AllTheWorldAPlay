@@ -201,7 +201,7 @@ def of(context, actor, people=None, full=False):
     ])
 
 
-def account(context, reader, about=None, people=None, full=False):
+def account(context, reader, about=None, people=None, full=False, states=False, without=()):
     """How things stand, for whoever reads it: the one way the stage is described.
     reader: a character (what lies where it is and the traces there, each as whose doing it is
     for this reader; what has been told between it and those with it; how what it carries has
@@ -210,13 +210,15 @@ def account(context, reader, about=None, people=None, full=False):
     written things say, and what each person has told of their life and to whom).
     The same things and traces, by the same wording (survival.named, marks_note, whose), whoever
     reads: each prompt used to put its own list together, and one of them listed a woman's
-    fingermarks as a thing lying at a spring."""
+    fingermarks as a thing lying at a spring.
+    For the planner: states, each thing with how it has been left; without, standing facts the same
+    prompt already gives and that are not printed again."""
     if reader == 'planner':
         cast = list(people) if people is not None else context.everyone()
         told = [f"{t['who']} has told {', '.join(t['to']) or 'nobody yet'}: {t['fact']}" for t in ledger.of(context).told][-24:]
         promised = [f"{p['who']} ({p['kind']}, said to {', '.join(p['to']) or 'nobody'}): {p['what']}" for p in ledger.of(context).promised][-16:]
-        stands = survival.stands_note(context)
-        parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
+        stands = survival.stands_note(context, without=without)
+        parts = [survival.things_note(context, people=cast, states=states), survival.writings_note(context, people=cast),
                  ('What stands (so in this world, whoever knows it; each is known only to those named with it, and to those marked as told it on the stage, as far as the mark says):\n' + stands) if stands else '',
                  (f"Found not to be there, by a ruling of the stage (it is not there still; no set-up or plan has it there): {n}") if (n := ruling.absent_note(context, places=True)) else '',
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
@@ -246,6 +248,13 @@ def account(context, reader, about=None, people=None, full=False):
     left = [survival.named(context, i, reader=reader) for i in (body.inventory if body is not None else []) if survival.state_of(context, i)]
     if left:   # how what it carries has been left by handling
         lines.append('Of what you carry: ' + '; '.join(left))
+    # and how what the others carry has been left, as it can be seen: an actor was shown that state for its own things
+    # only, and said 'Skin's full' of a skin in another's hands that the stage had as 'no longer full'
+    for other in (reader.bystanders() if hasattr(reader, 'bystanders') else []):
+        theirs = getattr(other, 'body', None)
+        seen = [survival.named(context, i, reader=reader) for i in (theirs.inventory if theirs is not None else []) if survival.state_of(context, i)]
+        if seen:
+            lines.append(f'Of what {other.name} carries: ' + '; '.join(seen))
     return '\n'.join(lines)
 
 

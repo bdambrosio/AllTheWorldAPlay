@@ -160,6 +160,9 @@ def person(context, who):
             'sheltered': bool(getattr(body, 'sheltered', False)), 'flags': sorted(getattr(body, 'flags', ()) or ()),
             'to_the_eye': [s['words'] for s in book.states if s['who'] == who.name],
             'does_not_know_the_name_of': sorted(getattr(who, 'unknown_names', None) or ()),
+            # the places this person has seen: not kept, a person who had sheltered in a cave through part one was told in
+            # part three, as a stranger to the country, that she 'has not seen the cave' (lost-20261125-154614)
+            'has_seen': sorted(str(r) for r in (getattr(getattr(who, 'resource_models', None), 'known_resources', None) or {})),
             'carries_forward': {}}
 
 
@@ -480,6 +483,9 @@ def apply(context, record):
             body.levels.update({n: float(v) for n, v in (entry.get('needs') or {}).items() if n in body.levels})
             body.sheltered, body.flags, body.last_tick = bool(entry.get('sheltered')), set(entry.get('flags') or ()), context.simulation_time
         who.unknown_names = set(entry.get('does_not_know_the_name_of') or ())
+        for rid in entry.get('has_seen') or ():   # a thread written before this was kept has none: the person starts as it did
+            if getattr(who, 'resource_models', None) is not None:
+                who.resource_models.add_resource_model(rid)
         who.carried = dict(entry.get('carries_forward') or {})
         who.own_past = next((f['text'] for f in part['so']['facts'] if f.get('of') == who.name), getattr(who, 'own_past', ''))
         who.last_sense_time = context.simulation_time
