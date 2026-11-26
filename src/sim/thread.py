@@ -110,7 +110,8 @@ def questions(context, part, earlier=()):
     def add(text, settled, come_to=None):
         text = ' '.join(str(text or '').split())
         if text and not any(q['text'] == text for q in out):
-            out.append({'text': text, 'raised': part, 'settled': bool(settled), 'come_to': dict(come_to or {}), 'closed': None})
+            out.append({'text': text, 'raised': part, 'settled': bool(settled), 'come_to': dict(come_to or {}), 'closed': None,
+                        **({'answer': list(sp.answers)} if getattr(sp, 'answers', None) and text == ' '.join(str(getattr(context, 'standing_question', '') or '').split()) else {})})
     takes = [n for n in (getattr(context, 'thread_takes', None) or []) if 0 < n <= len(out)]
     if takes:   # a continued part stands on questions already in the list: what the leads have now come to is theirs
         for n in takes:
@@ -176,7 +177,8 @@ def stage_state(context):
     return {'things': [thing(t) for t in book.things], 'traces': [mark(m) for m in book.marks],
             'states': _plain(list(book.states)), 'told': _plain(list(book.told)), 'promised': _plain(list(book.promised)),
             'standing': _plain(list(book.standing)), 'writings': _plain(dict(book.writings)), 'readers': _plain(dict(book.readers)),
-            'shared': _plain(list(book.shared)), 'danger': _plain(book.danger)}
+            'shared': _plain(list(book.shared)), 'danger': _plain(book.danger),
+            'absent': [{**_plain({k: v for k, v in a.items() if k != 'at'}), 'place': _where(context, a['at']), 'xy': _plain(a['at'])} for a in book.absent]}
 
 
 def world_state(context):
@@ -282,6 +284,8 @@ def checked_digest(ask, who, description, witnessed, thoughts, carried=None):
         again = read_digest(ask(prompt + AGAIN.format(faults='\n'.join(f'- "{w}": {shows}' for w, shows in faults)), 900) or '')
         if again['lived']:
             found = again
+        else:   # the writing found at fault is the one kept: said so (digest), not passed off as put right
+            faults = [(w, shows + ' [not put right: the second writing could not be read]') for w, shows in faults]
     return found, faults
 
 
@@ -307,7 +311,8 @@ def digest(context, who):
     found, faults = checked_digest(ask, who.name, description, witnessed, thoughts, carried)
     if faults:
         from sim.trace import trace
-        trace.event('digest_put_right', character=who.name, faults=[{'words': w, 'shows': shows} for w, shows in faults])
+        kept = any('[not put right' in shows for _, shows in faults)
+        trace.event('digest_fault_kept' if kept else 'digest_put_right', character=who.name, faults=[{'words': w, 'shows': shows} for w, shows in faults])
     return found if found['lived'] else carried   # what could not be written again is not lost
 
 
@@ -506,6 +511,10 @@ def apply(context, record):
         book.standing.append({'fact': s['fact'], 'about': list(s.get('about') or []), 'known': list(s.get('known') or []),
                               'told': [dict(t) for t in s.get('told') or []],   # who has been told it on the stage, in the parts before
                               'since': _when(s.get('since')), 'ended': _when(s.get('ended')), 'event': None})
+    for a in part['stage'].get('absent') or []:   # what was found not to be there, in the parts before (sim/ruling.py)
+        if a.get('xy') is not None:
+            book.absent.append({'what': a['what'], 'at': tuple(a['xy']), 'since': _when(a.get('since')), 'seen_by': list(a.get('seen_by') or []),
+                                'by': a.get('by', ''), 'ended': _when(a.get('ended'))})
     for name, says in (part['stage'].get('writings') or {}).items():
         book.writings[name] = says
     for name, who in (part['stage'].get('readers') or {}).items():
@@ -593,18 +602,23 @@ def open_part(context, final=None):
     for n, how in read['closed']:
         if 0 < n <= len(questions) and not questions[n - 1].get('closed'):
             questions[n - 1].update(closed=parts[-1].get('part', number - 1), closed_by=how)
-    for n, status, why in read.get('still') or []:   # each open question, read again against what is now so
+    numbered = director.standing_facts(parts[-1]['so']['facts'])   # as CLOSE was shown them: a question is settled by the fact it names
+    named = lambda k: [numbered[k - 1]['text']] if isinstance(k, int) and 0 < k <= len(numbered) else []
+    for n, status, why, fact in read.get('still') or []:   # each open question, read again against what is now so
         if 0 < n <= len(questions) and not questions[n - 1].get('closed'):
-            questions[n - 1]['settled'] = status == 'settled'
+            questions[n - 1]['settled'] = status == 'settled' and bool(named(fact))
+            questions[n - 1]['answer'] = named(fact) if questions[n - 1]['settled'] else []
             if status == 'void':   # it supposes what stands rules out: no part can answer it
                 questions[n - 1].update(closed=parts[-1].get('part', number - 1), closed_by=f'void: {why}'.strip(' :'), void=True)
     for q in read['open']:
         if not any(o['text'] == q['text'] for o in questions):
-            questions.append({'text': q['text'], 'raised': parts[-1].get('part', number - 1), 'whose': q['whose'], 'settled': q['settled'],
-                              'raised_by': q['raised_by'], 'come_to': {}, 'closed': None})
+            questions.append({'text': q['text'], 'raised': parts[-1].get('part', number - 1), 'whose': q['whose'], 'settled': bool(named(q.get('fact'))),
+                              'answer': named(q.get('fact')), 'raised_by': q['raised_by'], 'come_to': {}, 'closed': None})
     spent = [p for n, p in enumerate(list(book.promised), 1) if n in read['spent']]
+    from sim import ruling
     for p in spent:
         book.promised.remove(p)
+        ruling.released(context, p, 'kept, broken or overtaken in the part before')   # those who held it are told (sim/ruling.py)
     looks = [f"{s['who']}: {s['words']}" for s in book.states]
     opened = director.next_part(context, said, parts, questions, ending(context), looks, final=final)
     context.thread_questions, context.thread_takes = questions, []
@@ -638,6 +652,30 @@ def open_part(context, final=None):
     return opened['question']
 
 
+def another_question(context):
+    """Nothing could be settled behind the question this part took. The director who chose it chooses again, once,
+    from the questions still open without it; the hour the part opens at stands, and so does what has been told of
+    the time between. Returns the new question, or '' when there is no other or none could be written. (The question
+    was read to the audience and then played with nothing behind it: sim/ruling.py, clauses 1 and 4.)"""
+    from sim import director, ruling
+    from sim.trace import trace
+    questions, takes = getattr(context, 'thread_questions', None) or [], list(getattr(context, 'thread_takes', None) or [])
+    if not takes:
+        return ''
+    ruling.unmet(context, 'part', '', f'the question taken for this part: {context.standing_question}', 'nothing that fits what stands could be settled behind it')
+    for n in takes:
+        questions[n - 1]['unanswered'] = len(context.thread_parts) + 1   # read again by the director who opens the next part (CLOSE, 'still')
+    offered = [dict(q, closed=q.get('closed') or ('set aside' if n in takes else None)) for n, q in enumerate(questions, 1)]
+    if all(q.get('closed') for q in offered):
+        return ''
+    opened = director.next_part(context, sketch(context), context.thread_parts, offered, ending(context), [], final=bool(getattr(context, 'thread_final', False)))
+    if not opened:
+        return ''
+    context.thread_takes = [n for n in opened['takes'] if 0 < n <= len(questions) and not offered[n - 1].get('closed')]
+    trace.event('thread_question_again', set_aside=takes, question=opened['question'], takes=context.thread_takes)
+    return opened['question']
+
+
 def needs_settling(context):
     """Is any of what this part's question asks not yet settled behind the play?"""
     questions = getattr(context, 'thread_questions', None) or []
@@ -657,9 +695,14 @@ def settle_part(context):
     # a question the part takes is settled when the whole answer written for it stands. With a line struck and
     # not made to fit, which of them it left bare is not known here: they stay as they were, and the director who
     # opens the next part reads every open question again against what is then so (director.CLOSE, 'still')
-    if reply and not context.thread_struck:
+    # (it was: when nothing had been struck. That marked a question settled though no fact answered it, and left one
+    # unsettled whose answer stood while some other line had been struck.) A question the part takes is settled when a
+    # fact that answers it stands, and it is kept with the question: the one link every later reader goes by
+    # (Context.answering: the planner's note, the stage manager, the rule for one more act, the director who closes).
+    answer = director.answering(reply or '')
+    if answer:
         for n in getattr(context, 'thread_takes', None) or []:
-            context.thread_questions[n - 1]['settled'] = True
+            context.thread_questions[n - 1].update(settled=True, answer=list(answer))
     return reply
 
 

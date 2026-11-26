@@ -35,7 +35,7 @@ import sim.director as director
 import sim.thread as thread
 import sim.record as record
 from sim.screenplay import Screenplay
-from sim import ablation, ledger, keeper, resolver, world
+from sim import ablation, ledger, keeper, resolver, ruling, world
 from sim.character_dataclasses import Stack, Act, Task, Goal, CentralNarrative, datetime_handler, parse_duration
 
 if TYPE_CHECKING:
@@ -1578,6 +1578,7 @@ Where things are now (the world keeps this; a set-up does not move them): {{$thi
 Where the cast last went: {{$left_for}}
 What has happened lately:
 {{$events}}
+{{$unmet}}
 </where_things_stand>
 
 Rules:
@@ -1589,7 +1590,7 @@ Rules:
 - Then write the set-up and ending for the time the scene is played in, and make the title fit it. Do not state the time of day in the set-up unless it matters to what happens: the heading gives it.
 - The scene is played in a world that keeps count. It may use what is there: the places listed, what the cast carries, and the dangers named above (a set-up that brings one on makes it real). It may also bring in something new, which is then real for the rest of the play, so bring in only what the plan truly needs: an object, a source of water, food or shelter. No animal or danger other than those named. Do not write as already so what Bodies and the list do not show (nobody is 'still injured' who is unhurt).
 - The world, not you, decides what happens to bodies and how a danger ends, and it decides when the scene is played. The set-up may bring a danger on; neither set-up, ending nor goals say that it strikes, whom it hurts, that it is driven off, or that anyone is wounded, healed or fed. Where the plan says so, keep what the scene is for and leave that out.
-- If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall), the set-up puts that thing in the scene and says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
+- If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall), the set-up puts that thing in the scene and says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it. This is for a thing the plan gives or the world lists. A trace of what someone did (a print, a cut, a stain) is put there only where the clues, Facts or What stands give it at this place; and a thing listed as found not to be there is not there, whatever has been said of it: where the cast has only spoken of such a thing, the set-up may have them look for it, never have it lying there.
 - The ending is what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, each written as 'whether ...' or as the thing to come out ('Whether Mara lets them shelter at the hut, and on what terms'; 'What the two make of the cut in the bark, and whether they follow it'). Write it so that either answer could be seen or heard on stage, and give neither. A matter is something they are at odds over or do not yet know, not a detail of how the plan had it done (which words, which hand, which joke). Which way it falls, who gives way, who speaks first, who takes whose hand, who stays and who goes are the actors' to play: they are not in the ending. Where the plan's ending says what someone does, says, decides or keeps back, keep the matter that would settle and leave the deed out. It is not an event of the body or of the danger.
 - If a danger is on the cast now (see Now), the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
@@ -1609,7 +1610,7 @@ Respond with these lines only:
 #thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
 </end>
 
-On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see Facts for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, or names as its matter whether that thing is told, shown, owned or admitted, give no line for it: the scene is played to find that out, and its actor decides in it. Give none for what those in the scene already have: a thing Facts or What stands marks them as told on the stage, or that the character has told or shown them lately, is no longer kept from them; where they are marked as told a part, only the rest may have a line, and the line says the rest. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
+On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see Facts for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, or names as its matter whether that thing is told, shown, owned or admitted, give no line for it: the scene is played to find that out, and its actor decides in it. Give none for what those in the scene already have: a thing Facts or What stands marks them as told on the stage, or that the character has told or shown them lately, is no longer kept from them; where they are marked as told a part, only the rest may have a line, and the line says the rest. Last, where What stands says a person would tell a thing for something they need of the others, the line for that thing says until what, in the person's own terms ("that his boot knocked the cap, until they have given him water and a shoulder home"): once it is given, telling or keeping is that actor's. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
 
 On #unknown: a character knows what it has lived (see what has happened lately) and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what Facts or What stands marks the character as told on the stage: it has that, as far as the mark says. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
 {{$strangers}}
@@ -1637,8 +1638,9 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip(),
+                  'unmet': ruling.unmet_note(self),   # what was tried or planned and not done: a failure went upward only as a trace event
                   'things': record.account(self, 'planner', people=cast) or 'nothing tracked',
-                  'facts': self.screenplay.facts_note(pasts=True, knowing=self.knowing),
+                  'facts': self.screenplay.facts_note(pasts=True, knowing=self.knowing, answers=self.screenplay.answers),
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
                                         for e in self._exit_parties())
@@ -1676,24 +1678,30 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                         entry['goal'] = goal.strip()
             # where in the place each loose thing lies, as the set-up shows it: kept on the thing, so
             # that what is written of it later puts it there (survival.whereabouts_of, holdings)
-            for name, spot in re.findall(r'#thing[ \t]+([^:\n]+):[ \t]*(.+)', reply):
-                prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
-                             or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
-                if prop is not None and not prop.get('spot'):
-                    with self.committing('set'):
-                        prop['spot'] = spot.strip().rstrip('.')[:80]
+            # (written to the world once the set-up has been checked, below: it was written before, from a set-up
+            # the check might then strike)
+            spots = re.findall(r'#thing[ \t]+([^:\n]+):[ \t]*(.+)', reply)
+            def place_things():
+                for name, spot in spots:
+                    prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
+                                 or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
+                    if prop is not None and not prop.get('spot'):
+                        with self.committing('set'):
+                            prop['spot'] = spot.strip().rstrip('.')[:80]
             # what each character has still to find out: a note for its actor (Character.director_notes)
-            for entry in (scene.get('characters') or {}).values():
-                if isinstance(entry, dict):
-                    entry['unknown'], entry['keeps'] = [], []
-            for name, missing in re.findall(r'#unknown[ \t]+([^:\n]+):[ \t]*(.+)', reply):
-                for key, entry in (scene.get('characters') or {}).items():
-                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
-                        entry['unknown'].append(missing.strip())
-            for name, kept in re.findall(r'#keeps[ \t]+([^:\n]+):[ \t]*(.+)', reply):
-                for key, entry in (scene.get('characters') or {}).items():
-                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
-                        entry['keeps'].append(kept.strip())
+            def take_notes(text):
+                for entry in (scene.get('characters') or {}).values():
+                    if isinstance(entry, dict):
+                        entry['unknown'], entry['keeps'] = [], []
+                for name, missing in re.findall(r'#unknown[ \t]+([^:\n]+):[ \t]*(.+)', text):
+                    for key, entry in (scene.get('characters') or {}).items():
+                        if key.lower() == name.strip().lower() and isinstance(entry, dict) and missing.strip():
+                            entry['unknown'].append(missing.strip())
+                for name, kept in re.findall(r'#keeps[ \t]+([^:\n]+):[ \t]*(.+)', text):
+                    for key, entry in (scene.get('characters') or {}).items():
+                        if key.lower() == name.strip().lower() and isinstance(entry, dict) and kept.strip():
+                            entry['keeps'].append(kept.strip())
+            take_notes(reply)
             if checked:
                 # the set-up is resolved against the world in one call (sim/resolver.py
                 # resolve_setup): where the scene is, what the set-up brings that such a place
@@ -1717,6 +1725,27 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                     # the danger the set-up has on the cast is started with the scene (survival.stage_hazard)
                     scene['danger'] = found['danger']
                     note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in found['not_so'])
+                    if found['not_so']:
+                        # What the check struck goes back to whoever wrote it, once (sim/ruling.py, clause 4). The
+                        # note was built and thrown away: the notes to the actors, written from the set-up before
+                        # it was checked, kept what was struck ('cut to the print's heel hollow' was struck from a
+                        # set-up of lost-20261125-154614 and Walt's actor was still told he did not know 'that the
+                        # twig was cut to the heel hollow of the print'). The stage manager is asked again for its
+                        # notes alone, from the scene as it now stands; and the planner of the next act is told.
+                        for n in found['not_so']:
+                            ruling.unmet(self, 'plan', '', f"planned for '{scene.get('scene_title', '')}': {n.get('words')}", n.get('why'))
+                        standing = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo', 'kind')}
+                        back = ("\nThe scene above has been checked against the world and stands as it is given: do not change its title, place, set-up, ending or goals "
+                                "(#skip no, #when same, #location same, and the title, set-up, ending and goals as given). Struck from it as not so:\n"
+                                + '\n'.join(f"- {ruling.returned(n.get('words'), n.get('why'))}" for n in found['not_so'])
+                                + "\nWrite the #unknown and #keeps lines afresh, from the scene as it stands: none speaks of anything that was struck.\n")
+                        again = self.llm.ask({**inputs, 'scene': json.dumps(standing, indent=1, default=datetime_handler),
+                                              'things': record.account(self, 'planner', people=cast) or 'nothing tracked', 'rejected': back},
+                                             prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=460) or ''
+                        if re.search(r'#(unknown|keeps)[ \t]', again) or '#setup' in again:
+                            take_notes(again)
+                            trace.event('scene_notes_again', title=scene.get('scene_title'), struck=[n.get('words') for n in found['not_so']])
+                place_things()
                 break
             if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
                 # the set-up is the opening only: what the scene is for is played, not told
@@ -1730,6 +1759,7 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
                             + ". The set-up is the opening only: where the cast is, what is there, what presses on them. "
                               "Leave those deeds for the actors to play, and write it again.\n")
                     continue
+            place_things()
             break   # a world with no mechanics: the set-up stands as written (or as written again above)
         if checked:
             trace.event('scene_check', title=scene.get('scene_title'),
@@ -2208,9 +2238,10 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
         over = await asyncio.to_thread(director.spent, self.llm, [director.promise_line(p) for p in book.promised], played,
                                        self.simulation_time.strftime('%H:%M on %A'))
         gone = [(book.promised[n], why) for n, why in over]
-        for p, _ in gone:
+        for p, why in gone:
             if p in book.promised:
                 book.promised.remove(p)
+                ruling.released(self, p, why)   # those who held it are told (sim/ruling.py)
         if gone:
             trace.event('promises_spent', act=act_number, spent=[{'who': p['who'], 'what': p['what'], 'why': why} for p, why in gone], left=len(book.promised))
         trace.event('act_end', number=act_number, post_state=act.get('act_post_state'))
@@ -2269,13 +2300,16 @@ On #unknown: a character knows what it has lived (see what has happened lately) 
             trace.event('central_question', question=self.standing_question, standing=True)
         else:
             await self.merge_central_narratives()
-        self.message_queue.put({'name':'Prologue', 'text':f'{self.central_narrative}\n'})
         # Settled before any character plans its acts, so that the plans are written knowing
         # them: what this episode settles and leaves open, the clues that lie in the world, and
         # what each character has with it. (They were settled after the plans, at the head of
         # the first act: a plan resolved the mystery the frame then said must stay open, and
         # promised a find in a hut that held nothing.)
         self.frame_episode()
+        # The question is read to the audience once what lies behind it is settled, not before: it was read out,
+        # and when nothing could then be settled behind it the play was played on it with nothing there
+        # (sim/ruling.py, clause 1). frame_episode may have had the director choose another (thread.another_question).
+        self.message_queue.put({'name':'Prologue', 'text':f'{self.central_narrative}\n'})
         ledger.of(self).begun = True   # from here on, whatever changes the stage is an event of the play
         with self.committing('director'):   # what the director puts in the world before the first scene
             self.place_clues()
@@ -2467,7 +2501,7 @@ In performing this integration:
                                  "places": stage.gazetteer(self) + stage.supporting_note(self),
                                  "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
                                  "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
-                                 "facts": ((self.screenplay.facts_note(knowing=self.knowing) + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
+                                 "facts": ((self.screenplay.facts_note(knowing=self.knowing, answers=self.screenplay.answers) + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
                                            if self.screenplay.facts_note() else ''),
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
@@ -2592,6 +2626,14 @@ Respond with these lines only, one sentence each:
         before = (list(self.screenplay.facts), list(self.screenplay.clues), {c.name: getattr(c, 'own_past', '') for c in self.actors}) if continued else None
         if standing and continued:   # only what is not yet settled, behind all that stands; '' when the question's answer already is
             reply = thread.settle_part(self)
+            if not reply and thread.needs_settling(self):
+                # nothing could be settled behind the question: its director is told, and chooses another, once
+                again = thread.another_question(self)
+                if again:
+                    self.standing_question = again
+                    self.screenplay.set_question(f"{again}\n#question {again}")
+                    trace.event('central_question', question=again, standing=True, again=True)
+                    reply = thread.settle_part(self) if thread.needs_settling(self) else ''
         else:
             reply = director.settle(self, leads=leads, **self.sketch_for_director()) if standing else None
         if standing and not reply and not (continued and not thread.needs_settling(self)):
@@ -2607,7 +2649,16 @@ Respond with these lines only, one sentence each:
             for who, need in director.read_needs(reply or ''):
                 knower = next((c for c in self.everyone() if c.name.lower() == who.lower() and c not in self.actors), None)
                 if knower is not None:
-                    survival.stands(self, f"{knower.name} needs this of {leads}: {need}. For it {knower.name} would tell them a part of what {knower.name} knows.",
+                    # (a need written for them in an earlier part is over: two would stand side by side)
+                    for s in ledger.of(self).standing:
+                        if not s['ended'] and s['fact'].startswith(f'{knower.name} needs this of '):
+                            s['ended'] = self.simulation_time
+                    # what it buys is what they are asking, where this person has that: Walt was paid his water and his
+                    # shoulder home and told, for it, what they had just heard from Agnes (lost-20261125-154614)
+                    has_answer = any(knower.name in [n.strip() for n in director._labelled(director._fields(l), 'known to').split(',')]
+                                     for l in director._lines('fact', reply or '') if director._labelled(director._fields(l), 'answers').lower().startswith('y'))
+                    buys = (f"the part of what {knower.name} knows that answers what they are asking" if has_answer else f"a part of what {knower.name} knows")
+                    survival.stands(self, f"{knower.name} needs this of {leads}: {need}. For it {knower.name} would tell them {buys}.",
                                     about=[knower.name], known=[knower.name])
                     trace.event('director_needs', who=knower.name, needs=need)
         reply = reply if standing else self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
@@ -2638,6 +2689,8 @@ Respond with these lines only, one sentence each:
                 clues.append({'thing': fields[0].strip(' ."\''), 'place': fields[1], 'touches': fields[2], **({'says': says} if says else {}),
                               **({'fixed': True} if fixed else {}), **({'looks': looks} if looks else {})})
         self.screenplay.clues = clues[:3]
+        if len(clues) > 3:   # said, not dropped in silence (sim/ruling.py): what was written and is not in the play
+            trace.event('director_capped', what='clues', kept=3, left_out=[c['thing'] for c in clues[3:]])
         people = self.everyone()
         marks = []   # a trace of a fact on a person (director's #mark): put on them with the clues (place_clues)
         for line in re.findall(r'^[ \t]*#mark[ \t]+(\S.*?)[ \t]*$', reply, re.M):
@@ -2647,6 +2700,15 @@ Respond with these lines only, one sentence each:
                 marks.append({'who': who, 'looks': fields[1], 'touches': fields[2] if len(fields) > 2 else ''})
         self.screenplay.marks = marks[:1]
         self.screenplay.set_facts(reply, [c.name for c in self.everyone()])
+        # Which fact answers the question the play stands on tonight: the director marks it, and it is kept apart from
+        # the facts (a fact that answered the first part's question is not the answer to the third's), with the
+        # question in a thread (thread.settle_part, open_part). Every reader that needs to know goes by it (answering).
+        self.screenplay.answers = [f['text'] for f in self.screenplay.facts if f.pop('answers', None)]
+        if continued and not self.screenplay.answers:   # a question settled in an earlier part: the fact named with it then
+            self.screenplay.answers = [t for n in (getattr(self, 'thread_takes', None) or []) if 0 < n <= len(getattr(self, 'thread_questions', None) or [])
+                                       for t in (self.thread_questions[n - 1].get('answer') or [])]
+        if self.screenplay.answers:
+            trace.event('director_answer', facts=self.screenplay.answers)
         if continued:   # what stood before this part still stands; the new facts are added, the new clues are the ones to place
             self.screenplay.facts = before[0] + [f for f in self.screenplay.facts if not any(f['text'] == o['text'] for o in before[0])]
             self.thread_new_facts = [f['text'] for f in self.screenplay.facts[len(before[0]):] if not f.get('of')]   # what was settled for this part (part_unclosed)
@@ -2856,7 +2918,15 @@ End your response with: </end>"""
                      "before them: a scene set where the thing lies, or a scene with the one who knows whose matter is whether that part is told. "
                      "The plan never writes the finding or the telling as done, and never says which way such a scene falls: that is the actors'. "
                      "Its second half asks what these people do once they know. That is theirs: no ending has a person choose it; a scene may bring "
-                     "someone to the choice and stop there.")
+                     "someone to the choice and stop there. Where the one who knows needs something of these people (What stands says what), a scene may turn on "
+                     "that need; whether what it buys is then told is the matter of a scene of its own, before the closing act.")
+
+    def answering(self):
+        """The standing entries of the facts that answer the question the play stands on (Screenplay.answers), ended
+        ones too: a deed may end a condition the director settled, and it is still what answered. [] where the
+        director marked none (an older thread, a play without a director)."""
+        want = {' '.join(str(t).lower().split()).strip(' .') for t in getattr(self.screenplay, 'answers', None) or []}
+        return [s for s in ledger.of(self).standing if s['fact'].lower().strip(' .') in want] if want else []
 
     def untold(self):
         """The director's facts the leading people do not wholly have, as the stage keeps who knows and who has been
@@ -2878,6 +2948,14 @@ End your response with: </end>"""
         stand behind the play. [] on a first night, which may end with part of it not found."""
         if not getattr(self, 'thread_parts', None):
             return []
+        # By the fact that answers the part's question, where the director has marked one (answering): the part is
+        # closed when every leading person has the whole of it. (It was: when each fact had been told in some part.
+        # Walt's fact held two things, that his boot knocked the cap and that he watched them eat; the second was
+        # told, the part counted as closed with whose boot it was untold, and no further act was played.)
+        answer = self.answering()
+        if answer:
+            leads = [c.name for c in self.actors]
+            return [(e['fact'], [n for n in leads if not survival.has_it(e, n)], []) for e in answer if any(not survival.has_it(e, n) for n in leads)]
         lacking = [u for u in self.untold() if not u[2]]   # a part of it told is something put before them
         new = getattr(self, 'thread_new_facts', None)
         return [u for u in lacking if u[0] in new] if new else lacking
@@ -2898,9 +2976,11 @@ End your response with: </end>"""
             return (f"The play stands on this question tonight: {frame['standing']} "
                     + self.STANDING_PLAN
                     + (("\nOf what is so behind it, these people do not yet have (each act puts at least one of these before them):\n"
-                        + '\n'.join(f"- {fact} (not had by {', '.join(who)}" + (f"; {'; '.join(part)}" if part else '') + ')' for fact, who, part in lacking)) if lacking else '')
-                    + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of the act before the closing one, each part of what is so behind it has been put before these people, in a scene of its own if need be." if getattr(self, 'thread_parts', None) else '')
+                        + '\n'.join(f"- {fact} (not had by {', '.join(who)}" + (f"; {'; '.join(part)}" if part else '')
+                                     + ("; THIS is what answers the first half of the question" if fact in (self.screenplay.answers or ()) else '') + ')' for fact, who, part in lacking)) if lacking else '')
+                    + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of the act before the closing one, what answers its first half has been put before these people, in a scene whose matter is whether it is told or found; the other parts of what is so are put before them as they serve that." if getattr(self, 'thread_parts', None) else '')
                     + so_far
+                    + (f"\n{note}" if (note := ruling.unmet_note(self)) else '')   # what was tried or planned and the world would not have (sim/ruling.py)
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                     + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')
@@ -3211,13 +3291,17 @@ End your response with </end>
             outcomes = await self.check_post_state_ambiguity(act)
             assessed = '; '.join(o.get('outcome') for o in outcomes if o.get('test') == True)
             summary = ' '.join(self.act_scene_wrapups[-4:]) + (f' Assessed act outcome: {assessed}.' if assessed else '')
-        post_state = summary.strip() + (f'\n(The act was to settle: {planned})' if planned else '')
+        # What was planned for the act is no part of what happened in it. It went on under 'How the previous act left
+        # things' and 'the actual situation after the previous act' as '(The act was to settle: ...)', and to every
+        # actor to think over: a plan that spoke of a print put the print before them again (sim/ruling.py, clause 2).
+        # Whoever plans is told it as a plan; the actors think over the act as it was played.
+        post_state = summary.strip() + (f'\n(Planned for that act beforehand, and no record of it. Nothing in this line happened or is so unless the record above says it: it was to settle: {planned})' if planned else '')
         self.message_queue.put({'name':self.name, 'text':f'coda: {self.told_briefly(summary)}'})
         if self.screenplay.act:
             self.screenplay.act.summary, self.screenplay.act.post_state = summary.strip(), post_state
             self.send_plan()
         for character in cast(List[NarrativeCharacter], self.actors):
-            character.reason_over(post_state)
+            character.reason_over(summary.strip())
         return post_state
 
 
@@ -3638,7 +3722,7 @@ After the framework, repeat four of its elements on lines of their own, exactly 
                                  "task_focus": task_focus, "task_resolution": task_resolution, "scenarios": scenarios, "actor_lines": actor_lines,
                                  "current_situation": self.current_state,
                                  # each person's own past is here: a change in a person has somewhere to come from
-                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note(pasts=True, knowing=self.knowing)}\n" if self.screenplay.facts_note(pasts=True) else ''},
+                                 "facts": f"\n## What lies behind the play\n{self.screenplay.facts_note(pasts=True, knowing=self.knowing, answers=self.screenplay.answers)}\n" if self.screenplay.facts_note(pasts=True) else ''},
                                  prompt, max_tokens=600, stops=['</end>'], tag='act_central_narrative')
         if response:
             # the tagged lines are what an actor is given (Character.act_direction): the act's focus

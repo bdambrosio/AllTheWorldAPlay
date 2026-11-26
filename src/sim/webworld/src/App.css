@@ -44,12 +44,26 @@ body {
 }
 
 .world-panel {
-  width: 408px;
-  height: 408px;
+  /* the picture: a third of the window's height on a small screen, 408px at most to begin with;
+     drag its lower right corner to make it any size (the text beside it and the log below follow) */
+  width: clamp(180px, 36vh, 408px);
+  height: clamp(180px, 36vh, 408px);
+  min-width: 120px;
+  min-height: 120px;
+  max-width: 70%;
+  max-height: 80vh;
+  resize: both;
+  overflow: hidden;
+  box-sizing: border-box;
   background-color: #333333;
   border-radius: 0px;
   padding: 10px;
   flex-shrink: 0;
+}
+
+.world-panel > div {
+  width: 100%;
+  height: 100%;
 }
 
 .world-description {
@@ -58,7 +72,11 @@ body {
   border-radius: 2px;
   padding: 10px;
   color: #FFFFFF;
-  min-height: 408px;
+  /* as tall as the picture beside it, whatever its text: it scrolls */
+  min-height: 0;
+  max-height: none;
+  contain: size;
+  overflow-y: auto;
 }
 
 .character-info {
@@ -291,9 +309,10 @@ h3 {
 
 /* Ensure image fits container */
 .world-panel img {
-  width: 98%;
-  height: 98%;
-  object-fit: scale-down;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  margin-bottom: 0;
 }
 /* continuing a performance in a further part (the play dialog) */
 .continue-play {

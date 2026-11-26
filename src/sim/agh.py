@@ -11,6 +11,7 @@ import sim.stage as stage
 import sim.world as world
 import sim.ablation as ablation
 import sim.record as record
+import sim.ruling as ruling
 import sim.resolver as resolver
 import sim.keeper as keeper
 import sim.scene as scene_owner
@@ -1395,7 +1396,8 @@ End response with:
             elevenlabs_params = self.speech_stylizer.voice_params(self)
             if not getattr(act, 'unshown', False):   # words meant for someone who had gone are kept, not shown
                 self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
-            self.context.transcript.append(f'{self.name}: ...{act_arg}...')
+            if not getattr(act, 'unrecorded', False):   # a refused deed, as it was meant, is its actor's own (record.mend_deed)
+                self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
 
             # A thought is shown, remembered and reasoned over. (It was run as a dialog with
@@ -1457,7 +1459,8 @@ End response with:
                 # and it counts against the beat as any refused deed does
                 trace.event('deed_refused', character=self.name, deed=deed[:300], why=[said['deed_refused']], label=None, again=False, with_line=True)
                 record.refused(self.context, self, deed, said['deed_refused'], chosen=True,
-                               seen=[f.get('why') for f in said.get('findings') or [] if isinstance(f, dict) and f.get('kind') == 'here'])
+                               seen=[f.get('why') for f in said.get('findings') or [] if isinstance(f, dict) and f.get('kind') == 'here'],
+                               shown=said.get('seen', ''), absent=said.get('absent', ''))
                 self.add_perceptual_input(f"You meant to: {deed}. It cannot be done here: {said['deed_refused']}.", percept=False, mode='internal')
             if said is not None and (said['effects'] or said['page']):
                 # what is done with the words (a deed beside them, or a thing the words themselves
@@ -3393,7 +3396,7 @@ End your response with:
             # (with the pressing gone from a first meeting, Kidd told his lost hours in his fourth
             # line and Joe his blank night in his second: the plan kept both for the next scene)
             parts.append(f"What {self.name} keeps back in this scene. {self.name} knows it and it weighs on {self.name}, but it is not said, "
-                         f"not hinted at and not let slip here, however the talk turns: asked near it, {self.name} gives less than the truth, "
+                         f"not hinted at and not let slip here, however the talk turns (unless the line itself says until what: then, once that has been given or done, it is {self.name}'s to tell or keep): asked near it, {self.name} gives less than the truth, "
                          f"talks of something else, or says plainly that it is not for telling:\n"
                          + '\n'.join(f'- {k}' for k in d['keeps']))
         body = '\n'.join(p for p in parts if p) or 'None for this moment: play from the character.'
@@ -3702,6 +3705,8 @@ End your response with:
             act_count += 1
             if record.beat_refused(self, task):   # the stage will not have what this beat is for: it is given up
                 trace.event('beat_dropped', character=self.name, task=task.name, why='its deed was refused twice')
+                last = next((r for r in reversed(getattr(self.context, 'scene_refusals', [])) if r['who'] == self.name), {})
+                ruling.unmet(self.context, 'deed', self.name, f'the beat given up: {task.name}', last.get('why', ''))   # read by whoever plans next (sim/ruling.py)
                 break
             # a danger strikes when its time comes, between one act and the next: it was applied
             # only after the whole task, so acts written before it (sniffing a cup) were played

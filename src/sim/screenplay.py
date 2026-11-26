@@ -55,6 +55,7 @@ class Screenplay:
     clues: list = field(default_factory=list)      # [{'thing', 'place', 'touches'}]
     marks: list = field(default_factory=list)      # [{'who', 'looks', 'touches'}]: a trace of a fact on a person, seen by anyone (director's #mark)
     facts: list = field(default_factory=list)      # [{'text', 'known_to': [names], 'open': bool}]: what lies behind the play (set_facts)
+    answers: list = field(default_factory=list)    # the texts of the facts that answer the first half of the question the play stands on (Context.frame_episode)
     standing: bool = False                         # the play stands on a question from its sketch (sim/director.py): its facts are to be found
     known: dict = field(default_factory=dict)      # {name: what that person has come to, of what is so} (director.read)
     walked_past: int = 0                           # acts in a row that came no nearer to what is so
@@ -202,15 +203,21 @@ class Screenplay:
             text = fields[0].strip(' "')
             if not text:
                 continue
-            known, is_open = [], False
+            known, is_open, answers = [], False, False
             for f in fields[1:]:
                 key, _, value = f.partition(':')
                 if key.strip().lower().startswith('known'):
                     known = [by_lower[n.strip().lower()] for n in re.split(r',|\band\b', value) if n.strip().lower() in by_lower]
                 elif key.strip().lower() == 'open':
                     is_open = value.strip().lower().startswith('y')
-            facts.append({'text': text, 'known_to': known, 'open': is_open})
+                elif key.strip().lower().startswith('answers'):
+                    answers = value.strip().lower().startswith('y')
+            facts.append({'text': text, 'known_to': known, 'open': is_open, **({'answers': True} if answers else {})})
+        facts.sort(key=lambda f: not f.get('answers'))   # the fact that answers the question is never the one the cap leaves out
         self.facts = facts[:4 if self.standing else 3]
+        if len(facts) > len(self.facts):   # said, not dropped in silence (sim/ruling.py)
+            from sim.trace import trace
+            trace.event('director_capped', what='facts', kept=len(self.facts), left_out=[f['text'] for f in facts[len(self.facts):]])
         return self.facts
 
     def set_past(self, reply, name):
@@ -223,7 +230,7 @@ class Screenplay:
                 return text
         return ''
 
-    def facts_note(self, pasts=False, knowing=None):
+    def facts_note(self, pasts=False, knowing=None, answers=()):
         """The facts, for the director's own calls (the act as performed, a scene's set-up): never
         for an actor's prompt or a character's own plan. pasts: with each person's own past, for
         the calls that say how a person changes or what they keep back. Whoever writes the scenes
@@ -239,7 +246,8 @@ class Screenplay:
         return ("What lies behind this play (the director's own; no character knows any of it except as marked, and "
                 "none of it says what anyone will do):\n"
                 + '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}{who(f)}"
-                             + ('; behind the open question: not revealed in this episode' if f['open'] else '') + ']' for f in facts)
+                             + ('; behind the open question: not revealed in this episode' if f['open'] else '')
+                             + ("; this is what answers the first half of the play's question" if f['text'] in (answers or ()) else '') + ']' for f in facts)
                 + "\nA scene may bring a character nearer to one of these, or show a trace of it; a character acts on one only if it knows it or has been told it on the stage, and then only on as much as it was told."
                 + ("\nThese are there to be found in this performance, from the things and people that show them, a part at a time. No one scene has all of it told, and no character has any of it before a thing or a person has shown or told it." if self.standing else ''))
 

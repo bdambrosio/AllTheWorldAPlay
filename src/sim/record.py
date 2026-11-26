@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, keeper, ledger, stage, survival, world
+from sim import ablation, keeper, ledger, ruling, stage, survival, world
 from sim.trace import trace
 from utils.Messages import UserMessage
 from utils import json_reply
@@ -193,6 +193,9 @@ def of(context, actor, people=None, full=False):
           if (m := survival.marks_note(context, at)) else []),
         *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
            + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
+        # what a ruling has already found not to be here (sim/ruling.py): it is not here still, until a deed makes it
+        *([f"Found not to be here (looked for, and not there: nothing brings one in, and a deed that needs one cannot be done with it): {n}"]
+          if (n := ruling.absent_note(context, at)) else []),
         'Danger: ' + (danger(actor) or 'none'),
         *(_acts(context, actor, people) if full else []),
     ])
@@ -215,6 +218,7 @@ def account(context, reader, about=None, people=None, full=False):
         stands = survival.stands_note(context)
         parts = [survival.things_note(context, people=cast), survival.writings_note(context, people=cast),
                  ('What stands (so in this world, whoever knows it; each is known only to those named with it, and to those marked as told it on the stage, as far as the mark says):\n' + stands) if stands else '',
+                 (f"Found not to be there, by a ruling of the stage (it is not there still; no set-up or plan has it there): {n}") if (n := ruling.absent_note(context, places=True)) else '',
                  ("What each has told of their own life (the one told knows it from then on):\n" + '\n'.join(told)) if told else '',
                  ("What has been promised or agreed (the latest, and not every word said), oldest first:\n" + '\n'.join(promised)) if promised else '']
         return '\n'.join(p for p in parts if p)
@@ -236,6 +240,9 @@ def account(context, reader, about=None, people=None, full=False):
             lines.append(f"You have already told {other.name} this of your life, and {other.name} knows it (it is not news to tell again): " + '; '.join(mine))
         if theirs:
             lines.append(f"{other.name} has told you this of their life: " + '; '.join(theirs))
+    gone = ruling.absent_note(context, here, reader=reader)
+    if gone:   # what this person has looked for here, or seen looked for, and found not there
+        lines.append('Looked for here and not here, as you have seen: ' + gone)
     left = [survival.named(context, i, reader=reader) for i in (body.inventory if body is not None else []) if survival.state_of(context, i)]
     if left:   # how what it carries has been left by handling
         lines.append('Of what you carry: ' + '; '.join(left))
@@ -789,11 +796,24 @@ def speech(context, speaker, line, listener=None, deed=''):
     claims = speech_claims(context, speaker, found)
     # what the line was about to say is there, and plainly is not: its speaker sees that (the line is
     # put right before anyone hears it, and the one who was to say it went on believing it)
+    # The same for every finding but one of form (aloud): the ruling puts the line right itself, and its speaker,
+    # told nothing, held to what it had meant to say and said it again in the next line (sim/ruling.py, clause 4).
+    # And a thing of the place that a 'here' finding found not to be there is kept for every later ruling
+    # (ruling.not_there, below): it was kept in a list nothing read.
     for f in found.get('findings') or []:
-        why = ' '.join(str(f.get('why') or '').split()) if isinstance(f, dict) and f.get('kind') == 'here' else ''
+        kind = f.get('kind') if isinstance(f, dict) else None
+        why = ' '.join(str(f.get('why') or '').split()) if kind and kind != 'aloud' else ''
         if why and why not in context.__dict__.setdefault('scene_not_here', {}).setdefault(speaker.name, []):
             context.scene_not_here[speaker.name].append(why)
-            speaker.add_perceptual_input(f"You were about to say: {str(f.get('words') or '').strip()}. It is not so here, as you can see: {why}", percept=False, mode='internal')
+            words = str(f.get('words') or '').strip()
+            if kind == 'here':
+                speaker.add_perceptual_input(f"You were about to say: {words}. It is not so here, as you can see: {why}", percept=False, mode='internal')
+            else:
+                speaker.add_perceptual_input(f"You were about to say a thing that is not so, and said it as it is. {ruling.returned(words, why)}", percept=False, mode='internal')
+    # (the thing, as the ruling names it: a 'here' finding is as often how a thing is, 'the skin still holds water',
+    # which is no absence and would be stale by the next scene: 6 of 10 in lost-20261125-154614)
+    if found.get('absent') and any(isinstance(f, dict) and f.get('kind') == 'here' for f in found.get('findings') or []):
+        ruling.not_there(context, found['absent'], stage.here(speaker), seen_by=[speaker], by='line')
     give = None
     handed = found.get('give') if isinstance(found.get('give'), dict) else None
     if handed and not claims:
@@ -874,6 +894,7 @@ def judge(context, character, act):
     if act.found['can']:
         act.leaves, act.leaves_to = resolver.leaving(context, character, act.found)
     else:
+        act.refused_as = {'seen': act.found.get('seen', ''), 'absent': act.found.get('absent', '')}   # what was seen instead, and what was not there (refused)
         act.found = None
 
 
@@ -915,8 +936,20 @@ def _shown(why, seen=()):
     return '' if not why or why.lower().startswith('not here') else why
 
 
-def refused(context, character, deed, why, chosen=False, seen=()):
-    """seen: what the ruling found plainly not there (its 'here' findings' reasons)."""
+def refusal_line(name, why, seen=(), shown='', absent=''):
+    """The record of a refused deed, for those present: what they saw instead, as the ruling gives it (else that
+    something was tried and not done, with the world's reason), and in so many words what was looked for and not
+    there. Without that last, a record that only showed someone crouching by the cap left the print standing in
+    every summary written from it, because the lines spoken around it still spoke of one (logs/review-20261126/deed.py)."""
+    plain = lambda v: ' '.join(str(v or '').split()).rstrip('. ')
+    shown, absent, reason = plain(shown), plain(absent), _shown(why, seen)
+    line = f'{shown}.' if shown else f'{name} went to do something and did not' + (f': {reason}.' if reason else '.')
+    return line + (f' (Looked for here and not there: {absent}.)' if absent else '')
+
+
+def refused(context, character, deed, why, chosen=False, seen=(), shown='', absent=''):
+    """seen: what the ruling found plainly not there (its 'here' findings' reasons). shown: what those
+    present saw instead, as the ruling gave it. absent: the thing the deed needed that is not at this place."""
     task = character.focus_task.peek() if getattr(character, 'focus_task', None) is not None else None
     context.__dict__.setdefault('scene_refusals', []).append(
         {'who': character.name, 'deed': ' '.join(str(deed).split())[:200], 'why': '; '.join(why) if isinstance(why, (list, tuple)) else str(why),
@@ -929,10 +962,18 @@ def refused(context, character, deed, why, chosen=False, seen=()):
         # doer's own actor alone, so a tread mark three deeds were refused for stayed 'the print' in
         # the scene's record, the next act's plan and what all three carried forward
         # (lost-20261123-171920, scenes 5 and 12; replay: logs/review-20261125/refused)
-        bare = stage.unnamed(character.name, ' '.join(str(deed).split())).rstrip('. ')
-        shown = _shown(why, seen)
-        if bare:
-            context.add_event(f'{character.name} meant to do this and did not; none of it happened: {bare}.' + (f' ({shown}.)' if shown else ''), doer=character)
+        # and never in the deed's own words: 'meant to do this and did not: crouches low over the soil print by
+        # the knocked-over cap' put the print back into the record that every later reader has, reason or no
+        # reason beside it; three of twelve such lines in lost-20261125-154614 had none ('knees to the fire').
+        # Those present are told what they saw, as the ruling gives it; the deed as it was meant is its actor's
+        # alone (mend_deed, Character.acts). That a thing was not there is kept for every later ruling (sim/ruling.py)
+        context.add_event(refusal_line(character.name, why, seen, shown, absent), doer=character)
+        # and whoever sets the next scene is told (sim/ruling.py unmet): the filling of a water skin was refused to
+        # three people in three scenes of lost-20261125-154614, and each scene was set on it afresh
+        ruling.unmet(context, 'deed', character.name, stage.unnamed(character.name, ' '.join(str(deed).split()))[:140], _shown(why, seen) or ' '.join(str(absent or '').split()))
+    if chosen and str(absent or '').strip():
+        from sim import resolver
+        ruling.not_there(context, absent, stage.here(character), seen_by=resolver.people(context, character), by='deed')
 
 
 def refusals_note(character):
@@ -966,7 +1007,8 @@ def mend_deed(context, character, act):
         act.mode, act.target, act.unshown = 'Think', [], True
         return True
     trace.event('deed_refused', character=character.name, deed=act.action[:300], why=lacks, label=getattr(act, 'affordance', None), again=False)
-    refused(context, character, act.action, lacks, chosen=True)
+    seen_as = getattr(act, 'refused_as', None) or {}
+    refused(context, character, act.action, lacks, chosen=True, shown=seen_as.get('seen', ''), absent=seen_as.get('absent', ''))
     # the actor is told why and goes another way with its next act (nothing is written again for it)
     again = ''
     again = (again or '').strip().strip('"“”').strip()
@@ -989,5 +1031,6 @@ def mend_deed(context, character, act):
         character.add_perceptual_input(f"You meant to do this and found you could not, here: {before} ({'; '.join(left)}). "
                                        f"Go at it another way: in words, or by one of the acts open to you.", percept=False, mode='internal')
         act.mode, act.target, act.unshown = 'Think', [], True
+        act.unrecorded = True   # its actor's own: the deed as it was meant goes into no record others read (Character.acts)
         act.action = f"I cannot do that here: {before}"
     return True

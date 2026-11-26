@@ -118,15 +118,15 @@ BEHIND = """You are the director of an improvised play. The play stands on a que
 {answer}
 </tonight>
 
-- Facts: three or four, each ONE thing that is so: a standing condition of this place, or a single thing that happened before the play began. Never what anyone will do or feel in the play, and never what the people at the centre of it wanted, agreed to or chose before it. Use only these people, these places (by their exact names) and the kinds of thing this world has. Say who knows each as the play begins: names from the people, or nobody. The people at the centre do not know what the sketch says they do not remember.
-- Things: two or three small, ordinary things that really lie in this world, each at one of the places listed, each a trace of one fact. Each is an object that can be picked up, or a mark on the ground, a wall or a tree at that spot: never a view, a sound, a smell or a stretch of country. A thing shows what a person standing there would see; it does not explain. Its wording and its question name no other object that is not itself one of these things or a listed place: if marks lie under a sling, the sling is one of the things, or there is no sling. At most one is written, by a person, by hand, before the play, to someone and for a reason of their own: it says what that person would have written then and no more, and never the whole of what is so. Choose places these people can reach today.
+- Facts: three or four, each ONE thing that is so: a standing condition of this place, or a single thing that happened before the play began. Never what anyone will do or feel in the play, and never what the people at the centre of it wanted, agreed to or chose before it. Use only these people, these places (by their exact names) and the kinds of thing this world has. Say who knows each as the play begins: names from the people, or nobody. The people at the centre do not know what the sketch says they do not remember. One of the facts, and one only (two only where the first half of the question asks two things), answers the first half of the question as it is asked, in its own terms: asked whose print it is, that fact says whose foot made that print, and where. It says that one thing and nothing else: whatever else that person saw or did is another fact. Mark it answers: yes, and the others answers: no.
+- Things: two or three small, ordinary things that really lie in this world, each at one of the places listed, each a trace of one fact. Each is an object that can be picked up, or a mark on the ground, a wall or a tree at that spot: never a view, a sound, a smell or a stretch of country. A thing shows what a person standing there would see; it does not explain. Its wording and its question name no other object that is not itself one of these things or a listed place: if marks lie under a sling, the sling is one of the things, or there is no sling. At most one is written, by a person, by hand, before the play, to someone and for a reason of their own: it says what that person would have written then and no more, and never the whole of what is so. Choose places these people can reach today. Where the first half of the question asks about a thing or a mark that the play does not already have (whose print, who wrote the note), one of two is so, and you say which by what you write: it is one of these things, at one of the places, and how it is to the eye is given (hobnail dots in the heel), with no word of whose; or there is no such thing, and the fact that answers says so plainly.
 - A mark on a person: one at most, and only where one of the facts would have left on one of these people something still to be seen as the play begins (a scabbed knuckle, a stained cuff, a torn sleeve). It is what anyone looking at them sees, and they see it themselves; it does not explain, and how it came is known only to whoever knows the fact. It is a trace, not a hurt that hinders them. Do not also write it as a fact.
 {person_rule}
 - Then one thing from the own past of each of: {leads}. A single thing that happened to that person, or that they did, before the play and apart from all this: plain and particular (what, where, with whom), somewhere else in their life. It gives a reason for something their description says of them and contradicts nothing in it. Write none for a person whose description says they do not remember their past.
 - Nothing here says what anyone will do in the play, or how it comes out.
 
 Respond with these lines only, one sentence each:
-#fact <one plain sentence> | known to: <names, or nobody>   (three or four lines)
+#fact <one plain sentence> | known to: <names, or nobody> | answers: <yes or no>   (three or four lines)
 #clue <the thing, by a name of two to four plain words with no comma> | <exact name of a place listed> | <what finding it makes someone wonder> | <if it is the written one: its words, in one or two plain sentences; else leave empty> | <loose if it can be picked up and carried; fixed if it is a mark or a part of the place> | <how it is, as someone standing there sees it, where that is what makes it a trace: three to eight words (struck through in heavy pen; one corner torn off); else leave empty>   (two or three lines)
 #mark <exact name of one of the people> | <the mark as anyone looking at them sees it, three to eight words> | <what seeing it makes someone wonder>   (one line, or none)
 {person_format}#past <name> | <one plain sentence>   (one line for each of: {leads}; none where the description rules it out)
@@ -138,9 +138,9 @@ Respond with these lines only, one sentence each:
 # scene of fifty lines. The need is theirs alone to know (it stands, known to them: Context.frame_episode), and
 # what they tell for it is still theirs to play. (Bruce, 2026-11-25.) Replay: logs/review-20261125/needs.
 NEEDS = ("Say also the one thing they need from the people at the centre, which those people could give them or do for them at these places "
-         "(a hand with a job, a thing fetched, carried or mended, a watch kept): for that they would part with a piece of what they know. "
+         "(a hand with a job, a thing fetched, carried or mended, a watch kept): for that they would part with what they know of what the question asks, never a piece these people already have. "
          "It is something they cannot well do alone and would not ask of a stranger at once; it is not these people's silence or their going away, "
-         "which the person wants already. It says what they need, never what they will tell or when.")
+         "which the person wants already. It says what they need; whether and when they tell is theirs.")
 
 PERSON_BEHIND = ("- A person who knows a part: the one named in what is so tonight, if it names one. Say who they are in one sentence as a description of a person (age, manner, what they do here), "
                  "the listed place where they are as the play begins, and the one or two things they want. They know only the facts you mark them as knowing. Nothing says what they will tell or do: they are played, like the others. "
@@ -359,7 +359,7 @@ TOLD = """You keep the record of an improvised play. Some things are so in its w
 </the_scene_as_played>
 
 - A person has been told a thing when someone said it to them or in their hearing, as so, in so many words: the thing itself, in the fact's words or in others. A hint at it, a question about it, a guess, or their own suspicion is not a telling. Whether they believe what they were told is theirs: told is told.
-- A person has seen a thing when the scene shows them looking at what plainly is that thing (a store behind a mat that is pulled aside is the store, seen). A trace that leaves the thing to be worked out (bitten caps, a print) is not the thing seen.
+- A person has seen a thing when the scene shows them looking at what plainly is that thing (a store behind a mat that is pulled aside is the store, seen). A trace that leaves the thing to be worked out (bitten caps, a print) is not the thing seen; but a trace set beside what made it and plainly matching, before their eyes (a sole laid in its own print), is: they have seen whose it is.
 - Where the whole of what a fact means was told or seen, say all, though a detail of it (the exact spot, the order, the hour) went unsaid. Where only a part was, say which part, in eight words at most, as that person now has it. A part is something the fact itself says (that the cave is stocked, of 'she keeps the cave stocked and hidden'); what only lies near it (that there is a cave, that it is hers) is no part and gets no line.
 - Not told: a thing denied, refused ("not for telling") or put off; a thing said by someone who does not know it and is guessing; a thing said after the person had left the scene.
 - Only the people named with each fact as not yet having it, and only what this scene shows. What a person was told before this scene is already given with the fact and needs no line.
@@ -521,17 +521,17 @@ CLOSE = PARTS + """ A part has just been played. Before the next is planned you 
 {promises}
 </promises>
 
-- Closed: a question so far is closed when the people at the centre of the play now know what is so behind it, by what they saw, found or were told on the stage. Knowing a part of it does not close it. Only the half of a question that asks what is so can be closed; the half that asks what these people do never is.
-- Open: the questions this part raised and did not answer, and anything the sketch leaves unexplained that no question so far has taken up. Three to five: the ones these people themselves most want answered. Each asks what is so (something already the case, or that has already happened, and that can be found out), never what will happen or what someone will choose. Each is in plain words, 25 at most, as the audience would ask it, and is not a question so far said again. It supposes nothing that what_is_so rules out: where it rests on something a person only said of themselves or guessed (that she woke knowing a name), it asks whether that is so, never why.
-- For each open question, whose it is: 'thread' if it asks how these people come to be here or what this place is, so that the whole performance stands on it; 'part' if a single part could close it. And what lies behind it: 'settled' only if what_is_so already gives the answer itself, though these people do not know it; 'unsettled' if what_is_so says nothing of it, or says only that there is something (that a person hides from a life left behind, and not what that life was).
+- Closed: a question so far is closed when the people at the centre of the play now know what is so behind it, by what they saw, found or were told on the stage. Knowing a part of it does not close it: where a fact of what_is_so is marked as answering the question, it is closed only when that fact is marked as told on the stage, all of it, to the people at the centre, or the part as played shows them seeing it. Only the half of a question that asks what is so can be closed; the half that asks what these people do never is.
+- Open: the questions this part raised and did not answer, and anything the sketch leaves unexplained that no question so far has taken up. Three to five: the ones these people themselves most want answered. Each asks what is so (something already the case, or that has already happened, and that can be found out), never what will happen or what someone will choose. Each is in plain words, 25 at most, as the audience would ask it, and is not a question so far said again. It supposes nothing that what_is_so rules out, and nothing that what_is_so lists as looked for and found not to be there (people speaking of a print that was not there leaves no question of whose print it was): where it rests on something a person only said of themselves or guessed (that she woke knowing a name), it asks whether that is so, never why.
+- For each open question, whose it is: 'thread' if it asks how these people come to be here or what this place is, so that the whole performance stands on it; 'part' if a single part could close it. And what lies behind it: 'settled' only if one numbered fact of what_is_so already gives the answer itself, though these people do not know it, and then with that fact's number (settled 3); 'unsettled' if what_is_so says nothing of it, or says only that there is something (that a person hides from a life left behind, and not what that life was).
 - Still: each question so far that is not closed, read again against what_is_so as it now is. 'settled' and 'unsettled' as above. 'void' when what_is_so rules out what the question supposes, so that it can have no answer (it asks why a thing was so that was not so): say what rules it out.
 - Spent: a promise is spent when it has been kept, broken, or overtaken by what happened, so that it binds nobody now. One still to be kept, and a standing condition still in force, are not spent.
 - Add nothing: no event, thing, person or answer that the play has not shown.
 
 Respond with these lines only:
 #closed <number of a question so far> | <what these people now know, one sentence>   (one line for each closed, or no line)
-#open <the question> | <thread or part> | <settled or unsettled> | <what in the play raised it, a few words>   (three to five lines)
-#still <number of a question so far that is not closed> | <settled, unsettled or void> | <for void: what rules it out; else leave empty>   (one line for each, or no line)
+#open <the question> | <thread or part> | <settled and the number of the fact that answers it (settled 3); or unsettled> | <what in the play raised it, a few words>   (three to five lines)
+#still <number of a question so far that is not closed> | <settled and the number of the fact that answers it (settled 3); unsettled; or void> | <for void: what rules it out; else leave empty>   (one line for each, or no line)
 #spent <the numbers of the spent promises, separated by commas; or none>
 </end>"""
 
@@ -624,14 +624,14 @@ BEHIND_NEXT = PARTS + """ The next part stands on the question below. What is so
 {answer}
 </newly_so>
 
-- Facts: two or three new ones, each ONE thing that is so: a standing condition of this place, or a single thing that happened before now and off the stage, its time said so that it fits the clock given with what already stands (the night before the play began, not 'last night'). None says again or contradicts what already stands or what was said and seen in the last part as played. Never what anyone will do or feel in the play, and never what the people at the centre wanted, agreed to or chose. Use these people, these places (by their exact names), the one new person and the one new place if there are any, and the kinds of thing this world has. Say who knows each as the part begins: names, or nobody.
+- Facts: two or three new ones, each ONE thing that is so: a standing condition of this place, or a single thing that happened before now and off the stage, its time said so that it fits the clock given with what already stands (the night before the play began, not 'last night'). None says again or contradicts what already stands or what was said and seen in the last part as played. Never what anyone will do or feel in the play, and never what the people at the centre wanted, agreed to or chose. Use these people, these places (by their exact names), the one new person and the one new place if there are any, and the kinds of thing this world has. Say who knows each as the part begins: names, or nobody. One of the facts, and one only (two only where the first half of the question asks two things), answers the first half of the question as it is asked, in its own terms: asked whose print it is, that fact says whose foot made that print, and where. It says that one thing and nothing else: whatever else that person saw or did is another fact. Mark it answers: yes, and the others answers: no.
 - A new place, if what is newly so needs one: its name in two to four plain words, its kind (one of the kinds given with the places), the listed place it lies beside, and what it is, in one sentence. One at most.
-- Things: one or two small, ordinary things that really lie in this world, each at a listed place or the new one, each a trace of one new fact. Each is an object that can be picked up, or a mark on the ground, a wall or a tree at that spot: never a view, a sound, a smell or a stretch of country. A thing shows what a person standing there would see; it does not explain. None is a thing the play already has, and none lies where these people have already looked and would have seen it: it is somewhere they have not been, was not to be seen from where they stood, or has come since. Choose places these people can reach in this part.
+- Things: one or two small, ordinary things that really lie in this world, each at a listed place or the new one, each a trace of one new fact. Each is an object that can be picked up, or a mark on the ground, a wall or a tree at that spot: never a view, a sound, a smell or a stretch of country. A thing shows what a person standing there would see; it does not explain. None is a thing the play already has, and none lies where these people have already looked and would have seen it: it is somewhere they have not been, was not to be seen from where they stood, or has come since. Choose places these people can reach in this part. Where the first half of the question asks about a thing or a mark that the play does not already have (whose print, who wrote the note), one of two is so, and you say which by what you write: it is one of these things, lying where a thing may lie by this rule, and how it is to the eye is given (hobnail dots in the heel), with no word of whose; or there is no such thing, and the fact that answers says so plainly.
 {person_rule}
 - Nothing here says what anyone will do in the play, or how it comes out.
 
 Respond with these lines only, one sentence each:
-#fact <one plain sentence> | known to: <names, or nobody>   (two or three lines)
+#fact <one plain sentence> | known to: <names, or nobody> | answers: <yes or no>   (two or three lines)
 #place <its name, two to four plain words> | <its kind> | <exact name of the listed place it lies beside> | <what it is, one sentence>   (one line, or none)
 #clue <the thing, by a name of two to four plain words with no comma> | <exact name of a place, listed or new> | <what finding it makes someone wonder> | <if it is a written thing: its words, in one or two plain sentences; else leave empty> | <loose if it can be picked up and carried; fixed if it is a mark or a part of the place> | <how it is, as someone standing there sees it, where that is what makes it a trace: three to eight words; else leave empty>   (one or two lines)
 {person_format}</end>"""
@@ -662,7 +662,7 @@ If none is struck, respond with the single line:
 AGAIN_NEXT = """
 Of the lines you wrote, these were struck, because they do not fit what already stands:
 {struck}
-Write all your lines again. A fact that was struck is written so that it fits what stands and still settles the part of the question it was for. Where that part of the question can have no answer that fits what stands, leave the fact out and put nothing in its place.
+Write all your lines again. A fact that was struck is written so that it fits what stands and still settles the part of the question it was for. The fact that answers the question is never left out: where what you first wrote for it cannot fit what stands, the answer is another one that does (that there was no such thing, where that is what fits). Any other fact that can have no form that fits is left out, with nothing in its place.
 </end>"""
 
 PERSON_NEXT = ("- A person who knows a part: the one named in what is newly so, if it names one. If they are new to the play: their name, the place where they are as the part begins (listed, or the new one), "
@@ -703,12 +703,33 @@ def transcript_text(parts):
     return '\n'.join((parts[-1].get('transcript') or [])) or 'Not kept.'
 
 
-def facts_text(facts):
+def answering(text):
+    """The '#fact' lines of a behind reply marked as answering the question: their sentences."""
+    out = []
+    for line in _lines('fact', text):
+        f = _fields(line)
+        if f and f[0] and _labelled(f, 'answers').lower().startswith('y'):
+            out.append(f[0].strip(' "'))
+    return out
+
+
+def standing_facts(facts):
+    """The facts that stand behind the play (nobody's own past), in the order they are numbered for CLOSE."""
+    return [f for f in facts if not f.get('of')]
+
+
+def facts_text(facts, numbered=False, questions=()):
+    """numbered: the facts that stand are numbered (CLOSE names the one that answers a question by its number).
+    questions: the thread's questions, so that a fact one of them is answered by says so."""
+    def answers(f):
+        ns = [str(n) for n, q in enumerate(questions or (), 1) if f['text'] in (q.get('answer') or [])]
+        return f"; answers question {', '.join(ns)}" if ns else ''
+    order = {id(f): n for n, f in enumerate(standing_facts(facts), 1)}
     def told(f):   # who has been told it on the stage (thread.so): all of it, or the part named
         said = f.get('told') or {}
         whole, part = [n for n, w in said.items() if w == 'all'], [f'{n}: {w}' for n, w in said.items() if w != 'all']
         return (f"; told on the stage, all of it, to {', '.join(whole)}" if whole else '') + (f"; told on the stage in part to {'; '.join(part)}" if part else '')
-    return '\n'.join(f"- {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f.get('known_to') or []) or 'nobody'}{told(f)}]" for f in facts) or 'Nothing is settled.'
+    return '\n'.join(f"{(str(order[id(f)]) + '.') if numbered and id(f) in order else '-'} {f['text']} [{(f['of'] + chr(39) + 's own past; ') if f.get('of') else ''}known to: {', '.join(f.get('known_to') or []) or 'nobody'}{told(f)}{answers(f)}]" for f in facts) or 'Nothing is settled.'
 
 
 def read_close(text):
@@ -717,11 +738,16 @@ def read_close(text):
     for line in _lines('open', text):
         f = _fields(line)
         if f and f[0]:
+            num = _numbers(f[2])[:1] if len(f) > 2 and f[2].lower().startswith('settled') else []
             opened.append({'text': f[0], 'whose': 'thread' if len(f) > 1 and f[1].lower().startswith('thread') else 'part',
-                           'settled': len(f) > 2 and f[2].lower().startswith('settled'), 'raised_by': f[3] if len(f) > 3 else ''})
+                           'settled': bool(num), 'fact': num[0] if num else None, 'raised_by': f[3] if len(f) > 3 else ''})
     spent = _numbers((_lines('spent', text) or [''])[0])
-    still = [(int(f[0]), f[1].lower().split()[0], f[2] if len(f) > 2 else '') for f in (_fields(l) for l in _lines('still', text))
-             if len(f) > 1 and f[0].strip().isdigit() and f[1].lower().split()[:1] and f[1].lower().split()[0] in ('settled', 'unsettled', 'void')]
+    # (settled without the number of a fact is not settled: 'settled' stood on a question nothing answered)
+    def status(word):
+        first = word.lower().split()[:1]
+        return ('unsettled' if first == ['settled'] and not _numbers(word) else first[0]) if first and first[0] in ('settled', 'unsettled', 'void') else ''
+    still = [(int(f[0]), status(f[1]), f[2] if len(f) > 2 else '', (_numbers(f[1]) or [None])[0] if status(f[1]) == 'settled' else None)
+             for f in (_fields(l) for l in _lines('still', text)) if len(f) > 1 and f[0].strip().isdigit() and status(f[1])]
     return {'closed': closed, 'open': opened[:5], 'spent': spent, 'still': still}
 
 
@@ -750,7 +776,9 @@ def close_part(context, sketch, parts, promises):
     from sim.trace import trace
     last = parts[-1]
     holds = '\n'.join(f"{p['name']}: " + ' / '.join((p.get('carries_forward') or {}).get('holds') or ['nothing']) for p in last['people'] if p.get('carries_forward'))
-    reply = _ask(context.llm, CLOSE.format(**sketch, questions=question_lines(last.get('questions') or []), facts=facts_text(last['so']['facts']),
+    gone = absent_text(last)
+    reply = _ask(context.llm, CLOSE.format(**sketch, questions=question_lines(last.get('questions') or []),
+                                           facts=facts_text(last['so']['facts'], numbered=True, questions=last.get('questions') or []) + (f"\nLooked for on the stage and found not to be there: {gone}" if gone else ''),
                                            story=story_text(parts), transcript=transcript_text(parts), holds=holds or 'Not kept.',
                                            promises='\n'.join(f'{n}. {p}' for n, p in enumerate(promises, 1)) or 'None.'), 'director.close', 700)
     found = read_close(reply)
@@ -765,11 +793,34 @@ def next_part(context, sketch, parts, questions, ending, looks, final=False):
     reply = _ask(context.llm, NEXT.format(**sketch, played='One part has' if n == 1 else f'{n} parts have',
                                           final=' It is to be the last part of this performance.' if final else '',
                                           which=WHICH_FINAL if final else WHICH, questions=question_lines(questions, open_only=True),
-                                          facts=facts_text(parts[-1]['so']['facts']), ending=ending, transcript=transcript_text(parts),
+                                          facts=facts_text(parts[-1]['so']['facts']) + (f"\nLooked for on the stage and found not to be there: {g}" if (g := absent_text(parts[-1])) else ''),
+                                          ending=ending, transcript=transcript_text(parts),
                                           looks='\n'.join(f'{k}. {l}' for k, l in enumerate(looks, 1)) or 'Nothing is kept of how anyone looks.'), 'director.next', 700)
     found = read_next(reply)
     trace.event('director_next', final=final, reply=reply, **found)
     return found if found['question'] else {}
+
+
+def absent_text(last):
+    """What the stage has found not to be there, from a part's record (sim/ruling.py): '' when nothing."""
+    gone = [a for a in (last.get('stage') or {}).get('absent') or [] if not a.get('ended')]
+    return '; '.join(f"{a['what']} (at {a.get('place') or 'a place'})" for a in gone[-16:])
+
+
+def held_text(last):
+    """What the play already holds, by place, and what was looked for and found not to be there: the director was
+    told that a new thing is none the play has, and lies where nobody has looked, and was not shown either."""
+    stage = last.get('stage') or {}
+    by = {}
+    for t in stage.get('things') or []:
+        if t.get('place'):
+            by.setdefault(t['place'], []).append(str(t.get('name')))
+    for m in stage.get('traces') or []:
+        if m.get('place'):
+            by.setdefault(m['place'], []).append(f"(a trace) {m.get('words')}")
+    gone = absent_text(last)
+    return '\n'.join(filter(None, [("What the play already has lying at its places:\n" + '\n'.join(f"- {place}: {'; '.join(names[:12])}" for place, names in by.items())) if by else '',
+                                   f"Looked for on the stage and found not to be there (it is not there; nothing newly settled has it there, or rests on it): {gone}" if gone else '']))
 
 
 def stands_text(parts, told=(), opens=None):
@@ -781,8 +832,9 @@ def stands_text(parts, told=(), opens=None):
         came.update(q.get('come_to') or {})
     told = list(told) or [f"{t['who']} told: {t['what']}" for t in (last.get('story') or {}).get('planted') or [] if t.get('kind') == 'told']
     lived = [f"- {p['name']}: {p['carries_forward']['lived']}" for p in last['people'] if (p.get('carries_forward') or {}).get('lived')]
+    holds = held_text(last)
     clock = f"The last part ended at {str(last.get('clock') or '')[:16].replace('T', ' ')}" + (f"; the next opens at {opens.strftime('%Y-%m-%d %H:%M')}." if opens is not None else '.')
-    return '\n'.join(filter(None, [clock, "So, behind the play (each known only to those named):\n" + facts_text(last['so']['facts']),
+    return '\n'.join(filter(None, [clock, "So, behind the play (each known only to those named):\n" + facts_text(last['so']['facts']), holds,
                                    ("What the people at the centre have come to:\n" + '\n'.join(f'- {n}: {k}' for n, k in came.items())) if came else '',
                                    ("The last part as each person lived it, in their own telling:\n" + '\n'.join(lived)) if lived else '',
                                    ("Told on the stage, of their own lives:\n" + '\n'.join(f'- {t}' for t in told)) if told else '']))
@@ -796,7 +848,18 @@ def check_next(context, base, reply):
         return reply, []
     found = _ask(context.llm, CHECK_NEXT.format(**base, written='\n'.join(f'{n}. {l}' for n, l in enumerate(lines, 1))), 'director.check', 400)
     struck = {int(f[0]): (f[1] if len(f) > 1 else '') for f in (_fields(l) for l in _lines('strike', found)) if f and f[0].strip().isdigit()}
-    return '\n'.join(l for n, l in enumerate(lines, 1) if n not in struck), [(lines[n - 1], why) for n, why in struck.items() if 0 < n <= len(lines)]
+    struck = {n: why for n, why in struck.items() if 0 < n <= len(lines)}
+    # What rests on a struck line goes with it, by the lines' own fields: a thing at a place that was struck (it was
+    # moved to the nearest place of that kind and placed), the need of a person who was struck (sim/ruling.py).
+    first = lambda l: (_fields(l.split(None, 1)[1]) if len(l.split(None, 1)) > 1 else [''])
+    gone_places = {first(lines[n - 1])[0].strip(' ."\'').lower() for n in struck if lines[n - 1].startswith('#place')}
+    gone_people = {first(lines[n - 1])[0].strip(' ."\'').lower() for n in struck if lines[n - 1].startswith('#person')}
+    for n, l in enumerate(lines, 1):
+        f = first(l)
+        if n not in struck and ((l.startswith('#clue') and len(f) > 1 and f[1].strip().lower() in gone_places)
+                                or (l.startswith('#needs') and f[0].strip().lower() in gone_people)):
+            struck[n] = 'it rests on a line that was struck'
+    return '\n'.join(l for n, l in enumerate(lines, 1) if n not in struck), [(lines[n - 1], why) for n, why in sorted(struck.items())]
 
 
 def settle_next(context, sketch, parts, standing, told=(), opens=None):
@@ -819,8 +882,8 @@ def settle_next(context, sketch, parts, standing, told=(), opens=None):
     if not candidates:
         trace.event('director_failed', step='answers_next')
         return ''
-    left = list(candidates)
-    for attempt in (1, 2):   # an answer whose facts do not fit what stands is dropped for another, once
+    left, last = list(candidates), ''
+    for attempt in range(1, min(len(candidates), 4) + 1):   # an answer whose answering fact cannot be made to fit what stands is dropped for another
         chosen = rng.choice(left)
         left = [c for c in left if c is not chosen] or left
         answer = (f"{chosen['so']} It can be found by: {chosen['found']}." + (f" A person who knows a part: {chosen['person']}." if chosen['person'] else '')
@@ -837,12 +900,20 @@ def settle_next(context, sketch, parts, standing, told=(), opens=None):
             again = _ask(context.llm, behind + AGAIN_NEXT.format(struck='\n'.join(f'- {line} ({why})' for line, why in struck)), 'director.behind', 900)
             reply2, struck2 = check_next(context, base, again) if '#fact' in again else (again, struck)
             trace.event('director_behind_again', struck=struck, again=again, struck_again=struck2)
-            if '#fact' in reply2 and len(struck2) < len(struck):
+            # (the writing that keeps the fact which answers is the one wanted, before the one with fewer strikes:
+            # a writing that had simply dropped the answer won, and the question stood with nothing behind it)
+            if '#fact' in reply2 and (bool(answering(reply2)), -len(struck2)) > (bool(answering(reply)), -len(struck)):
                 written, reply, struck = again, reply2, struck2
         trace.event('director_next_settled', seed=seed, attempt=attempt, candidates=[{'by': c['by'], 'short': c['short'] or c['so']} for c in candidates],
                     chosen=chosen, behind=written, struck=struck, kept=reply)
         if '#fact' in reply:
-            context.thread_struck = struck   # what of the answer could not be made to fit (thread.settle_part)
-            return reply
+            last, last_struck = reply, struck
+            if answering(reply):
+                context.thread_struck = struck   # what of the answer could not be made to fit (thread.settle_part)
+                return reply
+    if last:   # no writing kept a fact that answers: what was settled is so, and the question is not marked settled (settle_part)
+        trace.event('part_unanswered', question=standing[:300])
+        context.thread_struck = last_struck
+        return last
     trace.event('director_failed', step='behind_next')
     return ''
