@@ -1617,7 +1617,7 @@ Respond with these lines only:
 #title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
 #setup how the scene opens, one or two sentences, true to where things stand: where the cast is, what is there, what presses on them. It is the opening only: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it; that is played
 #ending what the scene is to settle, one sentence beginning 'Whether' or 'What': the matter, not its answer
-#goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's. Never to leave, or to get the others moving or away, unless whether they go is the scene's matter: going comes when what the scene is for is done
+#goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's. It is a want the character already has as the scene opens and could own to at that moment, from what it knows then. Where the plan's goal waits on a thing not yet found, on a writing its character has not read, or on what another character will do in the scene (to see what he does with what he finds), write it again as the want behind it (to miss nothing that turns up), with nothing in it that has yet to happen. Never to leave, or to get the others moving or away, unless whether they go is the scene's matter: going comes when what the scene is for is done
 #thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
 </end>
 """)]
@@ -2310,10 +2310,6 @@ Respond with these lines only:
         for character in cast(List[NarrativeCharacter], self.actors+self.extras):
             #self.message_queue.put({'name':character.name, 'text':f'---- introducing myself -----'})
             await character.introduce_myself(self.summarize_scenario(), self.summarize_map())
-        for round in range(1):
-            for character in cast(List[NarrativeCharacter], self.actors):
-                await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
-                self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
         self.play_file = play_file
         continued = bool(getattr(self, 'thread_parts', None))   # a part of a performance already begun (sim/thread.py)
         if self.directed and continued:   # the director takes its question from what the play has left open
@@ -2328,6 +2324,13 @@ Respond with these lines only:
             self.screenplay.set_question(f"{self.standing_question}\n#question {self.standing_question}")
             trace.event('central_question', question=self.standing_question, standing=True)
         else:
+            # No director's question: the characters each propose one and the proposals are merged. Only then: each
+            # proposal is written with the other characters' whole sketches, what they tell nobody included, and was
+            # kept as the character's own narrative and shown to its actor's task writer (bellona-20261126-115753).
+            for round in range(1):
+                for character in cast(List[NarrativeCharacter], self.actors):
+                    await character.negotiate_central_narrative(round, self.summarize_scenario(), self.summarize_map())
+                    self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             await self.merge_central_narratives()
         # Settled before any character plans its acts, so that the plans are written knowing
         # them: what this episode settles and leaves open, the clues that lie in the world, and
@@ -2346,23 +2349,16 @@ Respond with these lines only:
 
         await asyncio.sleep(0.4)
 
-        for character in cast(List[NarrativeCharacter], self.actors):
-            await character.write_narrative(self.summarize_scenario(), self.summarize_map(), self.central_narrative)
-            await asyncio.sleep(0.1)
+        # No character writes an arc of acts here any longer: each act is written by the director as it comes, from
+        # what each character then wants (NarrativeCharacter.propose_act; run_integrated_narrative).
         self.message_queue.put({'name':self.name, 'text':f'----- {play_file} character narratives created -----'})
         await asyncio.sleep(0.1)
 
     async def integrate_narratives(self, act_number, character_narrative_blocks, act_central_narrative, previous_act_post_state):
-        """Integrate narratives into a single coherent narrative for a single act
-        character_narrative_blocks is a list of lists, each containing a character and their planned next play act
-        """
-        # reformat character_narrative_blocks into a list of character plans for the prompt
-        character_plans = []
-        for character_block in character_narrative_blocks:
-            character = character_block[0]
-            character_narrative = self.reserialize_act_times(character_block[1])
-            character_plans.append(f'{character.name}\n{character_narrative}\n')
-        character_plans = '\n'.join(character_plans)
+        """The director writes an act: its scenes, from what each character wants out of it and from everything
+        that is so. character_narrative_blocks: [[character, its wants as text (NarrativeCharacter.propose_act)]].
+        (It merged a draft of the whole act from each character; the name is kept for the trace.)"""
+        character_plans = '\n\n'.join(f"{character.name}:\n{wants or 'gave none'}" for character, wants in character_narrative_blocks)
         kind = self.screenplay.kind(act_number)   # opening, middle, resolving or closing: what the act is for
 
         character_backgrounds = []
@@ -2376,10 +2372,9 @@ Respond with these lines only:
             character_backgrounds.append(f'{character.name}\n{drives}\n{narrative}\n{surroundings}\n{memories}\n{emotional_stance}\n')
         character_backgrounds = '\n'.join(character_backgrounds)
 
-        prompt = [UserMessage(content="""You are a skilled playwright and narrative integrator.
-You are given a list of proposed acts, one from each of the characters in the play. 
-These plans were created by each character independently, emphasizing their own role in the play.
-Your job is to assimilate them into a single coherent act. This may require ignoring or merging scenes. Focus on those scenes that are most relevant to the dramatic context.
+        prompt = [UserMessage(content="""You are the playwright of an improvised play, writing its next act.
+You are given what each character wants out of this act. Each answered alone and from its own view: it knows only what it has seen and been told, and nothing of what the others keep to themselves or of what lies behind the play.
+You know all of it. Your job is to write the act: a few scenes that set these wants against each other and against what is so, so that the characters have to act on them. The wants are theirs; the scenes, the places and the order are yours.
 
 #Act Directives
 {{$act_directives}}
@@ -2401,38 +2396,34 @@ Most critically, this act is written from where the play actually stands.
 What has been played stays played: a thing handed over, found, told or admitted is not handed over, found, told or admitted again, and a secret that has come out is no longer a secret. The act goes on from there.
 
 An act is a JSON object containing a sequence of scenes (think of a play).
-Resolve any staging conflicts resulting from overlapping scenes with overlapping time signatures and overlapping characters (aka actors in the plans)
-In integrating scenes within an act across characters, pay special attention to the pre- and post-states, as well as the characters's goals, to create a coherent scene. 
-It may be necessary for the integrated narrative to have more scenes than any of the original plans, but keep the number of scenes to a minimum consistent with other directives. 
-Do not attempt to resolve conflicts that result from conflicting character drives or goals. Rather, integrate acts and scenes in a way that provides dramatic tension and allows characters to resolve it among themselves.
-The integrated plan is one act: a single JSON object with its sequence of scenes.
-The overall integrated plan should include as much of the original content as possible, ie, if one character's plan has an act or scene that is not in the others, it's narrative intent should be included in the integrated plan.
-Be sure that that integrated act is consistent with the previous act's post-state.
-Note carefully the proposed acts pre-conditions and locations, and resolve any inconsistencies among them or with the previous act's post-state.
+Keep the number of scenes to the least that the directives above allow.
+Every character's first want has a scene in which it is pressed: where two wants pull against each other, that is a scene. Do not settle the conflict between them: set it up so that the characters settle it among themselves.
+A scene's goal for a character is taken from that character's own wants, or is one it could have from what it knows: never from what another keeps to itself, and never from what you know and it does not.
+The act is one JSON object with its sequence of scenes, and it goes on from how the previous act left things.
 {{$scene_rules}}
 
 #Places
 {{$places}}
 ##
 
-Here are the original, independent, plans for each character:
+What each character wants out of this act, in its own words (#want: the want | whom or what it has to do with | why it presses now; #means: what it is ready to do or give; #keeps: what it will not tell or give up):
 {{$plans}}
 
-In the performance it is currently {{$time}}. Use this information to generate a time-appropriate sequence of scenes for your integrated Act.
-The following additional information about the state of the performance will be useful in integrating the acts.
+In the performance it is currently {{$time}}. Use this information to generate a time-appropriate sequence of scenes for the act.
+The following additional information about the state of the performance will be useful in writing it.
 
 {{$backgrounds}}
 
 {{$plan_rule}}
 
-Respond with the integrated act as one JSON object.
+Respond with the act as one JSON object.
 
 An Act is a single JSON document that outlines the play's plan for this act
 ###  Structure
 Return exactly one JSON object with these keys:
 
-- "act_number" (int, copied from the original act)  
-- "act_title"   (string, copied from the original act or rewritten as appropriate)  
+- "act_number" (int: {{$act_number}})  
+- "act_title"   (string)  
 - "act_description" (string, short description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
 - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"}
 - "act_pre_state": (string, description of the situation / goals / tensions before the act starts. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
@@ -2449,7 +2440,7 @@ Each **scene** object must have:
  {{$location_field}}
  "time": YYYY-MM-DDTHH:MM:SS, // the start time of the scene, in ISO 8601 format
  "duration": mm, // the duration of the scene, in minutes
- "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's>" }, … }, 
+ "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's; a want the character already has as the scene opens, from what it knows then, with nothing in it that has yet to be found or done in the scene>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors. Must be concrete and specific. e.g., 'Developers are funding the project', not 'there is a secret.'", 
  "post_narrative": "Short prose (≤20 words): what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, written as 'Whether ...' or 'What ...' ('Whether Mara lets them shelter at the hut, and on what terms'), so that either answer could be seen or heard on stage. Give neither answer: which way it falls, who gives way, who speaks or acts first, who stays and who goes are the actors' to play, and the scenes after it are fitted to how it fell. A matter is something they are at odds over or do not yet know, not a detail of how it might be done. Not how anyone feels; not what the weather, an animal or a danger does. Where the act's framework names a change in a person, the matter of one scene is the test of it: whether that person does what they would not have done as the act opened." 
@@ -2469,10 +2460,9 @@ End your response with </end>
         act_directives = ""
         if kind == 'opening':
             act_directives = f""" 
-In performing this integration:
-    1. Preserve character scene intentions where possible, but seek conciseness. This act should be short and to the point. Your target is 3 scenes maximum.
-          This may require omitting or combining some scenes that have lesser importance to the act narrative.
-    2. Observe scene time constraints. If it makes narrative sense to sequences scenes out of temporal order, do so and readjust scene times to maintain temporal coherence.
+In writing this act:
+    1. This act should be short and to the point. Your target is 3 scenes maximum.
+    2. Scene times run forward from the current time.
     2. Sequence scenes to introduce characters and create unresolved tension.
     3. Establish the central dramatic question clearly: {central_dramatic_question}
     4. Act post-state names what the act is to settle, never how: what these people must find out about each other, or agree on or refuse, before they can go on.
@@ -2481,11 +2471,11 @@ In performing this integration:
  """
         elif kind == 'middle':
             act_directives = f""" 
-In performing this integration:
+In writing this act:
     1. Each scene must advance the central dramatic question: {central_dramatic_question}. Your target is 4 scenes maximum.
     2. Midpoint scene should fundamentally and dramatically complicate the question (make it harder to answer or change its nature).
     3. Minimize lateral exploration - every scene should move closer to OR further from resolution.
-    4. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    4. Where two characters want the same thing or the same person's answer, that is one scene.
     5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.
     6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
     7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
@@ -2494,13 +2484,13 @@ In performing this integration:
 """
         elif kind == 'resolving':
             act_directives = f""" 
-In performing this integration:
+In writing this act:
     1. Bring the central dramatic question to a head: {central_dramatic_question}. The answer is not yours to choose: it is what the characters find and do when the act's matters are put to them, so write the scenes to bring the question to a head, and no further.
     2. Every scene bears on the question. Your target is 3 scenes maximum.
-    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    3. Where two characters want the same thing or the same person's answer, that is one scene.
     4. Sequence scenes for maximum tension (alternate tension/relief beats)
     5. Create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)
-    6. Add bridging scenes where character proposals create gaps, but only when essential.
+    6. Add a bridging scene only when the act cannot go on without it.
     7. Act post-state is the central dramatic question itself, put as the matter this act settles. Do not state YES or NO or what the outcome is: that is what the act is played to find out.
     8. The final scene's post-narrative is the matter whose settling answers the question, and it is concrete: whether they leave the forest together, not whether they find peace.
     9. Every scene's matter bears on the central question: whichever way it falls, the question is nearer its answer.
@@ -2508,10 +2498,10 @@ In performing this integration:
 """
         else:   # the closing act
             act_directives = f""" 
-In performing this integration:
+In writing this act:
     1. Show the immediate aftermath and consequences of how the last act left: {central_dramatic_question}
     2. Maximum of 2 scenes - focus on essential closure only, avoid extended exploration.
-    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.
+    3. Where two characters want the same thing or the same person's answer, that is one scene.
     4. First scene should show the immediate practical consequences of how it fell (what changes in their situation).
     5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).
     6. No new conflicts or dramatic questions. What these people have not found out stays not found: no scene goes after it again, nobody is given it, and nobody's goal is to keep it from them.
@@ -2520,7 +2510,7 @@ In performing this integration:
     9. The coda adds nothing to what was found or chosen: it shows it.
 """
 
-        bindings = {"time": self.simulation_time.isoformat(), 
+        bindings = {"time": self.simulation_time.isoformat(), "act_number": act_number,
                                  "plans": character_plans, 
                                  "backgrounds": character_backgrounds, 
                                  "act_central_narrative": act_central_narrative, 
@@ -3029,22 +3019,16 @@ End your response with: </end>"""
 
     async def run_integrated_narrative(self):
         """Play the screenplay, an act at a time. Every act, the closing one included, goes the
-        same way: its focus is settled, each character drafts its own version of the act from
-        where things now stand, the drafts are integrated into the act that is played, the act
-        is played, and what it came to is recorded for the next.
-        (The first act used to skip the characters' drafts, so its scenes were the integrator's
-        alone; the closing act was a separate block, hard-coded as act 4, with no focus of its
-        own.)"""
+        same way: each character says what it wants out of the act, from its own view; the act's focus is
+        settled; the director writes the act's scenes from those wants and from what is so; the act is
+        played, and what it came to is recorded for the next. (Until 2026-11-26 each character drafted the
+        whole act and the drafts were merged: NarrativeCharacter.propose_act.)"""
         def stop(reason):
             # these early exits used to be log-only: the UI just went quiet
             logger.error(reason)
             self.message_queue.put({'name': self.name, 'text': f'----- narrative stopped: {reason} -----'})
 
         players = cast(List[NarrativeCharacter], self.actors)
-        count = self.screenplay.act_count = max((len((c.plan or {}).get('acts') or []) for c in players), default=0)
-        if count == 0:
-            stop('no character has any narrative acts')
-            return
         post_state = ''
         try:
             number, added = 0, False
@@ -3052,6 +3036,8 @@ End your response with: </end>"""
                 number += 1
                 record = self.screenplay.begin_act(number)
                 closing = record.kind == 'closing'
+                # what each character wants out of this act, from its own view, before anything is planned for it
+                wants = [[character, character.propose_act(number)] for character in players]
                 focus = await self.generate_act_central_narrative(number)
                 if focus is None:
                     stop(f'could not settle what act {number} is about')
@@ -3059,22 +3045,7 @@ End your response with: </end>"""
                 self.send_plan()   # the act's focus, while its scenes are being written
                 if self.episode_note(closing=closing):   # every act is planned knowing what the episode is for
                     focus = f'{focus}\n\n{self.episode_note(closing=closing)}'
-                drafts = []
-                for character in players:
-                    acts = (character.plan or {}).get('acts') or []
-                    outline = acts[number - 1] if number <= len(acts) else {"act_number": number, "act_title": "Closing" if closing else f"Act {number}"}
-                    draft = character.replan_narrative_act(outline, focus, post_state, kind=record.kind)
-                    # a draft that could not be written: the character's own outline stands for it, or
-                    # it is left out (it was passed on as None, and the play stopped between acts)
-                    draft = draft or (outline if outline.get('scenes') else None)
-                    if draft is None:
-                        trace.event('act_draft_missing', act=number, character=character.name)
-                        continue
-                    drafts.append([character, draft])
-                if not drafts:
-                    stop(f'no character has a plan for act {number}')
-                    return
-                act = await self.integrate_narratives(number, drafts, focus, post_state)
+                act = await self.integrate_narratives(number, wants, focus, post_state)
                 if act is None:
                     stop(f'act {number} could not be written: {self.integration_fault}')
                     return
@@ -3652,7 +3623,7 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
             from utils.embedding_model import get_embedding_model
             self.embedding_model = get_embedding_model()
         """Generate a central narrative for the act"""
-        prompt = [UserMessage(content="""You are creating a focused dramatic framework for Act {{$act_number}} based on the overall central narrative and character planning.
+        prompt = [UserMessage(content="""You are creating a focused dramatic framework for Act {{$act_number}} based on the overall central narrative and on what each character wants out of this act.
 
 ## Overall Central Narrative
 {{$play_level_central_narrative}}
@@ -3662,7 +3633,7 @@ End your response with: </end>""")], tag='plan_serves_drives', temp=0.1, stops=[
 
 ## Act {{$act_number}}
 
-## Character Act Plans
+## What each character wants out of this act (each from its own view: it knows only what it has seen and been told)
 {{$character_act_plans}}
 
 ## Actor narratives
@@ -3676,7 +3647,7 @@ Generate an act-specific central narrative that:
 1. {{$task_focus}}
 2. **Escalates from previous acts** - Raises stakes/tension from where the story currently stands  
 3. **Creates scene-plannable conflict** - Gives characters specific dramatic targets for individual scenes
-4. **Maintains character agency** - Respects the roles and drives established in character plans
+4. **Maintains character agency** - Respects each character's wants as given above, and its drives
 5. {{$task_resolution}}
 
 ## Act-Specific Guidelines
@@ -3739,8 +3710,8 @@ After the framework, repeat four of its elements on lines of their own, exactly 
                        if self.screenplay.facts_note() else '')
         character_act_plans = []
         for character in cast(List[NarrativeCharacter], self.actors):
-            character.current_act = character.get_act_from_plan(act_number)
-            character_act_plans.append(f'{character.name}: {json.dumps(character.current_act, indent=2, default=datetime_handler) if character.current_act else ""}')
+            character.current_act = None   # the act is the play's (Context.current_act), not a plan of the character's own
+            character_act_plans.append(f"{character.name}:\n{getattr(character, 'act_wants', '') or 'gave none'}")
 
         response = self.llm.ask({"play_level_central_narrative": self.central_narrative, 
                                  "act_number": act_number,
@@ -4421,7 +4392,7 @@ Scene format is as follows:
  "scene_title": string, // concise descriptor 
  {{$location_field}}
  "time": "2025-01-01T08:00:00", // the start time of the scene, in ISO 8601 format
- "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's>" }, … }, 
+ "characters": { "<Name>": { "goal": "<one line: what this character wants out of the scene. The want only: not the steps, the words or the memories used to get it, which are the actor's; a want the character already has as the scene opens, from what it knows then, with nothing in it that has yet to be found or done in the scene>" }, … }, 
  "action_order": [ "<Name>", … ], // each name occurrence is a 'beat' in the scene lead by the named character. list only characters present in the scene 'characters' list.
  "pre_narrative": "Short prose (≤20 words) describing the immediate setup & stakes for the actors.", 
  "post_narrative": "Short prose (≤20 words): what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, written as 'Whether ...' or 'What ...' ('Whether Mara lets them shelter at the hut, and on what terms'), so that either answer could be seen or heard on stage. Give neither answer: which way it falls, who gives way, who speaks or acts first, who stays and who goes are the actors' to play, and the scenes after it are fitted to how it fell. A matter is something they are at odds over or do not yet know, not a detail of how it might be done. Not how anyone feels; not what the weather, an animal or a danger does. Where the act's framework names a change in a person, the matter of one scene is the test of it: whether that person does what they would not have done as the act opened." 

@@ -265,9 +265,12 @@ def stands_note(context, reader=None, without=()):
         if name in s['known']:
             return f"- {s['fact']}"
         by = ', '.join(dict.fromkeys(t['by'] for t in s.get('told') or [] if t['who'] == name and t.get('by') and t['by'].lower() != 'seen'))
-        how = f"{by} told you" if by else 'you have seen for yourself'
         what = told_to(s, name)
-        return f"- {s['fact']}" + (f" ({how})" if what == 'all' else f" (of this {how} only: {what})")
+        if what == 'all':
+            return f"- {s['fact']} ({by} told you)" if by else f"- {s['fact']} (you have seen for yourself)"
+        # told in part, the part and no more: the whole fact was printed with '(of this you have seen for yourself only:
+        # his hands had mud on them)', and its actor sang of the lost hours nobody had told her (bellona-20261126-115753)
+        return f"- {by} told you, and no more than this: {what}" if by else f"- You have seen for yourself, and no more than this: {what}"
     return '\n'.join(mine(s) for s in rows)
 
 
@@ -641,8 +644,9 @@ def read_by(context, character):
                      for name, who in (getattr(context, 'readers', None) or {}).items() if character.name in who)
 
 
-def writings_note(context, xy=None, people=()):
-    """What the written things lying near `xy` (all, if None) or held by `people` say, a line each."""
+def writings_note(context, xy=None, people=(), readers=False):
+    """What the written things lying near `xy` (all, if None) or held by `people` say, a line each. readers: with who
+    has read each (the stage's own account: a set of notes had a man keep back what a page said that nobody had read)."""
     # at a place: only what is in sight there (a narrator told what a still-hidden paper says would read it out);
     # with no place (the planners): all of them
     names = [p['name'] for p in getattr(context, 'props', [])
@@ -653,7 +657,8 @@ def writings_note(context, xy=None, people=()):
         text = writing_of(context, name)
         if text and name not in seen:
             seen.add(name)
-            lines.append(f"{name}: it says: {text}")
+            read = sorted((getattr(context, 'readers', None) or {}).get(name) or ())
+            lines.append(f"{name}: it says: {text}" + ((f" (read by {', '.join(read)})" if read else ' (read by nobody yet)') if readers else ''))
     return '\n'.join(lines)
 
 

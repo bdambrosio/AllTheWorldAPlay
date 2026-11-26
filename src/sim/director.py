@@ -254,10 +254,11 @@ _pool = {}
 def _backends(context):
     """[(name, llm, tag)]: the play's own planner, and any others named in ATWAP_DIRECTOR_LLMS
     (server names as utils/llm_api.LLM takes them, e.g. 'fireworks,haiku,sol'). Several models
-    write the candidates so that no one model's favourite reading is every night's play."""
+    write the candidates so that no one model's favourite reading is every night's play. Haiku was in the pool by
+    default until 2026-11-26: with its key capped it was drawn, gave nothing, and Bellona was played with no director."""
     from utils import llm_api
     out = [('planner', context.llm, 'director.answers')]
-    for name in [n.strip() for n in os.environ.get('ATWAP_DIRECTOR_LLMS', 'fireworks,haiku').split(',') if n.strip()]:
+    for name in [n.strip() for n in os.environ.get('ATWAP_DIRECTOR_LLMS', 'fireworks').split(',') if n.strip()]:
         try:
             if name not in _pool:
                 _pool[name] = llm_api.LLM(name)
@@ -360,12 +361,12 @@ TOLD = """You keep the record of an improvised play. Some things are so in its w
 
 - A person has been told a thing when someone said it to them or in their hearing, as so, in so many words: the thing itself, in the fact's words or in others. A hint at it, a question about it, a guess, or their own suspicion is not a telling. Whether they believe what they were told is theirs: told is told.
 - A person has seen a thing when the scene shows them looking at what plainly is that thing (a store behind a mat that is pulled aside is the store, seen). A trace that leaves the thing to be worked out (bitten caps, a print) is not the thing seen; but a trace set beside what made it and plainly matching, before their eyes (a sole laid in its own print), is: they have seen whose it is.
-- Where the whole of what a fact means was told or seen, say all, though a detail of it (the exact spot, the order, the hour) went unsaid. Where only a part was, say which part, in eight words at most, as that person now has it. A part is something the fact itself says (that the cave is stocked, of 'she keeps the cave stocked and hidden'); what only lies near it (that there is a cave, that it is hers) is no part and gets no line.
+- Where the whole of what a fact means was told or seen, say all, though a detail of it (the exact spot, the order, the hour) went unsaid. Where only a part was, say which part as that person now has it: one plain sentence of twelve words at most that stands by itself and names who and what (Agnes keeps the cave stocked), since it is read without the fact beside it. A part is something the fact itself says (that the cave is stocked, of 'she keeps the cave stocked and hidden'); what only lies near it (that there is a cave, that it is hers) is no part and gets no line.
 - Not told: a thing denied, refused ("not for telling") or put off; a thing said by someone who does not know it and is guessing; a thing said after the person had left the scene.
 - Only the people named with each fact as not yet having it, and only what this scene shows. What a person was told before this scene is already given with the fact and needs no line.
 
 Respond with one line for each telling or seeing, and nothing for the others:
-#told <the fact's number> | <who was told or saw it: names, separated by commas> | <who said or showed it; or seen> | <the one word all; or the part, eight words at most> | <the words of the scene that show it, copied exactly, fifteen words at most>
+#told <the fact's number> | <who was told or saw it: names, separated by commas> | <who said or showed it; or seen> | <the one word all; or the part, one sentence of twelve words at most> | <the words of the scene that show it, copied exactly, fifteen words at most>
 If nobody was told or saw any of it, respond with the single line:
 #none
 </end>"""

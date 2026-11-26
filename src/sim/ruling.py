@@ -37,6 +37,11 @@ def not_there(context, what, at, seen_by=(), by=''):
     what = _plain(what)
     if not what or at is None:
         return None
+    # a thing hidden at this spot is there, only unseen: a set-up check struck 'lies a torn notebook page' as hidden
+    # until found and gave the page as absent, though told to leave that empty (replay of bellona-20261126-115753)
+    low = what.lower()
+    if any(p['name'].lower() in low or low in p['name'].lower() for p in survival.lying(context, at, hidden=True) if p.get('hidden')):
+        return None
     book = ledger.of(context)
     names = [getattr(c, 'name', c) for c in seen_by or ()]
     for a in book.absent:

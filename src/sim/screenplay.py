@@ -275,7 +275,12 @@ class Screenplay:
             return moved or f"at {c['place']}" + (', not yet found' if c.get('hidden') else '')
         return ("Things that are really there to be found, where each is now, and what each touches on:\n"
                 + '\n'.join(f"- {c['thing']}, {where(c)}: {c['touches']}" for c in self.clues)
-                + "\nA scene may lead a character to one and turn on its being found. "
+                # a set-up read 'half-buried under wrappers lies a torn notebook page' to both actors while the stage had the
+                # page as hidden and one of them as not knowing of it (bellona-20261126-115753): it was told only that a
+                # scene may turn on a thing's being found
+                + "\nA thing marked not yet found is seen by nobody until someone searches its place, and a search may fail. "
+                  "A set-up is read out to everyone in the scene, so it does not say that the thing is there, where it lies or what it is; "
+                  "it may bring the cast to the place and give them cause to search it. An ending may turn on whether it is found. "
                 + ("Each shows a part of what is so and none shows all of it; nothing else is hidden in this world." if self.standing
                    else "None of them answers the open question; nothing else is hidden in this world.")
                 + (f'\n{seen}' if seen else ''))

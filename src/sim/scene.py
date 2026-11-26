@@ -150,12 +150,19 @@ The matters, as outcomes:
 {{$outcomes}}
 What each is after: {{$goals}}
 {{$keeps}}
+The stage as it now stands at this place (the world keeps this, and every beat is played on it):
+<stage>
+{{$stage}}
+</stage>
+
 The proposals:
 {{$proposals}}
 
 Write three to six beats, in the order they are to be played. A beat is one thing one character sets out to do; whoever it is put to answers it as they will.
 - Take a proposal as it stands wherever you can: give its number as "from" and leave "name", "what" and "done_when" empty.
 - Two beats never go after the same thing. Where two proposals ask for, offer or do the same thing (in the same words or in others, by the same character or by both), keep one and drop the other. A proposal that is a later stage of the same demand ("ask", then "press", then "hold to it") is the same thing.
+- A beat is played on the stage as it stands: with what its character holds, what lies here, what another holds and might give, and what a place of this kind gives. A proposal that uses, hands over, reads out, counts or points at a thing the stage does not show cannot be played as it is written: drop it, or, where the scene needs what it was for, write a new beat in its place in which the character looks for the thing or asks after it. A proposal that needs a thing another person holds becomes a beat that asks them for it. No new beat needs what is not here.
+- A beat is something its character can set about when the scene opens, or once an earlier beat is played. It does not rest on a thing not yet found being found, on a writing its character has not read, or on what another character will do. Where the scene's matter needs a find, the beat is the search, for whoever has cause to search that place; a proposal that rests on the find, or on another's doing, is dropped.
 - Each 'happens' outcome is a matter to be settled, and needs a beat that brings it to a head: someone asks for it, offers it, presses it or does the thing that forces an answer. If no proposal does, write a new beat for the character who most wants it settled: "from" is null, and it is written from what that character wants and knows, never from what another keeps back. No beat says which way the matter falls, or what the one it is put to answers or does.
 - Keep the beats that are a character's own business and ask nothing of anyone else (work in hand, a joke, something offered, shown or told): the people are seen in those. A scene is not only its ending.
 - Order: what a later beat needs comes before it; the beats that bring about the ending come late; a beat that takes anyone away from this place is the last of all. Every character who proposed has a beat, and none has more than two running.
@@ -291,10 +298,27 @@ class Owner:
             lines.append(f"P{i + 1}. {e['actor'].name}: {t.name}. {t.description} (wants: {str(t.reason).strip()})"
                          + (f" [done when: {t.termination}]" if t.termination else '') + (' [takes them away from this place]' if getattr(t, 'leaves', False) else ''))
         outcomes = '\n'.join(f"{i + 1}. [{o['kind']}] {o['text']}" for i, o in enumerate(self.outcomes))
+        # The stage, as the rulings will read it: who is here, who holds what and how it has been left,
+        # what lies here, the traces, what was looked for and is not here. The beats were arranged from the proposals and
+        # the set-up alone: a proposal that named what was not there ('Open a single tin', 'Give Samantha the water
+        # bucket') went through as a beat, and its deed was refused when played (28 of 39 refused deeds in 21 plays were
+        # named in the task). What stands behind the play is left out: the keeps above say what each holds back.
+        from sim import record, stage, survival
+        shown = ('Present:', 'Holdings:', 'Lying here', 'Traces left here', 'Writings', 'Found not to be here', 'Danger:')
+        try:
+            people = list(cast.values())
+            whole = record.of(context, people[0], people) if survival.config(context) else ''
+            stage_now = '\n'.join(l for l in whole.split('\n') if l.startswith(shown)) or 'This world keeps no count of things: go by the set-up.'
+            # and what is hidden here, as the rulings have it: the beats were written with the set-up's word for it only
+            unfound = [p['name'] for p in survival.lying(context, stage.here(people[0]), hidden=True)]
+            if unfound and whole:
+                stage_now += '\nNot yet found here (nobody present knows it is here; a search of this place may turn it up, or may not): ' + ', '.join(unfound)
+        except Exception:
+            stage_now = 'Not available: go by the set-up.'
         kind = str(scene.get('kind') or '').strip()
         reply = context.llm.ask({'title': scene.get('scene_title', ''), 'place': scene.get('location', ''), 'kind': f' (a {kind})' if kind else '',
                                  'setup': scene.get('pre_narrative', ''), 'ending': scene.get('post_narrative', ''), 'outcomes': outcomes,
-                                 'goals': goals or 'not given', 'keeps': (keeps + '\n') if keeps else '', 'proposals': '\n'.join(lines)},
+                                 'goals': goals or 'not given', 'keeps': (keeps + '\n') if keeps else '', 'stage': stage_now, 'proposals': '\n'.join(lines)},
                                 [UserMessage(content=BEATS)], tag='scene.beats', temp=0.2, stops=['</end>'], max_tokens=700)
         found = json_reply.parse(reply) if reply else None
         rows = found.get('beats') if isinstance(found, dict) else None

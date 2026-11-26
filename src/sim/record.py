@@ -192,7 +192,7 @@ def of(context, actor, people=None, full=False):
         *(["Traces left here by deeds of the play (each the doing of the one named, and of nobody else): " + '; '.join(m)]
           if (m := survival.marks_note(context, at)) else []),
         *(['Writings (what these written things say; a character knows it only once it has read it or been told): '
-           + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people)) else []),
+           + w.replace('\n', '; ')] if (w := survival.writings_note(context, at, people, readers=True)) else []),
         # what a ruling has already found not to be here (sim/ruling.py): it is not here still, until a deed makes it
         *([f"Found not to be here (looked for, and not there: nothing brings one in, and a deed that needs one cannot be done with it): {n}"]
           if (n := ruling.absent_note(context, at)) else []),
@@ -819,10 +819,9 @@ def speech(context, speaker, line, listener=None, deed=''):
                 speaker.add_perceptual_input(f"You were about to say: {words}. It is not so here, as you can see: {why}", percept=False, mode='internal')
             else:
                 speaker.add_perceptual_input(f"You were about to say a thing that is not so, and said it as it is. {ruling.returned(words, why)}", percept=False, mode='internal')
-    # (the thing, as the ruling names it: a 'here' finding is as often how a thing is, 'the skin still holds water',
-    # which is no absence and would be stale by the next scene: 6 of 10 in lost-20261125-154614)
-    if found.get('absent') and any(isinstance(f, dict) and f.get('kind') == 'here' for f in found.get('findings') or []):
-        ruling.not_there(context, found['absent'], stage.here(speaker), seen_by=[speaker], by='line')
+    # What a line says is here and is not, is not written to the stage as looked for and absent: only a deed that looks
+    # settles that (record.refuse). 'Something round down here', said of a hand in a bin, was cut from the line and kept
+    # as found not to be here (bellona-20261126-115753): a person may be wrong about what it cannot see.
     give = None
     handed = found.get('give') if isinstance(found.get('give'), dict) else None
     if handed and not claims:

@@ -1628,16 +1628,8 @@ Character's relationships with other actors
 
 
 
-Following are the central dramatic question of the play, the act-specific narrative, and the scene your character is in.
+Following is the scene your character is in.
 
-#Central narrative
-{{$central_narrative}}
-##
-                              
-#Act specific narrative
-{{$act_specific_narrative}}
-##
-                              
 #Scene
 {{$scene}}
 ##
@@ -1845,35 +1837,19 @@ End response with:
         
         suffix = """
 
-Create at most {{$ntasks}} specific, actionable task(s): the different things {{$name}} does in this scene, in light of the focus goal, the central narrative, the act specific narrative and the scene given below.
+Create at most {{$ntasks}} specific, actionable task(s): the different things {{$name}} does in this scene, in light of the focus goal and the scene given below.
 
 What kind of list this is depends on the focus goal:
 - If the focus goal is a job of work (something to find, make, carry, mend, reach), the tasks may be its steps.
 - If the focus goal is something wanted from another person (an answer, an admission, a promise, their staying), the tasks are NOT steps toward it. At most one task asks or works on that person for it. Once asked, it is given or refused, and no later task asks for the same thing in other words. Every other task is something of {{$name}}'s own: it comes from another of your drives, from your past or your nature, from the place and what can be done in it, or it is something you offer, show, tell, make or try. It would be worth doing if the focus goal did not exist.
 - A task's termination is something {{$name}} can bring about alone, or that either answer from the other person satisfies (told, or refused). Never one that waits for the other person to give in.
 
-##Dramatic Context
-<central_narrative>
-{{$central_narrative}}
-</central_narrative>
-
-<act_specific_narrative>
-{{$act_specific_narrative}}
-</act_specific_narrative>
-
-In addition, you have your own plans that may or may not be consistent with the central dramatic question. 
-Potential conflict between your own plans and the central dramatic question is real, only you can decide. You may choose deception or surprise to advance your own plans.
-
-<my_narrative>
-{{$my_narrative}}
-</my_narrative>
-
 Scene you will be acting in:
 <scene>
 {{$scene}}
 </scene>
 
-In light of the narrative context above, your tasks should serve story momentum as well as character psychology.
+In light of the scene above, your tasks should serve story momentum as well as character psychology.
 
 Consider how your chosen task_plan:
 - Advances the central narrative question toward resolution or deepens the mystery

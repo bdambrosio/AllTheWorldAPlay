@@ -333,6 +333,7 @@ _planner = False   # False: not looked up yet; None: no planner; else the planne
 # and for GPT-6.2 Sol it is marked to be kept, and read again at a twentieth of the price (kept five minutes by
 # Anthropic, thirty by OpenAI, from the last reading).
 CACHED_LEAD = frozenset(('stage.resolve_say',))
+NEVER = ('sol', 'openai')   # 2026-11-26, Bruce: nothing ever calls an OpenAI model, whatever a config or the environment names
 _own: dict = {}
 
 
@@ -372,6 +373,8 @@ def planner():
 class LLM():
 
     def __init__(self, server_name='local', model_name=None):
+        if server_name in NEVER:
+            raise ValueError(f"'{server_name}' is an OpenAI server: nothing in this engine calls an OpenAI model")
         self.server_name = server_name
         print(f'will use {self.server_name} as llm')
         self.context_size = 16384  # conservative local default

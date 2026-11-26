@@ -27,10 +27,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('simulation_core')
 
-# What each kind of act is for (sim/screenplay.py KINDS), for whoever drafts one. They were all
-# shown for every act, numbered 1 to 4, whichever act was being written.
-ACT_RULES = {'opening': "    1. This act should be short and to the point. Your target is 3 scenes maximum.\n    2. Sequence scenes to introduce characters and create unresolved tension.\n    3. Establish the central dramatic question clearly: {{$central_narrative}}\n    4. Act post-state names what the act is to settle, never how: what these people must find out about each other, or agree on or refuse, before they can go on.\n    5. The final scene's post-narrative is the matter of what they do about their shared challenge: whether they commit to it together, and to what.\n    6. The act's matters are concrete (a thing known, agreed, refused, taken or left), not moods; settled either way, things stand differently than at the act pre-state.\n", 'middle': "    1. Each scene must advance the central dramatic question: {{$central_narrative}}\n    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature). Your target is 4 scenes maximum.\n    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..\n    5. Avoid pointless repetition of scene intentions, but allow characters to develop their characters.\n    6. Sequence scenes for continuously building tension, perhaps with minor temporary relief, E.G., create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)\n    7. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.\n    8. The midpoint scene's matter is one whose answer, either way, changes how the central question can be met.\n    9. Act post-state names what the act is to settle, never how: which obstacle is met or not, what is found out or stays hidden, what they are driven to consider.\n    10. Each scene's matter is harder than the one before it: a new problem or a thing newly at stake, not the same matter put again.\n", 'resolving': "    1. Directly answer the central dramatic question, as far as this episode is to settle it: {{$central_narrative}}\n    2. No scene should avoid engaging with the question's resolution. Your target is 3 scenes maximum.\n    3. Sequence scenes for maximum tension (eg, alternate elation/disappointment, tension/relief, etc. beats)\n    4. create response opportunities (e.g., Character A's revelation triggers Character B's confrontation)  \n    5. Act post-state is the central dramatic question itself, put as the matter this act settles. Do not state YES or NO or what the outcome is: that is what the act is played to find out.\n    6. The final scene's post-narrative is the matter whose settling answers the question, and it is concrete: whether they leave the forest together, not whether they find peace.\n    7. Every scene's matter bears on the central question: whichever way it falls, the question is nearer its answer.\n", 'closing': "    1. Show the immediate aftermath and consequences of how the last act left: {{$central_narrative}}\n    2. Maximum two scenes - focus on essential closure only, avoid extended exploration.\n    3. Preserve character scene intentions where possible. Combine overlapping scene intentions from different characters where possible.\n    4. First scene should show the immediate practical consequences of the resolution (what changes in their situation).\n    5. Second scene (if needed) should show the emotional/relational aftermath (how characters have transformed).\n    6. No new conflicts or dramatic questions - only reveal the implications of what was already resolved.\n    7. Act post-state names what is still to be settled between these people now that the question is answered: how they stand with each other, what each keeps or gives up.\n    8. The final scene's matter is small and closing: what each takes away from this, or leaves behind.\n    9. No new dramatic questions: the coda plays out what was resolved and reopens nothing.\n"}
-ACT_KIND_WORDS = {'opening': 'the opening act', 'middle': 'a middle act', 'resolving': 'the act that resolves the question', 'closing': 'the closing act, after the question is settled'}
 
 
 class NarrativeCharacter(Character):
@@ -42,7 +38,7 @@ class NarrativeCharacter(Character):
         self.play_file_content = None
         self.map_file_content = None
         # Narrative
-        self.plan = None
+        self.act_wants = ''   # what it wants out of the act being planned (propose_act)
         self.current_act = None
         self.current_scene = None
         print(f'{self.name}: {self.__class__.__name__}')
@@ -154,320 +150,35 @@ End your response with </end>
     
 
 
-    async def write_narrative(self, play_file_content:dict, map_file_content:str, central_narrative:CentralNarrative):
+    # The act level works as the scene level does: each character says what it wants, from what it knows, and the
+    # director, who knows everything, writes the act (Context.integrate_narratives). Until 2026-11-26 each character
+    # wrote a whole arc of acts before the play and a whole draft of each act, scenes and everyone's goals, and was
+    # given everything to do it with: every other character's sketch with what they tell nobody, the director's facts,
+    # the hidden things and what a writing said. The two drafts of Bellona's first act were the same three scenes at
+    # the same places, and the goal 'see what Kidd hurries to pocket' was written for Lanya in Kidd's draft
+    # (bellona-20261126-115753). Nothing here is shown what its character has not seen or been told.
+    WANTS = """The next act of the play is about to be planned, and each character is asked what it is after.
+Answer for {{$name}}, from what {{$name}} knows and nothing else: its own past and wants, what it has seen and been told so far, the people as it has found them, the places it knows. {{$name}} does not know what the others keep to themselves, what lies where it has not been, or what is going to happen."""
+    WANTS_FORM = """
 
-        system_prompt = """You are a seasoned writer designing a {{$act_count}} act narrative arc for a 30 minute screenplay.
-Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed — so the audience feels the pulse of consequence.
-Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail. Attempts at compromise often results in loss of both possibilities. 
-""" + survival.stakes_text(self.context, 'Survival chores are background unless they expose or escalate the core mystery.') + """
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-By the final act, resolve — or intentionally leave poised — the protagonist’s primary drive.
-        """
+Say what {{$name}} wants out of the next stretch of the play: one to three wants, the most pressing first. Each is a want {{$name}} could own to now: something to get, learn, settle, keep or be rid of, and whom or what it has to do with. No scenes, nothing of what anyone else will do or answer, and nothing of how it comes out.
 
-        mission = """ 
-The overall setting, cast of characters, and physical world are given below.
-
-#Setting
-{{$scenario}}
-
-#Physical World
-{{$map}}
+Respond in this form and nothing else:
+#want <the want, twelve words at most> | <who or what it has to do with> | <why it presses now, ten words at most>
+#means <what {{$name}} is ready to do or give for the first of them, fifteen words at most>
+#keeps <what {{$name}} will not tell or give up while going after them, fifteen words at most; or the word nothing>
 ##
-
-
-A prior negotiation process has established the following central dramatic question that will drive the overall play*:
-{{$central_narrative}}
-
-You also have your own plans that may or may not be consistent with the central dramatic question.
-Focus your personal lifeplan on what you see as your role in the play*: {{$my_narrative}}
-
-* narrative is a paragraph or two including the following elements:
-1. Central Dramatic Question: One clear sentence framing the core conflict
-2. Stakes: What happens if this question isn't resolved - consequences that matter to all
-3. Character Roles: for each character, what is their role in the conflict? Protagonist/Antagonist/Catalyst/Obstacle - with 1-2 sentence role description
-4. Dramatic Tension Sources: The main opposing forces that will drive the narrative
-5. Success Scenario: Brief description of what "winning" looks like
-6. Failure Scenario: Brief description of what "losing" looks like
-
-The company has also settled what this episode of the play is for, and what really lies in its world to be found:
-{{$episode}}
-
-After processing the above information and in light of the following information, generate a {{$act_count}} act outline for the play.
-
-Consider the following guidelines:
-** For act 1:
-    1. This act should be short and to the point.
-    2. Sequence scenes to introduce characters and create unresolved tension.
-    3. Establish the central dramatic question clearly.
-    4. Act post-state names what the act is to settle, never how: what these people must find out about each other, or agree on or refuse, before they can go on.
-    5. The final scene's post-narrative is the matter of what they do about their shared challenge: whether they commit to it together, and to what.
-    6. The act's matters are concrete (a thing known, agreed, refused, taken or left), not moods; settled either way, things stand differently than at the act pre-state.
- 
-** For act 2:
-    1. Each scene must advance the central dramatic question.
-    2. Midpoint should fundamentally complicate the question (make it harder to answer or change its nature).
-    3. Prevent lateral exploration - every scene should move closer to OR further from resolution..
-    4. Allow characters to develop their characters.
-    5. Ensure each scene raises stakes higher than the previous scene - avoid cycling back to earlier tension levels.
-    6. The midpoint scene's matter is one whose answer, either way, changes how the central question can be met.
-    7. Act post-state names what the act is to settle, never how: which obstacle is met or not, what is found out or stays hidden, what they are driven to consider.
-    8. Each scene's matter is harder than the one before it: a new problem or a thing newly at stake, not the same matter put again.
-
-** For act 3:
-    1. Directly answer the central dramatic question.
-    2. Act post-state is the central dramatic question itself, put as the matter this act settles. Do not state YES or NO or what the outcome is: that is what the act is played to find out.
-    3. The final scene's post-narrative is the matter whose settling answers the question, and it is concrete: whether they leave the forest together, not whether they find peace.
-
 """
 
-        suffix = """
-
-Remember, you are {{$name}}
-
-## TASK: Generate a narrative arc for yourself
-Generate a single JSON document that outlines the narrative arc for yourself.
-The narrative should start at the current time: {{$start_time}}
-""" + survival.stakes_text(self.context, 'Survival tasks (food, water, shelter) are assumed handled off-stage unless they advance the mystery or dramatic tension.') + """
-By the end of the narrative, what the episode is to settle is settled, one way or the other; what it leaves open is still open.
-
-### Structure
-Return exactly one JSON object with these keys:
-
-* "title"    – a short, evocative play title.  
-* "acts" – an array of act objects.  Each act object has  
-  - "act_number" (int, 1-based)  
-  - "act_title"   (string)  
-  - "act_description" (string, concise (15-20 word) description of the act, focusing on it's dramatic tension and how it fits into the overall narrative arc)
-  - "act_goals" {"primary": "primary goal", "secondary": "secondary goal"} (string, concise (about 8 words each) description of the goals of the act)
-  - "act_pre_state" (string, description of the situation / goals / tensions as the act starts. concise, about 10 words. Must be concrete and specific. e.g., 'I am pregnant', not 'there is a secret.')
-  - "act_post_state" (string, about 15 words: what the act is to settle, never how: one or two matters open as the act begins, written as 'Whether ...' or 'What ...'. Give no answer)
-  - "tension_points": [
-      {"characters": ["<Name>", ...], "issue": (string, concise (about 8 words) description of the issue), "resolution_requirement": (string, "partial" / "complete")}
-      ...
-    ],
-
-This is your plan, others may or may not agree with it. 
-You may later choose to share some or all of it with specific other characters, in hopes of getting them to cooperate.
-You will have the opportunity to revise your plan as you go along, observe the results, and as you learn more about the other characters.
-
-### 2.2  Guidelines
-1. Base every character’s *stated goal* on their drives, any knowledge you have of them and any percepts. Keep it actionable for the scene (e.g., “Convince Dana to stay”, not “Seek happiness”).  
-2. Craft exactly {{$act_count}} acts - keep the momentum going. By the end there should be some resolution of the dramatic tension: of what the episode settles, not of what it leaves open.
-3. Escalate tension act-to-act; expect characters to be challenged, and to be forced to reconsider their goals and perhaps change them in future.  
-4. Set scenes at the named places listed under Physical World, where their action can happen.  
-5. Aim for <u>dialogue-forward theatre</u>: lean on conflict & objective, not big visuals, although an occasional hi-impact visual can be used to enhance the drama.  
-6. Vary imagery and emotional tone; avoid repeating the same metaphor scene-to-scene.  
-7. Do **NOT** invent new characters unless absolutely necessary, and never break JSON validity.  
-8. Keep the JSON human-readable (indent 2 spaces).
-
-Return **only** the JSON.  No commentary, no code fences.
-
-"""
-
-        narrative = default_ask(self, view='playwright', system_prompt=system_prompt, prefix = mission, suffix = suffix, 
-                                addl_bindings={"scenario": json.dumps(self.context.summarize_scenario(), indent=2, default=datetime_handler), 
-                                 "map": self.context.summarize_map(),
-                                 "name": self.name,
-                                 "central_narrative": central_narrative,
-                                 "my_narrative": self.central_narrative,
-                                 "episode": self.context.episode_note() or 'Nothing further.',
-                                 "act_count": self.context.screenplay.act_count,
-                                 "start_time": self.context.simulation_time.isoformat()},
-                                 max_tokens=5000, tag='NarrativeCharacter.write_narrative')
-        try:
-            self.plan = json.loads(narrative.replace("```json", "").replace("```", "").strip())
-        except Exception as e:
-            print(f'Error parsing narrative: {e}')
-            self.plan = self.context.repair_json(narrative, e)
-        valid, reason = self.context.validate_narrative_json(self.plan, require_scenes=False)
-        if not valid:
-            # an unusable plan is an empty one: its acts are headings, filled in act by act
-            print(f'Invalid narrative: {reason}')
-            trace.event('plan_refused', character=self.name, reason=str(reason))
-            self.plan = {"title": f"{self.name}'s part", "acts": []}
-        # every character's plan has the acts the screenplay counts on, numbered 1..n: a longer
-        # plan is cut, a shorter one gets an act with a heading only, which the rewrite before
-        # that act is played fills in (a character with a shorter plan was left out of the
-        # later acts altogether)
-        count = self.context.screenplay.act_count
-        acts = self.plan["acts"][:count]
-        for n in range(len(acts), count):
-            acts.append({"act_number": n + 1, "act_title": f"Act {n + 1}"})
-            self.context.validate_narrative_act(acts[-1], require_scenes=False)
-        for n, act in enumerate(acts):
-            act["act_number"] = n + 1
-        self.plan["acts"] = acts
-        self.current_act = acts[0]
-        self.current_scene = None
-        return self.plan
-
-    def get_act_from_plan(self, act_number):
-        for act in self.plan["acts"]:
-            if act["act_number"] == act_number:
-                return act
-        return None
-
-
-    def update_act(self, new_act):
-        """Put a rewritten (and already validated) act in this character's plan, in place of the
-        act with its number. False when the plan has no such act (the closing act)."""
-        for i, act in enumerate(self.plan["acts"]):
-            if act["act_number"] == new_act["act_number"]:
-                self.plan["acts"][i] = new_act
-                return True
-        return False
-    
-    def replan_narrative_act(self, act, act_central_narrative:CentralNarrative, previous_act_post_state:str, kind='middle'):
-        """This character's draft of an act, written from where the play now stands. kind: what
-        the act is for (opening, middle, resolving, closing)."""
-
-        system_prompt = """You are a seasoned writer rewriting act {{$act_number}} for a play.
-Every act should push dramatic tension higher: give the protagonist a clear want, place obstacles in the way, and end each act changed by success or setback.
-Keep the stakes personal and specific — pledge of a commitment, revelation of a secret, a deadline that can’t be missed, a broken promise — so the audience feels the pulse of consequence.
-Let conflict emerge through spoken intention and subtext, as well as through the characters' actions and reactions with the world and each other.
-Characters hold real agency; they pursue goals, make trade-offs, and can fail.
-""" + survival.stakes_text(self.context, 'Survival chores are background unless they expose or escalate the core mystery.') + """
-Use vivid but economical language, vary emotional tone, and avoid repeating imagery.
-        """
-        mission = """ You have already created a initial outline for the following act, and now need to update it based on the actual performance so far and the guiding central dramatic question.
-Note the tensions and relationships with other characters, as these may have changed.
-Note also the final scene and post-state of the previous act.
-Check consistency with the choices made in this updated act, including it's title, pre-state, location, goals, description, and character goals in the initial scene.
-Based on prior conversations and events recorded below, update your plan for the following act. 
-The act may be empty, ie have no scenes. In this case, you should flesh out the act with scenes based on it's title and place in the play. Make sure the overall narrative arc is maintained.
-If there are scenes in the act, they may have already occurred in the performance so far, or may no longer be relevant (e.g. other actor's plans have changed), and if so should be removed or rewritten to reflect the new information.
-Other scenes may need to be added or modified to better reflect the new information. Analyze the act description and design the new act to achieve the dramatic tension described. Extend with new scenes if needed.
-Note also that time has passed since you originally formulated this act. For example, you might have been planning to have breakfast, but it may now be past noon.
-the current time is {{$time}}
-your original act was:
-
-{{$act}}
-
-and it was number {{$act_number}} in the your original narrative plan.
-####
-Critically, the play has progressed since you originally formulated this act, perhaps in unanticipated directions. The previous act post-state (ie, the actual situation after the previous act) is now:
-{{$previous_act_post_state}}
-####
-
-What has happened in the acts already played (the record of events, not what was planned):
-
-{{$previous_acts}}
-
-"""
-        suffix = """
-
-Pay special attention to the goals you have already attempted and their completion status in planning your new act. 
-Do not repeat goals that have already been attempted and completed, unless you have a new reason to attempt them again or it is important for dramatic tension.
-
-Note that in the current situation any assumptions or preconditions on which your original act and plan were based may no longer be valid.
-However, the original short-term plan above should still be used to locate your new plan within the overall narrative arc of the performance.
-
-The following guidelines for this act supplement the general guidelines above, and override them where necessary. This is act {{$act_number}}, {{$act_kind}}:
-
-{{$act_rules}}
-
-{{$scene_rules}}
-
-#Places
-{{$places}}
-##
-
-Respond with the updated act as one JSON object, and nothing else: no commentary, no code fences.
-
-An Act is a single JSON document that outlines a short-term plan for yourself
-###  Structure
-Return exactly one JSON object with these keys:
-
-- "act_number" (int, copied from the original act)
-- "act_title" (string, copied from the original act or rewritten as appropriate)
-- "act_description" (string, about 15 words: the act's dramatic tension and how it fits the overall arc)
-- "act_goals" (object: {"primary": "...", "secondary": "..."}, about 8 words each)
-- "act_pre_state" (string, about 10 words: the situation, goals and tensions before the act starts; concrete and specific, e.g. 'I am pregnant', not 'there is a secret')
-- "act_post_state" (string, about 15 words: what the act is to settle, never how it is settled: one or two matters open as the act begins, written as 'Whether ...' or 'What ...', which its scenes bring to a head. Give no answer; the acts after it are written from how it fell)
-- "tension_points" (array of {"characters": [names], "issue": "about 8 words", "resolution_requirement": "partial" or "complete"})
-- "scenes" (array)
-
-Each scene object has:
-- "scene_number" (int, sequential within the play)
-- "scene_title" (string, a concise descriptor)
-{{$location_field}}
-- "time" (string, the scene's start in ISO 8601, e.g. "2025-01-01T08:00:00")
-- "characters" (object: {"<Name>": {"goal": "<one line: what this character wants out of the scene; the want only, not the steps, words or memories used to get it>"}})
-- "action_order" (array of names: each occurrence is a beat led by that character; only characters in the scene's "characters")
-- "pre_narrative" (string, at most 20 words: the immediate set-up and stakes, concrete and specific, e.g. 'Laura doesn't love you', not 'there is a secret')
-- "post_narrative" (string, at most 20 words: what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, written as 'Whether ...' or 'What ...' ('Whether Mara lets them shelter at the hut, and on what terms'), so that either answer could be seen or heard on stage. Give neither answer: which way it falls, who gives way, who speaks or acts first, who stays and who goes are the actors' to play, and the scenes after it are fitted to how it fell. A matter is something they are at odds over or do not yet know, not a detail of how it might be done. Not how anyone feels; not what the weather, an animal or a danger does.)
-- "task_budget" (int, optional: the number of beats; the number of characters in the scene, or slightly more for complex scenes)
-
-An example of the form only (its content is not this play's):
-{
-  "act_number": 2,
-  "act_title": "The Key Nobody Owns",
-  "act_description": "A found key turns two strangers' wary truce into suspicion of a third person.",
-  "act_goals": {"primary": "Learn who dropped the key", "secondary": "Keep the other from taking it"},
-  "act_pre_state": "Mara holds a brass key Tomas says is not his.",
-  "act_post_state": "Whether the key's owner is found, and whether Mara gives it up.",
-  "tension_points": [{"characters": ["Mara", "Tomas"], "issue": "Who the key belongs to", "resolution_requirement": "partial"}],
-  "scenes": [
-    {
-      "scene_number": 4,
-      "scene_title": "Prints at the Spring",
-      "location": "Spring2",
-      "time": "2025-01-01T09:00:00",
-      "characters": {"Mara": {"goal": "Make Tomas show his empty pockets"}, "Tomas": {"goal": "Get Mara to trust his story"}},
-      "action_order": ["Mara", "Tomas", "Mara"],
-      "pre_narrative": "Barefoot prints too small for either of them lead away from the spring.",
-      "post_narrative": "Whether Tomas can show the key is not his, and which of them the prints are followed by.",
-      "task_budget": 3
-    }
-  ]
-}
-
-The act's central narrative, for reference:
-{{$act_central_narrative}}
-"""
-        acts = {"acts": [act]} # reserialize expects a narrative json object
-        reserialized_act = self.context.reserialize_acts_times(acts)
-        act_number = act['act_number']
-        response = default_ask(self, view='playwright', system_prompt=system_prompt, prefix=mission, suffix=suffix,
-                              addl_bindings={"name": self.name, "act": json.dumps(reserialized_act['acts'][0], indent=1, default=datetime_handler), 
-                               "act_number": act['act_number'],
-                               "act_kind": ACT_KIND_WORDS[kind],
-                               "act_rules": ACT_RULES[kind].replace('{{$central_narrative}}', str(self.context.central_narrative or '')),
-                               "location_field": stage.LOCATION_FIELD, "scene_rules": stage.SCENE_RULES,
-                               "places": stage.gazetteer(self.context),
-                               "previous_act_post_state": previous_act_post_state,
-                               "act_central_narrative": act_central_narrative,
-                               "central_narrative": self.context.central_narrative,
-                               "previous_acts": self.context.screenplay.so_far() or 'None: this is the first act.'},
-                              max_tokens=1400, tag='NarrativeCharacter.replan_narrative_act')
-        try:
-            updated_act = None
-            act_id = act['act_number']
-            if not response:
-                return None
-            # read tolerantly: a stray half fence or text after the JSON broke the plain parse
-            updated_act = json_reply.parse(response)
-            if not isinstance(updated_act, dict):
-                updated_act = json.loads(response.replace("```json", "").replace("```", "").strip())
-        except Exception as e:
-            print(f'Error parsing updated act: {e}')
-            logger.error(f'Error parsing updated act: {e}')
-            logger.error(traceback.format_exc())
-            updated_act = self.context.repair_json(response, e)
-        # A rewrite that is not a usable act is not used: the act as it stood goes to the
-        # integrator. (It was returned whatever update_act said, and a scene without a time
-        # ended a play three calls later.)
-        valid, reason = self.context.validate_narrative_act(updated_act, require_scenes=True) if isinstance(updated_act, dict) else (False, 'no act in the reply')
-        if not valid:
-            print(f'{self.name} keeps act {act_id} as it was: {reason}')
-            trace.event('act_rewrite_refused', character=self.name, act=act_id, reason=str(reason))
-            return act
-        print(f'{self.name} updates act {act_id}')
-        self.update_act(updated_act)
-        self.current_act = updated_act
-        return updated_act
+    def propose_act(self, number):
+        """What this character wants out of the act about to be planned, from its own view: the lines of its answer as
+        one text for the director, or '' when it gave none."""
+        reply = default_ask(self, prefix=self.WANTS, suffix=self.WANTS_FORM, addl_bindings={"name": self.name},
+                            max_tokens=220, tag='NarrativeCharacter.act_wants') or ''
+        lines = [' '.join(l.split()) for l in reply.split('\n') if l.strip().startswith(('#want', '#means', '#keeps'))]
+        self.act_wants = '\n'.join(lines)
+        trace.event('act_wants', character=self.name, act=number, wants=lines)
+        return self.act_wants
 
     async def negotiate_central_narrative(self, round:int, play_file_content, map_file_content=None):
         """Negotiate the central dramatic question with other characters"""
