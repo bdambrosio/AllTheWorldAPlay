@@ -1636,12 +1636,12 @@ What has happened lately:
 {{$strangers}}
 </who_knows_what>
 
-On #unknown: a character knows what it has lived (see 'What has happened lately') and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what 'What lies behind this play' or 'What stands' marks the character as told on the stage: it has that, as far as the mark says. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, so that each plays what its character has still to find out.
+On #unknown: a character knows what it has lived (see 'What has happened lately') and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what 'What lies behind this play' or 'What stands' marks the character as told on the stage: it has that, as far as the mark says. An #unknown is about a person only: never what a place holds, where a thing lies or how it is, or what a search or a deed would turn up. Those are not settled until someone looks, and the world settles them then. The line names what the character is missing, never what it is: 'the woman's name', not 'that she is called Nadia'; 'what she keeps from them about whom she feeds', not who it is or that she feeds him. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, who must not learn from them what their characters have still to find out.
 
 On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see 'What lies behind this play' and 'What stands' for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, or names as its matter whether that thing is told, shown, owned or admitted, give no line for it: the scene is played to find that out, and its actor decides in it. Give none for what those in the scene already have: a thing they are marked as told on the stage, or that the character has told or shown them lately, is no longer kept from them; where they are marked as told a part, only the rest may have a line, and the line says the rest. Last, where 'What stands' says a person would tell a thing for something they need of the others, the line for that thing says until what, in the person's own terms ("that his boot knocked the cap, until they have given him water and a shoulder home"): once it is given, telling or keeping is that actor's. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
 
 Respond with these lines only:
-#unknown <character name>: a thing that character does NOT know as the scene opens, of what the set-up, ending or goals speak of (one line for each such thing)
+#unknown <character name>: what that character does NOT know as the scene opens about a person in it, of what the set-up, ending or goals speak of, named as what is missing and never as what it is (one line for each such thing)
 #keeps <character name>: a thing that character knows and does NOT say, show or let slip in this scene (one line for each such thing; none for a character who keeps nothing back)
 #none (this line alone, when no character needs either)
 </end>
@@ -1685,7 +1685,7 @@ Respond with these lines only:
                               or 'nobody left; they are where the last scene ended'}
         checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
         changed, claims, note, brought, struck = {}, [], '', [], []
-        deeds_asked = False
+        deeds_asked = sent_back = False
         for attempt in range(3):   # one rewrite for deeds played in the set-up (a world with no mechanics)
             reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=400) or ''
             find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
@@ -1733,6 +1733,17 @@ Respond with these lines only:
                 # a danger may come on only while the play has not had its one, and none is on the cast
                 may_bring = [] if (threat or survival.hazard_spent(self)) else hazards
                 found = resolver.resolve_setup(self, scene, cast, hazards=may_bring)
+                if found is not None and found['not_so'] and not sent_back and attempt < 2:
+                    # What the check finds not so goes back to the stage manager, who writes the scene again once
+                    # (sim/ruling.py, clause 4); the check's own version stands only if that is struck too. Neither is
+                    # kept as a finding about the world, nor told to the next planner as what the world will not have:
+                    # 'cans still on a low shelf' was struck because only a search could say, and was then kept as
+                    # cans not there and as a plan the world would not have (bellona-20261127-142348).
+                    sent_back, struck = True, list(found['not_so'])
+                    note = ("\nThe check of the world struck these from your scene. Write it again without them, keeping what it is for:\n"
+                            + '\n'.join(f"- {ruling.returned(n.get('words'), n.get('why'))}" for n in found['not_so']) + '\n')
+                    trace.event('setup_returned', scene=scene.get('scene_title'), not_so=found['not_so'])
+                    continue
                 if found is not None:
                     with self.committing('set'):
                         brought += resolver.apply_setup(self, scene, cast, found)
@@ -1747,11 +1758,8 @@ Respond with these lines only:
                             entry['goal'] = changed[f'goal {name}'] = goal
                     # the danger the set-up has on the cast is started with the scene (survival.stage_hazard)
                     scene['danger'] = found['danger']
-                    note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in found['not_so'])
-                    struck = found['not_so']
-                    # What the check struck is kept as unmet, for the planner of the next act (sim/ruling.py, clause 5)
-                    for n in struck:
-                        ruling.unmet(self, 'plan', '', f"planned for '{scene.get('scene_title', '')}': {n.get('words')}", n.get('why'))
+                    struck = struck + [n for n in found['not_so'] if n not in struck]
+                    note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in struck)
                 place_things()
                 break
             if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:

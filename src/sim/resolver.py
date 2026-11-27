@@ -113,10 +113,24 @@ Answer in JSON only:
 # the deed was lost: a shoe taken off, an apple off its tree, a door (9 recorded: logs/review-20261126/hardest/again.py).
 # It is sent back with how such a thing is given. The fault itself stays short: it is the reason the actor and the
 # record are given when the deed is still lost.
-NOT_LISTED = "there is no '{thing}' held by anyone here or lying here"
+# Said of a name, never of the world: whether the stage lists a thing is a match of words, and the world does not hold
+# what nothing has needed yet. Worded "there is no 'coat' held by anyone here", it was taken by the ruler for a fact
+# about the stage: its first answer had made the coat ('a coat, worn by Kidd') and named it 'coat' in the next entry;
+# the second gave the coat as absent, and Kidd was shown looking for a coat (bellona-20261127-142348, scene 1).
+NOT_LISTED = "'{thing}' is not a name the stage lists, nor one this answer makes"
 HOW_GIVEN = ("A thing entry is for a thing the stage lists, by the name it is listed under. What this deed makes, picks, or takes up from a place, "
              "from a thing here or from what a person here plainly has on them is given first, as a new entry with where it comes from; "
              "what it does to the place itself or to a part of it is a mark; and what is not here at all cannot be used, which is said in can or left_out.")
+
+
+def made_under(effects):
+    """An entry that makes a thing and names it too ({'thing': 'coat', 'new': 'a coat, worn by Kidd'}) is made under the
+    name it gives, so that the entries after it that name it are of the same thing; read as a thing the stage lists, it
+    was sent back as naming nothing (bellona-20261127-142348)."""
+    for e in effects:
+        if isinstance(e, dict) and e.get('new') and str(e.get('thing') or '').strip():
+            e['new'] = str(e.pop('thing')).strip()
+    return effects
 
 
 def again_note(wrong):
@@ -297,6 +311,8 @@ def _ask(context, character, act, note=''):
                             name=character.name, deed=act.action, leaves=leaves) + note
     reply = context.llm.ask({}, [UserMessage(content=prompt)], tag='stage.resolve_deed', temp=0.2, stops=['</end>'], max_tokens=700)
     found = json_reply.parse(reply) if reply else None
+    if isinstance(found, dict) and isinstance(found.get('effects'), list):
+        made_under(found['effects'])
     return found if isinstance(found, dict) and 'can' in found else None
 
 
@@ -471,7 +487,7 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
         found = json_reply.parse(reply) if reply else None
         if not isinstance(found, dict) or 'can' not in found:
             return None, []
-        found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict) and (not e.get('goes') or _step(context, speaker, e))]   # leaving is the actor's mark; a step within the scene is done
+        found['effects'] = made_under([e for e in found.get('effects') or [] if isinstance(e, dict) and (not e.get('goes') or _step(context, speaker, e))])   # leaving is the actor's mark; a step within the scene is done
         return found, faults(context, speaker, found)
     found, wrong = ask()
     if found is None:
@@ -574,7 +590,7 @@ How a set-up stands:
 - A scene is at one place. Where the set-up is at a place <places> does not list, which such a world would have inside or beside a listed one (the back room of a listed shop, a reception desk in a listed office, a shed behind a listed hut), say so as new_place, and it is made. A place that belongs to no listed place, or that this world would not have, is not made: the scene is set at the listed place nearest to what is meant.
 - It may not move a thing the world has elsewhere, put in anyone's hands a thing barred above, say of a body's needs or hurts what the stage does not show, bring in a person who is not listed, or give a trace or a state of a thing to anyone but the one whose doing the stage says it is.
 - What stands (in <things>) is so in this world, whoever knows it. A set-up may rest on it, may not have it otherwise, and may show what a place or a person would show of it (a pruned limb, a form on a desk: bring it, at the place that thing names, where the world does not yet hold it; a scabbed knuckle: a shows entry). What is to be seen of it, on a place or on a person, is seen by everyone there, the person too; how it came is known only to those named with it and those marked as told it on the stage: a set-up may not have anyone else know that or act on it. The set-up is read out to the audience and to everyone in the scene, so it puts into words only as much of what stands as everyone in the scene knows or is marked as told: where you put a set-up right, leave the wrong part out, and write nothing from What stands in its place.
-- A thing <things> lists as not yet found is out of sight until a search turns it up. A set-up or a title that shows it, or says it is there, is given under not_so with the why 'hidden until found' and with absent left empty (the thing is there, only unseen), and the set-up as it may stand leaves it out. An ending may turn on whether it is found.
+- A thing <things> lists as not yet found is out of sight until a search turns it up. A set-up or a title that shows it, or says it is there, is given under not_so with the why 'hidden until found' (the thing is there, only unseen), and the set-up as it may stand leaves it out. An ending may turn on whether it is found.
 - It may not play the scene: what the cast says, decides, finds out or does to one another is theirs to play, and is taken out of the set-up.
 - A danger the set-up has upon the cast is either given under danger, and is then on the stage from the scene's first moment, or is not so and is taken out: no set-up is read out with a danger in it that the world has not started.
 - Time and walking between scenes are the world's to tell: the set-up does not say that needs were met on the way unless the stage shows them met.
@@ -589,7 +605,7 @@ Answer in JSON only:
   "brings": [{{"thing": "<a thing the set-up says is there, which the world does not yet have and such a place, or such a person, would ordinarily have or What stands says is there; never a thing listed as found not to be there; two to five words>", "fixed": true or false, "holder": "<the person who has it with them, by name; empty when it is at the place>"}}],
   "shows": [{{"who": "<a person of the cast, by name>", "state": "<how they look, to the eye, as it will still be so at the scene's end, two to six words (ink-stained fingers)>"}}],
   "danger": "<what is upon the cast, in three to eight words (a gaunt grey wolf at the clearing's edge), when the set-up as it may stand has one of the dangers above upon them now, near enough to strike, at an hour and in a place where this world says it comes; else empty. A danger the set-up has that cannot come now (the wrong hour, the wrong ground, a thing already mended) is not so: it is left out, and no other is put in its place. One that is heard from afar, feared, spoken of or somewhere off is not upon them>",
-  "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>", "absent": "<where the words cannot stand because a thing, mark or trace of the place itself is not there: that thing, two to six words (a boot print in the earth); else empty>"}}],
+  "not_so": [{{"words": "<the words of the title, set-up, ending or a goal that cannot stand>", "why": "<what the world shows instead, ten words at most>"}}],
   "title": "<the title as it may stand>",
   "setup": "<the set-up as it may stand: the same words if nothing is wrong; else the same with each of not_so put right or left out>",
   "ending": "<the ending as it may stand; it may not need what nobody could do in this world>",
@@ -693,9 +709,10 @@ def apply_setup(context, scene, cast, found):
     place = world.place(context, found['place'])
     at = place.xy if place is not None else stage.here(cast[0])
     made = []
-    for n in found.get('not_so') or []:   # a thing the set-up had there and the check found is not: kept for every later ruling (sim/ruling.py)
-        if str(n.get('absent') or '').strip():
-            ruling.not_there(context, n['absent'], at, by='setup')
+    # What the check strikes is not written to the world: a check rules on what a text may say, and a thing is found
+    # not to be somewhere only by a deed that looks (sim/ruling.py). It gave 'four cans of food' as absent from a shop
+    # nobody had searched, with the why 'only a search turns it up'; the actors were then told the aisle would come up
+    # empty, and the search was given as a rare chance (bellona-20261127-142348, scene 3).
     for b in found['brings']:
         # in the hands of the one the set-up has it with (a student's essay), or at the place
         holder = next((c for c in cast if c.name.lower() == _low(b.get('holder')) and getattr(c, 'body', None) is not None), None)
@@ -932,8 +949,8 @@ def apply(context, character, act):
     if found['left_out']:
         character.add_perceptual_input(f"Of what you meant to do, this was not done, because it cannot be here: {found['left_out']}.",
                                        percept=False, mode='internal')
-        if found.get('absent'):   # the part was left out for want of a thing: that it is not here is kept (sim/ruling.py),
-            # and said in the record those present have, as it is for a deed refused whole (record.refusal_line)
-            if ruling.not_there(context, found['absent'], stage.here(character), seen_by=people(context, character), by='deed') is not None:
-                context.add_event(f"{character.name} looked for it here and it was not there: {' '.join(str(found['absent']).split()).rstrip('. ')}.", doer=character)
+        if found.get('absent'):   # the part was left out for want of a thing: that it is not here is kept (sim/ruling.py).
+            # The page line, as the ruling wrote it, is what those present see: a sentence of the engine's own
+            # ('looked for it here and it was not there') told the audience of a search nobody made.
+            ruling.not_there(context, found['absent'], stage.here(character), seen_by=people(context, character), by='deed')
     return ' '.join(facts)

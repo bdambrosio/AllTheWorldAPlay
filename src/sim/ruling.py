@@ -10,7 +10,10 @@ same day in the plan file). The contract every ruling point is held to:
 
   1. nothing is derived from a proposal, and no shared record sees it, before it is ruled;
   2. what was refused does not go into a shared record in its own words;
-  3. the finding is state, kept where every other ruling reads (not_there, below);
+  3. what a deed played finds is state, kept where every other ruling reads (not_there, below). A check of
+     a text (a set-up, a plan, a line) rules on what the text may say and writes nothing to the world: that a
+     thing is not somewhere is found only by a deed that looks, when it is played. Kept as a finding of the
+     check, a struck 'cans on a low shelf' settled a search nobody had made (bellona-20261127-142348);
   4. the source is told what was refused, why, and what is so instead, and decides once what to
      do about the step it was on (returned, below);
   5. a step given up is kept as unmet (below) and read by the level above at its next decision.
