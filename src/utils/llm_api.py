@@ -208,7 +208,7 @@ REASONING_GROUPS = {
              'Character.generate_task_plan', 'instantiate_narrative_goal', 'check_post_state_ambiguity',
              'check_decision_required', 'test_termination', 'told_briefly', 'staleness_analysis'),
 }
-REASONING_TOKENS = 3000
+REASONING_TOKENS = 4500   # 3000 until 2026-11-26: GLM-5.3 thought through it and its retry on the director's choice of what lies behind a play
 _reasoning: dict = {}
 
 # Every call thinks first, on every model that can think, except the simple mechanical ones below.
@@ -234,6 +234,8 @@ MECHANICAL_TAGS = frozenset((
     'test_termination', 'MemoryConsolidator.semantic_summary', 'MemoryConsolidator.enhance_summary', 'do_consequences',
     'completion_statement', 'natural_dialog_end', 'record.told'))
 THINK_EFFORT = {'vllm': 'medium', 'fireworks': 'high', 'together': 'low', 'haiku': 'medium'}
+# by model, before the server's: GLM-5.3 at 'high' thinks several thousand tokens on a plan or a ruling
+MODEL_EFFORT = {'accounts/fireworks/models/glm-5p3': 'medium'}
 # calls whose prompt allows an empty answer ('or an empty string if none are relevant'): any other
 # call that answers empty is asked again
 MAY_ANSWER_EMPTY = frozenset(('do_consequences',))
@@ -663,7 +665,7 @@ class LLM():
         start = time.time()
         options = LLMRequestOptions(temperature=temp, top_p=top_p, max_tokens=max_tokens,
                                     stops=stops, stop_on_json=stop_on_json, model=model)
-        options.reasoning = _reasoning.get(tag) or TAG_EFFORT.get(tag) or (THINK_EFFORT.get(self.server_name)
+        options.reasoning = _reasoning.get(tag) or TAG_EFFORT.get(tag) or (MODEL_EFFORT.get(self.model, THINK_EFFORT.get(self.server_name))
                                                     if getattr(self, 'auto_reasoning', True) and tag not in MECHANICAL_TAGS else None)
         options.cache_lead = tag in CACHED_LEAD
         for other in (own(tag), planner() if tag in _routed() else None):   # its own server, else the planner, else this one
