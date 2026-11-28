@@ -225,17 +225,12 @@ places_named = world.named_in    # the ids of the places a text names
 where = world.where              # a position in words: 'at Well5', '6 tiles North of Well5'
 
 
-def set_scene(context, scene, characters, opens_act):
-    """Bring the scene's cast together at the scene's place and return the line that says so
-    ('' when nobody moves). A scene continues the one before it: unless its location names
-    somewhere else, it is played where the characters who were in the previous scene now are,
-    and newcomers join them there. (It was played where its first-named character stood, so a
-    scene that brought Francoise to Jean walked Jean to Francoise's farm instead.) With nobody
-    carried over, it is where its own first character (there in person) is.
-    A scene that opens an act puts its cast in place; any other scene has them walk, and the
-    clock moves on by the longest walk."""
-    if not characters:
-        return ''
+def scene_spot(context, scene, characters):
+    """Where the scene is played: (xy, place id or None). Where those who were in the previous scene now are, and
+    newcomers join them there (it was played where its first-named character stood, so a scene that brought Francoise
+    to Jean walked Jean to Francoise's farm); with nobody carried over, where its own first character (there in
+    person) is; where the cast walked out of the last scene for a named place, there; or the place the scene's
+    location names (a room or corner of the cast's place made for it, Context.reground_scene)."""
     previous = getattr(context, 'previous_scene', None) or {'cast': (), 'xy': None}
     carried = [c for c in characters if c.name in previous['cast']]
     # the scene is where those there in person are, not where a voice on the radio is
@@ -250,7 +245,21 @@ def set_scene(context, scene, characters, opens_act):
         names = {c.name for c in characters}   # where this scene's own cast went, not someone who walked off alone
         gone_to = [e.get('to') for e in getattr(context, 'last_scene_exits', []) if e.get('to') and e.get('who') in names]
         target = next((t for t in (resolve(context, g, anchor) for g in gone_to) if t), None)
-    xy, place = target if target else (anchor, None)
+    return target if target else (anchor, None)
+
+
+def set_scene(context, scene, characters, opens_act):
+    """Bring the scene's cast together at the scene's place and return the line that says so
+    ('' when nobody moves). A scene continues the one before it: unless its location names
+    somewhere else, it is played where the characters who were in the previous scene now are,
+    and newcomers join them there. (It was played where its first-named character stood, so a
+    scene that brought Francoise to Jean walked Jean to Francoise's farm instead.) With nobody
+    carried over, it is where its own first character (there in person) is.
+    A scene that opens an act puts its cast in place; any other scene has them walk, and the
+    clock moves on by the longest walk."""
+    if not characters:
+        return ''
+    xy, place = scene_spot(context, scene, characters)
     scene['place'] = place or where(context, xy).removeprefix('at ')
     context.previous_scene = {'cast': tuple(c.name for c in characters), 'xy': xy}
     movers, longest, ride = [], 0.0, None

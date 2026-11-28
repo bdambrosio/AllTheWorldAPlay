@@ -4,7 +4,7 @@ the table of places or the ground.
 
 The places are laid out in metres from the world file's `kinds` and `layout` (sim/land.py, where
 the rules of nearness, sight and shelter are stated once), anew for each performance, and others
-come into the world as the play needs them (`make_place`: asked only by the set-up check and the
+come into the world as the play needs them (`make_place`: asked only by the stage manager's entries and the
 resolver, sim/resolver.py).
 
 A position is whatever `at` gives. Callers hand it back to this module (span, bearing, where,

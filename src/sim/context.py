@@ -29,6 +29,7 @@ import time
 from sim.prompt import ask as default_ask
 from sim.trace import trace
 import sim.survival as survival
+from sim import errors
 import sim.scene as scene_owner
 import sim.stage as stage
 import sim.director as director
@@ -1438,24 +1439,21 @@ End your response with:
                 print(f'Error establishing tension points: {e}')
 
     async def reground_scene(self, scene, cast, opens_act=False):
-        """Fit a planned scene to where the play now stands. An act's scenes are all written
-        before any is played, so a later scene can assume a world that has moved on: 'March to
-        the Spring' opened with the cast at the spring, and scenes walked them back to a place
-        they had left so the plan could happen there. One LLM call just before the scene keeps
-        its purpose and goals and corrects place, set-up and ending in place. Returns True when
-        the scene's purpose has already happened and it should not be played.
-        The result is then held to the world's record like any narration (sim/record.py): a plan
-        is where an injury nobody has, or a cache of supplies the world does not hold, used to
-        come in, and everything after played along. opens_act: the scene keeps its planned place
-        and is not skipped.
-        The stage manager is shown what the check is shown and the check's own rules (resolver.SETUP_RULES):
-        of 123 set-ups in 21 plays the check struck something from 66, and much of it was what the stage
-        manager had not been told: the weather the play opened in, which way a place lies, how a thing has
-        been left, that a set-up is read out to everyone, and what a set-up may bring where the check allows
-        less than its own rules said (logs/review-20261126/hardest). The notes to the actors (what each
-        does not know, what each keeps back) are written by a second call once the scene has been checked,
-        from the scene as it stands: written with the set-up, they spoke of what the check then struck."""
-        prompt = [UserMessage(content="""You are the stage manager of an improvised play. The next scene was planned before the earlier scenes of this act were played. Fit it to where things actually stand, keeping what it is for. What you write is checked against the world before it is used, and the set-up is then read out to the audience and to everyone in the scene: write nothing the check would strike. (In the plan, pre_narrative is the set-up and post_narrative the ending.)
+        """Fit a planned scene to where the play now stands. An act's scenes are all written before any is played,
+        so a later scene can assume a world that has moved on ('March to the Spring' opened with the cast at a spring
+        they had left). A scene is played where its cast now is (stage.scene_spot), or in a room or a corner of that
+        place. Returns True when the scene's purpose has already happened and it should not be played.
+        Two calls, and nothing checks either (2026-11-28: nothing in a performance refuses). The stage manager keeps
+        the scene's purpose and gives its time, title, ending and goals, and as entries what the opening has there
+        that the stage does not yet hold: a thing at the place or in someone's hands, how someone looks, a room. Code
+        puts each into the world against what the stage records (apply_entries): an entry that would have the stage
+        hold what it does not (a thing that is elsewhere or in another's hands, someone not in the scene) is left out
+        and logged (sim/errors.py). The second call then writes the set-up that is read out, from the stage as it
+        now stands, with the notes to the actors (what each does not know, what each keeps back).
+        (A check of the set-up struck what the stage manager wrote, sent it back, and kept what it struck as notes
+        for the actors and findings about the world: 66 of 123 set-ups in 21 plays had something struck,
+        logs/review-20261126/hardest; and a struck shelf of cans was kept as cans not there, bellona-20261127-142348.)"""
+        prompt = [UserMessage(content="""You are the stage manager of an improvised play. The next scene was planned before the earlier scenes of this act were played. Fit it to where things actually stand, keeping what it is for. (In the plan, pre_narrative is the set-up and post_narrative the ending.)
 
 <planned_scene>
 {{$scene}}
@@ -1464,30 +1462,29 @@ End your response with:
 <where_things_stand>
 The world as the play opened (its ground, its weather, how things were at the first moment; what has changed since is below): {{$opening}}
 It is now {{$clock}}.
+The scene is played where the cast now is: {{$here}}.
 {{$places}}
 Bodies, as the world has them (what each carries is with the things, below): {{$bodies}}
-Dangers this world has: {{$hazards}}
 The danger on the cast now: {{$danger}}.
 {{$clues}}
 {{$facts}}
-Where things are now, each with how it has been left (the world keeps this: a set-up does not move a thing or say it is otherwise than listed):
+Where things are now, each with how it has been left (the world keeps this: the scene does not move a thing or have it otherwise than listed):
 {{$things}}
-Where the cast last went: {{$left_for}}
 What has happened lately:
 {{$events}}
 </where_things_stand>
 
 Where and when the scene is played:
-- location: "same" unless the scene's action cannot happen where the cast now is. Never send them back to a place they have just left only because the plan named it.
-- If the cast walked out of the last place for somewhere (see 'Where the cast last went'), the scene is where they went: name that place, or the listed place nearest the way they went. A scene back at the place they left must open with them coming back to it, and why.
-- A scene is played in one place with its cast together. The set-up does not send them apart or off on separate errands; if the plan has them part and meet again, set the scene where they meet.
+- The scene is played where the cast now is, with its cast together. It may be played in a part of that place the stage does not list yet (the back room of the shop, the far side of the clearing): give it as a #place line. Where the plan set it somewhere else, keep what the scene is for and play it here: the opening has the cast here, not on the way to somewhere, arriving at it or already there. Going elsewhere is the actors' to play, by their own deeds in the scene.
 - when: first settle what part of the day the scene is played in. {{$moving}}
-- Then write the set-up and ending for the time the scene is played in, and make the title fit it. Do not state the time of day in the set-up unless it matters to what happens: the heading gives it.
+- Then write the opening, the title and the ending for the time the scene is played in. The heading gives the time of day: the opening says it only if it matters to what happens.
 
-What the set-up may say. It starts from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold; a place lies the way and as far as the list of places says; the weather and the ground are as the play opened unless something above has changed them. Where the plan says otherwise, the plan is out of date: keep what the scene is for and leave that out. The check holds the title, set-up, ending and goals to these rules, in its own words (there, <stage> and <things> are what is given above under where_things_stand, <cast> is what the play gives each person, and a brings or a shows entry is the check's note that a thing or a look is now in the world):
-{{$check}}
-- If the scene turns on a thing being found, read, shown or handed over (a note, a tool, a mark on a wall) that the plan gives or the world lists, the set-up says plainly where it lies, so that it is there to be found: "Under the bedding lies a torn page of handwriting." A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
-- The world, not you, decides what happens to bodies and how a danger ends. The set-up may bring a danger on; neither set-up, ending nor goals say that it strikes, whom it hurts, that it is driven off, or that anyone is wounded, healed or fed. Where the plan says so, keep what the scene is for and leave that out.
+What the opening has. It starts from what is true now: nobody arrives where they already are, wants what their body already has (see Bodies), or lacks what they already hold; a place lies the way and as far as the list of places says; the weather and the ground are as the play opened unless something above has changed them. Where the plan says otherwise, the plan is out of date: keep what the scene is for and leave that out.
+- It is the opening only: where the cast is, what is there, what presses on them. What the cast says, decides, finds or does to one another is theirs to play: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it.
+- What the opening has at the place, or in someone's hands, that the stage does not list is a #thing line: what such a place would ordinarily have (a flat stone by a spring, dust in a hut), or what such a person would ordinarily have with them for what they have come to do (a student her essay and her bag, a clerk his pen). A thing the stage lists elsewhere or in another's hands stays where it is. If the scene turns on a thing being found, read, shown or handed over that the plan gives or the stage lists, its #thing line says plainly where it lies, so that it is there to be found ("under the bedding"). A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
+- How someone looks, to the eye, that lasts through the scene and the stage does not show yet (a writer's inked fingers, a walker's muddy boots) is a #shows line.
+- What happens to bodies, and how a danger goes, is played: the opening, the ending and the goals do not say that anyone is wounded, healed or fed, or that a danger strikes or is driven off.
+- The opening is read out to the audience and to everyone in the scene: it says nothing that only some of them know.
 
 What the scene is to settle:
 - The ending is what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, each written as 'whether ...' or as the thing to come out ('Whether Mara lets them shelter at the hut, and on what terms'; 'What the two make of the cut in the bark, and whether they follow it'). Write it so that either answer could be seen or heard on stage, and give neither. A matter is something they are at odds over or do not yet know, not a detail of how the plan had it done (which words, which hand, which joke). Which way it falls, who gives way, who speaks first, who takes whose hand, who stays and who goes are the actors' to play: they are not in the ending. Where the plan's ending says what someone does, says, decides or keeps back, keep the matter that would settle and leave the deed out. Nor does it take as done what someone has yet to do in the scene: 'whether Tom sees what Ann slips into her coat' has Ann slip something into it. Ask the matter instead ('whether anything Ann comes on is kept from Tom'), or whether she does it. It is not an event of the body or of the danger.
@@ -1495,42 +1492,48 @@ What the scene is to settle:
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
 {{$strangers}}
-{{$rejected}}
 
 Respond with these lines only:
 #skip yes or no
 #when same, or one of: dawn, morning, midday, afternoon, dusk, night
-#location same, or the exact name of a place listed above
-#title the scene's title: as planned, unless it names a time of day or a thing that is no longer so
-#setup how the scene opens, one or two sentences, true to where things stand: where the cast is, what is there, what presses on them. It is the opening only: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it; that is played
+#title the scene's title: as planned, unless it names a time of day, a place or a thing that is no longer so
+#opening how the scene opens, one or two sentences: where the cast is, what is there, what presses on them
 #ending what the scene is to settle, one sentence beginning 'Whether' or 'What': the matter, not its answer, with nothing in it taken as done that has yet to happen
 #goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's. It is a want the character already has as the scene opens and could own to at that moment, from what it knows then. Where the plan's goal waits on a thing not yet found, on a writing its character has not read, or on what another character will do in the scene (to see what he does with what he finds), write it again as the want behind it (to miss nothing that turns up), with nothing in it that has yet to happen. Never to leave, or to get the others moving or away, unless whether they go is the scene's matter: going comes when what the scene is for is done
-#thing <name>: where in the place it lies, in a few words (one line for each loose thing the set-up mentions lying at the scene's place; as the world has it, if it already has it)
+#thing <name, two to five words>: where at this place it lies, in a few words, or the words "with <character name>" for a thing in that person's hands (one line for each thing the opening has here; for a thing the stage already lists here, where in the place it lies; none for a thing at another place)
+#shows <character name>: how that person looks, two to six words
+#place <name, two or three plain words>: inside or beside, and one plain sentence of what it is (only when the scene is played in a part of the cast's place the stage does not list)
 </end>
 """)]
-        notes_prompt = [UserMessage(content="""You are the stage manager of an improvised play. The scene below is about to be played. It has been checked against the world and stands as it is given. Write the notes that go to its actors: what each character does not know as the scene opens, and what each keeps back in it.
+        notes_prompt = [UserMessage(content="""You are the stage manager of an improvised play. The scene below is about to be played. Write the set-up that is read out as it opens, and the notes that go to its actors: what each character does not know as the scene opens, and what each keeps back in it.
 
 <scene>
 {{$scene}}
 </scene>
-{{$struck}}
+
+<the_stage_as_it_opens>
+Where: {{$here}}. {{$clock}}
+Bodies: {{$bodies}}
+{{$things}}
+</the_stage_as_it_opens>
 
 <who_knows_what>
 {{$facts}}
-{{$things}}
 What has happened lately:
 {{$events}}
 {{$strangers}}
 </who_knows_what>
+
+On #setup: write the opening the scene was planned with (opening, above) as it is read out, in one or two sentences: where the cast is, what is there, what presses on them. Say of the place, the things and the people only what the_stage_as_it_opens holds: a thing, a look or a part of the place that it does not hold is left out of the set-up, and nothing is put in its place; that a thing is somewhere to be found, or is not, is not said unless the stage lists it there. The cast is where the stage has them: the set-up does not walk them anywhere. It is read out to the audience and to everyone in the scene, so it puts into words only what everyone in the scene knows (who_knows_what says who knows what): what only some know is left out. Nothing of what the scene is for happens in it.
 
 On #unknown: a character knows what it has lived (see 'What has happened lately') and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what 'What lies behind this play' or 'What stands' marks the character as told on the stage: it has that, as far as the mark says. An #unknown is about a person only: never what a place holds, where a thing lies or how it is, or what a search or a deed would turn up. Those are not settled until someone looks, and the world settles them then. The line names what the character is missing, never what it is: 'the woman's name', not 'that she is called Nadia'; 'what she keeps from them about whom she feeds', not who it is or that she feeds him. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, who must not learn from them what their characters have still to find out.
 
 On #keeps: read the ending and the goals for what this scene leaves unsaid. Where the ending says a thing is not mentioned, not asked or let pass, where a goal is to hide or cover something, or where the scene is a first meeting and the thing is one a person would not tell a stranger (see 'What lies behind this play' and 'What stands' for who knows what), give the line: say what the thing is, in the character's own terms ("that he loses hours and cannot say where he was"). Where the ending has the character tell or admit it in this scene, or names as its matter whether that thing is told, shown, owned or admitted, give no line for it: the scene is played to find that out, and its actor decides in it. Give none for what those in the scene already have: a thing they are marked as told on the stage, or that the character has told or shown them lately, is no longer kept from them; where they are marked as told a part, only the rest may have a line, and the line says the rest. Last, where 'What stands' says a person would tell a thing for something they need of the others, the line for that thing says until what, in the person's own terms ("that his boot knocked the cap, until they have given him water and a shoulder home"): once it is given, telling or keeping is that actor's. These go to the actors: an actor not told what to hold back tells it in the first minute, and the later scene that was to bring it out has nothing left to do.
 
 Respond with these lines only:
+#setup the set-up as it is read out, one or two sentences
 #unknown <character name>: what that character does NOT know as the scene opens about a person in it, of what the set-up, ending or goals speak of, named as what is missing and never as what it is (one line for each such thing)
 #keeps <character name>: a thing that character knows and does NOT say, show or let slip in this scene (one line for each such thing; none for a character who keeps nothing back)
-#none (this line alone, when no character needs either)
 </end>
 """)]
         if opens_act and not survival.config(self):
@@ -1544,7 +1547,6 @@ Respond with these lines only:
                   if may_move else
                   'It must be "same": the play has already moved on in this act and is played now. Where the plan calls for another time of day, '
                   'keep the scene\'s purpose and write it for now.')
-        hazards = survival.dangers(self) or [h['name'].lower() for h in (survival.config(self) or {}).get('hazards', [])]
         threat = getattr(self, 'active_threat', None)
         bodies = lambda: '; '.join(f'{c.name}: {c.body.summary(held=False)}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked'
         # each fact once: what lies behind the play is given with who knows it, and What stands (in the account of things) leaves those out
@@ -1552,145 +1554,121 @@ Respond with these lines only:
         things = lambda: record.account(self, 'planner', people=cast, states=True, without=behind) or 'nothing tracked'
         events = (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()
         facts = self.screenplay.facts_note(pasts=True, knowing=self.knowing, answers=self.screenplay.answers, setup=True)
+        scene['location'] = 'same'   # played where the cast now is (stage.scene_spot), or in a part of it made below
+        xy, rid = stage.scene_spot(self, scene, cast)
+        here = lambda: (rid or stage.where(self, xy).removeprefix('at ')) + (f" ({world.place(self, rid).description})" if rid and world.place(self, rid) is not None and world.place(self, rid).description else '')
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                  'opening': ' '.join((self.initial_state or '').split()) or 'not said',
+                  'opening': ' '.join((self.initial_state or '').split()) or 'not said', 'here': here(),
                   'places': stage.gazetteer(self, bearings=True) + stage.supporting_note(self, plan=False), 'clock': stage.clock(self), 'moving': moving,
                   'strangers': self.strangers_note(),
-                  'check': resolver.SETUP_RULES,   # the check's rules, word for word: its own rules for what a set-up may bring allowed more than the check does
                   'clues': '\n'.join(n for n in (self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
                                                    self.screenplay.thread_note(plan=False)) if n),
-                  'bodies': bodies(),
-                  'hazards': (('\n' + '\n'.join(f'- {h}' for h in hazards) if hazards else 'none') if not survival.hazard_spent(self) or threat else
-                              'none may come on now: this play has had its danger (it may be spoken of as past)'),
-                  'danger': threat['hazard']['description'] if threat else 'none',
-                  'events': events,
-                  'things': things(), 'facts': facts,
-                  'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
-                                        + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
-                                        for e in self._exit_parties())
-                              or 'nobody left; they are where the last scene ended'}
-        checked = bool(survival.config(self)) and bool(cast) and ablation.enabled('narration_gate')
-        changed, claims, note, brought, struck = {}, [], '', [], []
-        deeds_asked = sent_back = False
-        for attempt in range(3):   # one rewrite for deeds played in the set-up (a world with no mechanics)
-            reply = self.llm.ask({**inputs, 'rejected': note}, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=400) or ''
-            find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
-            if find('skip').lower().startswith('y') and not opens_act:
-                return True
-            if attempt == 0 and may_move:
-                # the scene's time is established before anything else is settled about it: the
-                # set-up was written for that time, and the check that follows reads the clock
-                target = stage.next_time(self.simulation_time, find('when'))
-                if target is not None and self.move_on(target) >= survival.REAL_JUMP_HOURS:
-                    self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
-                    changed['when'] = scene['when'] = stage.part_of(self.simulation_time)
-                    inputs.update(clock=stage.clock(self), moving='It must be "same": the play has just moved on to this time.', bodies=bodies())
-            # An act's first scene keeps its planned place, unless the cast walked out of the last
-            # act for somewhere: then the stage manager's place stands, as for any scene. (Act 2 was
-            # planned at the apple tree after they had left it for the berries; the set-up was
-            # written at the berry bush, the scene was staged at the tree, and the snares at the
-            # berries were spoken of for the rest of the play without ever being seen.)
-            keep_place = opens_act and not self._exit_parties()
-            for key, value in (('location', '' if keep_place else find('location')), ('pre_narrative', find('setup')),
-                               ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
-                if value and value != scene.get(key):
-                    changed[key] = scene[key] = value
-            for name, goal in re.findall(r'#goal[ \t]+([^:\n]+):[ \t]*(.+)', reply):
-                for key, entry in (scene.get('characters') or {}).items():
-                    if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
-                        entry['goal'] = goal.strip()
-            # where in the place each loose thing lies, as the set-up shows it: kept on the thing, so
-            # that what is written of it later puts it there (survival.whereabouts_of, holdings)
-            # (written to the world once the set-up has been checked, below: it was written before, from a set-up
-            # the check might then strike)
-            spots = re.findall(r'#thing[ \t]+([^:\n]+):[ \t]*(.+)', reply)
-            def place_things():
-                for name, spot in spots:
-                    prop = next((p for p in getattr(self, 'props', []) if p['name'].lower() == name.strip().lower()
-                                 or p['name'].lower().split()[-1] == name.strip().lower().split()[-1]), None)
-                    if prop is not None and not prop.get('spot'):
-                        with self.committing('set'):
-                            prop['spot'] = spot.strip().rstrip('.')[:80]
-            if checked:
-                # the set-up is resolved against the world in one call (sim/resolver.py
-                # resolve_setup): where the scene is, what the set-up brings that such a place
-                # would have, and the set-up and ending as they may stand. What it brings is in the
-                # world from the scene's opening, by one event.
-                # a danger may come on only while the play has not had its one, and none is on the cast
-                may_bring = [] if (threat or survival.hazard_spent(self)) else hazards
-                found = resolver.resolve_setup(self, scene, cast, hazards=may_bring)
-                if found is not None and found['not_so'] and not sent_back and attempt < 2:
-                    # What the check finds not so goes back to the stage manager, who writes the scene again once
-                    # (sim/ruling.py, clause 4); the check's own version stands only if that is struck too. Neither is
-                    # kept as a finding about the world, nor told to the next planner as what the world will not have:
-                    # 'cans still on a low shelf' was struck because only a search could say, and was then kept as
-                    # cans not there and as a plan the world would not have (bellona-20261127-142348).
-                    sent_back, struck = True, list(found['not_so'])
-                    note = ("\nThe check of the world struck these from your scene. Write it again without them, keeping what it is for:\n"
-                            + '\n'.join(f"- {ruling.returned(n.get('words'), n.get('why'))}" for n in found['not_so']) + '\n')
-                    trace.event('setup_returned', scene=scene.get('scene_title'), not_so=found['not_so'])
-                    continue
-                if found is not None:
-                    with self.committing('set'):
-                        brought += resolver.apply_setup(self, scene, cast, found)
-                    keep = opens_act and not self._exit_parties()   # an act's first scene keeps its planned place (above)
-                    for key, value in (('location', '' if keep and not found.get('made_place') else found['place']), ('pre_narrative', found['setup']),
-                                       ('post_narrative', found['ending']), ('scene_title', found['title'])):
-                        if value and value != scene.get(key):
-                            changed[key] = scene[key] = value
-                    for name, goal in found['goals'].items():
-                        entry = (scene.get('characters') or {}).get(name)
-                        if isinstance(entry, dict):
-                            entry['goal'] = changed[f'goal {name}'] = goal
-                    # the danger the set-up has on the cast is started with the scene (survival.stage_hazard)
-                    scene['danger'] = found['danger']
-                    struck = struck + [n for n in found['not_so'] if n not in struck]
-                    note = '; '.join(f"{n.get('words')}: {n.get('why')}" for n in struck)
-                place_things()
-                break
-            if ablation.enabled('narration_gate') and not deeds_asked and attempt < 2:
-                # the set-up is the opening only: what the scene is for is played, not told
-                purpose = f"It is to end: {scene.get('post_narrative', '')}\n" + ' '.join(
-                    f"{name} is to: {(entry or {}).get('goal', '')}" for name, entry in (scene.get('characters') or {}).items())
-                played = record.setup_deeds(self, scene.get('pre_narrative', ''), purpose)
-                if played:
-                    deeds_asked = True
-                    trace.event('setup_deeds', scene=scene.get('scene_title'), deeds=played)
-                    note = ("\nYour set-up has part of the scene already played: " + '; '.join(played)
-                            + ". The set-up is the opening only: where the cast is, what is there, what presses on them. "
-                              "Leave those deeds for the actors to play, and write it again.\n")
-                    continue
-            place_things()
-            break   # a world with no mechanics: the set-up stands as written (or as written again above)
-        # The notes to the actors: what each has still to find out and what each keeps back (Character.director_notes).
-        # Written now, from the scene as it stands after the check, with what was struck (sim/ruling.py, clause 4): written
-        # with the set-up they kept what the check then struck ('cut to the print's heel hollow' was struck from a set-up of
-        # lost-20261125-154614 and Walt's actor was still told he did not know 'that the twig was cut to the heel hollow
-        # of the print'), and were asked for a second time only when something was.
+                  'bodies': bodies(), 'danger': threat['hazard']['description'] if threat else 'none',
+                  'events': events, 'things': things(), 'facts': facts}
+        changed = {}
+        reply = self.llm.ask(inputs, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=600) or ''
+        find = lambda tag: (hash_utils.find(tag, reply) or '').strip()
+        if find('skip').lower().startswith('y') and not opens_act:
+            return True
+        if may_move:
+            # the scene's time is established before anything else is settled about it: the
+            # entries and the set-up that follow are for that time
+            target = stage.next_time(self.simulation_time, find('when'))
+            if target is not None and self.move_on(target) >= survival.REAL_JUMP_HOURS:
+                self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
+                changed['when'] = scene['when'] = stage.part_of(self.simulation_time)
+        for key, value in (('pre_narrative', find('opening')), ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
+            if value and value != scene.get(key):
+                changed[key] = scene[key] = value
+        for name, goal in re.findall(r'#goal[ \t]+([^:\n]+):[ \t]*(.+)', reply):
+            for key, entry in (scene.get('characters') or {}).items():
+                if key.lower() == name.strip().lower() and isinstance(entry, dict) and goal.strip():
+                    entry['goal'] = changed[f'goal {key}'] = goal.strip()
+        with self.committing('set'):
+            brought = self.apply_entries(scene, cast, xy, rid, reply)
+        if brought.get('place'):
+            xy, rid = stage.scene_spot(self, scene, cast)
+        # The set-up that is read out, written from the stage as it now stands, and the notes to the actors
+        # (Character.director_notes): written with the opening before anything was put into the world, they spoke of
+        # what was then not so.
         for entry in (scene.get('characters') or {}).values():
             if isinstance(entry, dict):
                 entry['unknown'], entry['keeps'] = [], []
-        standing = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative')}
-        standing['goals'] = {name: (entry or {}).get('goal', '') for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict)}
+        standing = {k: scene.get(k) for k in ('scene_title', 'when')}
+        standing.update(opening=scene.get('pre_narrative', ''), ending=scene.get('post_narrative', ''),
+                        goals={name: (entry or {}).get('goal', '') for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict)})
         notes = self.llm.ask({'scene': json.dumps(standing, indent=1, default=datetime_handler), 'facts': facts, 'things': things(), 'events': events,
-                              'strangers': self.strangers_note(),
-                              'struck': ("Struck from the plan by the check as not so. No note speaks of any of it:\n"
-                                         + '\n'.join(f"- {ruling.returned(n.get('words'), n.get('why'))}" for n in struck)) if struck else ''},
-                             notes_prompt, tag='scene.notes', temp=0.2, stops=['</end>'], max_tokens=400) or ''
+                              'here': here(), 'clock': stage.clock(self), 'bodies': bodies(), 'strangers': self.strangers_note()},
+                             notes_prompt, tag='scene.notes', temp=0.2, stops=['</end>'], max_tokens=600) or ''
+        setup = (hash_utils.find('setup', notes) or '').strip()
+        if setup:
+            changed['pre_narrative'] = scene['pre_narrative'] = setup
+        else:
+            errors.log('scene.notes', 'no set-up written', scene=scene.get('scene_title'))   # the stage manager's opening stands
         for kind in ('unknown', 'keeps'):
             for name, words in re.findall(rf'#{kind}[ \t]+([^:\n]+):[ \t]*(.+)', notes):
                 for key, entry in (scene.get('characters') or {}).items():
                     if key.lower() == name.strip().lower() and isinstance(entry, dict) and words.strip():
                         entry[kind].append(words.strip())
-        trace.event('scene_notes', title=scene.get('scene_title'), struck=[n.get('words') for n in struck],
+        trace.event('scene_notes', title=scene.get('scene_title'),
                     notes={name: {'unknown': entry.get('unknown'), 'keeps': entry.get('keeps')} for name, entry in (scene.get('characters') or {}).items() if isinstance(entry, dict)})
-        if checked:
-            trace.event('scene_check', title=scene.get('scene_title'),
-                        outcome='cut' if claims else 'rewritten' if note else 'admitted' if brought else 'ok',
-                        claims=[f'{k}: {w}' for k, w in claims], made=brought, note=note.strip())
-        if changed:
-            trace.event('scene_regrounded', title=scene.get('scene_title'), **changed)
+        trace.event('scene_regrounded', title=scene.get('scene_title'), brought=brought, **changed)
         return False
+
+    def apply_entries(self, scene, cast, xy, rid, reply):
+        """Put what the stage manager's entries bring into the world, against what the stage records. Returns
+        {'things', 'shows', 'place'} as put in. What the stage cannot take is left out and logged (sim/errors.py):
+        a thing the stage holds elsewhere or in the hands of someone else, a holder or a look on someone not in the
+        scene, a part of a place that cannot be made."""
+        out = {'things': [], 'shows': [], 'place': None}
+        names = {c.name.lower(): c for c in cast}
+        for name, words in re.findall(r'#place[ \t]+([^:\n]+):[ \t]*(.+)', reply)[:1]:
+            at = rid or survival._nearest_resource_id(self, xy)
+            made = world.make_place(self, name.strip(), name.strip().split()[-1], at, inside=words.strip().lower().startswith('inside'),
+                                    description=re.sub(r'^(inside|beside)\W*', '', words.strip(), flags=re.I)) if at else None
+            if made is None:
+                errors.log('reground_scene', 'place not made', place=name.strip(), at=at)
+                continue
+            scene['location'], xy, rid, out['place'] = made.id, made.xy, made.id, made.id
+        for name, where in re.findall(r'#thing[ \t]+([^:\n]+):[ \t]*(.+)', reply)[:6]:
+            name, where = re.sub(r'^(a|an|the|some)\s+', '', name.strip().lower())[:40], where.strip().rstrip('.')
+            with_whom = re.match(r'with\s+(.+)$', where, re.I)
+            holder = names.get(with_whom.group(1).strip().lower()) if with_whom else None
+            if with_whom and (holder is None or getattr(holder, 'body', None) is None):
+                errors.log('reground_scene', 'holder not in the scene', thing=name, holder=with_whom.group(1).strip())
+                continue
+            now = survival.whereabouts_of(self, name)
+            here_prop = next((p for p in survival.lying(self, xy, hidden=True) if p['name'].lower() == name), None)
+            if holder is not None and now == f'held by {holder.name}':
+                continue
+            if here_prop is not None and holder is None:
+                if not here_prop.get('spot'):
+                    here_prop['spot'] = where[:80]
+                continue
+            # a place named by its id (Bench1, Cafe1) that is not this one: listed elsewhere, or not a place of this world
+            elsewhere = [pid for pid in re.findall(r'\b[A-Z][A-Za-z_]*\d+\b', where) if pid.lower() != str(rid or survival._nearest_resource_id(self, xy)).lower()]
+            if holder is None and elsewhere:   # the entry has it at another place: the stage does not put it here
+                errors.log('reground_scene', 'thing at another place', thing=name, wanted=where, places=elsewhere)
+                continue
+            if now and holder is None and now.startswith(f"lying at {survival._nearest_resource_id(self, xy)}"):
+                continue   # lying here already, under a name a little different
+            if now:   # the stage holds it elsewhere, or in someone else's hands: it stays there
+                errors.log('reground_scene', 'thing is elsewhere', thing=name, wanted=where, stage=now)
+                continue
+            if survival.add_thing(self, name, holder=holder, at=None if holder is not None else xy):
+                if holder is None:
+                    prop = next((p for p in survival.lying(self, xy) if p['name'] == name), None)
+                    if prop is not None:
+                        prop['spot'] = where[:80]
+                out['things'].append(name)
+        for name, look in re.findall(r'#shows[ \t]+([^:\n]+):[ \t]*(.+)', reply)[:4]:
+            who = names.get(name.strip().lower())
+            if who is None:
+                errors.log('reground_scene', 'look on someone not in the scene', who=name.strip(), look=look.strip())
+                continue
+            survival.leave_state(self, who, look.strip())
+            out['shows'].append(f'{who.name}: {look.strip()}')
+        return out
 
     async def run_scene(self, scene, act=None, opens_act=False):
         """Run a scene. The cast stays where the previous scene left it unless this scene names
