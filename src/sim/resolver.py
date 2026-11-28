@@ -403,7 +403,7 @@ _effects = _answer[_answer.index('{{"effects"') + 2:_answer.index('  "page"')]
 # lines, 2026-11-23: logs/review-20261123/cost.
 _act_rules = _rules.replace('The stage above is the truth', 'The stage is the truth')   # the stage now comes after the rules
 assert _act_rules != _rules
-ACT_RULES = """You keep the world of an improvised play. A character is about to act: to say something, to do something, or both at once. Say what the act does in this world as it now stands, and what of its words may stand. The world, how it works and the form of your answer come first; after them the stage as it now stands, what {name} has lived and told, and the act itself.
+ACT_RULES = """You keep the world of an improvised play. A character is about to act: to say something, to do something, or both at once. Say what the act does in this world as it now stands, and what of its words the stage has otherwise (the words are said as they are; what you find is kept as a note). The world, how it works and the form of your answer come first; after them the stage as it now stands, what {name} has lived and told, and the act itself.
 
 <world>
 {world}
@@ -423,7 +423,7 @@ The words:
 Answer in JSON only, in this form:
 {{""" + _effects + """  "page": "<what the audience sees {name} do: third person, present tense, as it comes off or as it is tried and does not (Joe crouches by the cap and finds only bare soil), only what is done, naming nothing which is not here, no words spoken, 30 words at most; empty when nothing is done but speaking>",
   "findings": [{{"kind": "<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows, stands or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
-  "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
+  "line": "<only when there is an aloud finding: the words with what is not spoken taken out, and nothing else changed; else empty>",
   "tells": ["<each new fact {name} tells of its own life before the play>"],
   "retold": "<the words that tell again as news what is already in told; else empty>",
   "promises": [{{"who": "<who is to do it>", "what": "<what, in a few words>", "kind": "<now, standing or later>"}}],

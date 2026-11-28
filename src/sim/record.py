@@ -1,26 +1,10 @@
-"""The world's record, the check that keeps narration to it, and what becomes of a new thing.
+"""The world's record as each reader is shown it, what a text brings in, and how a line is heard.
 
-The mechanics (sim/survival.py) hold what is true of bodies, things, places, stock and dangers.
-A narrator is told all of it and then writes freely, and what it wrote used to be shown,
-remembered and built on unchecked: a pile of berries nobody held, a fever in an unhurt body, a
-boar struck five times after it had fled. settle() puts one short check between the narrator
-and everything downstream.
-
-What the check finds is either a mistake (the wrong time of day, someone in the wrong place)
-or a new thing. A mistake is written out. A new thing is put in the world's own terms
-(admit): a prop, an item its actions use, a place of a kind it has, a change to a body. Who
-brought it in decides:
-- the plan and the director (a scene's set-up, a staleness intervention): it is made real, so
-  the injury is in the body and the pool can be drunk from;
-- a character's own deed, or the narrator: an ordinary prop is made real (a farmer's sickle);
-  anything that would meet a need or change the odds has to be earned through the world's
-  actions, and is refused.
-A thing that cannot be put in the world's terms is refused whoever brings it.
-
-Refusal is carried through as carefully as admission: the world states what is not so, the
-narration is written again from that, the actor is told, bystanders see a try and not a deed,
-and the page shows what happened instead of what was meant. Nothing is checked in a world
-without mechanics: there is no record there.
+The mechanics (sim/survival.py) hold what is true of bodies, things and places; of() and account() say it to whoever
+asks (a ruling, an actor, the planner). Nothing here refuses (2026-11-28): a deed is resolved (sim/resolver.py), a
+line is said as written (speech), and the world's narration of a look is told as written (narration_noted). What
+any of them has that the record does not hold is written to the run's error log (sim/errors.py) and changes nothing.
+What the director brings in is put in the world's terms where it can be (admit); what cannot is logged.
 """
 from __future__ import annotations
 
@@ -577,259 +561,86 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     return facts, refused, remaining
 
 
-def rejection(claims, facts=(), refused=(), settled=''):
-    """The note that sends a narration back to be written again."""
-    return ("\nYour earlier answer was turned down: the world does not hold these things, so they may not be stated or implied:\n"
-            + '\n'.join(f'- {words}' for _, words in claims)
-            + (("\nWhat is so instead:\n" + '\n'.join(f'- {r}' for r in refused)) if refused else '')
-            + (("\nThese are now true and may be used:\n" + '\n'.join(f'- {f}' for f in facts)) if facts else '')
-            + (f"\nWhat the world has settled stands, and your answer must not undo it: {settled}" if settled else '')
-            + "\nWrite it again without what was turned down, from what is so: say plainly what is actually done and found. "
-              "If little is left to say, say little.\n")
-
-
-def _words(text):
-    return {w for w in re.findall(r"[a-z']{4,}", text.lower())}
-
-
-def cut(text, claims):
-    """`text` without the sentences that carry a claim; '' when a claim cannot be placed (then
-    nothing of the narration can be trusted to be clear of it)."""
-    sentences = [s for s in re.split(r'(?<=[.!?])\s+', text.strip()) if s]
-    drop = set()
-    for _, words in claims:
-        flat = ' '.join(words.lower().split()).rstrip('.')
-        hit = [i for i, s in enumerate(sentences) if flat and flat in ' '.join(s.lower().split())]
-        if not hit:
-            want = _words(words)
-            hit = [i for i, s in enumerate(sentences) if want and len(want & _words(s)) / len(want) >= 0.6]
-        if not hit:
-            return ''
-        drop.update(hit)
-    return ' '.join(s for i, s in enumerate(sentences) if i not in drop)
-
-
-class Settled(str):
-    """A narration as the world admits it, with what settling it changed: .facts (things now
-    real), .refused (what the world said is not so), .tainted (the deed itself assumed a thing
-    that was refused, so the deed as written did not happen)."""
-    facts: tuple = ()
-    refused: tuple = ()
-    tainted: bool = False
-
-    def __new__(cls, text, facts=(), refused=(), tainted=False):
-        self = super().__new__(cls, text or '')
-        self.facts, self.refused, self.tainted = tuple(facts), tuple(refused), tainted
-        return self
-
-
-def strip(text, claims):
-    """`text` without the sentences that carry one of `claims` (a claim found in no sentence is
-    let go: this is for a plan's fields, each checked against claims found in all of them)."""
-    sentences = [s for s in re.split(r'(?<=[.!?])\s+', (text or '').strip()) if s]
-    def carries(sentence):
-        flat = ' '.join(sentence.lower().split())
-        for _, words in claims:
-            want = _words(words)
-            if ' '.join(words.lower().split()).rstrip('.') in flat or (want and len(want & _words(sentence)) / len(want) >= 0.6):
-                return True
-        return False
-    return ' '.join(s for s in sentences if not carries(s))
-
-
-def settle(context, actor, action, facts, narration, rewrite, kind='do', source='deed'):
-    """`narration` as the world admits it (a Settled). rewrite(note) asks the narrator again with
-    a note on what was turned down and what is so. One check; new things are admitted or refused
-    (admit); then at most one rewrite and re-check, and what is still unsupported is cut. Every
-    finding is traced (kind 'narration_check')."""
-    if (not narration or not survival.config(context) or getattr(actor, 'body', None) is None
-            or not ablation.enabled('narration_gate')):
+def narration_noted(context, actor, action, narration, of='look'):
+    """`narration` as it stands: what the world's narrator wrote (of a look) is told as written. What the check
+    finds in it that the record does not hold is written to the run's error log (sim/errors.py): the stage is not
+    changed by it, and a deed that leans on it meets the stage as it is. (It was written again and cut.)"""
+    if not narration or not survival.config(context) or getattr(actor, 'body', None) is None:
         return narration
-    claims = check(context, actor, action, facts, narration)
-    if not claims:
-        trace.event('narration_check', character=actor.name, of=kind, outcome='ok' if claims is not None else 'unchecked', claims=[])
-        return narration
-    made, refused, remaining = ([], [], claims) if kind == 'look' else admit(context, actor, claims, f'{action}\n{narration}', source)
-    if not remaining:   # everything found was a new thing, and is now real
-        trace.event('narration_check', character=actor.name, of=kind, outcome='admitted',
-                    claims=[f'{k}: {w}' for k, w in claims], made=made, before=narration, after=narration)
-        return Settled(narration, made)
-    settled = ' '.join(filter(None, [facts or ''] + made + refused))
-    # who is he and who is she is for the rewrite only: it is not a fact about what happened
-    so = refused + ([f'Cast: {cast(context)}.'] if any(k == 'gender' for k, _ in remaining) else [])
-    again = rewrite(rejection(remaining, made, so, settled=re.sub(survival.BODY_NOTE, '', facts or '').strip()))
-    still = check(context, actor, action, settled, again) if again else None
-    if again and still == []:
-        result, outcome = again, 'rewritten'
-    elif again and still:
-        result, outcome = cut(again, still), 'cut'
-    else:
-        result, outcome = cut(narration, remaining), 'cut'
-    # did the deed itself rest on what was refused? ('rotates his swollen ankle', unhurt)
-    deed = _words(action)
-    tainted = any(_words(w) and len(_words(w) & deed) / len(_words(w)) >= 0.5 for k, w in remaining if k in FOUND)
-    trace.event('narration_check', character=actor.name, of=kind, outcome=outcome,
-                claims=[f'{k}: {w}' for k, w in claims], still=[f'{k}: {w}' for k, w in (still or [])],
-                made=made, refused=refused, tainted=tainted, before=narration, after=result)
-    return Settled(result, made, refused, tainted)
+    claims = check(context, actor, action, None, narration)
+    if claims:
+        from sim import errors
+        errors.log('record.check', 'narration against the record', of=of, character=actor.name,
+                   claims=[f'{k}: {w}' for k, w in claims], narration=narration[:400])
+    trace.event('narration_check', character=actor.name, of=of, outcome='noted' if claims else 'ok' if claims is not None else 'unchecked',
+                claims=[f'{k}: {w}' for k, w in claims or []])
+    return narration
 
 
 # --------------------------------------------------------------------------- speech
-# A character may be wrong about the world, and may lie. What it cannot be is mistaken about
-# itself at this moment: what is in its hands, what it is doing, the state of its own body,
-# where it stands, whether it is light or dark. A line that gets one of those wrong, and was
-# not meant as a lie, is an error of the engine ("Here. Clean water." with empty hands, which
-# the listener then took as given), and is said again without it before anyone hears it.
-# Everything else a character says is its own: opinions, guesses, plans, fears, figures of speech.
-RESAY = """A character in a play was about to say the line below, but part of it is untrue of the speaker at this moment, and the character did not mean to lie.
-
-Speaker: {{$name}}
-<about {{$name}}, now>
-{{$record}}
-</about>
-
-<line>
-{{$line}}
-</line>
-
-Not so, or not {{$name}}'s to know:
-{{$claims}}
-(Who is who: {{$cast}})
-What {{$name}} does not know:
-{{$unknown}}
-A thing {{$name}} does not know may be asked about, or guessed at as a guess; a name not yet heard is not used ('you', or nothing).
-
-Say the line again as {{$name}} would, in the same voice, in the first person, and no longer than it was. Keep everything else it says and means; leave out what is not so.
-- Do not announce the correction: never "It's morning", "I'm not up the tree", "I have no water". Just do not say the untrue thing.
-- Do not move the untrue thing onto someone else.
-- If the point of the line was the untrue part, say what {{$name}} can truly say toward the same end: an offer of water one does not have becomes an offer to fetch it; a claim to hold a branch becomes going to get one; a warning that it is nearly dark becomes a warning that dark will come.
-Respond with the spoken words only.
-</end>
-"""
-
-# 'doing' is asked for but not acted on: the world does not keep what a character is doing with
-# itself (scanning, holding a position), so nothing can show such a line wrong; and a spoken
-# deed that is one of the world's actions ("I'm drinking") is made true instead (survival.spoken_deed)
-SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'danger', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past')
-
-
-def speech_claims(context, speaker, found):
-    """The findings of a speech check: [(kind, words)]. The model decides; nothing here second-
-    guesses it by the words it quoted. (Word tests here threw out correct findings: "Here, take
-    one" was kept because the line said "one" and the speaker held a notebook; "Morning" said
-    at 02:26 because a greeting matched no phrase for the hour.)"""
-    return [(f['kind'], f['words'].strip(' "\'')) for f in json_reply.items(found, 'findings', SPEECH_KINDS)]
-
-
+# A character may be wrong, may misremember and may lie: a line is said as its actor wrote it (2026-11-28: nothing in
+# a performance refuses). What the ruling of the line finds in it that the stage or the speaker's own record has
+# otherwise ('Here. Clean water.' with empty hands) is an error of the actor's model, written to the run's error log
+# (sim/errors.py), and changes nothing: the line is heard as said, and only what the stage holds is handed over. Words
+# written into a line that are not spoken ('She snorts.', '*pats her pocket*') are taken out of it: they are not speech.
 def speech(context, speaker, line, listener=None, deed=''):
-    """A spoken line as its speaker can truly say it: (line, give). `give` is (thing, person)
-    when the line itself hands over something the speaker holds, else None. One check; one
-    rewrite when it finds something; a line the rewrite leaves no better is cut to its sound
-    sentences. Traced as 'speech_check'."""
+    """A spoken line as it is said: (line, give). `give` is (thing, person) when the line itself hands over something
+    the speaker holds, else None. Traced as 'speech_check'."""
     if (not line or not survival.config(context) or getattr(speaker, 'body', None) is None
-            or not world.on(speaker) or not ablation.enabled('speech_gate')):
+            or not world.on(speaker)):
         return line, None
     people = [speaker] + [c for c in speaker.bystanders() if c is not speaker]
     if listener is not None and listener not in people and world.on(listener):
         people.append(listener)
-    about = of(context, speaker, people)
-    missing = speaker.does_not_know() if hasattr(speaker, 'does_not_know') else []
-    unknown = '\n'.join(f'- {m}' for m in missing) or 'nothing listed'
     read = survival.read_by(context, speaker)
-    if read and 'Writings' not in about:
-        about += '\nWritings (what the written things the speaker has read say): ' + read.replace('\n', '; ')
     speaker.said = None
     # the line is resolved as a deed is (sim/resolver.py resolve_words): what it hands over,
     # what it states that is not so, what it tells of the speaker's life and what it promises
-    from sim import resolver
+    from sim import errors, resolver
     found = resolver.resolve_words(context, speaker, line, listener, deed=deed, about=of(context, speaker, people, full=True)
                                    + (f"\nWritings {speaker.name} has read: " + read.replace('\n', '; ') if read else ''))
     if found is None:
-        trace.event('check_unreadable', of='speech', reply='')
+        errors.log('stage.resolve_say', 'answer could not be read', speaker=speaker.name, line=line[:300])
         return line, None   # unreadable: the line stands as written
-    handed = next((e for e in found['effects'] if e.get('thing') and e.get('to')), None)
-    found['give'] = {'thing': handed['thing'], 'to': handed['to']} if handed else None
     speaker.said = found   # Character.acts applies it once the line stands
-    # A name told in a line is known from then on to everyone who heard it: one the speaker itself
-    # knows, and that is in the line as it is finally said. (Joe gave his name, the check missed
-    # it, and Samantha 'did not know' the name she used all night, until one use of it was cut to
-    # 'You.'; and Joe's use of a name he had not heard, cut from his line, still taught it to
-    # Samantha: lost-20261119-160400.)
-    said = {str(n).strip().lower() for n in (found.get('names') or []) if isinstance(n, str)}
-
-    def heard_names(final):
-        words = set(re.findall(r"[a-z][a-z'-]*", re.sub(r"['’]s\b", '', (final or '').lower())))
-        roster = list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
-        told = {c.name for c in roster if c.name.lower() in words or (c.name.lower() in said and final == line)}
-        told -= set(getattr(speaker, 'unknown_names', None) or ())
-        for hearer in people:
-            if hearer is not speaker and getattr(hearer, 'unknown_names', None):
-                learned = hearer.unknown_names & told
-                if learned:
-                    hearer.unknown_names -= learned
-                    trace.event('name_learned', character=hearer.name, names=sorted(learned), said_by=speaker.name)
-    claims = speech_claims(context, speaker, found)
-    # what the line was about to say is there, and plainly is not: its speaker sees that (the line is
-    # put right before anyone hears it, and the one who was to say it went on believing it)
-    # The same for every finding but one of form (aloud): the ruling puts the line right itself, and its speaker,
-    # told nothing, held to what it had meant to say and said it again in the next line (sim/ruling.py, clause 4).
-    # And a thing of the place that a 'here' finding found not to be there is kept for every later ruling
-    # (ruling.not_there, below): it was kept in a list nothing read.
-    for f in found.get('findings') or []:
-        kind = f.get('kind') if isinstance(f, dict) else None
-        why = ' '.join(str(f.get('why') or '').split()) if kind and kind != 'aloud' else ''
-        if why and why not in context.__dict__.setdefault('scene_not_here', {}).setdefault(speaker.name, []):
-            context.scene_not_here[speaker.name].append(why)
-            words = str(f.get('words') or '').strip()
-            if kind == 'here':
-                speaker.add_perceptual_input(f"You were about to say: {words}. It is not so here, as you can see: {why}", percept=False, mode='internal')
-            else:
-                speaker.add_perceptual_input(f"You were about to say a thing that is not so, and said it as it is. {ruling.returned(words, why)}", percept=False, mode='internal')
-    # What a line says is here and is not, is not written to the stage as looked for and absent: only a deed that looks
-    # settles that (record.refuse). 'Something round down here', said of a hand in a bin, was cut from the line and kept
-    # as found not to be here (bellona-20261126-115753): a person may be wrong about what it cannot see.
+    findings = [f for f in found.get('findings') or [] if isinstance(f, dict) and f.get('kind') in SPEECH_KINDS]
+    for f in findings:
+        if f['kind'] != 'aloud':
+            errors.log('stage.resolve_say', 'line against the stage', speaker=speaker.name, finding=f['kind'],
+                       words=str(f.get('words') or '')[:200], why=str(f.get('why') or '')[:200])
+    said = line
+    unspoken = [f for f in findings if f['kind'] == 'aloud']
+    put_right = str(found.get('line') or '').strip().strip('"“”').strip()
+    if unspoken and put_right:
+        said = put_right   # the words with what is not spoken taken out
+    # A name told in a line is known from then on to everyone who heard it: one the speaker itself knows, and that is
+    # in the line as it is said. (Joe gave his name, the check missed it, and Samantha 'did not know' the name she used
+    # all night: lost-20261119-160400.)
+    named = {str(n).strip().lower() for n in (found.get('names') or []) if isinstance(n, str)}
+    words = set(re.findall(r"[a-z][a-z'-]*", re.sub(r"['’]s\b", '', said.lower())))
+    roster = list(context.actors) + list(getattr(context, 'extras', [])) + list(getattr(context, 'npcs', []))
+    told = {c.name for c in roster if c.name.lower() in words or c.name.lower() in named}
+    told -= set(getattr(speaker, 'unknown_names', None) or ())
+    for hearer in people:
+        if hearer is not speaker and getattr(hearer, 'unknown_names', None):
+            learned = hearer.unknown_names & told
+            if learned:
+                hearer.unknown_names -= learned
+                trace.event('name_learned', character=hearer.name, names=sorted(learned), said_by=speaker.name)
     give = None
-    handed = found.get('give') if isinstance(found.get('give'), dict) else None
-    if handed and not claims:
-        named = str(handed.get('thing') or '').strip().lower()
-        thing = next((i for i in speaker.body.inventory if i.lower() == named), None) \
-            or next((i for i in speaker.body.inventory if named and (named in i.lower() or i.lower() in named)), None)
+    handed = next((e for e in found['effects'] if e.get('thing') and e.get('to')), None)
+    if handed:
+        name = str(handed.get('thing') or '').strip().lower()
+        thing = next((i for i in speaker.body.inventory if i.lower() == name), None) \
+            or next((i for i in speaker.body.inventory if name and (name in i.lower() or i.lower() in name)), None)
         person = next((c for c in people if c is not speaker and c.name.lower() == str(handed.get('to') or '').strip().lower()), None)
         give = (thing, person) if thing and person is not None else None
-    if not claims:
-        heard_names(line)
-        trace.event('speech_check', character=speaker.name, outcome='ok', claims=[], gives=give[0] if give else None)
-        return line, give
-    # the line will not stand as written: what was read of its words is not applied; a deed done
-    # beside it is, whatever becomes of the words. A line that was only written with what is not
-    # spoken in it ('She snorts.') says what it said: what it told and promised stands.
-    if any(kind != 'aloud' for kind, _ in claims):
-        speaker.said = {**found, 'tells': [], 'promises': [], 'retold': ''} if deed and isinstance(speaker.said, dict) else None
-    put_right = str(found.get('line') or '').strip().strip('"“”').strip()
-    if put_right and put_right != line:
-        # the call that found what is not so, with the stage before it, also says the line as it
-        # can truly be said (a second, smaller call told only the words to avoid kept 'Somebody
-        # knelt here before us' two times in three, having dropped 'a stranger')
-        trace.event('speech_check', character=speaker.name, outcome='resaid', claims=[f'{k}: {w}' for k, w in claims], before=line, after=put_right)
-        heard_names(put_right)
-        return put_right, None
-    # with what the stage shows instead, where the finding gave it ('Samantha left the fingermarks at 08:01')
-    whys = {str(f.get('words') or '').strip(' "\''): str(f.get('why') or '').strip() for f in found.get('findings') or [] if isinstance(f, dict)}
-    again = context.llm.ask({'name': speaker.name, 'record': about, 'line': line, 'cast': cast(context), 'unknown': unknown,
-                             'claims': '\n'.join(f'- {w}' + (f' (in fact: {whys[w]})' if whys.get(w) else '') for _, w in claims)}, [UserMessage(content=RESAY)],
-                            tag='record.resay', temp=0.6, stops=['</end>'], max_tokens=120)
-    again = (again or '').strip().strip('"“”\'').strip()
-    carried = lambda text: [c for c in claims if ' '.join(c[1].lower().split()).rstrip('.') in ' '.join(text.lower().split())]
-    if again and not carried(again):
-        result, outcome = again, 'resaid'
-    else:
-        kept = strip(line, claims)
-        result, outcome = (kept, 'cut') if kept else (again or line, 'unfixed')
-    trace.event('speech_check', character=speaker.name, outcome=outcome, claims=[f'{k}: {w}' for k, w in claims],
-                before=line, after=result)
-    heard_names(result)
-    return result, None
+    trace.event('speech_check', character=speaker.name, outcome='unspoken taken out' if said != line else 'ok',
+                findings=[f"{f['kind']}: {f.get('words')}" for f in findings], before=line, after=said, gives=give[0] if give else None)
+    return said, give
 
+
+SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'danger', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past', 'stands')
 
 
 # --------------------------------------------------------------------------- deeds

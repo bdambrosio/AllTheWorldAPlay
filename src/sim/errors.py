@@ -17,7 +17,11 @@ from sim.trace import trace
 
 def log(where, what, **detail):
     """where: the call or step whose answer it was; what: what the stage could not take, in a few words."""
-    trace.event('error', where=where, what=what, **detail)
+    detail = {('field_' + k if k in ('kind', 'where', 'what') else k): v for k, v in detail.items()}   # never the trace's own fields
+    try:
+        trace.event('error', where=where, what=what, **detail)
+    except Exception:
+        pass   # logging must never affect the play
     if trace.path is None:
         return
     try:

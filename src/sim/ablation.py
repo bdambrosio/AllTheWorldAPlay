@@ -6,15 +6,13 @@ and lasts until the next load. Everything is enabled by default.
   commitments  post-dialog commitment extraction
   stance       LLM emotional stance (characters keep the default stance)
   drive_appraisal  drives that move with events (sim/cognitive/drives.py); off, they rest at their baselines
-  narration_gate   the check of narration against the world's record (sim/record.py); off, narration stands as written
-  speech_gate      the check of a spoken line against what its speaker must know (record.speech); off, lines stand as written
   scene_owner      the owner of a scene while it is played (sim/scene.py); off, tasks, talks and exits end as they did before it
   owner_beats      with an owner, a beat is played as the owner arranged it; off, each beat is looked at again
                    before it is played (NarrativeCharacter.refresh_task), as it is where there is no owner
   keeper           the world-keeper (sim/keeper.py): a thing a deed makes is modelled for how it behaves in time;
                    off, it is simply there
 """
-FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate', 'scene_owner', 'owner_beats', 'keeper')
+FEATURES = ('commitments', 'stance', 'drive_appraisal', 'scene_owner', 'owner_beats', 'keeper')
 _disabled: set = set()
 
 

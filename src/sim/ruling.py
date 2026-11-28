@@ -91,12 +91,3 @@ def released(context, promise, why=''):
                                    + (f" ({_plain(why)})." if _plain(why) else '.'), percept=False, mode='internal')
             told.append(c.name)
     return told
-
-
-# ------------------------------------------------------------------ back to the source
-def returned(what, why='', instead=''):
-    """What a source is told of a refusal, the same three things whoever it is: what was refused,
-    why, and what is so instead. Sentences, for the source's own prompt or memory."""
-    what, why, instead = _plain(what), _plain(why), _plain(instead)
-    return ' '.join(filter(None, [f'Not so, and left out: {what}.' if what else '', f'Because: {why}.' if why else '',
-                                  f'As it is: {instead}.' if instead else '']))

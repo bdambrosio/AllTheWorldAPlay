@@ -1071,8 +1071,7 @@ End your response with:
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
                                                    stops=['</end>'], max_tokens=300)
         nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else text
-        settled = record.settle(self, actor, f'looks: {action}', None, nothing(narrate()), lambda note: nothing(narrate(note)), kind='look') or ''
-        consequences = str(settled)   # what was seen; a look settles nothing in the world
+        consequences = record.narration_noted(self, actor, f'looks: {action}', nothing(narrate()) or '') or ''   # what was seen; a look settles nothing in the world
 
         if consequences.endswith('<'):
             consequences = consequences[:-1]
@@ -1243,7 +1242,7 @@ End your response with:
         # nothing else is not made at all (it used to reach every character as a percept, and
         # the next scene was rewritten around it).
         cast = [c for c in self.actors if getattr(c, 'body', None) is not None]
-        if survival.config(self) and cast and ablation.enabled('narration_gate'):
+        if survival.config(self) and cast:
             newcomers = bool(analysis.get('entities', {}).get('new_character'))
             found = record.check(self, cast[0], 'The director brings an event into the play.', None,
                                  intervention_description, people=cast) or []
@@ -1272,11 +1271,10 @@ End your response with:
                 trace.event('director_moves', who=[c.name for c in moved], to=list(stage.here(cast[0])))
             with self.committing('director'):
                 made, refused, remaining = record.admit(self, cast[0], claims, intervention_description, 'director', people=cast)
-            trace.event('intervention_check', made=made, refused=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
-            if remaining:
-                # an intervention is one event: with a part of it refused (the wounded dog), what is
-                # left ('stopping to tend the animal') stands on nothing, so none of it is made
-                return None
+            trace.event('intervention_check', made=made, unmade=[f'{k}: {w}' for k, w in remaining], text=intervention_description)
+            if remaining:   # what of it could not be put in the world's terms is logged; the intervention is made
+                errors.log('record.admit', 'intervention part not put in the world', claims=[f'{k}: {w}' for k, w in remaining],
+                           text=intervention_description[:400])
 
         for character in analysis['entities']['new_character']:
             #<new_character name="Storm Chaser" 
@@ -1462,7 +1460,7 @@ End your response with:
 <where_things_stand>
 The world as the play opened (its ground, its weather, how things were at the first moment; what has changed since is below): {{$opening}}
 It is now {{$clock}}.
-The scene is played where the cast now is: {{$here}}.
+The cast is now at: {{$here}}.
 {{$places}}
 Bodies, as the world has them (what each carries is with the things, below): {{$bodies}}
 The danger on the cast now: {{$danger}}.
@@ -1475,7 +1473,7 @@ What has happened lately:
 </where_things_stand>
 
 Where and when the scene is played:
-- The scene is played where the cast now is, with its cast together. It may be played in a part of that place the stage does not list yet (the back room of the shop, the far side of the clearing): give it as a #place line. Where the plan set it somewhere else, keep what the scene is for and play it here: the opening has the cast here, not on the way to somewhere, arriving at it or already there. Going elsewhere is the actors' to play, by their own deeds in the scene.
+- The scene is played with its cast together, where the cast now is, unless what it is for needs another place listed above: then the cast walks there as it opens (#location), and the walk is told before the set-up. Never send them back to a place they have just left only because the plan named it. It may be played in a part of the scene's place the stage does not list yet (the back room of the shop, the far side of the clearing): give it as a #place line. The opening has the cast at the scene's place.
 - when: first settle what part of the day the scene is played in. {{$moving}}
 - Then write the opening, the title and the ending for the time the scene is played in. The heading gives the time of day: the opening says it only if it matters to what happens.
 
@@ -1496,13 +1494,14 @@ What the scene is to settle:
 Respond with these lines only:
 #skip yes or no
 #when same, or one of: dawn, morning, midday, afternoon, dusk, night
+#location same, or the exact name of the listed place the cast walks to as the scene opens
 #title the scene's title: as planned, unless it names a time of day, a place or a thing that is no longer so
-#opening how the scene opens, one or two sentences: where the cast is, what is there, what presses on them
+#opening how the scene opens, one or two sentences: the cast at the scene's place, what is there, what presses on them (a walk there is told before it, by the stage: the opening has them there already, never walking, coming or setting off there: 'At the cafe counter, Kidd and Lanya…', not 'Kidd and Lanya walk north to the cafe')
 #ending what the scene is to settle, one sentence beginning 'Whether' or 'What': the matter, not its answer, with nothing in it taken as done that has yet to happen
 #goal <character name>: what that character wants out of the scene, a few words (one line for each character). The want only: not the steps, the words or the memories they will use to get it, which are the actor's. It is a want the character already has as the scene opens and could own to at that moment, from what it knows then. Where the plan's goal waits on a thing not yet found, on a writing its character has not read, or on what another character will do in the scene (to see what he does with what he finds), write it again as the want behind it (to miss nothing that turns up), with nothing in it that has yet to happen. Never to leave, or to get the others moving or away, unless whether they go is the scene's matter: going comes when what the scene is for is done
-#thing <name, two to five words>: where at this place it lies, in a few words, or the words "with <character name>" for a thing in that person's hands (one line for each thing the opening has here; for a thing the stage already lists here, where in the place it lies; none for a thing at another place)
+#thing <name, two to five words>: where at the scene's place it lies, in a few words, or the words "with <character name>" for a thing in that person's hands (one line for each thing the opening has at the scene's place; for a thing the stage already lists there, where in the place it lies; none for a thing at another place)
 #shows <character name>: how that person looks, two to six words
-#place <name, two or three plain words>: inside or beside, and one plain sentence of what it is (only when the scene is played in a part of the cast's place the stage does not list)
+#place <name, two or three plain words>: inside or beside, and one plain sentence of what it is (only when the scene is played in a part of the scene's place the stage does not list)
 </end>
 """)]
         notes_prompt = [UserMessage(content="""You are the stage manager of an improvised play. The scene below is about to be played. Write the set-up that is read out as it opens, and the notes that go to its actors: what each character does not know as the scene opens, and what each keeps back in it.
@@ -1524,7 +1523,7 @@ What has happened lately:
 {{$strangers}}
 </who_knows_what>
 
-On #setup: write the opening the scene was planned with (opening, above) as it is read out, in one or two sentences: where the cast is, what is there, what presses on them. Say of the place, the things and the people only what the_stage_as_it_opens holds: a thing, a look or a part of the place that it does not hold is left out of the set-up, and nothing is put in its place; that a thing is somewhere to be found, or is not, is not said unless the stage lists it there. The cast is where the stage has them: the set-up does not walk them anywhere. It is read out to the audience and to everyone in the scene, so it puts into words only what everyone in the scene knows (who_knows_what says who knows what): what only some know is left out. Nothing of what the scene is for happens in it.
+On #setup: write the opening the scene was planned with (opening, above) as it is read out, in one or two sentences: where the cast is, what is there, what presses on them. Say of the place, the things and the people only what the_stage_as_it_opens holds: a thing, a look or a part of the place that it does not hold is left out of the set-up, and nothing is put in its place; that a thing is somewhere to be found, or is not, is not said unless the stage lists it there. The cast is at the scene's place (Where, above): any walk there has been told to the audience already, just before the set-up. The set-up opens with them there: it never has them walk, come, reach or set off anywhere ('At the cafe counter, Kidd and Lanya…', not 'Kidd and Lanya walk north to the cafe'), even where the opening above does. It is read out to the audience and to everyone in the scene, so it puts into words only what everyone in the scene knows (who_knows_what says who knows what): what only some know is left out. Nothing of what the scene is for happens in it.
 
 On #unknown: a character knows what it has lived (see 'What has happened lately') and what concerns itself. It does not know another's name before it has been told it, nor another's condition, memories, intentions or secrets, nor what is going to happen, until these are shown or said in its presence. How the scene will turn out is not one of these: nobody knows that, and it needs no line. Nor is what 'What lies behind this play' or 'What stands' marks the character as told on the stage: it has that, as far as the mark says. An #unknown is about a person only: never what a place holds, where a thing lies or how it is, or what a search or a deed would turn up. Those are not settled until someone looks, and the world settles them then. The line names what the character is missing, never what it is: 'the woman's name', not 'that she is called Nadia'; 'what she keeps from them about whom she feeds', not who it is or that she feeds him. Give a line for each such thing the scene turns on, as many lines as are needed, and none for a character who is missing nothing. These go to the actors, who must not learn from them what their characters have still to find out.
 
@@ -1554,7 +1553,7 @@ Respond with these lines only:
         things = lambda: record.account(self, 'planner', people=cast, states=True, without=behind) or 'nothing tracked'
         events = (' '.join(self.act_scene_wrapups[-2:]) + '\n' + self.recent_events_text(6)).strip()
         facts = self.screenplay.facts_note(pasts=True, knowing=self.knowing, answers=self.screenplay.answers, setup=True)
-        scene['location'] = 'same'   # played where the cast now is (stage.scene_spot), or in a part of it made below
+        scene['location'] = 'same'   # played where the cast now is (stage.scene_spot), unless the stage manager walks them on (#location)
         xy, rid = stage.scene_spot(self, scene, cast)
         here = lambda: (rid or stage.where(self, xy).removeprefix('at ')) + (f" ({world.place(self, rid).description})" if rid and world.place(self, rid) is not None and world.place(self, rid).description else '')
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
@@ -1577,6 +1576,14 @@ Respond with these lines only:
             if target is not None and self.move_on(target) >= survival.REAL_JUMP_HOURS:
                 self._act_jumps = getattr(self, '_act_jumps', 0) + (0 if opens_act else 1)
                 changed['when'] = scene['when'] = stage.part_of(self.simulation_time)
+        to = find('location')
+        if to and to.lower() not in world.SAME_PLACE:
+            # the cast walks there as the scene opens (stage.set_scene tells the walk); a name that is no place stays here
+            if stage.resolve(self, to, xy) is not None:
+                changed['location'] = scene['location'] = to
+                xy, rid = stage.scene_spot(self, scene, cast)
+            else:
+                errors.log('reground_scene', 'no such place', location=to)
         for key, value in (('pre_narrative', find('opening')), ('post_narrative', find('ending')), ('scene_title', find('title').strip('"\''))):
             if value and value != scene.get(key):
                 changed[key] = scene[key] = value
