@@ -23,6 +23,20 @@ from sim import ablation, keeper, ledger, world
 _rng = random.Random()
 
 
+def color(context):
+    """The world file's color, labelled for a prompt, or '': informative text that helps the calls that write the
+    play (the director, the planners, the stage manager, the actors) and is never a rule. It goes where the setting
+    goes in those calls, and to no ruling, keeper or check: nothing is refused or put right by it (2026-11-27)."""
+    text = ' '.join(str(getattr(world.scenario(context), 'color', None) or '').split())
+    return (f"Color of this world (atmosphere to use or leave; the sketch, the stage and the director's facts come first, "
+            f"and nothing here is a rule): {text}") if text else ''
+
+
+def setting(context):
+    """The play's setting as the calls that write the play read it: the play file's own, then the world's color."""
+    return '\n'.join(filter(None, [(context.initial_state or '').strip(), color(context)]))
+
+
 def config(context) -> Optional[dict]:
     module = world.scenario(context)
     return getattr(module, 'affordances', None) or getattr(module, 'survival', None)

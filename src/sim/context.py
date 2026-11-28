@@ -368,7 +368,7 @@ class Context():
         dangers). Elsewhere it is the free text it always was."""
         if survival.config(self) and getattr(self, 'actors', None):
             lately = ' '.join(w.split(' Assessed outcome:')[0] for w in getattr(self, 'act_scene_wrapups', [])[-2:])
-            value = f'{self.initial_state.strip()}\n\n{record.situation(self, lately)}\n{self._state_notes}'
+            value = f'{survival.setting(self)}\n\n{record.situation(self, lately)}\n{self._state_notes}'   # with the world's color: read only by calls that write the play
         else:
             value = self._state_base + self._state_notes
         self._state_read = value
@@ -1544,7 +1544,7 @@ Respond with these lines only:
         xy, rid = stage.scene_spot(self, scene, cast)
         here = lambda: (rid or stage.where(self, xy).removeprefix('at ')) + (f" ({world.place(self, rid).description})" if rid and world.place(self, rid) is not None and world.place(self, rid).description else '')
         inputs = {'scene': json.dumps(planned, indent=1, default=datetime_handler),
-                  'opening': ' '.join((self.initial_state or '').split()) or 'not said', 'here': here(),
+                  'opening': ' '.join(survival.setting(self).split()) or 'not said', 'here': here(),
                   'places': stage.gazetteer(self, bearings=True) + stage.supporting_note(self, plan=False), 'clock': stage.clock(self), 'moving': moving,
                   'strangers': self.strangers_note(),
                   'clues': '\n'.join(n for n in (self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
@@ -2435,7 +2435,7 @@ In writing this act:
         parts = [rid for rid, _ in stage.uncast_parts(self)]
         if places and parts:   # where the director may put a person of its own
             places += f"\nPlaces with an owner nobody has yet been cast as: {', '.join(parts)}."
-        return {'setting': self.initial_state.strip(), 'people': people, 'places': places or 'No places are listed.'}
+        return {'setting': survival.setting(self), 'people': people, 'places': places or 'No places are listed.'}
 
     def frame_episode(self):
         """Settle, before the first act, what this playthrough is to settle and what it leaves
@@ -2531,7 +2531,7 @@ Respond with these lines only, one sentence each:
                     survival.stands(self, f"{knower.name} needs this of {leads}: {need}. For it {knower.name} would tell them {buys}.",
                                     about=[knower.name], known=[knower.name])
                     trace.event('director_needs', who=knower.name, needs=need)
-        reply = reply if standing else self.llm.ask({'setting': self.initial_state.strip(), 'central': str(self.central_narrative or ''),
+        reply = reply if standing else self.llm.ask({'setting': survival.setting(self), 'central': str(self.central_narrative or ''),
                               'past_rule': past_rule, 'past_format': past_format,
                               # who each is, and what each wants (the facts are about these people: it was given their drives alone)
                               'characters': '\n'.join(f"{c.name}: {' '.join((getattr(c, 'original_character', None) or c.character).split())} Wants: {'; '.join(d.text for d in (c.drives or [])[:3])}"

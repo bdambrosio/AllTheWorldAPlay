@@ -847,6 +847,8 @@ def check_next(context, base, reply):
     lines = [l.strip() for l in reply.splitlines() if l.strip().startswith('#')]
     if not lines:
         return reply, []
+    if 'setting' in base:   # the world's color is never a reason to strike (survival.color): the check reads the play's own setting
+        base = dict(base, setting=(context.initial_state or '').strip())
     found = _ask(context.llm, CHECK_NEXT.format(**base, written='\n'.join(f'{n}. {l}' for n, l in enumerate(lines, 1))), 'director.check', 400)
     struck = {int(f[0]): (f[1] if len(f) > 1 else '') for f in (_fields(l) for l in _lines('strike', found)) if f and f[0].strip().isdigit()}
     struck = {n: why for n, why in struck.items() if 0 < n <= len(lines)}

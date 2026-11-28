@@ -45,6 +45,10 @@ layout = {
     ],
 }
 
+# Color: what helps the calls that write the play (director, planners, stage manager, actors); never a rule, and never read
+# by a ruling or a check (survival.color). Approved by the author, 2026-11-28.
+color = 'Time, money, work and relationships: ordinary days and decisions that cannot wait.'
+
 # The engine's world layer is on for a world that has this; it states no need, danger or rule of the world.
 affordances = {
     'tile_minutes': 1,
