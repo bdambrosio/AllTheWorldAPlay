@@ -33,7 +33,7 @@ from sim.trace import trace
 
 _rng = random.Random()
 KEEPS_OFF = 'keeps off'
-KEPT = 'kept'   # the part a deed is made of when the keeper placed it (record.judge, survival._do_one)
+KEPT = 'kept'   # the part a deed is made of when the keeper placed it
 
 LAWS = """Laws of every world you keep:
 - It is the world the setting describes. What an ordinary person could do there with their body and what is at hand can be done; what they could not, cannot, however the deed is worded.
@@ -385,11 +385,7 @@ def perform(context, character, deed):
     from sim import survival, ledger
     facts, came_off, did = [], True, False
     for d in (context.__dict__.get('_kept_deeds', {}).get((character.name, deed)) or {}).get('does', []):
-        if d.get('action'):   # an action the stage already had: done as that action
-            fact = survival._do_one(context, character, d['action'], deed.lower(), deed, 'model')[1]
-            if fact:
-                facts.append(fact)
-                did = True
+        if d.get('action'):   # the keeper names no action of the world (consider: free)
             continue
         model, name = models(context).get(d['kind']), d['thing']
         if model is None:

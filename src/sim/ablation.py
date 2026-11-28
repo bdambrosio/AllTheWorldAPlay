@@ -11,10 +11,8 @@ and lasts until the next load. Everything is enabled by default.
   scene_owner      the owner of a scene while it is played (sim/scene.py); off, tasks, talks and exits end as they did before it
   owner_beats      with an owner, a beat is played as the owner arranged it; off, each beat is looked at again
                    before it is played (NarrativeCharacter.refresh_task), as it is where there is no owner
-  keeper           the world-keeper (sim/keeper.py): a deed the stage cannot place is modelled when it is first
-                   needed; off, such a deed is refused as it was
-  resolver         what a deed does is said by one call shown the whole stage, and the page is written from it
-                   (sim/resolver.py); off, a deed is judged against labels and narrated as it was before
+  keeper           the world-keeper (sim/keeper.py): a thing a deed makes is modelled for how it behaves in time;
+                   off, it is simply there
 """
 FEATURES = ('commitments', 'stance', 'drive_appraisal', 'narration_gate', 'speech_gate', 'scene_owner', 'owner_beats', 'keeper')
 _disabled: set = set()

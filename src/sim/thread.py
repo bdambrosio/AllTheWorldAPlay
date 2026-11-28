@@ -668,7 +668,7 @@ def another_question(context):
     questions, takes = getattr(context, 'thread_questions', None) or [], list(getattr(context, 'thread_takes', None) or [])
     if not takes:
         return ''
-    ruling.unmet(context, 'part', '', f'the question taken for this part: {context.standing_question}', 'nothing that fits what stands could be settled behind it')
+    trace.event('part_question_set_aside', question=context.standing_question)
     for n in takes:
         questions[n - 1]['unanswered'] = len(context.thread_parts) + 1   # read again by the director who opens the next part (CLOSE, 'still')
     offered = [dict(q, closed=q.get('closed') or ('set aside' if n in takes else None)) for n, q in enumerate(questions, 1)]

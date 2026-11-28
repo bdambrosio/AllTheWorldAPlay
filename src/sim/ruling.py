@@ -1,23 +1,12 @@
-"""What a ruling leaves behind, one way for every point that refuses, strikes or drops something.
+"""What deeds played have found, and promises taken off the stage.
 
-A play is made by calls that propose (an actor a line or a deed, the planner a scene, the director
-a fact) and calls that rule on what was proposed. Each ruling point dealt with a refusal its own
-way, and what a refusal left behind was nowhere the others read: a deed was refused because no
-print lay by the cap, the record said only that the deed was not done (in the deed's own words,
-print and all), and four scenes later the check of a set-up, finding nothing against a print,
-made one; the play then stood on it for a whole part (lost-20261125-154614, and the audit of the
-same day in the plan file). The contract every ruling point is held to:
-
-  1. nothing is derived from a proposal, and no shared record sees it, before it is ruled;
-  2. what was refused does not go into a shared record in its own words;
-  3. what a deed played finds is state, kept where every other ruling reads (not_there, below). A check of
-     a text (a set-up, a plan, a line) rules on what the text may say and writes nothing to the world: that a
-     thing is not somewhere is found only by a deed that looks, when it is played. Kept as a finding of the
-     check, a struck 'cans on a low shelf' settled a search nobody had made (bellona-20261127-142348);
-  4. the source is told what was refused, why, and what is so instead, and decides once what to
-     do about the step it was on (returned, below);
-  5. a step given up is kept as unmet (below) and read by the level above at its next decision.
-     Nothing is unwound further back, and nothing the audience has seen is taken back.
+Nothing in a performance refuses (2026-11-27): a deed is resolved, played as it comes off or as it is tried
+and does not, and what the stage cannot take is logged as an error of the run (sim/errors.py), not made a
+change to the play. What a deed played finds is state: that a thing it looked for here is not here is kept
+(not_there), for every later ruling at the place and for those who saw it, until a deed makes it
+(there_again). Only a deed that looks settles that: a check of a text writes nothing to the world.
+(A struck 'cans on a low shelf' was kept as cans not there and settled a search nobody had made,
+bellona-20261127-142348.)
 
 Kept within one performance and its thread, never from one night to another."""
 from sim import ledger
@@ -30,11 +19,11 @@ def _plain(words):
 
 # ------------------------------------------------------------------ what was found not to be there
 # The world holds what is, and a thing is modelled when a deed first needs it: so that a thing is
-# not listed means only that nothing has needed it yet, and any later call may bring it in. A ruling
-# that refuses something because a thing is not there is the one moment when that is decided, and
-# the decision is kept: {'what', 'at' (xy), 'since', 'seen_by' [names], 'by', 'ended'}.
+# not listed means only that nothing has needed it yet, and any later call may bring it in. A deed
+# that looks or reaches for a thing here and does not find it is the one moment when that is decided,
+# and the outcome is kept: {'what', 'at' (xy), 'since', 'seen_by' [names], 'by', 'ended'}.
 def not_there(context, what, at, seen_by=(), by=''):
-    """A ruling has found that `what` is not at this spot. Kept for every later ruling at that
+    """A deed played has found that `what` is not at this spot. Kept for every later ruling at that
     place (absent_note) and for those who saw it. Returns the entry, or None when it is already kept."""
     from sim import survival
     what = _plain(what)
@@ -88,40 +77,6 @@ def absent_note(context, at=None, reader=None, places=False):
     from sim import survival
     found = absent(context, at, reader)[-12:]
     return '; '.join(a['what'] + (f" (at {survival._nearest_resource_id(context, a['at'])})" if places else '') for a in found)
-
-
-# ------------------------------------------------------------------ a step given up
-# A failure used to go upward only as a trace event, which nothing reads: a beat given up after two
-# refusals, the tasks a scene closed without playing, what a check struck from a plan. The planner
-# of the next scene or act was told none of it, and planned the filling of a water skin at the same
-# spring three scenes running. A step given up is kept here, and whoever plans next is shown it.
-def unmet(context, level, who, step, why=''):
-    """A step was given up. level: 'deed' (an actor's beat, its deed refused twice), 'plan' (something struck
-    from a set-up), 'part' (a question nothing could be settled behind)."""
-    step = _plain(step)
-    if not step:
-        return None
-    kept = context.__dict__.setdefault('unmet_steps', [])
-    if any(u['step'].lower() == step.lower() and u['who'] == who for u in kept[-12:]):
-        return None
-    scene = getattr(context, 'current_scene', None) or {}
-    entry = {'level': level, 'who': who or '', 'step': step[:200], 'why': _plain(why)[:200],
-             'scene': scene.get('scene_number') if isinstance(scene, dict) else None, 'at': context.simulation_time}
-    kept.append(entry)
-    trace.event('unmet', **{k: v for k, v in entry.items() if k != 'at'})
-    return entry
-
-
-def unmet_note(context, most=6):
-    """For whoever plans next: what was tried or planned lately and the world would not have, and why.
-    '' when nothing was. (The beats a scene ends without playing are not here: it ended because it had got
-    where it was going, and they are not wanted.)"""
-    kept = (getattr(context, 'unmet_steps', None) or [])[-most:]
-    if not kept:
-        return ''
-    return ("The world would not have these, tried or planned lately. It will not have them now either, unless what stood in the way has changed: "
-            "do not set a scene on one as though it could simply be done.\n"
-            + '\n'.join(f"- {(u['who'] + ': ') if u['who'] else ''}{u['step']}" + (f" ({u['why']})" if u['why'] else '') for u in kept))
 
 
 def released(context, promise, why=''):

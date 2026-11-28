@@ -1086,134 +1086,22 @@ End your response with:
         return consequences
 
     async def do(self, actor, act):
-        """ This is the world determining the effects of an actor action"""
-        action = act.action
-        target = act.target
-        duration = act.duration
-        mode = act.mode
-        source = act.source
-        target = act.target
-        # One question, each fact once. (It gave the play's opening text and the actor's summary as
-        # two <situation>s and the actor's whole description; events from places the actor was
-        # not; and no word on settled facts that the deed's own words contradict: the deed said
-        # she found the can, the facts gave her a knife.)
-        prompt = [UserMessage(content="""You are the world of an improvised play, not a character in it. {{$name}} does something. What does it bring about, as someone standing there would see or hear it?
-
-<the_deed>
-{{$action}}
-</the_deed>
-
-These facts about its result are settled and must not be contradicted:
-<facts>
-{{$facts}}
-</facts>
-Where the deed's own words say something the facts do not (a different thing found, a thing taken that stays where it was), the facts are what happened.
-
-<the_place>
-{{$local_map}}
-</the_place>
-
-<the_people_there>
-Present: {{$present}}. Nobody else is here. Everyone in the play, and whether each is he or she: {{$cast}}.
-Their bodies, as they are: {{$bodies}}
-What each carries: {{$holdings}}
-</the_people_there>
-{{$writings}}
-It is now {{$clock}}; light, dark and the time of day must fit that. Danger here now: {{$danger}}. Left at places nearby that have been drawn on: {{$stock}}.
-
-<what_has_happened_here_lately>
-{{$events}}
-</what_has_happened_here_lately>
-
-Respond in exactly two lines:
-#seen <the deed as someone standing there saw it, in one short plain sentence, keeping only what the facts allow>
-#result <what the deed brought about that #seen does not already say: a door that opens, water that is gone, a thing found, gained or lost, an answer that does not come. One or two simple sentences, 40 words at most. If it brought about nothing more (a look, a gesture, a stance, a walk, a thing put down or pushed across), write: nothing. That a thing stays as it was is not a result: write nothing>
-The audience reads the actor's own words for the deed, then only your #result.
-
-The result:
-- says what the facts say was gained, lost, found or read, in the words of someone watching, and what changed in the place;
-- gives nobody a thing, a wound, an illness or a need met that the facts, bodies and holdings do not show. A deed that uses what {{$name}} does not have shows only the try (a hand that finds nothing), and never says what anyone has or lacks or where a thing came from;
-- moves things between people only as the facts say; a deed that takes or moves something otherwise is a try, and the thing stays with its holder;
-- does not make a deed succeed at controlling another character (a snatch, a shove): it shows the attempt, and the other answers it;
-- says nothing of what another character feels, thinks, decides or does in reply: that is theirs to play;
-- brings in no object, document, person or fact that the deed, the place and the people did not already hold; drives off, sets on or ends no danger the facts do not; says nothing of how much is left anywhere beyond the line above;
-- has no follow-on action, no explanation of why something cannot be, no closing 'nothing else changes', and no mention of facts, bodies or these instructions: you describe a world, not a ruling.
-{{$rejected}}
-End your response with:
-</end>
-""")]
-        # survival mechanics (sim/survival.py) settle eating, drinking, shelter, threats ...;
-        # the narration describes them rather than inventing other outcomes
+        """What a deed does in the world. A deed of an actor with a body is resolved before it is played
+        (sim/resolver.py): its effects are applied here and its page line is what is shown (Character.acts).
+        Anything else (a step that finds no place, an actor with no body) is a passing deed: its own words are
+        the whole of it, and nothing in the world changes. (A narrator wrote what other deeds brought about,
+        checked against the record; none had reached it in twelve plays, 2026-11-22 to 11-27.)"""
         if getattr(act, 'found', None):
-            # the deed was resolved before it was chosen (sim/resolver.py): its effects are applied and
-            # its page line is what is shown (Character.acts). No narrator, and nothing to check a
-            # narration against: what is told is what was done.
             from sim import resolver
             facts = resolver.apply(self, actor, act)
             self.deed_kind, self.deed_passing = 'resolved', not act.found['effects']
-            actor.settled_notes, actor.deed_refused = [], False
-            self.last_consequences, self.last_updates = facts or '', ''
-            self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, facts or '')})
-            await asyncio.sleep(0.1)
-            return facts or '', facts or '', ''
-        facts = survival.resolve_do(self, actor, action, affordance=getattr(act, 'affordance', None),
-                                    targets=act.target if isinstance(act.target, list) else None,
-                                    resolved=getattr(act, 'resolved', None) or None)
-        if self.deed_kind in ('shared', survival.PASSING):
-            # a gesture, a posture, a touch: the actor's own words are the whole of it, and the
-            # world's part is the fact. No narrator tells what came of it (told, a gesture became
-            # an event: 'the notes hang in the quiet where the fountain used to sound')
-            actor.settled_notes, actor.deed_refused = [], False
-            self.last_consequences, self.last_updates = facts or '', ''
-            self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, facts or '')})
-            await asyncio.sleep(0.1)
-            return facts or '', facts or '', ''
-        if facts is None and survival.config(self) and getattr(actor, 'body', None) is not None:
-            trace.event('free_deed', character=actor.name, deed=str(action)[:300])   # a deed no gate judged: none should come here
-        local_map = world.view_report(actor)
-        local_map = xml.format_xml(local_map)
-        inputs = {"name": actor.name, "action": action, "local_map": local_map,
-                  "present": ', '.join(c.name for c in [actor] + actor.bystanders()), "cast": record.cast(self),
-                  "holdings": survival.holdings(actor) or 'nothing the world keeps track of',
-                  "writings": self._writings_line(actor),
-                  "clock": stage.clock(self), "stock": 'nothing has been used up',
-                  "danger": record.danger(actor) or 'none',
-                  "events": '\n'.join(self.witnessed(actor, n=8)) or 'nothing yet',   # what happened where the actor is
-                  "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
-                                      if getattr(c, 'body', None) is not None) or 'not tracked',
-                  "facts": facts or 'none'}
-        # The narrator may tell the deed again under #seen, which nobody reads; only #result is
-        # shown, checked and remembered. Told only 'do not repeat the action', it retold it in more
-        # words ('Hu slides the pen across the desk ... in the morning light') after the actor's own.
-        def narrate(rejected=''):
-            reply = self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.do', temp=0.7,
-                                 stops=['</end>'], max_tokens=300) or ''
-            found = re.search(r'#result\s*:?\s*(.*)', reply, re.S)
-            return found.group(1).strip() if found else re.sub(r'^\s*#seen[^\n]*\n?', '', reply).strip()
-        # the narration is held to the world's record before it is shown, remembered or built on
-        # 'nothing', or a sentence that only says nothing came of it ('He does not find or gain anything new.')
-        empty = r"[^.!?]*\b(does not|doesn't|did not) (find|gain)\b[^.!?]*[.!?]?|[^.!?]*\b(finds?|gains?|learns?) nothing( new)?\b[^.!?]*[.!?]?"
-        nothing = lambda text: '' if re.fullmatch(r'\W*nothing\W*', (text or '').strip(), re.I) else re.sub(empty, '', text or '').strip()
-        settled = record.settle(self, actor, action, facts, nothing(narrate()), lambda note: nothing(narrate(note)), kind='do')
-        # what settling made real or refused is part of what happened: the actor is told it, and
-        # a deed that rested on something refused was a try (Character.acts shows it so)
-        actor.settled_notes = list(getattr(settled, 'facts', ())) + list(getattr(settled, 'refused', ()))
-        actor.deed_refused = bool(getattr(settled, 'tainted', False))
-        consequences = ' '.join(filter(None, [facts or ''] + actor.settled_notes + [settled or '']))
-        if consequences.endswith('<'):
-            consequences = consequences[:-1]
-        # What the deed did is the settled fact and the admitted narration. (Two more LLM calls
-        # summarised the narration into 'updates' that were appended to the situation everyone
-        # reads: that is how a thing a narrator once wrote became true from then on.)
-        world_updates = re.sub(survival.BODY_NOTE, '', consequences).strip()
-        self.last_consequences = consequences
-        character_updates = ''
-        self.last_updates = character_updates
-        print(f'\nContext Do consequences:\n {consequences}')
-        print(f' Context Do world_update:\n {world_updates}\n')
-        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, consequences)})
+        else:
+            facts = ''
+            self.deed_kind, self.deed_passing = survival.PASSING, True
+        self.last_consequences, self.last_updates = facts or '', ''
+        self.message_queue.put({'name':self.name, 'text':f'world_update', 'data':await self.act_image_json(actor, act, facts or '')})
         await asyncio.sleep(0.1)
-        return consequences, world_updates, character_updates
+        return facts or '', facts or '', ''
 
     def identify_state_changes(self, previous_state, new_state):
         """Identify changes in the state description"""
@@ -1587,7 +1475,6 @@ Where things are now, each with how it has been left (the world keeps this: a se
 Where the cast last went: {{$left_for}}
 What has happened lately:
 {{$events}}
-{{$unmet}}
 </where_things_stand>
 
 Where and when the scene is played:
@@ -1677,7 +1564,6 @@ Respond with these lines only:
                               'none may come on now: this play has had its danger (it may be spoken of as past)'),
                   'danger': threat['hazard']['description'] if threat else 'none',
                   'events': events,
-                  'unmet': ruling.unmet_note(self),   # what was tried or planned and not done: a failure went upward only as a trace event
                   'things': things(), 'facts': facts,
                   'left_for': '; '.join(f"{e['who']}" + (f" with {', '.join(e['with'])}" if e.get('with') else '')
                                         + f" left {e.get('from') or 'the last place'} at {e['time']}" + (f", for {e['to']}" if e.get('to') else '')
@@ -1931,7 +1817,6 @@ Respond with these lines only:
         for character in characters_in_scene:
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
-        self.scene_refusals = []   # what the stage has refused in this scene (record.refused)
         self.scene_not_here = {}   # what each was about to say is here and plainly is not (record.speech)
         self.scene_since = []      # what has ended since the scene opened, said beside its set-up (survival._end_threat)
         with self.committing('set', event=setting):
@@ -3007,7 +2892,6 @@ End your response with: </end>"""
                                      + ("; THIS is what answers the first half of the question" if fact in (self.screenplay.answers or ()) else '') + ')' for fact, who, part in lacking)) if lacking else '')
                     + ("\nThis is a later part of a performance played in parts, and it is to close its question: by the end of the act before the closing one, what answers its first half has been put before these people, in a scene whose matter is whether it is told or found; the other parts of what is so are put before them as they serve that." if getattr(self, 'thread_parts', None) else '')
                     + so_far
-                    + (f"\n{note}" if (note := ruling.unmet_note(self)) else '')   # what was tried or planned and the world would not have (sim/ruling.py)
                     + ("\nThe last act went by without coming nearer to what is so: this one should not." if getattr(self.screenplay, 'walked_past', 0) else '')
                     + (f"\n{self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing']))}" if self.screenplay.clues else '')
                     + (f"\n{self.screenplay.thread_note()}" if self.screenplay.threads else '')

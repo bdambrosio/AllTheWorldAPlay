@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 
-from sim import ablation, ledger, ruling, stage, survival, world
+from sim import ablation, errors, ledger, ruling, stage, survival, world
 from sim.trace import trace
 from utils import json_reply
 from utils.Messages import UserMessage
@@ -48,13 +48,12 @@ RESOLVE = """You keep the physical world of an improvised play. A character is a
 </deed>
 {leaves}
 How this world works:
-- It is the world the setting describes. What an ordinary person could do there with their body and what is at hand can be done, though it take time and effort (a fire worked up from dry wood, a shelter of boughs); what they could not, cannot, however the deed is worded.
+- Every deed is played: say what happens when it is tried. It is the world the setting describes. What an ordinary person could do there with their body and what is at hand comes off, though it take time and effort (a fire worked up from dry wood, a shelter of boughs); what no ordinary person could do is tried and does not come off, and the page shows the try.
 - The stage above is the truth of who holds what, and of every thing the play has so far had to do with. Beside those, a place has to hand what a place of its kind plainly has (a kitchen its cups, plates and forks, a bar its glasses and bottles, a wood its sticks and stones): such a thing is there, and the first deed to use it says it as a new effect, from the place. What is particular is only where the stage has it: a thing someone owns or has named (the grey suit, the car keys, a letter), money, and anything the stage shows elsewhere.
-- A deed can use only what its doer holds, what lies here, what another person here gives or holds out, and what this place gives or plainly has. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
+- A deed works with what its doer holds, what lies here, what another person here gives or holds out, and what this place gives or plainly has. A thing that lies at another place, however near, is not here: nobody picks it up from where they stand.
 - What stands (on the stage, where anything does) is so in this world, whoever knows it: a deed meets the world as it says, and what it says is at a place is there though the stage does not list it yet (the first deed to use it says it as a new effect, from the place). Each is known only to those named with it. What only some know you never show or tell: the page says what is seen done, never what it means, whose doing an old thing was, or what lies behind it.
 - Ordinary handling of a thing that is here needs no leave: pick it up, put it down, hand it over, hold it out or up to be seen, pocket it, open, shut, fold, tear, wipe or turn it, set it on something, read it. Each is an effect: say it. Reading a writing aloud gives what it says to everyone here who hears it; read silently, it is the reader's alone.
 - The facts of this world are on the stage. They are true here, with their sums and their times, and are read with sense: what they say of one thing is a guide to things like it. What they do not speak of goes as it ordinarily would in such a world.
-- What is held (Held, on the stage) no deed or word gets past, however it is put and whoever asks. Where a deed would break one, that part is not done, and why says which. In "held", name each one that bears on this deed and how it stands.
 - A deed that settles something others will later have to reckon with (a contract signed, a debt agreed, a thing sold, land made over) is a stands effect: one plain sentence, with the day. A thing simply bought, sold, eaten or handed over is not: the stage shows it already. Where it ends something that stood, give that sentence, word for word, in ends.
 - A body's needs are on the stage (Bodies). Eating, drinking, resting or tending a wound eases the need it answers when what it takes is really here. Say it as a need effect, and how far: a little, well or fully, as the facts and ordinary sense have it (a mouthful a little, a meal well). Half of a thing eases less than the whole and leaves the other half: say the state the thing is left in. It is done whether or not the body was in want.
 - Money is on the stage (Bodies). It moves only as a money effect, from the one who pays to the one paid, in the sum the facts give or the people have agreed. Someone outside the scene who is paid, or pays, in the ordinary way of this world (the bar, the baker, an employer) is named in plain words. Nobody pays what they do not have, and no money comes from nowhere.
@@ -65,22 +64,20 @@ How this world works:
 - A danger upon someone is on the stage (Danger), and what this world says of such dangers is among its facts. A deed against it (to drive it off, to hide from it, to bar a door on it, to buy it off) is put to chance unless it could hardly fail or hardly work: how likely, from the facts and from what the doer has to hand, and what follows either way. If so: the danger over. If not: the danger still there, and whoever it reaches hurt, as a need effect on the harm this world counts, a little, well or fully. A deed that does not touch the danger leaves it as it is, and it is not for you to end it out of kindness.
 - Putting a thing on a person (a coat round someone, a strip of cloth bound round a wound) leaves it on them, worn: say it as on. Taking off what is worn puts it in a hand.
 - A touch is done as it is written: taking a hand or an arm, a hand on a shoulder, pressing a thing into someone's hand (the thing is then theirs to keep or give back). The one touched may draw away afterwards; that is theirs to play.
-- Nobody is moved, held back, stopped or searched against their will. To lead, draw, pull or beckon someone along is to ask: they answer for themselves, and where they stand or go is no effect of this deed. A thing another person holds comes away only if they give it or have held it out.
-- Nothing comes from nothing: a new thing is one a place of this kind ordinarily gives, taken at that place, or is made from things that are here.
+- Nobody is moved, held back, stopped or searched against their will. To lead, draw, pull or beckon someone along is to ask: they answer for themselves, and where they stand or go is no effect of this deed. A thing another person holds comes away only if they give it or have held it out: reaching for it, taking it or helping oneself to some of it otherwise is a try, and it stays in their hands. No new thing is made from what another person holds.
+- A new thing comes from somewhere: one a place of this kind ordinarily gives, taken at that place, or made from things that are here.
 - A look, a gesture or a step or two changes nothing that lasts; a change of posture changes only the posture.
 - What a deed leaves on a person that others can see and that lasts beyond the moment (hands inked or washed clean, a sleeve torn, a face wet; up on the rock, out of sight behind the shelves) is a state of that person: say it, and when a later deed undoes it, end it. Needs, harm this world counts, posture and what is worn have their own forms.
 - Whatever can be put one way and then another and back again (opened and shut, fastened and loosed, lit and put out, filled and emptied) is a thing with a state, whether it can be carried or is part of the place. If the stage does not list it yet, give it first as a new entry, fixed when it is part of the place, and then its state. A thing's state takes the place of its earlier one, so the stage always shows how it now is; the same change written as a trace would stand beside the trace of its opposite, and nothing would say which is so now. A mark is only for what a deed adds to the place that no later deed undoes by doing the opposite.
 - What a person plainly has on (clothes, shoes) is theirs to take off and use though the stage does not list it: give it first as a new entry, from that person.
-- A deed is about the things it names: where the thing it means is not here, that part is not done, and no other thing is used in its place.
-- A deed meets this place as the stage has it. A thing, or a state or trace of a thing (a clean-cut limb, a fresh footprint), that the stage does not hold and a place of this kind would not ordinarily have is not there: the page does not show it, and what of the deed needs it is left out. What the stage lists as found not to be here was looked for and is not here, whatever such a place might ordinarily have: a deed that needs it cannot be done with it, and only a deed that itself makes it from what is here brings it.
-- A deed may go to, or make, a place the stage does not name only where this world would have such a place inside or beside a named one (the shed behind the hut, the loft over the stable, a lean-to built here of branches): say it as a place effect, and it is there from then on; going there is a goes effect to the name you gave it. A place that belongs to no named place is not made, and what of the deed needs it is left out.
-- Where one part of the deed cannot be done and the rest still makes sense without it, the rest is done and that part is left out. Where nothing of it can be done, it cannot be done.
+- A deed is about the things it names, and no other thing is used in place of one.
+- A thing the deed reaches for, looks for or uses that the stage does not hold is settled by this deed, as a place of this kind would have it: where it plainly would (a kitchen's cups, a wood's sticks), it is there, a new effect from the place; where it may or may not (what a search of a picked-over shop turns up), it is put to chance, as below; where it would not (a thing particular to someone, a state or trace of a thing such as a clean-cut limb or a fresh footprint), the try finds none, the page shows the try and that nothing is there, and an absent effect says what was not found. What the stage lists as found not to be here was looked for already and is not here: a try for it finds none again, unless the deed itself makes it from what is here.
+- A deed may go to, or make, a place the stage does not name where this world would have such a place inside or beside a named one (the shed behind the hut, the loft over the stable, a lean-to built here of branches): say it as a place effect, and it is there from then on; going there is a goes effect to the name you gave it. A place that belongs to no named place is not made: the deed is played without it.
+- What of a deed comes off is in the effects; what is tried and does not come off is on the page as a try, and changes nothing. Nothing is refused: every deed has a page.
 - The page and the effects are one account of the deed. When you have written both, read the page again: whatever it shows that is still so once the deed is over (a thing set down, moved, opened, shut, emptied or written in; a door bolted; a lamp put out; a writing read out; hands washed clean) has its entry among the effects, in the form that fits. A later deed is ruled from the effects, never from the page: what the page shows and no effect carries will not be so.
 
 Answer in JSON only:
-{{"can": true or false,
-  "why": "<if it cannot: the world's reason, ten words at most; else empty>",
-  "effects": [<one entry for each lasting thing the deed does, in order; empty if it changes nothing that lasts>
+{{"effects": [<one entry for each lasting thing the deed does, in order; empty if it changes nothing that lasts>
      {{"thing": "<a thing, by its exact name on the stage>", "from": "<who holds it now, by name, or the word here if it lies here>", "to": "<the person who now holds it, by name, or the word here for lying here>"}},
      {{"thing": "<exact name>", "state": "<how the thing now is, in two to eight words. It takes the place of what the stage says of the thing: carry over what is still so, drop what no longer is>"}},
      {{"thing": "<exact name>", "held_out_to": "<the person it is held out or shown to>"}},
@@ -100,13 +97,10 @@ Answer in JSON only:
      {{"mark": "<a trace the deed adds to the place itself and that stays (what is cut, pressed, spilt, scraped, strewn or moved aside there), as it now is, two to six words. A touch, a footstep, a thing looked at leaves none; and what can be put back by doing the opposite is no mark but a thing with a state>", "ends": "<a trace the stage lists here that this undoes or takes the place of, word for word; else empty>"}},
      {{"place": "<a place this deed reaches or makes, which the stage does not name, two or three plain words>", "kind": "<what kind of place, one or two words>", "at": "<the named place it is inside or beside, by its exact name>", "inside": true or false, "metres": <how far from that place, when beside it>, "enclosed": true or false}},
      {{"who": "{name}", "goes": "<a place named on the stage (one a few steps off is stepped over to, and the scene goes on), a place this deed has made, or the words out of the scene>", "with": ["<those {name} asks along>"]}},
-     {{"new": "<a thing now made or picked, or taken up from what this place or a person here plainly has; or a part of the place whose state this deed changes and the stage does not list yet>", "from": "<the place, the person, or the things here, it comes from>", "fixed": <true when it is part of the place and cannot be carried off; else false>, "was_absent": "<what the stage lists as found not to be here that this deed has now made, word for word; else empty>"}}],
+     {{"new": "<a thing now made or picked, or taken up from what this place plainly has or what the doer has on; or a part of the place whose state this deed changes and the stage does not list yet; never from what another person holds>", "from": "<the place, the person, or the things here, it comes from>", "fixed": <true when it is part of the place and cannot be carried off; else false>, "was_absent": "<what the stage lists as found not to be here that this deed has now made, word for word; else empty>"}},
+     {{"absent": "<a thing, mark or trace of the place itself (on the ground, a wall or a tree, lying or standing here) that this deed looked for or reached for here and did not find, two to six words (a boot print by the cap; a stack of firewood). Not for what a person does or does not hold, wear or have on them, which the stage shows already; not for a thing another person holds, or a thing somewhere else>"}}],
   "minutes": <about how long the deed takes; 0 for a moment>,
-  "held": "<each thing held that bears on this deed, and how it stands; empty if none bears>",
-  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done>",
-  "seen": "<only when the deed cannot be done, or a part of it is left out: what those present see instead, one plain sentence in the third person and present tense that names nothing which is not here (Joe crouches by the cap and finds only bare soil); empty when there is nothing to see>",
-  "absent": "<only when it cannot be done, or a part is left out, because a thing, mark or trace of the place itself is not there (on the ground, a wall or a tree, lying or standing here): that thing, two to six words (a boot print by the cap; a stack of firewood). Empty when the reason is anything else: what a person does or does not hold, wear or have on them, which the stage shows already; a thing another person holds; a thing done already or somewhere else>",
-  "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, only what is done, no words spoken, 30 words at most>"}}
+  "page": "<what the audience sees happen: {name}'s deed in the third person and present tense, as it comes off or as it is tried and does not (Joe crouches by the cap and finds only bare soil), only what is done, naming nothing which is not here, no words spoken, 30 words at most>"}}
 </end>"""
 
 # A ruling that named a thing the stage does not list was sent back with the bare fact, named the same thing again, and
@@ -119,8 +113,8 @@ Answer in JSON only:
 # the second gave the coat as absent, and Kidd was shown looking for a coat (bellona-20261127-142348, scene 1).
 NOT_LISTED = "'{thing}' is not a name the stage lists, nor one this answer makes"
 HOW_GIVEN = ("A thing entry is for a thing the stage lists, by the name it is listed under. What this deed makes, picks, or takes up from a place, "
-             "from a thing here or from what a person here plainly has on them is given first, as a new entry with where it comes from; "
-             "what it does to the place itself or to a part of it is a mark; and what is not here at all cannot be used, which is said in can or left_out.")
+             "from a thing here or from what the doer has on is given first, as a new entry with where it comes from; "
+             "what it does to the place itself or to a part of it is a mark; and what is not here at all is not found: the page shows the try, and an absent entry says what was not there.")
 
 
 def made_under(effects):
@@ -201,17 +195,19 @@ def _names(value):
     return [str(n) for n in (value if isinstance(value, (list, tuple)) else [value]) if n]
 
 
-def faults(context, character, found):
+def faults(context, character, found, made=()):
     """Why these effects cannot be applied: [] when they can. Only whether each name is the name
     of something: a thing on the stage (or made earlier in the deed), a person in the scene, one
     of the world's actions. Whether the deed is allowed (was the thing held out, does the action
     lack something, is the place too far) is the resolver's judgement, made with the whole stage
     before it, and is not judged again here: a second, cruder reading of the same rules refused
     a woman berries held out to her, twice, because another person carried berries too."""
-    out, made = [], set()
+    out, made = [], set(made)
     for e in found.get('effects') or []:
         if not isinstance(e, dict):
             out.append('an effect is not one of the forms')
+        elif e.get('absent'):
+            pass   # what the deed did not find here: nothing it names has to be there
         elif e.get('new'):
             made.add(_low(e['new']))
         elif e.get('money') is not None:
@@ -313,7 +309,7 @@ def _ask(context, character, act, note=''):
     found = json_reply.parse(reply) if reply else None
     if isinstance(found, dict) and isinstance(found.get('effects'), list):
         made_under(found['effects'])
-    return found if isinstance(found, dict) and 'can' in found else None
+    return found if isinstance(found, dict) and ('effects' in found or 'page' in found) else None
 
 
 def _draw(context, character, found):
@@ -336,34 +332,57 @@ def _draw(context, character, found):
     return found
 
 
+def _absent(found):
+    """The absent entries of an answer, taken out of its effects: what the deed looked or reached for here and did not
+    find. Kept by apply as an outcome of the deed (sim/ruling.py)."""
+    gone = [str(e['absent']).strip() for e in found['effects'] if e.get('absent') and str(e['absent']).strip()]
+    found['effects'] = [e for e in found['effects'] if not e.get('absent')]
+    found['absent'] = '; '.join(gone)
+    return found
+
+
+def _usable(context, character, found):
+    """The answer with every effect the stage cannot take left out, each written to the error log (sim/errors.py)."""
+    kept = []
+    for e in found['effects']:
+        wrong = faults(context, character, {'effects': [e]}, made=_made(kept))
+        if wrong:
+            errors.log('stage.resolve', 'effect the stage cannot take', doer=character.name, effect=e, faults=wrong)
+        else:
+            kept.append(e)
+    found['effects'] = kept
+    return found
+
+
+def _made(effects):
+    """The things earlier effects of the same answer make or find, by name."""
+    return {_low(e.get('new') or e.get('found')) for e in effects if isinstance(e, dict) and (e.get('new') or e.get('found'))}
+
+
 def resolve(context, character, act):
-    """What this deed does, decided before it is played: {'can', 'why', 'effects', 'left_out',
-    'page'}. An answer that cannot be applied is sent back once with what is wrong with it; one
-    that still cannot be, or cannot be read, is a deed that cannot be done. A deed of which
-    nothing is done and something is left out cannot be done either: the actor is told, and the
-    page is not given a line about nothing."""
+    """What this deed does when it is tried: {'effects', 'page', 'absent', 'minutes'}. Every deed is played: what comes
+    off is in the effects, what is tried and does not come off is on the page. An answer whose names do not bind to the
+    stage is asked again once with what is wrong (a matter of form: the deed is not refused); effects that still do not
+    bind are left out and logged (sim/errors.py). An answer that cannot be read twice is logged, and the deed has no page."""
     found = _ask(context, character, act)
-    wrong = faults(context, character, found) if found else ['the answer could not be read']
-    loose = loose_ends(context, character, found) if found else []
-    if found and (wrong or loose):
+    if found is None or not str(found.get('page') or '').strip():   # every deed has a page: one with none is asked again, as an answer not read
+        found = _ask(context, character, act) or found
+    if found is None:
+        errors.log('stage.resolve_deed', 'answer could not be read', doer=character.name, deed=act.action[:300])
+        found = {'effects': [], 'page': ''}
+    found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict)]
+    wrong, loose = faults(context, character, found), loose_ends(context, character, found)
+    if wrong or loose:
         trace.event('resolve_again', character=character.name, deed=act.action[:200], faults=wrong + loose)
         again = _ask(context, character, act, again_note(wrong + loose))
         if again is not None:
-            found, wrong = again, faults(context, character, again)
-    if not found or wrong:
-        found = {'can': False, 'why': wrong[0], 'effects': [], 'left_out': '', 'page': ''}
-    found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict)]
+            found = again
+            found['effects'] = [e for e in found.get('effects') or [] if isinstance(e, dict)]
     _draw(context, character, found)
-    found['left_out'], found['page'] = str(found.get('left_out') or '').strip(), str(found.get('page') or '').strip()
-    found['seen'], found['absent'] = str(found.get('seen') or '').strip(), str(found.get('absent') or '').strip()
-    if found.get('can') and not found['effects'] and found['left_out']:
-        found.update(can=False, why=str(found.get('why') or '').strip() or f"not here: {found['left_out']}")
-    if found.get('can') and not found['page']:
-        found.update(can=False, why='the deed came to nothing that could be shown')
-    found['can'], found['why'] = bool(found.get('can')), str(found.get('why') or '').strip()
-    trace.event('resolved', character=character.name, deed=act.action[:300], can=found['can'], why=found['why'],
-                effects=found['effects'], left_out=found['left_out'], page=found['page'], minutes=found.get('minutes'), held=str(found.get('held') or '')[:300],
-                seen=found['seen'][:300], absent=found['absent'][:120])
+    _usable(context, character, _absent(found))
+    found['page'] = str(found.get('page') or '').strip()
+    trace.event('resolved', character=character.name, deed=act.action[:300], effects=found['effects'], page=found['page'],
+                minutes=found.get('minutes'), absent=found['absent'][:120])
     return found
 
 
@@ -376,7 +395,7 @@ def resolve(context, character, act):
 # the planner's reading of what was told. (Tested on 209 recorded lines: logs/review-20261120/act.)
 _head, _rest = RESOLVE.split('How this world works:')
 _rules, _answer = _rest.split('Answer in JSON only:')
-_effects = _answer[_answer.index('  "effects"'):_answer.index('  "left_out"')]
+_effects = _answer[_answer.index('{{"effects"') + 2:_answer.index('  "page"')]
 # The prompt is in two parts. ACT_RULES is the same for every line a speaker says to a hearer (the world, its rules,
 # the form of the answer) and is sent first, so that a server that keeps what it is asked to (utils/llm_api.py
 # CACHED_LEAD) reads it once; it was the last three fifths of every prompt, and
@@ -402,12 +421,7 @@ The words:
 - A promise is something the speaker says it will do, or agrees that they will do. Its kind: now, when it is to be done here in this scene (eat this, go in, set off); standing, when it is a rule or a condition to keep with nothing to do now ("no mushrooms", "wake me for my watch"); later, when it is for another time or place. A question, a proposal not yet agreed, or a demand on someone else is not a promise.
 
 Answer in JSON only, in this form:
-{{"can": true or false,
-  "why": "<if a deed cannot be done: the world's reason, ten words at most; else empty>",
-""" + _effects + """  "left_out": "<the part of the deed that is not done, in a few words; empty if all of it is done or there is no deed>",
-  "seen": "<only when there is a deed and it cannot be done, or a part of it is left out: what those present see instead, one plain sentence in the third person and present tense that names nothing which is not here (Joe crouches by the cap and finds only bare soil); empty when there is nothing to see>",
-  "absent": "<a thing, mark or trace of the place itself (on the ground, a wall or a tree, lying or standing here) that is not there, two to six words (a boot print by the cap; a stack of firewood): when that is why a deed cannot be done or a part of it is left out. Empty for anything else: what is only said to be here; what a person does or does not hold, wear or have on them, and how a thing that is here is (full, dry, cut), which the stage shows already; a thing another person holds; a thing done already or somewhere else>",
-  "page": "<what the audience sees {name} do: third person, present tense, only what is done, no words spoken, 30 words at most; empty when nothing is done but speaking>",
+{{""" + _effects + """  "page": "<what the audience sees {name} do: third person, present tense, as it comes off or as it is tried and does not (Joe crouches by the cap and finds only bare soil), only what is done, naming nothing which is not here, no words spoken, 30 words at most; empty when nothing is done but speaking>",
   "findings": [{{"kind": "<aloud, holds, body, where, here, danger, time, done, whose, writing, gender, knows, stands or past>", "words": "<the words that say it, exactly>", "why": "<what the stage or the record shows instead, ten words at most>"}}],
   "line": "<only when there is a finding: the words as {name} can truly say them, the same line in the same voice with each finding put right from what the stage shows or left out, and nothing else changed; else empty>",
   "tells": ["<each new fact {name} tells of its own life before the play>"],
@@ -465,11 +479,10 @@ def tell(context, speaker, hearers, facts):
 
 
 def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
-    """What a spoken line does and states: {'effects', 'page', 'findings', 'line', 'tells',
-    'retold', 'promises', 'names', 'deed_refused'}, or None when the answer could not be read (the
-    line then stands as written). about: the stage as already rendered for the speaker
-    (record.speech). deed: what the speaker does as it speaks, resolved with the words as one
-    act; 'deed_refused' is then why it cannot be done, or ''."""
+    """What a spoken line does and states: {'effects', 'page', 'absent', 'findings', 'line', 'tells',
+    'retold', 'promises', 'names'}, or None when the answer could not be read (the line then stands as
+    written). about: the stage as already rendered for the speaker (record.speech). deed: what the
+    speaker does as it speaks, resolved with the words as one act and played as a deed is (resolve)."""
     from sim import keeper, record
     others = people(context, speaker)
     listener = listener if listener is not None else next((c for c in others if c is not speaker), None)
@@ -485,11 +498,13 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
     def ask(note=''):
         reply = context.llm.ask({}, [UserMessage(content=rules), UserMessage(content=now + note)], tag='stage.resolve_say', temp=0.2, stops=['</end>'], max_tokens=700)
         found = json_reply.parse(reply) if reply else None
-        if not isinstance(found, dict) or 'can' not in found:
+        if not isinstance(found, dict) or not ('effects' in found or 'page' in found or 'findings' in found):
             return None, []
         found['effects'] = made_under([e for e in found.get('effects') or [] if isinstance(e, dict) and (not e.get('goes') or _step(context, speaker, e))])   # leaving is the actor's mark; a step within the scene is done
         return found, faults(context, speaker, found)
     found, wrong = ask()
+    if found is not None and deed and not str(found.get('page') or '').strip():   # a deed has a page: one with none is asked again
+        found, wrong = ask()
     if found is None:
         return None
     loose = loose_ends(context, speaker, found)
@@ -498,32 +513,19 @@ def resolve_words(context, speaker, words, listener=None, about=None, deed=''):
         again, still = ask(again_note(wrong + loose))
         if again is not None:
             found, wrong = again, still
-    if not wrong:
-        _draw(context, speaker, found)
-    left = str(found.get('left_out') or '').strip()
-    refused = ''
-    if wrong:   # what names something that is not here does nothing
-        found['effects'], refused = [], wrong[0]
-    elif deed and not found.get('can'):
-        found['effects'], refused = [], str(found.get('why') or '').strip() or 'it cannot be done here'
-    elif deed and not found['effects'] and left:
-        refused = f'not here: {left}'
-    found['deed_refused'] = refused if deed else ''
-    # a deed done is shown though it changes nothing that lasts; words alone are shown doing
+    _draw(context, speaker, found)
+    _usable(context, speaker, _absent(found))   # what still does not bind is left out and logged; the line and the deed are played
+    # a deed is shown though it changes nothing that lasts; words alone are shown doing
     # something only when they hand a thing over
-    found['page'] = str(found.get('page') or '').strip() if (found['effects'] or (deed and not refused)) else ''
-    found['left_out'] = left if deed and not refused else ''
-    found['seen'] = str(found.get('seen') or '').strip() if deed and (refused or left) else ''
-    here = any(isinstance(f, dict) and f.get('kind') == 'here' for f in found.get('findings') or [])
-    found['absent'] = str(found.get('absent') or '').strip() if (deed and (refused or left)) or here else ''
+    found['page'] = str(found.get('page') or '').strip() if (found['effects'] or deed) else ''
     found['line'] = str(found.get('line') or '').strip()
     found['findings'] = [f for f in found.get('findings') or [] if isinstance(f, dict) and str(f.get('words') or '').strip()]
     found['tells'] = [str(t).strip() for t in found.get('tells') or [] if isinstance(t, str) and t.strip()]
     found['retold'] = str(found.get('retold') or '').strip()
     found['promises'] = [p for p in found.get('promises') or [] if isinstance(p, dict) and str(p.get('what') or '').strip()]
-    trace.event('resolved_words', character=speaker.name, words=words[:300], deed=deed[:300], refused=found['deed_refused'], effects=found['effects'], page=found['page'],
-                findings=found['findings'], tells=found['tells'], retold=found['retold'], promises=found['promises'], seen=found['seen'][:300], absent=found['absent'][:120],
-                minutes=found.get('minutes'), held=str(found.get('held') or '')[:300])
+    trace.event('resolved_words', character=speaker.name, words=words[:300], deed=deed[:300], effects=found['effects'], page=found['page'],
+                findings=found['findings'], tells=found['tells'], retold=found['retold'], promises=found['promises'], absent=found['absent'][:120],
+                minutes=found.get('minutes'))
     return found
 
 
@@ -937,20 +939,20 @@ def apply(context, character, act):
             # (a fire); a thing it does not model is simply there
             kept = keeper.consider(context, character, act.action) if ablation.enabled('keeper') else {'can': False}
             fact, done = keeper.perform(context, character, act.action) if kept.get('can') else ('', False)
-            if not done:   # it is here; a later effect of the deed puts it in a hand
+            if not done:   # it is here, as the ruling has it; a later effect of the deed puts it in a hand
                 # fixed: a part of the place that a deed puts one way or another (how it is, is then its state, which takes the
                 # place of the last: as traces, a door 'bolted' and 'unbolted, open' stood side by side for eight rulings)
                 survival.add_thing(context, str(e['new']), at=stage.here(character), fixed=e.get('fixed') is True)
+                if fact:   # the keeper's model would not have it so: the ruling stands, and the keeper's sentence is not told
+                    errors.log('keeper.perform', 'model against the ruling', doer=me, thing=str(e['new']), keeper=fact[:200])
             if str(e.get('was_absent') or '').strip():   # what was found not to be here is here now, by this deed (sim/ruling.py)
                 ruling.there_again(context, e['was_absent'], at=stage.here(character))
-            elif fact:
+            elif fact and done:
                 facts.append(fact)
     character.last_affordance = None   # what was done is told by the page line, not by the last part's own sentence
-    if found['left_out']:
-        character.add_perceptual_input(f"Of what you meant to do, this was not done, because it cannot be here: {found['left_out']}.",
-                                       percept=False, mode='internal')
-        if found.get('absent'):   # the part was left out for want of a thing: that it is not here is kept (sim/ruling.py).
-            # The page line, as the ruling wrote it, is what those present see: a sentence of the engine's own
-            # ('looked for it here and it was not there') told the audience of a search nobody made.
-            ruling.not_there(context, found['absent'], stage.here(character), seen_by=people(context, character), by='deed')
+    for what in filter(None, (w.strip() for w in str(found.get('absent') or '').split(';'))):
+        # what the deed looked or reached for here and did not find: an outcome of the deed, kept for every later
+        # ruling at this place and for those who saw it (sim/ruling.py). The page line, as the ruling wrote it, is
+        # what those present see; the engine writes no sentence of its own about it.
+        ruling.not_there(context, what, stage.here(character), seen_by=people(context, character), by='deed')
     return ' '.join(facts)

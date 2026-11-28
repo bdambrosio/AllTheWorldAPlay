@@ -1220,7 +1220,6 @@ End response with:
         self.thought +=  self.reason
         self.lastActResult = ''
         self.visible_result = ''
-        self.attempt_only = False
             
         leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
         if leaving and not self.context.exit_allowed(self, act):
@@ -1281,7 +1280,7 @@ End response with:
                 was = act.mode
                 act.mode, act.resolved = 'Do', None
                 record.judge(self.context, self, act)
-                if getattr(act, 'found', None):
+                if getattr(act, 'found', None) and (act.found['page'] or act.found['effects']):
                     leaving = bool(getattr(act, 'leaves', False)) and self.context.current_scene is not None
                 else:
                     act.mode, act.resolved, act.found = was, survival.PASSING, None
@@ -1303,6 +1302,9 @@ End response with:
             found = getattr(act, 'found', None)
             if found:
                 act_arg = found['page']   # what is shown and recorded is what was done, as the resolver told it
+                # and what the actor is later shown it has done toward its task (done_in_task): a try that did not come off
+                # is a try, in the page's words, not the deed as it was meant
+                act.action = act_arg or act.action
             notices = '' if found or (passing and not (consequences or '').strip()) else self.process_consequences(act_arg, reason, consequences)
             await asyncio.sleep(0)
             # the act text often starts with the character's own name ('Xue pulls a tablet ...')
@@ -1312,24 +1314,9 @@ End response with:
             # the audience sees the deed and what it physically did; what the character makes of
             # it ('notices': how the result bears on its goal) is the character's own
             result = (consequences or '').strip()
-            refused = getattr(self, 'last_affordance', None)
-            if refused and not refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
-                result = result[len(refused['fact']):].strip()   # the world's reason is for the character, not the audience
-            elif refused and refused['applied'] and refused.get('fact') and result.startswith(refused['fact']):
-                # the world's own sentence ('Xue has a meal at Cafe.') stood between the deed and
-                # a narration that told the same thing; it is shown only when nothing else tells it
-                told_by_narration = result[len(refused['fact']):].strip()
-                result = told_by_narration or result
-            # the world refused it, by its rules or because the deed rested on something that is
-            # not there: others saw a try, and the page tells what happened, not what was meant
-            rested_on_nothing = getattr(self, 'deed_refused', False)
-            self.attempt_only = bool(refused and not refused['applied']) or rested_on_nothing
             self.last_affordance = None
-            for note in getattr(self, 'settled_notes', []):   # the world's own wording is for the characters
-                result = result.replace(note, '').strip()
-            told = stage.stage_line(self.name, '' if rested_on_nothing else act_arg, result)
-            if rested_on_nothing:
-                told = stage.unnamed(self.name, told) or f"tries: {deed.rstrip('. ')}, and it comes to nothing."
+            # the page line is the deed as it came off, or as it was tried and did not (sim/resolver.py): nothing is refused
+            told = stage.stage_line(self.name, act_arg, result)
             self.context.to_page(self.name, told, transcript=False)   # the transcript keeps it just below, as it lasts
             self.lastActResult = notices
             if source == None:
@@ -1349,17 +1336,11 @@ End response with:
                 self.context.transcript.append(kept)
             await asyncio.sleep(0)
             self.show = ''
-            # what the world told the doer and not the audience: why it was refused, its own notes
-            # (the rest of world_updates is the deed's result, which is in the record it witnessed)
-            private = ([refused['fact']] if refused and not refused['applied'] and refused.get('fact') else []) \
-                      + list(getattr(self, 'settled_notes', []))
-            if private:
-                self.add_perceptual_input(' '.join(private), percept=False, mode='internal')
             self.act_result = world_updates +'. '+character_updates
             # what others present can see happen (they used to get the action text only)
             # what the world settled and the narration it admitted (sim/record.py); it was an
             # LLM's summary of unchecked narration, which is how a pile of berries became an event
-            if leaving and not self.attempt_only:
+            if leaving:
                 # the deed has told it (its event follows); those it leaves with go too, as with a
                 # walk or a parting line (a deed marked 'leaves with Joe' took its doer out alone,
                 # and the next scene had to bring her back to him)
@@ -1367,14 +1348,11 @@ End response with:
             visible_result = stage.stage_line(self.name, '', result)
             self.visible_result = visible_result
             aimed_at = self._first_character(target, act)
-            self.context.add_event(f"{self.name} {'tries: ' if self.attempt_only else ''}{deed}"
-                                   + (' (it does not happen)' if self.attempt_only else '')
-                                   + (f' -> {visible_result}' if visible_result else ''),
+            self.context.add_event(f"{self.name} {deed}" + (f' -> {visible_result}' if visible_result else ''),
                                    doer=self, also=[aimed_at] if isinstance(aimed_at, Character)
                                    and aimed_at is not self and not stage.off_stage(aimed_at) else [], lasting=kept)
             self.context.close_event(deed_event)
-            if not self.attempt_only:
-                self._walk_after(act, reason, alone=leaving and act.leaves == 'alone')
+            self._walk_after(act, reason, alone=leaving and act.leaves == 'alone')
 
         elif act_mode == 'Look':
             percept = self.look(act_mode, act_arg=act_arg,reason=reason)
@@ -1396,7 +1374,7 @@ End response with:
             elevenlabs_params = self.speech_stylizer.voice_params(self)
             if not getattr(act, 'unshown', False):   # words meant for someone who had gone are kept, not shown
                 self.context.message_queue.put({'name':self.name, 'text':f"...{act_arg}...", 'elevenlabs_params': json.dumps(elevenlabs_params)})
-            if not getattr(act, 'unrecorded', False):   # a refused deed, as it was meant, is its actor's own (record.mend_deed)
+            if not getattr(act, 'unrecorded', False):   # a deed whose ruling could not be read is its actor's own thought (record.ready)
                 self.context.transcript.append(f'{self.name}: ...{act_arg}...')
             await asyncio.sleep(0)
 
@@ -1454,14 +1432,6 @@ End response with:
                 act_arg = act_arg if meant_as_lie else checked
             act.action = act_arg
             said, self.said = getattr(self, 'said', None), None
-            if said is not None and deed and said.get('deed_refused'):
-                # the deed cannot be done here: the words are still said; the actor is told why,
-                # and it counts against the beat as any refused deed does
-                trace.event('deed_refused', character=self.name, deed=deed[:300], why=[said['deed_refused']], label=None, again=False, with_line=True)
-                record.refused(self.context, self, deed, said['deed_refused'], chosen=True,
-                               seen=[f.get('why') for f in said.get('findings') or [] if isinstance(f, dict) and f.get('kind') == 'here'],
-                               shown=said.get('seen', ''), absent=said.get('absent', ''))
-                self.add_perceptual_input(f"You meant to: {deed}. It cannot be done here: {said['deed_refused']}.", percept=False, mode='internal')
             if said is not None and (said['effects'] or said['page']):
                 # what is done with the words (a deed beside them, or a thing the words themselves
                 # hand over), shown before them
@@ -1562,9 +1532,6 @@ End response with:
         # Notify other actors of action
         if act_mode != 'Say' and act_mode != 'Look' and act_mode != 'Think':  # everyone you do or move or look if they are visible
             seen = f"You see {self.name}: '{act_arg}'"
-            if act_mode == 'Do' and getattr(self, 'attempt_only', False):
-                # the others were told the deed as done when the world had refused it
-                seen = f"You see {self.name} try: '{act_arg}'. It does not happen"
             if act_mode == 'Do' and getattr(self, 'visible_result', '').strip(' .'):
                 seen += f". Result: {self.visible_result.strip(' .')}"
             # Those who are there see it: the others in the scene and within reach of it, and
@@ -2530,12 +2497,9 @@ If you can derive nothing new of significance wrt thought, respond with 'None'.
         acts = [a for a in (task.acts or []) if getattr(a, 'action', None)]
         if not acts:
             return ''
-        # a deed the world refused is told as a try: it was listed as done, and the actor went on
-        # as if it had the thing it had been refused
         return ("Toward this task you have already, in this order:\n"
-                + '\n'.join(f"- {a.mode}: {a.action}" + (' (you tried; it did not happen)' if getattr(a, 'attempt_only', False) else '')
-                             for a in acts[-4:])
-                + "\nThese are done (a try that did not happen may be tried another way) and cannot be done again or thought over as if still to do. "
+                + '\n'.join(f"- {a.mode}: {a.action}" for a in acts[-4:])
+                + "\nThese are done (a try that did not come off may be tried another way) and cannot be done again or thought over as if still to do. "
                   "Choose what comes next after them; if they have done what the task asks, do what follows from it."
                 + ('' if not any(a.mode == 'Say' for a in acts[-2:]) else
                    # where nobody is pressing anybody the talk is the scene: held to one Say a task,
@@ -3428,8 +3392,6 @@ End your response with:
         kept = keeper.offer_lines(self) if body is not None else []
         if kept:   # what the things here allow, as this world has come to model them (sim/keeper.py)
             parts.append('With the things here you could also, as a Do: ' + '; '.join(kept))
-        if record.refusals_note(self):
-            parts.append(record.refusals_note(self))
         return '\n'.join(parts)
 
     def _time_in_play(self):
@@ -3647,27 +3609,13 @@ End your response with:
             if getattr(self, 'previous_action_mode', None) == 'Look':
                 spent.add('Look')
             action_alternatives = [a for a in action_alternatives if a.mode not in spent] or action_alternatives
-            # a deed is looked at before it is done: one that rests on a thing the actor does not
-            # have is passed over for another it offered, or written again (sim/record.py deeds)
+            # of what it offered, an act aimed at someone who has left is passed over where another is not
             action_alternatives = record.sound_deeds(self.context, self, action_alternatives)
             offered = list(action_alternatives)
             await self.request_action_choice(action_alternatives, first_choice=not task.acts) # sets self.focus_action
             trace.event('act_choice', character=self.name, task_id=task.id, offered=len(offered),
                         played=next((i for i, a in enumerate(offered) if a is self.focus_action), None), first_of_task=not task.acts)
-            if record._is_do(self.focus_action):
-                # the deed chosen is resolved now; one that cannot be done here gives way to the
-                # other act its actor offered, when that one can
-                record.judge(self.context, self, self.focus_action)
-                other = next((a for a in offered if a is not self.focus_action), None)
-                if getattr(self.focus_action, 'resolved', None) == '' and other is not None:
-                    record.judge(self.context, self, other)
-                    if getattr(other, 'resolved', None) != '':
-                        refused = self.focus_action
-                        trace.event('deed_refused', character=self.name, deed=refused.action[:300], why=[refused.refusal or 'not here'],
-                                    label=None, again=False, passed_over=True)
-                        record.refused(self.context, self, refused.action, refused.refusal or 'not here')
-                        self.focus_action = other
-            record.mend_deed(self.context, self, self.focus_action)
+            record.ready(self.context, self, self.focus_action)   # the deed chosen is resolved now, and played as it comes out
             self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
             print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
             await asyncio.sleep(0)
@@ -3690,11 +3638,6 @@ End your response with:
                     if hasattr(actor, 'name'):  # Ensure it's a valid character
                         self.context.staleness_detector.record_turn(actor)
             act_count += 1
-            if record.beat_refused(self, task):   # the stage will not have what this beat is for: it is given up
-                trace.event('beat_dropped', character=self.name, task=task.name, why='its deed was refused twice')
-                last = next((r for r in reversed(getattr(self.context, 'scene_refusals', [])) if r['who'] == self.name), {})
-                ruling.unmet(self.context, 'deed', self.name, f'the beat given up: {task.name}', last.get('why', ''))   # read by whoever plans next (sim/ruling.py)
-                break
             # a danger strikes when its time comes, between one act and the next: it was applied
             # only after the whole task, so acts written before it (sniffing a cup) were played
             # after the gang had hit
@@ -3713,7 +3656,7 @@ End your response with:
                     break
                 action_alternatives = record.sound_deeds(self.context, self, action_alternatives)
                 await self.request_action_choice(action_alternatives) # sets self.focus_action
-                record.mend_deed(self.context, self, self.focus_action)
+                record.ready(self.context, self, self.focus_action)
                 self.context.message_queue.put({'name':self.name, 'text':f'character_update', 'data':self.to_json()})
                 print(f'selected {self.name} {self.focus_action.mode} {self.focus_action.action} for task {task.name}')
                 await asyncio.sleep(0)
@@ -3799,7 +3742,6 @@ End your response with:
         #await asyncio.sleep(0.1)
         began = self.context.simulation_time
         await self.acts(action, target, act_mode, act_arg, self.reason, source)
-        action.attempt_only = bool(getattr(self, 'attempt_only', False))   # the world refused it: tried, not done (done_in_task)
         logger.debug(f'{self.name} act_on_action: {act_mode} {act_arg} {self.reason} {source} {target}')
         if hasattr(action, 'duration'):
             act_duration = action.duration
