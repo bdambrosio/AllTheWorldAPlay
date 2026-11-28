@@ -165,7 +165,6 @@ def of(context, actor, people=None, full=False):
         'Places in sight: ' + (', '.join(places[:16]) or 'none named'),
         'Bodies: ' + ('; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in people if getattr(c, 'body', None) is not None)
                       or 'not tracked'),
-        *([survival.facts_note(context)] if survival.facts_note(context) else []),
         *(['What stands (so in this world, whoever knows it; each is known only to those named with it, and to those marked as told it on the stage, as far as the mark says):\n' + survival.stands_note(context)]
           if survival.stands_note(context) else []),
         'Holdings: ' + (' | '.join(f"{c.name}: {'; '.join(survival.named(context, i, reader=None) for i in c.body.inventory) or 'nothing'}" for c in people
@@ -180,7 +179,6 @@ def of(context, actor, people=None, full=False):
         # what a deed played here has looked for and not found (sim/ruling.py): it is not here still, until a deed makes it
         *([f"Found not to be here (looked for by a deed, and not there: a try for one finds none, unless a deed makes it from what is here): {n}"]
           if (n := ruling.absent_note(context, at)) else []),
-        'Danger: ' + (danger(actor) or 'none'),
         *(_acts(context, actor, people) if full else []),
     ])
 
@@ -363,18 +361,9 @@ def situation(context, lately='', viewer=None):
     bodies = [f'{c.name}: {seen(c)}' for c in cast if getattr(c, 'body', None) is not None]
     if bodies:
         lines.append(('You, and what can be seen of the others: ' if viewer is not None else 'Bodies and what each carries: ') + '; '.join(bodies) + '.')
-    threat = getattr(context, 'active_threat', None)
-    if viewer is None or threat is None or viewer.name in threat['targets']:
-        lines.append('Danger: ' + (f"{threat['hazard']['description']}, threatening {', '.join(threat['targets'])}" if threat else 'none at present') + '.')
     if lately:
         lines.append(f'Lately: {lately}')
     return '\n'.join(lines)
-
-
-def danger(actor):
-    """The threat on a character now, in words, or ''."""
-    threat = survival.active_threat_for(actor)
-    return f"{threat['hazard']['description']}, {survival.threat_position(actor, threat)}, not yet driven off" if threat else ''
 
 
 def check(context, actor, action, facts, narration, people=None):
@@ -472,7 +461,7 @@ def admit(context, actor, claims, text, source, people=None, at=None):
     remaining = [c for c in claims if c[0] not in FOUND]
     if not new:
         return facts, refused, remaining
-    needs = [n for n in (people[0].body.levels if people else {})]
+    needs = []   # the world keeps no needs (2026-11-28)
     places = {p.kind: [] for p in world.places(context)}   # the kinds of place this world has
     reply = context.llm.ask({'places': '; '.join(places) or 'none',
                              'items': 'none', 'needs': ', '.join(needs) or 'none',
@@ -539,11 +528,6 @@ def admit(context, actor, claims, text, source, people=None, at=None):
             why = f"There is no {fields[1].lower()} here."
         elif form == 'body' and len(fields) >= 4 and person(fields[0]) is not None:
             who = person(fields[0])
-            need = fields[1].lower()
-            need = survival._harm(survival.config(context) or {})['name'] if need in ('injury', 'harm', 'hurt', 'wound') else need
-            felt = who.body.levels.get(need, 0.0) >= survival.NEED_FELT
-            if felt == fields[2].lower().startswith('worse'):
-                continue   # the body already shows it (a 'bruised thigh' on a bruised body made it 'badly hurt')
             # a plan does not decide bodies either (survival.PLAN_RULE): set-ups that had someone
             # 'still desperately thirsty despite this morning's drink' made it so, and the scene
             # went on another drink
@@ -640,7 +624,7 @@ def speech(context, speaker, line, listener=None, deed=''):
     return said, give
 
 
-SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'danger', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past', 'stands')
+SPEECH_KINDS = ('aloud', 'holds', 'body', 'where', 'here', 'time', 'done', 'gender', 'knows', 'writing', 'whose', 'past', 'stands')
 
 
 # --------------------------------------------------------------------------- deeds

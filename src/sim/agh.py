@@ -2133,7 +2133,6 @@ It serves this goal: {{$goal_string}}
         suffix = """
 
 #What is physically going on right now
-{{$act_note}}
 {{$here_and_now}}
 ##
 
@@ -2184,9 +2183,7 @@ Respond only with the one act.
                     "eat or drink what is really here, pick or take what a place of its kind gives, sit, kneel, lie down, get up, touch someone. "
                     "The world says what comes of it. A thing that is not held or lying here cannot be used; what " + name + " has on (a shoe, a coat) is " + name + "'s to take off and use, listed or not. "
                     "A thing another person holds is theirs until they hold it out or hand it over: ask for it, or put out a hand for it, and their answer is theirs to play. "
-                    "Nobody is pushed, pulled or held by force. A written thing is read before its words are said: where what it says is not given above, the deed is to read it, and nothing of it is quoted yet."
-                    + (" Buying, paying, work for a wage and the like go as this world's facts have them ('How this world works', above), in whatever way a person there would go about it."
-                       if survival.facts_note(self.context) else '')))
+                    "Nobody is pushed, pulled or held by force. A written thing is read before its words are said: where what it says is not given above, the deed is to read it, and nothing of it is quoted yet."))
         if in_dialog:   # in a talk the words are the reply's (generate_dialog_turn): here only what is done
             forms = {'what_an_act_is': f'What an act is: {name} does something; or instead walks somewhere, or looks.',
                      'both_rule': '', 'think_rule': '', 'say_line': '', 'think_line': '',
@@ -2225,7 +2222,6 @@ Respond only with the one act.
                                               "lastAct": 'see Done so far toward this task', "lastActResult": 'see What you have seen and heard lately',
                                               "say_limit": stage.say_limit(self),
                                               "here_and_now": self.physical_context(events=False),
-                                              "act_note": survival.act_note(self),
                                               # the scene and this actor's objective, not the play's theme: given 'is trust itself
                                               # the trap?', the actors said 'Trap—one that fed us'
                                               "director_notes": self.director_notes(story=False),
@@ -3311,11 +3307,6 @@ End your response with:
             moved = now_at and d.get('place') and now_at != d.get('place') and world.place(self.context, now_at) is not None
             parts.append((f"This scene, '{d.get('title', '')}', opened at {d.get('place', '')} and is now at {now_at}. As it opened: {d.get('setup', '')}" if moved else
                           f"This scene, '{d.get('title', '')}', at {d.get('place', '')}: {d.get('setup', '')}").rstrip(': '))
-            since = getattr(self.context, 'scene_since', None)
-            if since:
-                # (the light that sent them indoors faded a line into the scene, and for seventy
-                # lines both went on watching it: the set-up and what the scene was to settle said it hung there)
-                parts.append("Since the scene opened, and whatever these notes say of it: " + ' '.join(since))
         if stage.kind_note(self):
             parts.append(stage.kind_note(self))
         # Not what the scene is to settle: that is the director's note on how the scene should go, and an actor has
@@ -3340,7 +3331,7 @@ End your response with:
         if missing:
             parts.append(f"What {self.name} does not know (it is found out in the scene, or not at all):\n" + '\n'.join(f'- {u}' for u in missing))
         if self.context.current_scene is not None and self.context.staying_tasks_left() \
-                and not getattr(self.context, 'active_threat', None) and stage.tempo(self) != 'urgent':
+                and stage.tempo(self) != 'urgent':
             parts.append(f"The scene is not over: there is more to be played here. Nobody sets off for anywhere else yet, and {self.name} "
                          f"does not propose going now; a need to go (water, food, shelter) is spoken of as for after this.")
         if d.get('keeps'):
@@ -3380,10 +3371,6 @@ End your response with:
         near = survival.places_near(self)
         if near:
             parts.append('Places you know of (a move goes to one by its name): ' + near)
-        if survival.danger_line(self):
-            parts.append('The danger on you: ' + survival.danger_line(self))
-        if survival.facts_note(self.context):   # how this world works, as its world file states it (no list of what may be done)
-            parts.append('How this world works:\n' + survival.facts_note(self.context))
         known = survival.stands_note(self.context, reader=self)
         if known:   # what this person knows to stand: settled between people, or so behind the play
             parts.append('What stands, as you know it:\n' + known)
@@ -3583,8 +3570,6 @@ End your response with:
         if not self.focus_task.peek():
             raise Exception(f'No focus task')
 
-        with self.context.committing('time', self):
-            survival.tick(self)   # needs rise with elapsed simulation time (survival scenarios only)
         print(f'\n{self.name} decides, focus task {self.focus_task.peek().name}')
         logger.info(f'{self.name} step_task: focus task {self.focus_task.peek().name}')
         task: Task = self.focus_task.peek()
@@ -3638,11 +3623,6 @@ End your response with:
                     if hasattr(actor, 'name'):  # Ensure it's a valid character
                         self.context.staleness_detector.record_turn(actor)
             act_count += 1
-            # a danger strikes when its time comes, between one act and the next: it was applied
-            # only after the whole task, so acts written before it (sniffing a cup) were played
-            # after the gang had hit
-            with self.context.committing('hazard'):
-                survival.hazard_tick(self.context)
  
                
             # Did we push opportunistic subtasks? This should be obv

@@ -155,8 +155,7 @@ def picture(context):
 #   nearness              span, at_place, at_its_foot, on_the_spot, together, lying_here, in_earshot, a_step,
 #                         can_walk_over, in_sight, in_range, in_the_neighbourhood
 #   walking and words     minutes, walk, conveyance, bring, far, away, sight_words, reach_words
-#   dangers and pictures  danger_start, danger_reaches, danger_source_near, danger_clear, danger_words,
-#                         apart_words, danger_picture_words
+#   pictures              apart_words
 def _asked(name):
     def ask(context, *args, **kwargs):
         return getattr(_land(context), name)(*args, **kwargs)
@@ -171,6 +170,5 @@ for _name in ('places', 'listed', 'place', 'called', 'find', 'kind_called', 'nea
               'span', 'at_place', 'at_its_foot', 'on_the_spot', 'together', 'lying_here', 'in_earshot', 'a_step',
               'can_walk_over', 'in_sight', 'in_range', 'in_the_neighbourhood', 'sees',
               'minutes', 'walk', 'conveyance', 'bring', 'far', 'away', 'sight_words', 'reach_words',
-              'danger_start', 'danger_reaches', 'danger_source_near', 'danger_clear', 'danger_words',
-              'apart_words', 'danger_picture_words'):
+              'apart_words'):
     globals()[_name] = _asked(_name)

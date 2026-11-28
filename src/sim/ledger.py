@@ -178,13 +178,9 @@ class Ledger:
         self.standing = Kept(self, 'standing')
         # what a ruling has found not to be at a place: {'what', 'at', 'since', 'seen_by' [names], 'by', 'ended'}.
         # The world holds what is, and a thing is modelled when a deed first needs it, so a thing not listed
-        # may still be brought in by any later call; a refusal for want of it is where its not being there is
-        # decided, and that is kept for every later ruling at the place (sim/ruling.py)
+        # may still be brought in by any later call; a deed that looks for it and does not find it is where its
+        # not being there is decided, and that is kept for every later ruling at the place (sim/ruling.py)
         self.absent = Kept(self, 'absent')
-        # the danger on the cast, or None: {'hazard', 'targets', 'location', 'source', 'deadline'}
-        # (sim/survival.py). Kept here so that its coming on, an answer to it and its end belong
-        # to an event like any other change to the stage.
-        self.danger = None
         self.open = []          # the events being committed, the innermost last (Context.committing)
         self.begun = False      # the play has begun: from now on every change belongs to an event
         self.loose_writes = {}  # where in the code a change was made outside any event -> how often
@@ -364,8 +360,7 @@ def set_props(context, things):
 
 
 def install(cls):
-    """Give a context class the older attributes as views of its ledger (and the danger on the
-    cast as `active_threat`)."""
+    """Give a context class the older attributes as views of its ledger."""
     cls.props = property(props, set_props)
     for attr in ('held_out', 'shared', 'poses', 'between', 'writings', 'readers'):
         def get(self, attr=attr):
@@ -383,13 +378,4 @@ def install(cls):
                 kept[:] = list(value)
         setattr(cls, attr, property(get, put))
 
-    def get_danger(self):
-        return of(self).danger
-
-    def set_danger(self, value):
-        book = of(self)
-        if value is not book.danger:
-            book.danger = value
-            book.wrote('danger')
-    cls.active_threat = property(get_danger, set_danger)
     return cls

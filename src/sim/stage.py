@@ -54,7 +54,7 @@ Set a scene where its action can happen: Places lists the places of this world, 
 Give a scene a different location only when the action must move there; the cast then walks, which takes the time shown.
 A scene's title, set-up and ending must fit its "when": a scene called a night watch has "when": "night". When a scene moves the play on, hours pass off stage and the cast is taken to have eaten, drunk and rested as it could: do not spend the scene on that. Move the play on at most once within an act; the clock times you write are not used for this.
 A jump to a distant place belongs at the start of an act.
-A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt), nor how a danger ends: the world settles that when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is so only if a character does it in that scene.
+A scene's set-up and ending do not say what becomes of bodies (someone fed, watered, rested, hurt): that is played when the scene is played. What a scene needs done physically for its ending to make sense (a drink taken, a thing handed over, a paper signed) is so only if a character does it in that scene.
 Someone the cast list says takes part by radio or phone is in a scene by voice only: never at its place, never handed anything or touched.
 Not every scene is a confrontation: people are known by how they work, rest, joke and tell things as much as by how they fight.
 A character's goal in a scene is something to get, give, find out or settle there. It is never to leave or to get the others moving, unless whether they go is that scene's matter: a scene is played where it is set, and going comes when it is done.
@@ -462,10 +462,8 @@ def approach(character, target):
 
 
 def tempo(character):
-    """calm, tense or urgent: the scene's own tempo, and urgent whenever a threat is on the character."""
+    """calm, tense or urgent: the scene's own tempo."""
     scene = character.context.current_scene or {}
-    if survival.active_threat_for(character):
-        return 'urgent'
     value = str(scene.get('tempo') or 'calm').strip().lower()
     return value if value in ('calm', 'tense', 'urgent') else 'calm'
 
@@ -486,7 +484,7 @@ KINDS = {'shared job': ("This scene is a shared job: something has to be done wi
 
 def kind(character):
     """The scene's kind as the plan gave it ('lull', 'shared job', ...), '' for a confrontation, an
-    unknown kind, or whenever a threat is on the character."""
+    unknown kind, or in an urgent scene."""
     scene = character.context.current_scene or {}
     value = ' '.join(str(scene.get('kind') or '').strip().lower().replace('_', ' ').split())
     return value if value in KINDS and tempo(character) != 'urgent' else ''
@@ -698,7 +696,6 @@ def picture(context, doing=''):
     place, indoor = _place_words(context, on_stage)
     lit = light(context)
     people = '; '.join(_looks(context, c) for c in on_stage[:4])
-    threat = getattr(context, 'active_threat', None)
     if indoor:
         # the play's opening sentence describes the town, not the room: given here it brought the street in
         where_ = [f"Interior: inside {place}, {lit}"]
@@ -706,8 +703,6 @@ def picture(context, doing=''):
         where_ = ['Wide view', f"{place}, {lit}", setting]
     parts = [style(context), *where_,
              f"{'One person' if len(on_stage) == 1 else str(len(on_stage)) + ' people, no others'}: {people}"]
-    if threat:
-        parts.append(f"Close by, {threat['hazard']['description']}")
     if doing:
         parts.append(f"In the foreground, one of them {plain(context, doing).strip().rstrip('.')[:220]}")
     return '. '.join(p.strip().rstrip('.') for p in parts if p and p.strip()) + '.'
@@ -760,15 +755,10 @@ def ensure_looks(character):
 
 
 def _visible(body):
-    """What a picture can show of a body: harm once it is felt, any need at its worst ('exhausted',
-    'desperately thirsty'), shelter and dress flags. Not what is carried: that is listed apart."""
+    """What a picture can show of a body: shelter and dress flags. Not what is carried: that is listed apart."""
     if body is None:
         return ''
-    harm = survival._harm(body.cfg)['name']
     parts = []
-    for need, value in body.levels.items():
-        if (need == harm and value >= survival.NEED_FELT) or value >= 0.85:
-            parts.append(survival._word(body.cfg, need, value))
     if body.sheltered:
         parts.append('in shelter')
     return ', '.join(parts + sorted(body.flags))
@@ -821,9 +811,6 @@ def picture_facts(context, deed='', actor=None, setup=False):
              'people': [_person(context, c) for c in shown], 'apart': '', 'threat': '', 'deed': '', 'setup': ''}
     if len(shown) > 1:
         facts['apart'] = world.apart_words(context, [here(c) for c in shown])
-    threat = getattr(context, 'active_threat', None)
-    if threat:
-        facts['threat'] = f"{threat['hazard']['description']}, {world.danger_picture_words(context, [here(c) for c in shown], threat['location'])}"
     if deed:
         facts['deed'] = _no_speech(plain(context, f"{actor.name} {deed}" if actor is not None else deed))[:220]
     scene = context.current_scene if isinstance(context.current_scene, dict) else {}

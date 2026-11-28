@@ -8,7 +8,7 @@ The rules of nearness are stated once here, in metres (agreed 2026-11-21):
   here       a thing lies at hand in the same small place (radius up to 10), or within 3
   at a place within its radius, or within 3 of a small one
   together   in the same enclosed place, or within 8 in the open: to hand over, to see what
-             another holds, to witness, to walk along, for a fire to keep a danger off
+             another holds, to witness, to walk along
   earshot    25, and never through closed walls
   a step     within the same place, or under 10: not told as a walk
   walk over  30 and in sight: gone to in the course of a deed aimed there
@@ -17,16 +17,13 @@ The rules of nearness are stated once here, in metres (agreed 2026-11-21):
              blocks the view, nor into a place that hides what is in it. A person counts as 2.5.
   shelter    inside a place that is one
   a vehicle  a place of a kind the world file calls one (a car): someone setting out for a place more than
-             ten minutes' walk off, with one within 60, goes by it, in its time, and it ends where they do
-  a danger   comes from a source within 60; first stands 30 to 40 off; reaches the one it comes
-             for and anyone within 15 of them; is got clear of at 150 and out of its sight"""
+             ten minutes' walk off, with one within 60, goes by it, in its time, and it ends where they do"""
 import math
 import random
 import re
 
 HERE, SMALL, TOGETHER, EARSHOT, STEP, WALK_OVER = 3.0, 10.0, 8.0, 25.0, 10.0, 30.0
 PERSON, UNDER_TREES, IN_THE_OPEN, FROM_HIGH = 2.5, 25.0, 75.0, 3.0
-DANGER_SOURCE, DANGER_REACH, DANGER_FROM, DANGER_CLEAR = 60.0, 15.0, (30.0, 40.0), 150.0
 PACE = 70.0                      # metres a minute, where a region says nothing else
 RIDE_FROM, RIDE_BEYOND = 60.0, 10     # a vehicle within this of where one sets out is gone by, for a way longer on foot than these minutes
 MINUTES_AN_EFFORT = 3.0          # what a walk costs a body is counted by these (a tile of the old grid was about this)
@@ -443,31 +440,9 @@ class Land:
                 return xy, ground
         return None
 
-    # ------------------------------------------------------------------ dangers
-    def danger_start(self, xy, rng):
-        r, a = rng.uniform(*DANGER_FROM), rng.uniform(0, 2 * math.pi)
-        return (xy[0] + r * math.cos(a), xy[1] + r * math.sin(a))
-
-    def danger_reaches(self, xy, other):
-        return _dist(xy, other) <= DANGER_REACH
-
-    def danger_source_near(self, xy, p, within=None):
-        return _dist(xy, p.xy) <= DANGER_SOURCE
-
-    def danger_clear(self, xy, danger_at, clear=None):
-        return self.sheltered(xy) or (_dist(xy, danger_at) >= DANGER_CLEAR and not self.sees(danger_at, xy))
-
-    def danger_words(self, xy, danger_at):
-        d = _dist(xy, danger_at)
-        return 'close by' if d <= 10 else 'a short way off' if d <= 50 else 'some way off'
-
     def apart_words(self, positions):
         spread = max(_dist(a, b) for a in positions for b in positions)
         return 'side by side' if spread <= TOGETHER else 'a few steps apart' if spread <= 25 else 'some way apart' if spread <= 100 else 'far apart'
-
-    def danger_picture_words(self, positions, danger_at):
-        near = min(_dist(xy, danger_at) for xy in positions)
-        return 'close by' if near <= 10 else 'nearby' if near <= 50 else 'in the distance'
 
     # ------------------------------------------------------------------ what is in view
     def in_view(self, who, xy):

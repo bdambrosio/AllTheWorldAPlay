@@ -51,9 +51,6 @@ MAX_PERCEPTS = 12                   # most recent new memories read by one appra
 NOTICES_KEPT = 3
 NOTICE_MINUTES = 90                 # a noticed event stays 'on the mind' this long
 
-# which drives the body holds up (sim/survival.py Body.levels): bodily needs, and harm
-_BODILY = re.compile(r'physiolog|surviv|food|water|hunger|thirst|shelter|\brest\b|sleep', re.I)
-_SAFETY = re.compile(r'safe|threat|health|injur|danger|harm', re.I)
 _APPRAISAL = re.compile(r'#\s*(d\d+)\W+(threat|chance|eased)\W+([01](?:\.\d+)?)\W*(.*)', re.I)
 
 
@@ -158,13 +155,8 @@ def _now(character):
 
 def settle(character):
     """Bring a character's drives up to the present: resting levels by the play's order (once),
-    drift back toward rest over the play time since the last update, and the body's hold on the
-    bodily drives."""
+    drift back toward rest over the play time since the last update."""
     now = _now(character)
-    body = getattr(character, 'body', None)
-    harm = (body.cfg.get('harm') or {}).get('name') if body is not None else None
-    need = max((v for n, v in body.levels.items() if n != harm), default=0.0) if body is not None else 0.0
-    hurt = body.level(harm) if body is not None and harm else 0.0
     for i, drive in enumerate(character.drives):
         if drive.baseline is None:
             drive.baseline = BASELINES[min(i, len(BASELINES) - 1)]
@@ -175,10 +167,6 @@ def settle(character):
             minutes = (now - drive.updated).total_seconds() / 60
             drive.activation = drive.baseline + (drive.activation - drive.baseline) * 0.5 ** (minutes / HALF_LIFE_MINUTES)
         drive.updated = now
-        if _BODILY.search(drive.text):
-            drive.activation = max(drive.activation, need)
-        if _SAFETY.search(drive.text):
-            drive.activation = max(drive.activation, hurt)
         drive.activation = min(1.0, max(0.0, drive.activation))
 
 

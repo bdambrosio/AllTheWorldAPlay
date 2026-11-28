@@ -593,13 +593,12 @@ End your response with:
         cfg = survival.config(self.context)
         if not cfg:
             return ''
-        hazards = ', '.join(f"{h['name']} ({h['description']})" for h in cfg.get('hazards', [])) or 'none'
         return f"""###
-This world is simulated: it holds only the places below, what the characters carry, and these dangers: {hazards}.
+This world is simulated: it holds only the places below and what the characters carry.
 
 {stage.gazetteer(self.context)}
 
-An intervention is made in this world's terms: one of the dangers arriving, something seen or learned at a listed place, a character arriving, a change in the weather, a change in a drive; or something new, which then becomes real: an object, a wound, or a source of water, food or shelter of the kinds of place listed.
+An intervention is made in this world's terms: something seen or learned at a listed place, a character arriving, a change in the weather, a change in a drive; or something new, which then becomes real: an object, a wound, or a source of water, food or shelter of the kinds of place listed.
 A thing that would work by rules this world does not have (a machine that summons rescue, a cure) stays an inert object: do not build the event on what it would do. Leave new_resource and new_sprite out.
 
 ###"""

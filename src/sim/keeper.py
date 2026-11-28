@@ -41,8 +41,7 @@ LAWS = """Laws of every world you keep:
 - Nothing comes from nothing. A thing that is made is made from things that are on the stage, or is something the record below already speaks of as there, or is something a place of that kind plainly has lying about (a stone on a hillside, a chair in a cafe). A thing nobody would expect there, and that nothing has mentioned, is not there.
 - Everything takes time, and only what an ordinary person often fails at may fail: give a chance below 1 for that alone.
 - What is settled stays settled. You may add a state, a way of changing or a need to a model; you do not take back what a model already says.
-- A model says what a thing is like, never what anyone will do with it or how the play goes.
-- An effect is said only on something this world tracks, by its name as listed."""
+- A model says what a thing is like, never what anyone will do with it or how the play goes."""
 
 ASK = """You keep the physical world of an improvised play. A character is about to do something the world cannot yet place. Decide, now, how the world works for this deed, and no further than the deed needs.
 
@@ -80,8 +79,7 @@ Answer in JSON only:
               "made_from": ["<things on the stage used up in making one>"], "needs": ["<things that must be at hand to make one, not used up>"],
               "minutes": 0, "chance": 1.0,
               "changes": [{{"by": "<two to four words, a verb first>", "from": "<state>", "to": "<state, or gone>", "uses_up": [], "needs": [], "minutes": 0, "chance": 1.0}}],
-              "in_time": [{{"from": "<state>", "to": "<state, or gone>", "after_minutes": 0}}],
-              "effects": [{{"while": "<state>", "on": "<a thing this world tracks, as listed>", "does": "keeps off | eases | worsens"}}]}}],
+              "in_time": [{{"from": "<state>", "to": "<state, or gone>", "after_minutes": 0}}]}}],
   "does": [{{"thing": "<the thing: its name on the stage, or a short name for one now made or now found to be here>", "kind": "<its model>", "by": "<make, here, or one of that model's changes>", "ends": "<in hand (also when it is handed to someone); here; or on and a person's name, only for what is put on a body to be worn or bound there>"}},
            {{"action": "<or, in place of those three: an action the stage already offers, exactly as listed>"}}]}}
 Give only the models this deed makes or adds to; in a model that exists give only what is added, and its full list of states. "does" has one entry for each thing the deed makes, finds or changes, in order, three at most. "by" is the one word make when the deed makes the thing; the one word here when the thing was there already and the deed only comes upon it or takes it up; otherwise a change, in that model's own words for it. "ends" is where the thing is when the deed is done: in hand when {name} is left holding or carrying it; on and a name when it is left on that person, worn or bound on (a bandage tied round a wound, a coat put round them); here when it is left where {name} stands.
@@ -122,7 +120,7 @@ def keep(context, found):
             continue
         new = kind not in kept
         model = kept.setdefault(kind, {'kind': kind, 'portable': bool(m.get('portable')), 'states': [], 'starts': '', 'made_from': _words(m.get('made_from')),
-                                       'needs': _words(m.get('needs')), 'changes': [], 'in_time': [], 'effects': [],
+                                       'needs': _words(m.get('needs')), 'changes': [], 'in_time': [],
                                        **{k: v for k, v in _clean({**m, 'by': 'make'}).items() if k in ('minutes', 'chance')}})
         for s in _words(m.get('states')):
             if s.lower() not in model['states']:
@@ -142,9 +140,6 @@ def keep(context, found):
                 continue
             if not any(x['from'] == t['from'] for x in model['in_time']):   # how long a state lasts is settled once
                 model['in_time'].append(t)
-        for e in m.get('effects') or []:
-            if isinstance(e, dict) and e.get('while') and e.get('on') and e not in model['effects']:
-                model['effects'].append({'while': str(e['while']).strip().lower(), 'on': str(e['on']).strip().lower(), 'does': str(e.get('does') or '').strip().lower()})
         touched.append(kind)
         trace.event('model_kept', name=kind, new=new, model=model)
     return touched
@@ -214,29 +209,9 @@ def offer_lines(character):
             for label, (thing, c) in offers(character).items()]
 
 
-DRIFT = 0.05   # what a thing near a body adds to or takes from a need in an hour, where its model says it eases or worsens it
-
-
-def drift(context, character, need):
-    from sim import ledger
-    total = 0.0
-    for thing in ledger.of(context).loose() + ledger.of(context).held(character.name):
-        model = models(context).get(thing.get('kind'))
-        if model and (thing.get('holder') or world.together(context, thing['at'], _here(character))):
-            for e in model['effects']:
-                if e['while'] == thing.get('state') and need.lower() in e['on']:
-                    total += -DRIFT if 'ease' in e['does'] else DRIFT if 'worsen' in e['does'] else 0.0
-    return total
-
-
 # ------------------------------------------------------------------ asking the keeper
 def _tracks(context):
-    from sim import survival
-    cfg = survival.config(context) or {}
-    needs = list(survival._need_defs(cfg)) + [survival._harm(cfg)['name']]
-    dangers = [h['name'] + (f" (kept off by: {', '.join(h['blocked_by'])})" if h.get('blocked_by') else '') for h in cfg.get('hazards', [])]
-    return '; '.join(filter(None, [', '.join(needs), ('dangers: ' + ', '.join(dangers)) if dangers else '',
-                                   cfg.get('currency', ''), 'what each person carries', 'what lies at each place']))
+    return 'what each person carries; what lies at each place'
 
 
 def _stage(context, character):

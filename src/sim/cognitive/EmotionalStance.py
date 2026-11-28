@@ -117,12 +117,7 @@ class EmotionalStance:
         healed, or a drive began or stopped pressing. (It was read
         again whenever any of its inputs changed, and a drive's latest notice changes nearly every
         act: 46 readings in three scenes, 127 in a play.)"""
-        body = getattr(character, 'body', None)
-        hurt = ''
-        if body is not None:
-            from sim import survival
-            harm = survival._harm(body.cfg)['name']
-            hurt = survival._word(body.cfg, harm, body.levels.get(harm, 0.0))
+        hurt = ''   # the world keeps no harm (2026-11-28)
         # harm and the drives, not every need word: thirst and hunger words change by the hour,
         # and a pressing need already shows as a pressing drive (90 and 105 readings in two plays).
         # Which drives press, not each drive's state: drives cross between quiet and present many

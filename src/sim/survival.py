@@ -1,62 +1,12 @@
-"""Stage business: bodies, affordances, travel time and hazards, defined per world.
+"""Stage business: bodies, things, places, travel time and what is settled between people, per world.
 
-Opt-in per scenario: a scenario module (plays/scenarios/*.py) that defines `affordances = {...}`
-(older name: `survival`) gets it; other plays are unchanged. The mechanics decide what happens
-(numbers, stock, success rolls, who holds what); the LLM only narrates, given the facts
-(Context.do). A scenario may also define `stakes = "..."`, the sentence the planning and act
-prompts use to say what is at stake in that world (see stakes_text).
+Opt-in per scenario: a scenario module (plays/scenarios/*.py) that defines `affordances = {...}` (older name:
+`survival`) gets bodies and the world layer; other plays are unchanged. The world keeps who holds what, what lies
+where, how a thing has been left, where each person is and how they look; what a deed does to it is the
+resolver's to say (sim/resolver.py). It keeps no needs, money or dangers (2026-11-28): what happens to bodies is
+played, by deeds.
 
-    needs           per-world needs (thirst, oxygen, ...) rise per hour of simulation time; the
-                    harm need (injury) rises only from hazards, risks and neglect
-    actions         Do acts matched to the actions on offer: by the act's #affordance label
-                    (drink@Spring3, give bread@Fouan), else by verbs and the thing named.
-                    Categories: survival, explore, social, work
-    hazards         rolled per hour (time of day, terrain, unsheltered, no fire, flags);
-                    resolved by a response Do, or they strike at their deadline
-
-Config shape (see plays/scenarios/forest.py, rural.py, apocalypse.py ...):
-    affordances = {
-        'needs': {need: {'initial', 'per_hour', 'words': (4 words for <.3, <.6, <.85, >=.85),
-                         'percepts': {level: text}, 'neglect_harm': harm per hour at >= .95,
-                         'shelter_factor': rate multiplier while sheltered}},
-        'harm': {'name': 'injury', 'words': (...)},
-        'travel_need': need raised 0.01 per tile walked (optional),
-        'currency': 'francs', 'initial_money': 0, 'initial_inventory': [...],
-        'tile_minutes': minutes per tile at terrain cost 1, 'approach_tiles': 8,
-        'type_nouns': {ResourceType: [words that name it in an act]},
-        'actions': [{'name', 'category', 'verbs', 'named_verbs' (count only when the thing is
-                     named), 'resource_types' (None = anywhere), 'target': 'character',
-                     'effects': {need: delta}, 'target_effects': {need: delta}, 'minutes',
-                     'deplete', 'gain', 'requires', 'consumes', 'transfer': item, 'transfer_money',
-                     'finds': [{'item', 'chance'}], 'earn', 'cost',
-                     'sets' ('sheltered' | 'fire' | any flag), 'requires_flag',
-                     'sets_property': {key: value}, 'requires_property': {key: value or None;
-                     '{actor}'; for owner, '{household}' = the actor or a parent or spouse},
-                     'risk': {'chance', 'effects', 'text'}, 'text',
-                     'success': {'chance', 'text'} (the deed can fail: on a failed roll the
-                     time and effects are spent, but sets_property is not applied, and the
-                     text tells the failure),
-                     items ('requires', 'consumes', 'transfer') may be '*suffix': any held item
-                     ending so ("*contract" is "Hu's contract"); 'gain' may use {actor}, {item},
-                     'remote': True (a 'target' action that needs no nearness: a phone message),
-                     'conveys': suffix (with 'transfer': an item named '<ResourceId><suffix>',
-                     a deed, makes the target that resource's owner),
-                     'target_gain': item the target receives (may use {said}: the words the
-                     act quotes), 'reveals': prefix (lists the target's items that start so:
-                     the messages on someone's phone)}],
-        'private_items': [prefixes of items others do not see a character carrying],
-        'hazards': [{'name', 'description', 'when' ('day'|'night'|'any'), 'terrain',
-                     'chance_per_hour', 'blocked_by' (sheltered, fire, flags), 'minutes_to_strike',
-                     'harm', 'retreat_text', 'strike_text', 'fail_text',
-                     'escape_tiles' (8): a threat is in one place; a target this far from it
-                     when it strikes is spared, and it ends once every target is clear,
-                     'source': {'resource_types', 'requires_property', 'within' (tiles, 6)}:
-                     the hazard comes from a resource in that state (a line not yet repaired);
-                     it threatens only characters near one, appears there, and ends
-                     ('resolved_text') when the resource leaves that state,
-                     'responses': {name: {'verbs', 'success', 'bonus': {item: +p},
-                                          'sets_property' (on the source, when it works)}}}]}
-    Text templates may use {resource}, {target}, {actor}, {item}.
+    affordances = {'tile_minutes': minutes per tile at terrain cost 1, 'initial_inventory': [...]}
 """
 from __future__ import annotations
 
@@ -70,8 +20,6 @@ from typing import Optional
 from sim.trace import trace
 from sim import ablation, keeper, ledger, world
 
-DEFAULT_HARM = {'name': 'injury', 'words': ('unhurt', 'bruised', 'injured', 'badly hurt')}
-NEED_FELT = 0.3            # below this a need is not felt ('not hungry'): Body words change here
 _rng = random.Random()
 
 
@@ -80,93 +28,17 @@ def config(context) -> Optional[dict]:
     return getattr(module, 'affordances', None) or getattr(module, 'survival', None)
 
 
-def stakes_text(context, fallback=''):
-    """The scenario's sentence on what is at stake physically and socially in its world, for the
-    planning and act prompts; `fallback` (the engine's old wording) when the scenario has none."""
-    module = world.scenario(context)
-    # a world stated in facts: the planner plans from the same facts the world rules by
-    return (getattr(module, 'stakes', None) or fallback).strip() + (f'\n{facts_note(context)}' if facts_note(context) else '') \
-        + (f'\n{STYLES[style(context)][1]}' if dangers(context) else '') + (f'\n{PLAN_RULE}' if config(context) else '')
-
-
 # For every prompt that writes or rewrites the plan. A plan wrote 'the boar swerves, goring Joe's
 # leg' as a scene's ending: the actor played the wound from his first line, the world's own boar
 # then struck the other character, and the play carried two accounts of who was hurt.
-PLAN_RULE = ("What happens to bodies, and how a danger ends, is decided by the world when the scene is played, never by the plan. "
-             "A plan may put the characters in a danger's way. It does not say that someone is wounded, bitten, healed, fed or killed, "
-             "nor that an animal is driven off or strikes. "
+PLAN_RULE = ("What happens to bodies is played, when the scene is played, never decided by the plan: a plan does not say that "
+             "someone is wounded, bitten, healed, fed or killed, nor that an animal is driven off or strikes. "
              "States and endings say where the characters stand with each other and with the central question: "
-             "what has been chosen, said, refused, found out or lost between them. "
-             "Bodies' needs rise with time and are met only by what the characters do on stage; a scene need not be about them "
-             "unless a need is desperate or what meets it is out of reach.")
+             "what has been chosen, said, refused, found out or lost between them.")
 
 
-# ---------------------------------------------------------------------------- states the world keeps
-# A state is kept only where something in the world file depends on it (a rule that needs someone
-# dressed). The world file says what it means and what brings it about ('states': name ->
-# {'means', 'by', 'at': kinds of place, 'minutes', 'needs': other states}); the stage shows it;
-# the resolver says when a deed makes it so or ends it; what requires it refuses without it.
-# --------------------------------------------------------------------------- a world stated in facts
-# A world file with `facts` says in sentences how its world works, and in `held` the few things no
-# deed or word gets past; it lists no actions, no ways and no states, and what a deed does there is
-# the resolver's to say each time (docs/world-facts-design.md). A world file without `facts` is
-# still ruled by its tables, until it is converted.
-HOW_FAR = {'a little': 0.15, 'well': 0.45, 'fully': 0.9}
+# How likely a deed is to go as its doer means, as the resolver says it; the engine draws (resolver._draw).
 LIKELY = {'rare': 0.05, 'unlikely': 0.2, 'as likely as not': 0.5, 'likely': 0.8, 'almost certain': 0.95}
-
-
-def facts_note(context):
-    """How this world works and what is held in it, as its world file states them; '' for a world of tables."""
-    module = world.scenario(context)
-    facts, held = list(getattr(module, 'facts', None) or []), list(getattr(module, 'held', None) or [])
-    if not facts:
-        return ''
-    threats = dangers(context)
-    return ('The facts of this world:\n' + '\n'.join(f'- {f}' for f in facts)
-            + ('\nWhat threatens people here:\n' + '\n'.join(f'- {d}' for d in threats) if threats else '')
-            + ('\nHeld (no deed or word gets past these):\n' + '\n'.join(f'- {h}' for h in held) if held else ''))
-
-
-def dangers(context):
-    """What threatens people in this world, as its world file states it in sentences (docs/dangers-design.md)."""
-    return list(getattr(world.scenario(context), 'dangers', None) or [])
-
-
-# How a performance is to be played, as its director chose (Context.director_style): how often the
-# director brings a danger upon a scene, and what the planner is told. Never more than one danger in an act.
-STYLES = {'quiet': (0.0, "The director's style for this performance is quiet: a play of people and what passes between them. "
-                         "No danger comes upon them unless the story itself calls for one."),
-          'mixed': (0.15, "The director's style for this performance is mixed: mostly between people, with the world pressing on them now and then."),
-          'thrilling': (0.6, "The director's style for this performance is thrilling: the world presses hard, and a danger comes upon the cast in most acts.")}
-
-
-def style(context):
-    return getattr(context, 'style', None) if getattr(context, 'style', None) in STYLES else 'mixed'
-
-
-def come_on(context, what, cast, minutes=30):
-    """A danger, said in words, comes upon the cast: brought by a scene's set-up or by the director.
-    It is then a state of the stage until a deed ends it, those it is upon get clear of it, or it
-    comes to a head (hazard_tick). Returns it, or None when none may come on now."""
-    what = ' '.join(str(what or '').split()).strip(' .')
-    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
-    if not what or not exposed or not may_come_on(context):
-        return None
-    context._hazard_last = context.simulation_time
-    _start_threat(context, {'name': what, 'description': what, 'minutes_to_strike': minutes, 'stated': True}, exposed[0], exposed)
-    return context.active_threat
-
-
-def danger_over(context, how=''):
-    """The danger on the stage is over, by a deed as the resolver found it: told in that deed's own line."""
-    threat = getattr(context, 'active_threat', None)
-    if not threat:
-        return
-    text = ' '.join(str(how or '').split()) or f"{_described(threat['hazard'])} is gone."
-    _end_threat(context, threat, text, tell=False)
-    context.add_event(text)
-    if getattr(context, 'current_scene', None) is not None:
-        context.scene_since = list(getattr(context, 'scene_since', None) or []) + [text]
 
 
 def stands(context, fact, about=(), known=None):
@@ -284,31 +156,6 @@ def places_near(character, cut=14):
                      for d, rid, res in near[:cut])
 
 
-def act_note(character):
-    """One line for the act prompt's here-and-now block, only when the world has affordances."""
-    if getattr(character, 'body', None) is None or not config(character.context):
-        return ''
-    return ("#Needs, threats and what this place offers are real: a concrete Do or Move that "
-            "deals with them is often the right act.")
-
-
-def _harm(cfg):
-    return {**DEFAULT_HARM, **(cfg.get('harm') or {})}
-
-
-def _need_defs(cfg):
-    return cfg.get('needs') or {}
-
-
-def _word(cfg, need, value):
-    words = (_need_defs(cfg).get(need) or {}).get('words')
-    if need == _harm(cfg)['name']:
-        words = _harm(cfg)['words']
-    if not words:
-        return f'{need} {value:.1f}'
-    return words[0] if value < 0.3 else words[1] if value < 0.6 else words[2] if value < 0.85 else words[3]
-
-
 def wear(context, thing, wearer):
     """Put a thing on a person, worn or bound on (a coat round them, a bandage tied on): it is then
     theirs, on the body rather than in a hand, until it is taken off or handed on."""
@@ -320,28 +167,11 @@ def wear(context, thing, wearer):
     return True
 
 
-def need_called(body, said):
-    """The need of `body` that `said` names: by the need's own name, or by one of the words the
-    world tells it by (_word). Bodies are shown as 'hungry; thirsty', so a resolver naming a
-    need as it was shown ('hungry') named 'hunger', and was refused it as no need at all."""
-    said = ' '.join(str(said or '').lower().split())
-    harm = _harm(body.cfg)
-    for need in body.levels:
-        words = harm['words'] if need == harm['name'] else (_need_defs(body.cfg).get(need) or {}).get('words') or ()
-        if said == need.lower() or said in {w.lower() for w in words}:
-            return need
-    return None
-
-
 @dataclass
 class Body:
-    levels: dict = field(default_factory=dict)      # need -> 0..1, including the harm need
     held: list = field(default_factory=list, repr=False)   # what it holds before it is bound to the stage's ledger (bind)
-    money: float = 0
     flags: set = field(default_factory=set)         # 'dressed', 'suited', ... set by actions
     sheltered: bool = False
-    last_tick: Optional[datetime] = None
-    warned: set = field(default_factory=set)
     cfg: dict = field(default_factory=dict, repr=False)
     bearing: list = field(default_factory=list)     # 'sitting', 'holding the arm of Joe': this scene's (shared actions)
 
@@ -370,22 +200,16 @@ class Body:
         for name in names:
             mine.append(name)
 
-    def level(self, need):
-        return self.levels.get(need, 0.0)
-
     def summary(self, public=False, held=True):
         """The body in words. public: as someone else sees it, without the items the world
         keeps private ('private_items' prefixes: the messages on a phone). held: with what it carries
         and wears (False where the same prompt lists that beside it)."""
-        parts = [_word(self.cfg, n, v) for n, v in self.levels.items()]
         hidden = tuple(self.cfg.get('private_items', ())) if public else ()
-        parts += self._held_words(hidden) if held else []
-        if self.cfg.get('currency'):
-            parts.append(f"{self.money:g} {self.cfg['currency']}")
+        parts = self._held_words(hidden) if held else []
         if self.sheltered:
             parts.append('in shelter')
         parts += sorted(self.flags) + list(self.bearing)
-        return '; '.join(parts)
+        return '; '.join(parts) or ('empty-handed' if held else 'nothing to remark')
 
     def _held_words(self, hidden=()):
         """['carrying a and b', 'wearing c']: what is in hand or carried, and what is on the body."""
@@ -396,30 +220,17 @@ class Body:
         return ([('carrying ' + ' and '.join(carried))] if carried else []) + ([('wearing ' + ' and '.join(worn))] if worn else [])
 
     def condition(self):
-        """How the body is, in words, without what it carries: 'very thirsty; tired; in shelter'."""
-        return '; '.join([_word(self.cfg, n, v) for n, v in self.levels.items()]
-                         + (['in shelter'] if self.sheltered else []) + sorted(self.flags) + list(self.bearing))
+        """How the body is, in words, without what it carries: 'in shelter; sitting'."""
+        return '; '.join((['in shelter'] if self.sheltered else []) + sorted(self.flags) + list(self.bearing))
 
     def visible(self):
-        """The body as another person sees it: hurt or not, what is carried, sheltered or not.
-        Thirst, hunger and tiredness are the body's own to know."""
-        harm = _harm(self.cfg)['name']
+        """The body as another person sees it: what is carried, sheltered or not, how it is placed."""
         hidden = tuple(self.cfg.get('private_items', ()))
-        parts = [_word(self.cfg, harm, self.levels.get(harm, 0.0))] if harm in self.levels else []
-        parts += self._held_words(hidden)
+        parts = self._held_words(hidden)
         if self.sheltered:
             parts.append('in shelter')
         parts += list(self.bearing)
         return '; '.join(parts) or 'nothing remarkable'
-
-    def adjust(self, need, delta):
-        old = self.levels.get(need, 0.0)
-        self.levels[need] = min(1.0, max(0.0, old + delta))
-        book = getattr(getattr(self, '_inventory', None), '_ledger', None)
-        if book is not None and self.levels[need] != old:
-            book.wrote('needs')   # a body's needs change only as part of an event (sim/ledger.py)
-        if delta < 0:   # allow a fresh warning next time the need rises past a threshold
-            self.warned = {w for w in self.warned if not (w[0] == need and self.levels[need] < w[1])}
 
 
 def attach(context):
@@ -427,12 +238,6 @@ def attach(context):
     cfg = config(context)
     if not cfg:
         return
-    # what wears on the cast, in the shared situation every planning prompt reads (what threatens
-    # them is among the world's facts: facts_note)
-    rising = [n for n, d in _need_defs(cfg).items() if d.get('per_hour')]
-    brief = '\n' + (', '.join(rising).capitalize() + ' grow as the hours pass.' if rising else '')
-    if brief.strip() and brief not in context.current_state:
-        context.current_state += brief
     for character in context.everyone():
         give_body(context, character)
 
@@ -442,10 +247,7 @@ def give_body(context, character):
     actor gets one when cast (Context.cast_part): a father who can hold a deed."""
     cfg = config(context)
     if cfg and getattr(character, 'body', None) is None and world.on(character):
-        levels = {n: d.get('initial', 0.2) for n, d in _need_defs(cfg).items()}
-        levels[_harm(cfg)['name']] = 0.0
-        character.body = Body(levels=levels, held=list(cfg.get('initial_inventory', [])),
-                              money=cfg.get('initial_money', 0), last_tick=context.simulation_time, cfg=cfg)
+        character.body = Body(held=list(cfg.get('initial_inventory', [])), cfg=cfg)
         character.body.bind(context, character.name)
 
 
@@ -468,64 +270,9 @@ def _spans_night(start, end):
 
 
 def pass_offstage(context, gap):
-    """Time passes off stage, to context.simulation_time + gap (the caller moves the clock).
-    Needs do not rise off stage. Over a real jump the cast is taken to have looked after itself:
-    hunger and thirst that were felt are met, and tiredness too when the gap takes in a night.
-    Injuries stay. (Needs used to rise across a gap, so a play that moved on to dusk for a night
-    watch opened on two people who had to find water first; and frozen, a character hungry in the
-    morning was still hungry at dusk having done nothing about it. A plan that wants them hungry
-    says nothing of bodies: the world keeps them.) A danger left standing is over, and a fire burns out.
-    Returns the names of the needs that were met."""
-    now = context.simulation_time + gap
-    hours = gap.total_seconds() / 3600
-    cfg = config(context) or {}
-    jump = hours >= REAL_JUMP_HOURS
-    night = _spans_night(context.simulation_time, now)
-    met = set()
-    for character in _embodied(context):
-        body = character.body
-        if jump:
-            for need, spec in _need_defs(cfg).items():
-                level = body.levels.get(need, 0.0)
-                if spec.get('per_hour', 0.0) <= 0 or level < NEED_FELT:
-                    continue
-                if re.search(r'fatig|tired|sleep|rest', need) and not night:
-                    continue
-                body.adjust(need, (NEED_FELT - 0.05) - level)
-                met.add(need)
-        body.last_tick = now
-    if hasattr(context, '_hazard_last'):
-        context._hazard_last = now
-    threat = getattr(context, 'active_threat', None)
-    if threat and (jump or now >= threat['deadline']):   # it does not strike, or wait hours for, a cast that is not on stage
-        _end_threat(context, threat, threat['hazard'].get('retreat_text', f"The {threat['hazard']['name']} passes."), tell=False)
-    return met
-
-
-def tick(character):
-    """Advance needs by elapsed simulation time; threshold crossings become internal percepts."""
-    body = getattr(character, 'body', None)
-    cfg = config(character.context) if character.context else None
-    if body is None or not cfg:
-        return
-    now = character.context.simulation_time
-    if body.last_tick is None or now <= body.last_tick:
-        body.last_tick = now
-        return
-    hours = (now - body.last_tick).total_seconds() / 3600
-    body.last_tick = now
-    for need, spec in _need_defs(cfg).items():
-        rate = spec.get('per_hour', 0.0) * (spec.get('shelter_factor', 1.0) if body.sheltered else 1.0)
-        # ... and as the things near it ease or worsen it, by what the world has come to know of them
-        body.adjust(need, (rate + keeper.drift(character.context, character, need)) * hours)
-        crossed = [(level, text) for level, text in (spec.get('percepts') or {}).items()
-                   if body.level(need) >= level and (need, level) not in body.warned]
-        if crossed:   # several thresholds in one tick: one percept, the most severe
-            body.warned.update((need, level) for level, _ in crossed)
-            character.add_perceptual_input(max(crossed)[1], mode='internal')
-            trace.event('body', character=character.name, need=need, level=round(body.level(need), 2))
-        if spec.get('neglect_harm') and body.level(need) >= 0.95:   # neglect hurts
-            body.adjust(_harm(cfg)['name'], spec['neglect_harm'] * hours)
+    """Time passes off stage, to context.simulation_time + gap (the caller moves the clock). The world keeps no needs
+    and no dangers (2026-11-28): nothing of a body changes. Returns the needs met: none."""
+    return set()
 
 
 # --------------------------------------------------------------------------- places
@@ -1146,26 +893,6 @@ def _shared_do(context, character, action, other, item):
     return fact
 
 
-def shared_out(context, character, item, effects):
-    """`character` has used up `item`. Those it was shared with (see _prop_do 'share') and who
-    still hold it lose it too and get the same good of it. Returns their names."""
-    ties = getattr(context, 'shared', None) or []
-    tie = next((t for t in ties if t[0] == item and character.name in t[1]), None)
-    if tie is None:
-        return []
-    ties.remove(tie)
-    names = []
-    for other in context.actors + context.extras + context.npcs:
-        if other is character or other.name not in tie[1] or item not in getattr(getattr(other, 'body', None), 'inventory', []):
-            continue
-        other.body.inventory.remove(item)
-        for need, delta in effects.items():
-            other.body.adjust(need, delta)
-        names.append(other.name)
-    trace.event('shared_used', character=character.name, item=item, others=names)
-    return names
-
-
 def _give_label(cfg, item, to_name):
     """The label of this world's action by which a holder hands `item` to someone, or ''."""
     for action in cfg.get('actions', []):
@@ -1203,172 +930,10 @@ def travel(character, to, advance_clock=True):
         ledger.of(context).wrote('position')
     if getattr(character, 'body', None) is not None:
         character.body.sheltered = world.sheltered(context, to)   # by where it now is: inside a hut, a cave, a thicket
-        if cfg.get('travel_need'):
-            character.body.adjust(cfg['travel_need'], 0.01 * effort)
     if advance_clock:
         context.simulation_time += timedelta(minutes=minutes)
     trace.event('travel', character=character.name, tiles=effort, minutes=round(minutes, 1), to=list(to))
     return minutes
 
 
-def active_threat_for(character):
-    threat = getattr(character.context, 'active_threat', None)
-    return threat if threat and character.name in threat['targets'] else None
-
-
-def threat_position(character, threat):
-    # in words a person would use: '3 tiles Northeast' went into set-ups ('the boar stands three
-    # tiles off') and from there onto the page
-    far = world.danger_words(character.context, _here(character), threat['location'])
-    return 'right here' if _here(character) == tuple(threat['location']) else f"{far} to the {_direction(_here(character), threat['location']).lower()}"
-
-
-def _where(anchor, threat):
-    if threat.get('source'):
-        return f"at {threat['source']}"
-    return f"{threat_position(anchor, threat)} of {anchor.name}"
-
-
 BODY_NOTE = r'\s*\([^()]*\bis now\b[^()]*\)'   # '(Joe is now thirsty; ...)': for characters and the narrator
-
-
-# A danger, in one place (docs/dangers-design.md). The world file says in sentences what threatens
-# people there. One comes on because the play brings it: a scene's set-up has it upon the cast
-# (resolver.resolve_setup says what; stage_hazard starts it) or the director brings it on
-# (director_danger), never more than one in an act. It is then a state of the stage, in words. A
-# deed against it is ruled like any deed, put to chance on the world's odds (sim/resolver.py); it
-# ends when a deed ends it (danger_over), when those it is upon are out of its reach, or when its
-# time runs out and the world says what it does (resolver.befalls). It is kept in the ledger
-# (Context.active_threat), and each of these is a change to the stage inside an event.
-
-
-def _told(context, text):
-    """What a danger does, told: to those present now (the record, Context.add_event) and to the
-    audience once the act it belongs to is on the page (the outermost open event: Context.close_event
-    puts it after that event's own lines). Outside any event it goes to the page at once."""
-    text = ' '.join(str(text or '').split())
-    if not text:
-        return
-    context.add_event(text)
-    book = ledger.of(context)
-    if book.open:
-        book.open[0].setdefault('after', []).append(text)
-    else:
-        context.to_page('', f'    {text}', kind=None, transcript=False)
-
-
-def _described(hazard):
-    return hazard['description'][0].upper() + hazard['description'][1:]
-
-
-def _start_threat(context, hazard, anchor, exposed):
-    """A hazard comes on: it threatens those of `exposed` near `anchor` until answered or its deadline."""
-    now = context.simulation_time
-    context._hazards_started = getattr(context, '_hazards_started', 0) + 1
-    context._act_dangers = getattr(context, '_act_dangers', 0) + 1
-    source_id = None
-    loc = world.danger_start(context, _here(anchor), _rng)
-    targets = [c.name for c in exposed if world.danger_reaches(context, _here(anchor), _here(c))]
-    for c in exposed:
-        if c.name in targets:
-            c.body.sheltered = False   # it comes on them where they are
-    context.active_threat = {'hazard': hazard, 'targets': targets, 'location': loc, 'source': source_id,
-                             'deadline': now + timedelta(minutes=hazard.get('minutes_to_strike', 45))}
-    _told(context, f"{_described(hazard)} appears {_where(anchor, context.active_threat)}, threatening {', '.join(targets)}.")
-    trace.event('hazard', phase='onset', hazard=hazard['name'], targets=targets)
-
-
-def hazard_spent(context):
-    """Has this act had its danger? Never more than one in an act (Context.run_narrative_act
-    counts from nothing). A play had a boar, the boar again and a wolf by its second act, each
-    from a set-up that merely named one."""
-    return getattr(context, '_act_dangers', 0) >= 1
-
-
-def may_come_on(context):
-    """Whether a danger may come on now: none is on the cast, and the play has not had its one."""
-    return bool(config(context)) and not getattr(context, 'active_threat', None) and not hazard_spent(context)
-
-
-def stage_hazard(context, scene, cast):
-    """The danger a scene's set-up has upon the cast (scene['danger'], from resolver.resolve_setup),
-    started with the scene: it threatens the cast, they must answer it, and it strikes or is driven
-    off by the world's rules. (A planned boar was only words: it never acted, and the scene was
-    about a branch.)"""
-    come_on(context, scene.get('danger'), cast)   # in words, as the set-up check gave it
-
-
-def director_danger(context, cast, scene=None):
-    """The director brings a danger upon the scene about to be played, as often as the style it
-    chose for this performance has it and never twice in an act: one of those this world says
-    threaten people, as it would come at this hour and place. Returns what it is, or None."""
-    chance = STYLES[style(context)][0]
-    if not may_come_on(context) or _rng.random() >= chance:
-        return None
-    exposed = [c for c in cast if getattr(c, 'body', None) is not None and world.on(c)]
-    if not exposed:
-        return None
-    from utils.Messages import UserMessage
-    from sim import stage
-    where = '; '.join(f"{c.name} {stage.where(context, _here(c))} ({'under shelter' if c.body.sheltered else 'in the open'})" for c in exposed)
-    prompt = (f"You are the director of an improvised play. You have chosen to bring a danger upon the cast in the scene about to be played.\n\n"
-              f"The scene: '{(scene or {}).get('scene_title', '')}'. {(scene or {}).get('pre_narrative', '')}\n"
-              f"It is {stage.clock(context)}. {where}.\n\nWhat threatens people in this world:\n" + '\n'.join(f'- {d}' for d in dangers(context))
-              + "\n\nWhich of these could come upon them here and now? Answer with what the cast would see of it, in three to eight words "
-                "('a gaunt grey wolf at the clearing's edge'), or with the one word none if none of them comes at this hour or in such a place.\n</end>")
-    reply = (context.llm.ask({}, [UserMessage(content=prompt)], tag='director.danger', temp=0.5, stops=['</end>'], max_tokens=60) or '').strip().strip('"\'.')
-    if not reply or reply.lower().startswith('none') or len(reply.split()) > 14:
-        trace.event('director_danger', what='', reply=reply[:120])
-        return None
-    context._director_hazard = reply
-    trace.event('director_danger', what=reply, style=style(context))
-    come_on(context, reply, exposed)
-    return reply
-
-
-def hazard_tick(context):
-    """Between one act and the next: has the danger on the cast been got clear of, or has its time run out?"""
-    cfg = config(context)
-    if not cfg:
-        return
-    now = context.simulation_time
-    last = getattr(context, '_hazard_last', None)
-    context._hazard_last = now
-    if last is None or now <= last:
-        return
-    cast = [c for c in context.actors if getattr(c, 'body', None) is not None]
-    threat = getattr(context, 'active_threat', None)
-    # those it is upon get clear of a danger by going out of its reach; left to itself until its
-    # time runs out, it comes to a head, and the world says what it does (resolver.befalls). No
-    # dice bring one on: the play does (docs/dangers-design.md)
-    if threat:
-        targets = [c for c in cast if c.name in threat['targets']]
-        caught = [c for c in targets if not world.danger_clear(context, _here(c), threat['location'])]
-        if not caught:
-            _end_threat(context, threat, f"{' and '.join(c.name for c in targets) or 'They'} {'is' if len(targets) == 1 else 'are'} out of reach of it.")
-        elif now >= threat['deadline']:
-            from sim import resolver
-            victim = min(caught, key=lambda c: world.span(context, _here(c), threat['location']))
-            resolver.befalls(context, victim, threat)
-
-
-def _end_threat(context, threat, text, struck=False, tell=True):
-    """The danger is over. tell=False: it ended off stage, and nobody saw it go."""
-    context.active_threat = None
-    if tell:
-        _told(context, text)
-        if getattr(context, 'current_scene', None) is not None:
-            # a scene's set-up is how it opened: what has ended since is said beside it (Character.director_notes)
-            context.scene_since = list(getattr(context, 'scene_since', None) or []) + [text]
-    trace.event('hazard', phase='struck' if struck else 'ended', hazard=threat['hazard']['name'], text=text)
-    if getattr(context, 'current_scene', None) is not None:
-        from sim import scene   # a scene that opened under the danger and goes on is given its owner now
-        scene.reopen(context)
-
-
-def danger_line(character):
-    """The danger on `character`, in one line, or ''."""
-    threat = active_threat_for(character)
-    return f"{threat['hazard']['description']} is {threat_position(character, threat)}" if threat else ''
-
-

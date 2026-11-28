@@ -155,7 +155,6 @@ def person(context, who):
             'lately': ' '.join(str(getattr(who, 'character', '') or '').split()) if getattr(who, 'character', None) != getattr(who, 'original_character', None) else '',
             'wants': [{'text': d.text, 'activation': round(float(getattr(d, 'activation', 0) or 0), 2)} for d in (who.drives or [])],
             'at': _plain(xy), 'place': _where(context, xy),
-            'needs': {n: round(float(v), 2) for n, v in (body.levels if body is not None else {}).items()},
             'holds': [str(n) for n in (body.inventory if body is not None else [])],
             'sheltered': bool(getattr(body, 'sheltered', False)), 'flags': sorted(getattr(body, 'flags', ()) or ()),
             'to_the_eye': [s['words'] for s in book.states if s['who'] == who.name],
@@ -180,7 +179,7 @@ def stage_state(context):
     return {'things': [thing(t) for t in book.things], 'traces': [mark(m) for m in book.marks],
             'states': _plain(list(book.states)), 'told': _plain(list(book.told)), 'promised': _plain(list(book.promised)),
             'standing': _plain(list(book.standing)), 'writings': _plain(dict(book.writings)), 'readers': _plain(dict(book.readers)),
-            'shared': _plain(list(book.shared)), 'danger': _plain(book.danger),
+            'shared': _plain(list(book.shared)),
             'absent': [{**_plain({k: v for k, v in a.items() if k != 'at'}), 'place': _where(context, a['at']), 'xy': _plain(a['at'])} for a in book.absent]}
 
 
@@ -480,8 +479,7 @@ def apply(context, record):
             who.character = entry['lately']
         body = getattr(who, 'body', None)
         if body is not None:
-            body.levels.update({n: float(v) for n, v in (entry.get('needs') or {}).items() if n in body.levels})
-            body.sheltered, body.flags, body.last_tick = bool(entry.get('sheltered')), set(entry.get('flags') or ()), context.simulation_time
+            body.sheltered, body.flags = bool(entry.get('sheltered')), set(entry.get('flags') or ())
         who.unknown_names = set(entry.get('does_not_know_the_name_of') or ())
         for rid in entry.get('has_seen') or ():   # a thread written before this was kept has none: the person starts as it did
             if getattr(who, 'resource_models', None) is not None:
@@ -579,10 +577,9 @@ def ending(context):
         if not world.on(c):
             continue
         body = getattr(c, 'body', None)
-        felt = [n for n, v in (body.levels if body is not None else {}).items() if v >= survival.NEED_FELT]
         lines.append(f"{c.name} is at {survival._nearest_resource_id(context, world.at(c))}"
                      + (f", holding {', '.join(str(i) for i in body.inventory)}" if body is not None and list(body.inventory) else '')
-                     + (f"; feels {', '.join(felt)}" if felt else '') + '.')
+                     + '.')
     promised = [_promise_line(p) for p in ledger.of(context).promised]
     if promised:
         lines.append('Still promised or agreed:\n' + '\n'.join(f'- {p}' for p in promised))
@@ -638,8 +635,7 @@ def open_part(context, final=None):
     context.thread_takes = [n for n in opened['takes'] if 0 < n <= len(questions) and not questions[n - 1].get('closed')]
     when = _when(opened['opens']) if opened['opens'] else context.simulation_time
     gap = when - context.simulation_time if isinstance(when, datetime) else timedelta(0)
-    if gap > timedelta(0):   # the time between: bodies are seen to, how people were placed is over, and what would not have lasted is gone
-        survival.pass_offstage(context, gap)
+    if gap > timedelta(0):   # the time between: how people were placed is over, and what would not have lasted is gone
         context.simulation_time = when
         survival.unpose(context)
         gone = [s for n, s in enumerate(list(book.states), 1) if n in opened['gone'] and s in book.states]

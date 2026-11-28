@@ -386,26 +386,21 @@ class Context():
     MAX_JUMPS_IN_ACT = 1   # times a scene other than an act's first may move the play on
 
     def move_on(self, target):
-        """The play moves on to `target`, off stage (survival.pass_offstage: needs are met, not
-        raised; a danger left standing is over). The cast is told how long it has been and what
+        """The play moves on to `target`, off stage (survival.pass_offstage). The cast is told how long it has been and what
         time it is, so that nobody carries on from the morning at dusk. Returns the hours passed."""
         gap = target - self.simulation_time
         hours = gap.total_seconds() / 3600
         if hours <= 0:
             return 0.0
         with self.committing('offstage'):   # the hours that pass, and what they do to bodies, are one event
-            for character in self.everyone():   # time already played on stage counts before the jump
-                survival.tick(character)
-            met = survival.pass_offstage(self, gap)
+            survival.pass_offstage(self, gap)
             self.simulation_time = target
             if hours >= survival.REAL_JUMP_HOURS:
-                told = (f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
-                        + (" In that time you ate, drank and rested as you could." if met else ''))
+                told = f"About {round(hours)} hours have passed. It is now {stage.clock(self)}."
                 for character in self.everyone():
                     character.add_perceptual_input(told, percept=False, mode='internal')
-                # what the hours did to bodies is told with them, not done unseen
-                self.add_event(f'About {round(hours)} hours pass' + ('; in that time they eat, drink and rest as they can' if met else ''))
-                trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True), needs_met=sorted(met))
+                self.add_event(f'About {round(hours)} hours pass')
+                trace.event('time_jump', hours=round(hours, 1), to=stage.clock(self, date=True))
                 self._hours_moved = getattr(self, '_hours_moved', 0.0) + hours
         return hours
 
@@ -1035,14 +1030,14 @@ What each carries: {{$holdings}}
 </the_people_there>
 {{$writings}}
 Everyone in the play, and whether each is he or she: {{$cast}}.
-It is now {{$clock}}. Danger here now: {{$danger}}.
+It is now {{$clock}}.
 
 <what_{{$name}}_has_seen_and_heard_lately>
 {{$history}}
 </what_{{$name}}_has_seen_and_heard_lately>
 
 The answer is what the audience is shown of the look: what {{$name}} sees or hears, in the third person ('{{$name}} sees ...', '{{$name}} hears ...'), and what {{$name}} learns from it, stated as the fact learned ('{{$name}} learns that the gate is chained').
-- Only what is there: the place, the people and things above, and what follows from what has happened. No animal, person, thing or danger that is not listed.
+- Only what is there: the place, the people and things above, and what follows from what has happened. No animal, person or thing that is not listed.
 - Of the others, what can be seen is what they do and how they look, and how they are said above to seem; not what they feel, think or mean beyond that: '{{$name}} sees Kidd look away', not 'Kidd is ashamed'; what {{$name}} learns is what the look shows, not what someone intends. Nor what {{$name}} feels: the actor plays that.
 - Looking changes nobody's body, nothing anyone holds, and not the time.
 - Nothing follows the look: no one acts.
@@ -1065,7 +1060,7 @@ End your response with:
                   "history": '\n'.join(self.witnessed(actor, n=12)) or 'nothing yet',
                   "holdings": survival.holdings(actor) or 'nothing the world keeps track of', "clock": stage.clock(self),
                   "writings": self._writings_line(actor),
-                  "danger": record.danger(actor) or 'none', "cast": record.cast(self),
+                  "cast": record.cast(self),
                   "bodies": '; '.join(f'{c.name}: {c.body.summary(public=True)}' for c in [actor] + actor.bystanders()
                                       if getattr(c, 'body', None) is not None) or 'not tracked'}
         narrate = lambda rejected='': self.llm.ask({**inputs, "rejected": rejected}, prompt, tag='Context.look', temp=0.7,
@@ -1246,10 +1241,6 @@ End your response with:
             newcomers = bool(analysis.get('entities', {}).get('new_character'))
             found = record.check(self, cast[0], 'The director brings an event into the play.', None,
                                  intervention_description, people=cast) or []
-            # A danger the intervention has coming is a 'presence' like any other, and is refused: the
-            # director's own danger is a real one (survival.director_hazard), never words. (The names of
-            # the world's dangers were looked for in the claims, and a list of verbs said whether one
-            # was arriving; one that was became words that nothing answered.)
             claims = [(k, w) for k, w in found if k != 'place' and not (k == 'presence' and newcomers)]
             # The director's own people are the director's to move: a supporting actor it has come
             # to the leads is walked there, and how such a person is said to be is theirs to play.
@@ -1463,7 +1454,6 @@ It is now {{$clock}}.
 The cast is now at: {{$here}}.
 {{$places}}
 Bodies, as the world has them (what each carries is with the things, below): {{$bodies}}
-The danger on the cast now: {{$danger}}.
 {{$clues}}
 {{$facts}}
 Where things are now, each with how it has been left (the world keeps this: the scene does not move a thing or have it otherwise than listed):
@@ -1481,12 +1471,11 @@ What the opening has. It starts from what is true now: nobody arrives where they
 - It is the opening only: where the cast is, what is there, what presses on them. What the cast says, decides, finds or does to one another is theirs to play: nothing the scene is for (a thing found, a door barred, a choice made, a thing handed over) happens in it.
 - What the opening has at the place, or in someone's hands, that the stage does not list is a #thing line: what such a place would ordinarily have (a flat stone by a spring, dust in a hut), or what such a person would ordinarily have with them for what they have come to do (a student her essay and her bag, a clerk his pen). A thing the stage lists elsewhere or in another's hands stays where it is. If the scene turns on a thing being found, read, shown or handed over that the plan gives or the stage lists, its #thing line says plainly where it lies, so that it is there to be found ("under the bedding"). A thing only hinted at ("something left behind") is not in the world, and nobody can find it.
 - How someone looks, to the eye, that lasts through the scene and the stage does not show yet (a writer's inked fingers, a walker's muddy boots) is a #shows line.
-- What happens to bodies, and how a danger goes, is played: the opening, the ending and the goals do not say that anyone is wounded, healed or fed, or that a danger strikes or is driven off.
+- What happens to bodies is played: the opening, the ending and the goals do not say that anyone is wounded, healed or fed, or that an animal strikes or is driven off.
 - The opening is read out to the audience and to everyone in the scene: it says nothing that only some of them know.
 
 What the scene is to settle:
 - The ending is what the scene is to settle, never how it is settled: one or two matters that are open between the characters as it begins, each written as 'whether ...' or as the thing to come out ('Whether Mara lets them shelter at the hut, and on what terms'; 'What the two make of the cut in the bark, and whether they follow it'). Write it so that either answer could be seen or heard on stage, and give neither. A matter is something they are at odds over or do not yet know, not a detail of how the plan had it done (which words, which hand, which joke). Which way it falls, who gives way, who speaks first, who takes whose hand, who stays and who goes are the actors' to play: they are not in the ending. Where the plan's ending says what someone does, says, decides or keeps back, keep the matter that would settle and leave the deed out. Nor does it take as done what someone has yet to do in the scene: 'whether Tom sees what Ann slips into her coat' has Ann slip something into it. Ask the matter instead ('whether anything Ann comes on is kept from Tom'), or whether she does it. It is not an event of the body or of the danger.
-- If a danger is on the cast now, the scene opens with it and is about meeting it; do not skip the scene.
 - If everything the scene was for has already happened, skip it.
 - Otherwise change as little as you can.
 {{$strangers}}
@@ -1538,15 +1527,13 @@ Respond with these lines only:
         if opens_act and not survival.config(self):
             return False   # no world to hold an opening scene to
         planned = {k: scene.get(k) for k in ('scene_title', 'location', 'when', 'pre_narrative', 'post_narrative', 'characters', 'business', 'tempo', 'kind')}
-        # not while a danger is on the cast: it would be left standing, hours behind them
-        may_move = self._may_move_on(opens_act) and not getattr(self, 'active_threat', None)
+        may_move = self._may_move_on(opens_act)
         moving = ('"same" means now, and is right for most scenes. Name a later part of the day only when what the scene is for depends on it '
                   '(its title, set-up or ending call for night, or dusk, or dawn, and it is not that now): the play then moves on to the next such time, '
                   'hours pass off stage, and the cast is taken to have eaten, drunk and rested in them, so the scene is not about that.'
                   if may_move else
                   'It must be "same": the play has already moved on in this act and is played now. Where the plan calls for another time of day, '
                   'keep the scene\'s purpose and write it for now.')
-        threat = getattr(self, 'active_threat', None)
         bodies = lambda: '; '.join(f'{c.name}: {c.body.summary(held=False)}' for c in cast if getattr(c, 'body', None) is not None) or 'not tracked'
         # each fact once: what lies behind the play is given with who knows it, and What stands (in the account of things) leaves those out
         behind = {f['text'] for f in self.screenplay.facts}
@@ -1562,7 +1549,7 @@ Respond with these lines only:
                   'strangers': self.strangers_note(),
                   'clues': '\n'.join(n for n in (self.screenplay.clue_note(now=lambda c: survival.whereabouts_of(self, c['thing'])),
                                                    self.screenplay.thread_note(plan=False)) if n),
-                  'bodies': bodies(), 'danger': threat['hazard']['description'] if threat else 'none',
+                  'bodies': bodies(),
                   'events': events, 'things': things(), 'facts': facts}
         changed = {}
         reply = self.llm.ask(inputs, prompt, tag='reground_scene', temp=0.2, stops=['</end>'], max_tokens=600) or ''
@@ -1732,9 +1719,6 @@ Respond with these lines only:
             if character not in characters_in_scene:
                 characters_in_scene.append(character)
 
-        # rarely, the director brings on one of the world's dangers; the scene is then fitted to it
-        with self.committing('hazard'):
-            survival.director_danger(self, characters_in_scene, scene)
         if await self.reground_scene(scene, characters_in_scene, opens_act):
             trace.event('scene_skipped', title=scene.get('scene_title'))
             self.current_scene = None
@@ -1762,8 +1746,6 @@ Respond with these lines only:
             scene['action_order'] = list(scene.get('action_order') or []) + [person.name]
         # what each carries as the scene opens: what it carries at the end and did not is a find
         self._held_at_scene_start = {c.name: list(c.body.inventory) for c in characters_in_scene if getattr(c, 'body', None)}
-        with self.committing('hazard'):
-            survival.stage_hazard(self, scene, characters_in_scene)   # a beast the scene's set-up brings on is a real one
         # (the scene's place is said by the call that resolves its set-up, and the cast is set there by
         # stage.set_scene: no place name is looked for in the set-up's words)
         heading = f'{scene["scene_title"]}\n    Setting: {scene["place"]}, {stage.clock(self, date=True)}'   # after the walk there
@@ -1802,8 +1784,6 @@ Respond with these lines only:
         for character in characters_in_scene:
             character.current_scene = scene
             character.scene_deeds = []   # the world's actions it performs this scene (survival._record)
-        self.scene_not_here = {}   # what each was about to say is here and plainly is not (record.speech)
-        self.scene_since = []      # what has ended since the scene opened, said beside its set-up (survival._end_threat)
         with self.committing('set', event=setting):
             self.held_out = []   # things held out to someone in this scene, theirs to take (survival._prop_do)
             survival.unpose(self)   # and nobody is yet sitting, placed or touching (survival shared actions)
@@ -1958,8 +1938,6 @@ Respond with these lines only:
             while self.step is False and  self.run is False:
                 await asyncio.sleep(0.5)
             await character.step_task()
-            with self.committing('hazard'):
-                survival.hazard_tick(self)
             self.message_queue.put({'name':character.name, 'text':f'character_detail', 'data':character.get_explorer_state()})
             self.step = False
 
@@ -1983,10 +1961,6 @@ Respond with these lines only:
             if stage.off_stage(character):
                 continue   # no closing business for someone who has gone (Ding walked out, then 'had a drink at Cafe')
             self.simulation_time = closing
-            # the body first catches up with the clock: needs rise only when a character steps a
-            # task, and Joe, answering in dialog through a night, was 'rested' after standing watch
-            with self.committing('time', character):
-                survival.tick(character)
             latest = max(latest, self.simulation_time)
         self.simulation_time = latest
         # each character's goal in the scene is judged and put away (Character.close_scene_goal)
@@ -2073,7 +2047,6 @@ Respond with these lines only:
     async def run_narrative_act(self, act, act_number):
         """Run a narrative"""
         self._act_jumps = 0   # the play moves on at most MAX_JUMPS_IN_ACT times within an act
-        self._act_dangers = 0   # and has at most one danger in an act (survival.hazard_spent)
         self.establish_tension_points(act)
         self.current_act = act
         if self.screenplay.act:
@@ -2398,7 +2371,7 @@ In writing this act:
                                  "places": stage.gazetteer(self) + stage.supporting_note(self),
                                  "previous_act_post_state": previous_act_post_state or 'This is the first act: nothing has been played yet.',
                                  "previous_acts": self.screenplay.so_far() or 'None: this is the first act.',
-                                 "facts": ((self.screenplay.facts_note(knowing=self.knowing, answers=self.screenplay.answers) + "\nWhere this world's danger is brought on, bring it on where it presses one of these toward the open.\n")
+                                 "facts": ((self.screenplay.facts_note(knowing=self.knowing, answers=self.screenplay.answers) + "\n")
                                            if self.screenplay.facts_note() else ''),
                                  "plan_rule": survival.PLAN_RULE if survival.config(self) else '', "rejected": ''}
         # The act that is performed is held to the same form as a character's draft of one
@@ -2622,7 +2595,6 @@ Respond with these lines only, one sentence each:
                 # heads only: the world then ruled 'no one pruned these trees', 'no such form exists'.)
                 survival.stands(self, fact['text'], known=fact['known_to'])
         trace.event('episode', **self.episode, clues=self.screenplay.clues, marks=self.screenplay.marks, facts=self.screenplay.facts)
-        self.director_style()
         self.send_plan()
         return self.episode
 
@@ -2631,26 +2603,6 @@ Respond with these lines only, one sentence each:
         keeps it (survival.knowing); None where the stage does not hold it (a person's own past)."""
         entry = survival.standing(self, fact)
         return survival.knowing(entry) if entry is not None else None
-
-    def director_style(self):
-        """The director chooses how this performance is to be played: quiet (a play of people),
-        mixed, or thrilling (the world presses hard). It decides how often a danger is brought
-        upon a scene (survival.STYLES) and is told to the planner. A play file may set it (W.style)."""
-        if getattr(self, 'style', None) in survival.STYLES or not survival.dangers(self):
-            trace.event('director_style', style=survival.style(self), by='the play' if getattr(self, 'style', None) else 'default')
-            return survival.style(self)
-        from utils.Messages import UserMessage
-        cast = '\n'.join(f"- {' '.join(str(getattr(c, 'original_character', '') or c.character).split())[:300]}" for c in self.actors)
-        prompt = (f"You are the director of an improvised play, deciding how tonight's performance is to be played.\n\nThe world: {' '.join((self.initial_state or '').split())}\n"
-                  f"{survival.stakes_text(self).splitlines()[0]}\nThe people:\n{cast}\nThe question tonight's play is about: {getattr(self, 'standing_question', '') or 'not yet settled'}\n\n"
-                  "Choose one:\n- quiet: a play of people and what passes between them; no danger comes upon them unless the story itself calls for one\n"
-                  "- mixed: mostly between people, with the world pressing on them now and then\n"
-                  "- thrilling: the world presses hard, and a danger comes upon the cast in most acts\n\n"
-                  "Choose what suits this question and these people tonight; any of the three may be right. Answer with the one word.\n</end>")
-        reply = (self.llm.ask({}, [UserMessage(content=prompt)], tag='director.style', temp=0.9, stops=['</end>'], max_tokens=20) or '').strip().lower()
-        self.style = next((s for s in survival.STYLES if s in reply), 'mixed')
-        trace.event('director_style', style=self.style, by='the director', reply=reply[:60])
-        return self.style
 
     def director_person(self, person):
         """Bring the director's person who knows a part into the play: cast at the place named, as
@@ -3130,7 +3082,7 @@ End your response with: </end>""")]
                 trace.event('exit_released', character=character.name, held=owner.exit_holds - 1,
                             open=[o['text'] for o in owner.outcomes if o['kind'] == 'happens' and o['state'] == 'open'])
                 waits = False
-        allowed = (not self.staying_tasks_left() and not waits) or bool(getattr(self, 'active_threat', None)) or stage.tempo(character) == 'urgent'
+        allowed = (not self.staying_tasks_left() and not waits) or stage.tempo(character) == 'urgent'
         # (staying_tasks_left is 0 once the scene's owner has closed it: a scene that has arrived may be left)
         if not allowed:
             trace.event('exit_held', character=character.name, played=self.scene_integrated_task_plan_index + 1, planned=len(plan),
