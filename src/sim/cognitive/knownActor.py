@@ -395,7 +395,8 @@ class KnownActorManager:
         self.resolution_cache[actor_name] = (actor_agh, actor_name)
         if self.context.current_scene:
             # we are in a scene, so char should have a goal
-            actor_agh.instantiate_narrative_goal(self.context.current_scene['post_narrative'])
+            # their own want, as such a person here would have it: what the scene is to settle is the director's
+            actor_agh.instantiate_narrative_goal(f"what {actor_name}, as such a person would here, wants out of the next few minutes, going about their own business")
             actor_agh.focus_goal = actor_agh.goals[0]
         return actor_agh, actor_name
         

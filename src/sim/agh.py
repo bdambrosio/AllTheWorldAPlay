@@ -1788,9 +1788,10 @@ End response with:
                 if gm not in goal_memories:
                     goal_memories.append(gm)
 
-        if self.context.scene_post_narrative:
-            scene_narrative = (f"\nThe scene opens: {self.context.scene_pre_narrative}\nIt is to settle: {self.context.scene_post_narrative}\n"
-                               f"The tasks are what {self.name} does to get what {self.name} wants out of that. How it is settled is not planned: what the others answer or do is theirs.")
+        # what the scene is to settle is the director's, not this actor's: the actor has its own objective (director_notes)
+        if self.context.scene_pre_narrative:
+            scene_narrative = (f"\nThe scene opens: {self.context.scene_pre_narrative}\n"
+                               f"The tasks are what {self.name} does to get what {self.name} wants in it. How it comes out is not planned: what the others answer or do is theirs.")
         else:
             scene_narrative = ''
         response = default_ask(self, 
@@ -1945,9 +1946,10 @@ Place tasks least important to the dramatic context early in the plan when possi
                 ntasks = self.context.compute_task_plan_limits(self, self.context.current_scene)
             if goal.task_plan and replan:
                 ntasks = min(ntasks, max(1, len(goal.task_plan)))
-        if self.context.scene_post_narrative:
-            scene_narrative = (f"\nThe scene opens: {self.context.scene_pre_narrative}\nIt is to settle: {self.context.scene_post_narrative}\n"
-                               f"The tasks are what {self.name} does to get what {self.name} wants out of that. How it is settled is not planned: what the others answer or do is theirs.")
+        # what the scene is to settle is the director's, not this actor's: the actor has its own objective (director_notes)
+        if self.context.scene_pre_narrative:
+            scene_narrative = (f"\nThe scene opens: {self.context.scene_pre_narrative}\n"
+                               f"The tasks are what {self.name} does to get what {self.name} wants in it. How it comes out is not planned: what the others answer or do is theirs.")
         else:
             scene_narrative = ''
         logger.info(f'{self.name} generate_task_plan: {goal.to_string()}')
@@ -3352,10 +3354,11 @@ End your response with:
                 parts.append("Since the scene opened, and whatever these notes say of it: " + ' '.join(since))
         if stage.kind_note(self):
             parts.append(stage.kind_note(self))
-        if d.get('ending'):
-            parts.append(f"What this scene is to settle (it is open: bring it to a head for what {self.name} wants, and let it fall as it falls): {d['ending']}")
+        # Not what the scene is to settle: that is the director's note on how the scene should go, and an actor has
+        # only the notes to or about itself (Bruce, 2026-11-27). Given to every actor, an ending that asked whether one
+        # character would part with a thing told both actors what the scene was for.
         if d.get('goal'):
-            parts.append(f"Your objective in it: {d['goal']}")
+            parts.append(f"Your objective in it: {d['goal']}. Bring it to a head in this scene, and let it fall as it falls.")
         if self in getattr(self.context, 'npcs', ()):   # a supporting actor cast for this performance: no card, no past written
             parts.append(f"{self.name} is not one of the people this play is about. {self.name} knows their own place and business, "
                          f"what is given above as known to them, and what they see and hear now. What {self.name} was not there for and has not "
